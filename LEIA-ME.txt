@@ -1,20 +1,38 @@
-JOGO BÍBLICO — ROTAS, VIAGEM RÁPIDA E MAR
+JORNADA — RPG BÍBLICO | PACOTE INTEGRADO
 
-Instalação
+INSTALAÇÃO
 1. Faça uma cópia de segurança da pasta atual do jogo.
-2. Extraia este pacote.
-3. Substitua os quatro arquivos do projeto pelos arquivos desta pasta.
-4. Abra index.html pelo seu servidor local (por exemplo, Live Server).
+2. Extraia este pacote e substitua os cinco arquivos do jogo pelos arquivos incluídos.
+3. Mantenha os cinco arquivos juntos na mesma pasta e abra o jogo pelo mesmo método de antes.
+4. Não limpe os dados do navegador: o progresso salvo é migrado automaticamente.
 
-O salvamento local existente é mantido. Não apague os dados do navegador.
+JORNADA E CAPÍTULOS
+- O progresso existente de Canaã e do Deserto é preservado.
+- Depois de concluir a missão principal do Deserto, siga pela passagem roxa para o Egito.
+- A jornada continua, em sequência, pelo Mar Vermelho, Monte Sinai e Galileia.
+- Em cada região, converse com o personagem indicado, derrote a ameaça e volte para concluir o capítulo e liberar a rota seguinte.
 
-Novidades
-- Canaã e o Deserto se conectam por uma trilha terrestre contínua até a passagem marcada TRILHA, no extremo sul.
-- Micael, em Canaã, e Tamar, no Deserto, oferecem viagem rápida gratuita entre as cidades.
-- Cada cidade tem um cais marcado CAIS · MAR. Atravesse o Mar das Rotas de barco para desembarcar na outra cidade.
-- Navegação: WASD ou setas. A rota marítima é navegável de uma ponta à outra.
-- Quatro pontos de pesca: aproxime-se do marcador PESCA e pressione P ou clique nele. Cada local descansa por 12 segundos.
-- Azarias compra peixe fresco por 6 moedas.
-- Missões, combate, economia, equipamento, saques e salvamento local permanecem incluídos.
+ORAÇÃO E CURA
+- Na Galileia, converse com Jesus para aprender a Oração; depois pressione F1 e clique na cura desejada.
+- Curar a própria vida: 20 de Fé para recuperar 20 pontos (mais bônus ao alcançar nível 10 de Oração).
+- Remover veneno: desbloqueia no nível 25 e custa 40 de Fé.
+- Cura em área 3×3: desbloqueia no nível 50, custa 60 de Fé e, no modo solo atual, cura o jogador.
+- Milagre: desbloqueia no nível 100, custa 100 de Fé, restaura a vida e remove veneno.
+- Poções de vida continuam curando 30 pontos; poções de Fé recuperam 40. A Fé se regenera em 1 ponto a cada 3 segundos após aprender a Oração.
+- Cura de aliados e ressurreição aguardam a criação de companheiros/grupos jogáveis.
 
-Consulte o botão Controles dentro do jogo para outras teclas.
+PROGRESSÃO E COMBATE
+- Dano leva em conta arma, habilidade, defesa do inimigo e chance de crítico; defesa combina equipamento e habilidade.
+- Corpo a corpo, arco, defesa e Oração evoluem com o uso. As habilidades chegam ao nível 100; o XP restante até o próximo nível aparece no painel de personagem.
+- A morte preserva nível, inventário e missões. Até o nível 10 não há penalidade; do 11 ao 25 perde 10% das moedas; do 26 ao 50 perde também 5% do XP de habilidade; a partir do 51 perde 10% do XP de habilidade e há 30% de chance de um item da mochila cair.
+
+CONTROLES
+- Andar: WASD ou setas; diagonais: Q, E, Z, C.
+- Interagir/conversar: F.
+- Selecionar alvo: clique no inimigo; autoataque a cada 2 segundos.
+- Ataque corpo a corpo: Espaço; arco: R; poção de vida: H; pesca: P.
+- Poções de vida e de Fé podem ser arrastadas para a barra e usadas pelas teclas 1–6.
+- Mochila: I; tela cheia: botão na barra superior.
+
+BACKUP E COMPATIBILIDADE
+O jogo salva localmente no navegador. Guarde uma cópia da pasta atual antes de substituir os arquivos e mantenha o mesmo navegador/perfil para continuar usando o save.

@@ -1,7 +1,7 @@
 const TILE = 32;
 const COLS = 80;
 const ROWS = 60;
-const VERSAO_SAVE = 4;
+const VERSAO_SAVE = 5;
 const VIDA_BASE = 100;
 const TEMPO_REGEN = 10000;
 const INTERVALO_MOVIMENTO = 600;
@@ -19,7 +19,8 @@ const XP_NIVEIS = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250];
 const CARGA_BASE = 50;
 const CARGA_POR_NIVEL = 10;
 const ITENS = {
-  pocao: { nome: "Poção", peso: 1, tipo: "consumivel" },
+  pocao: { nome: "Poção de vida", peso: 1, tipo: "consumivel" },
+  pocao_fe: { nome: "Poção de fé", peso: 1, tipo: "consumivel" },
   erva: { nome: "Erva medicinal", peso: 0.5, tipo: "recurso" },
   odre_agua: { nome: "Odre de água", peso: 3, tipo: "recurso" },
   espada_madeira: { nome: "Espada de madeira", peso: 6, tipo: "arma", bonus: 5 },
@@ -35,7 +36,7 @@ const ITENS = {
   peixe: { nome: "Peixe fresco", peso: 1, tipo: "recurso" },
 };
 const SLOTS_EQUIPAMENTO = { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
-const PRECOS_LOJA = { pocao: 12, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
+const PRECOS_LOJA = { pocao: 12, pocao_fe: 18, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
 const VALORES_VENDA = { pele_lobo: 5, erva: 2, odre_agua: 3, peixe: 6 };
 function nomeItem(id) { return ITENS[id]?.nome || id; }
 function pesoItem(id) { return ITENS[id]?.peso ?? 1; }
@@ -50,7 +51,7 @@ function defesaEquipamento(p) {
 }
 function bonusArma(p) { const item = p.equipamento?.arma; return item ? (ITENS[item]?.bonus || 0) : 0; }
 function bonusArco(p) { const item = p.equipamento?.arco; return item ? (ITENS[item]?.bonus || 0) : 0; }
-function bonusHabilidade(p, chave) { return Math.min(chave === "defesa" ? 5 : 8, Math.floor((p.habilidades?.[chave] || 0) / (chave === "defesa" ? 10 : 5))); }
+function bonusHabilidade(p, chave) { const n=p.habilidades?.[chave]||0; return Math.floor(n*(chave==="defesa"?.3:chave==="distancia"?.4:.5)); }
 function defesaTotal(p) { return defesaEquipamento(p) + bonusHabilidade(p, "defesa"); }
 
 function vidaMaxima(personagem) { return VIDA_BASE + Math.max(0, (personagem.nivel || 1) - 1) * 10; }
@@ -61,7 +62,7 @@ function limiarNivel(nivel) {
 function adicionarXP(personagem, quantidade) {
   personagem.xp = Math.max(0, (personagem.xp || 0) + quantidade);
   const niveis = [];
-  while (personagem.nivel < 20 && personagem.xp >= limiarNivel(personagem.nivel)) {
+  while (personagem.nivel < 100 && personagem.xp >= limiarNivel(personagem.nivel)) {
     personagem.nivel += 1;
     personagem.vida = vidaMaxima(personagem);
     niveis.push(personagem.nivel);
@@ -170,7 +171,7 @@ const Mundo = {
     if (!p.pescaRespawn || typeof p.pescaRespawn !== "object") p.pescaRespawn = {};
     if (!p.vidaInimigos || typeof p.vidaInimigos !== "object") p.vidaInimigos = {};
     if (!areas[p.area]) { p.area = "canaan"; p.x = 2; p.y = 2; }
-    p.nivel = Number.isInteger(p.nivel) ? Math.max(1, Math.min(20, p.nivel)) : 1;
+    p.nivel = Number.isInteger(p.nivel) ? Math.max(1, Math.min(100, p.nivel)) : 1;
     p.xp = Number.isFinite(p.xp) ? Math.max(0, p.xp) : 0;
     const maxVida = vidaMaxima(p);
     p.vida = Number.isFinite(p.vida) ? Math.max(0, Math.min(p.vida, maxVida)) : maxVida;
@@ -360,13 +361,13 @@ const Mundo = {
         if (nx === areas.mar.caisDeserto.x && ny === areas.mar.caisDeserto.y) { p.area = "deserto"; p.x = 40; p.y = 3; Storage.salvar(p); return { ok: true, areaAlterada: true, mensagem: "O barco chegou ao cais do Deserto." }; }
       } else {
         const passage = areas[p.area].passagem;
-        if (nx === passage.x && ny === passage.y) {
+        if (passage && nx === passage.x && ny === passage.y) {
           const next = p.area === "canaan" ? "deserto" : "canaan";
           p.area = next; p.x = areas[next].chegada.x; p.y = areas[next].chegada.y; Storage.salvar(p);
           return { ok: true, areaAlterada: true, mensagem: `Você percorreu a trilha terrestre e chegou a ${areas[next].nome}.` };
         }
         const cais = areas[p.area].cais;
-        if (nx === cais.x && ny === cais.y) {
+        if (cais && nx === cais.x && ny === cais.y) {
           const origem = p.area; p.area = "mar"; p.x = origem === "canaan" ? 3 : 76; p.y = 30; Storage.salvar(p);
           return { ok: true, areaAlterada: true, mensagem: "Você embarcou no cais. Navegue até o marcador Canaã ou Deserto para desembarcar." };
         }
@@ -468,13 +469,13 @@ const Mundo = {
         const mesmaLinha = e.y === p.y, mesmaColuna = e.x === p.x;
         const diagonal = deltaX === deltaY;
         const distancia = Math.max(deltaX, deltaY);
-        if ((!mesmaLinha && !mesmaColuna && !diagonal) || distancia < 1 || distancia > 5) return false;
+        if ((!mesmaLinha && !mesmaColuna && !diagonal) || distancia < 1 || distancia > 8) return false;
         const dx = Math.sign(e.x - p.x), dy = Math.sign(e.y - p.y);
         for (let passo = 1; passo < distancia; passo++) if (mapas[p.area][p.y + dy * passo][p.x + dx * passo] !== 0) return false;
         return true;
       }).sort((a, b) => (Math.abs(a.x - p.x) + Math.abs(a.y - p.y)) - (Math.abs(b.x - p.x) + Math.abs(b.y - p.y)));
       const e = alvos[0];
-      if (!e) return { ok: false, mensagem: "Nenhum inimigo alinhado e desimpedido até 5 casas. Posicione-se na mesma linha, coluna ou diagonal." };
+      if (!e) return { ok: false, mensagem: "Nenhum inimigo alinhado e desimpedido até 8 casas. Posicione-se na mesma linha, coluna ou diagonal." };
       p.inventario.splice(flechaIndex, 1);
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
       p.habilidades.distancia++;
