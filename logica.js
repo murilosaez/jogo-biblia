@@ -1,10 +1,10 @@
 // =====================================================================
 // logica.js — regras de "Jornada · RPG Bíblico" (sem DOM).
 //
-// Ordem de carga: storage.js → logica.js → expansao.js → sprites.js → game.js → interface.js.
-// Este arquivo define o motor (Mundo) e os dados de Canaã, Deserto e Mar.
-// expansao.js apenas ACRESCENTA dados (áreas, NPCs, inimigos, capítulos e
-// portais) usando as funções registrar* daqui; nenhuma função é reembrulhada.
+// Ordem de carga: storage.js → dados/*.js → logica.js → sprites.js → game.js → interface.js.
+// Este arquivo define o motor (Mundo) e as regras. Todo o CONTEÚDO (itens, áreas, NPCs,
+// criaturas, capítulos e portais) vem dos arquivos em dados/ e é registrado aqui pelas
+// funções registrar*; para criar conteúdo novo, edite apenas dados/.
 // =====================================================================
 
 // ---------------------------------------------------------------------
@@ -89,30 +89,9 @@ const REGRAS_MORTE = [
 // ---------------------------------------------------------------------
 // Itens, loja e equipamento
 // ---------------------------------------------------------------------
-const ITENS = {
-  pocao: { nome: "Poção de vida", peso: 1, tipo: "consumivel" },
-  pocao_fe: { nome: "Poção de fé", peso: 1, tipo: "consumivel" },
-  erva: { nome: "Erva medicinal", peso: 0.5, tipo: "recurso" },
-  odre_agua: { nome: "Odre de água", peso: 3, tipo: "recurso" },
-  espada_madeira: { nome: "Espada de madeira", peso: 6, tipo: "arma", bonus: 5 },
-  espada_ferro: { nome: "Espada de ferro", peso: 10, tipo: "arma", bonus: 12 },
-  espada_temperada: { nome: "Espada temperada", peso: 9, tipo: "arma", bonus: 17 },
-  escudo_madeira: { nome: "Escudo de madeira", peso: 5, tipo: "escudo", defesa: 3 },
-  escudo_bronze: { nome: "Escudo de bronze", peso: 7, tipo: "escudo", defesa: 5 },
-  tunica_pano: { nome: "Túnica de pano", peso: 4, tipo: "armadura", defesa: 2 },
-  armadura_couro: { nome: "Armadura de couro", peso: 8, tipo: "armadura", defesa: 5 },
-  arco_madeira: { nome: "Arco de madeira", peso: 7, tipo: "arma_distancia", bonus: 10 },
-  arco_composto: { nome: "Arco composto", peso: 7, tipo: "arma_distancia", bonus: 15 },
-  flecha: { nome: "Flecha", peso: 0.1, tipo: "municao" },
-  pele_lobo: { nome: "Pele de lobo", peso: 2, tipo: "recurso" },
-  veneno_escorpiao: { nome: "Veneno de escorpião", peso: 0.5, tipo: "recurso" },
-  insignia_bandido: { nome: "Insígnia do bando", peso: 0.5, tipo: "recurso" },
-  peixe: { nome: "Peixe fresco", peso: 1, tipo: "recurso" },
-};
+// ITENS vem de dados/itens.js.
+// PRECOS_LOJA, FLECHAS_POR_PACOTE e VALORES_VENDA vêm de dados/itens.js.
 const SLOTS_EQUIPAMENTO = { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
-const PRECOS_LOJA = { pocao: 12, pocao_fe: 18, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
-const FLECHAS_POR_PACOTE = 5;
-const VALORES_VENDA = { pele_lobo: 5, erva: 2, odre_agua: 3, peixe: 6 };
 
 function nomeItem(id) {
   return ITENS[id]?.nome || id;
@@ -319,33 +298,14 @@ function dentroDoMapa(x, y) {
 // ---------------------------------------------------------------------
 // Áreas e mapas base
 // ---------------------------------------------------------------------
-const areas = {
-  canaan: {
-    id: "canaan",
-    nome: "Canaã",
-    inicio: { x: 2, y: 2 },
-    passagem: { x: 77, y: 56 },
-    chegada: { x: 75, y: 56 },
-    cais: { x: 40, y: 2 },
-    chegadaViagem: { x: 8, y: 6 },
-  },
-  deserto: {
-    id: "deserto",
-    nome: "Deserto",
-    inicio: { x: 4, y: 56 },
-    passagem: { x: 2, y: 56 },
-    chegada: { x: 4, y: 56 },
-    cais: { x: 40, y: 2 },
-    chegadaViagem: { x: 65, y: 12 },
-  },
-  mar: {
-    id: "mar",
-    nome: "Mar das Rotas",
-    inicio: { x: 3, y: 30 },
-    caisCanaa: { x: 2, y: 30 },
-    caisDeserto: { x: 77, y: 30 },
-  },
-};
+// Cópia profunda de um objeto de dados (os arquivos de dados/ nunca são alterados em jogo).
+function clonarDados(valor) {
+  return JSON.parse(JSON.stringify(valor));
+}
+
+// Canaã, Deserto e Mar (dados/mundo.js); as regiões dos capítulos entram via registrarArea.
+const areas = {};
+for (const [id, area] of Object.entries(DADOS_AREAS_BASE)) areas[id] = clonarDados(area);
 
 function criarMapa(areaId) {
   const mapa = [];
@@ -387,6 +347,32 @@ function registrarArea(area, mapa) {
   for (const ponto of [area.inicio, area.chegada, area.passagem]) if (ponto) abrirCasa(area.id, ponto.x, ponto.y);
 }
 
+// Regiões dos capítulos (dados/mundo.js), cada uma com seu padrão de obstáculos.
+// Obstáculos de cada região (padrões determinísticos).
+const PADROES_OBSTACULO = {
+  egito: (x, y) => (x * 13 + y * 17) % 29 === 0,
+  marVermelho: (x, y) => (x * 11 + y * 19) % 37 === 0,
+  sinai: (x, y) => (x * 7 + y * 13) % 17 === 0,
+  galileia: (x, y) => (x * 5 + y * 23) % 31 === 0,
+};
+
+function criarMapaCapitulo(id) {
+  const mapa = Array.from({ length: ROWS }, (_, y) =>
+    Array.from({ length: COLS }, (_, x) => {
+      const borda = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
+      return borda || PADROES_OBSTACULO[id](x, y) ? 1 : 0;
+    }),
+  );
+  // Estrada principal (linha 56) e trilha central (linha 30).
+  for (let x = 1; x < COLS - 1; x++) mapa[56][x] = 0;
+  for (let x = 2; x < COLS - 2; x++) mapa[30][x] = 0;
+  return mapa;
+}
+
+for (const area of Object.values(DADOS_AREAS_CAPITULOS)) {
+  registrarArea({ ...area, inicio: { x: 4, y: 56 } }, criarMapaCapitulo(area.id));
+}
+
 // ---------------------------------------------------------------------
 // NPCs, coletáveis, pesca e inimigos base
 // ---------------------------------------------------------------------
@@ -400,30 +386,11 @@ function registrarNpc(npc) {
   return npc;
 }
 
-registrarNpc({ id: "viajante1", nome: "Eliabe", area: "canaan", x: 5, y: 5, papel: "missao" });
-registrarNpc({ id: "guia_canaa", nome: "Micael, guia de caravanas", area: "canaan", x: 9, y: 5, papel: "guia" });
-registrarNpc({ id: "noemi1", nome: "Noemi", area: "deserto", x: 68, y: 8, papel: "missao" });
-registrarNpc({ id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 72, y: 10, papel: "loja" });
-registrarNpc({ id: "guia_deserto", nome: "Tamar, guia de caravanas", area: "deserto", x: 66, y: 12, papel: "guia" });
+// Todos os NPCs vêm de dados/npcs.js.
+for (const npc of DADOS_NPCS) registrarNpc(clonarDados(npc));
 
-const pontosPesca = [
-  { id: "pesca1", x: 18, y: 15 },
-  { id: "pesca2", x: 40, y: 42 },
-  { id: "pesca3", x: 62, y: 18 },
-  { id: "pesca4", x: 49, y: 32 },
-];
+// pontosPesca, ervas e odres vêm de dados/mundo.js.
 
-// Ervas só existem em Canaã e odres só no Deserto.
-const ervas = [
-  { id: "erva1", x: 13, y: 12 },
-  { id: "erva2", x: 41, y: 31 },
-  { id: "erva3", x: 71, y: 49 },
-];
-const odres = [
-  { id: "odre1", x: 11, y: 48 },
-  { id: "odre2", x: 39, y: 34 },
-  { id: "odre3", x: 70, y: 15 },
-];
 const COLETAVEIS_POR_AREA = {
   canaan: { lista: ervas, item: "erva", textura: "erva", respawn: "ervasRespawn", coletados: "ervasColetadas" },
   deserto: { lista: odres, item: "odre_agua", textura: "odre", respawn: "odresRespawn", coletados: "odresColetados" },
@@ -452,55 +419,14 @@ function registrarInimigo(dados) {
     proximoMovimento: 0,
     proximoAtaque: 0,
   };
+  if (e.veneno === "padrao") e.veneno = { ...VENENO_PADRAO };
   inimigos[e.id] = e;
   abrirClareira(e.area, e.x, e.y, 1);
   return e;
 }
 
-// Lobo longe da vila de Eliabe e Micael.
-registrarInimigo({
-  id: "lobo1",
-  nome: "Lobo",
-  aparencia: "lobo",
-  area: "canaan",
-  x: 22,
-  y: 15,
-  vidaMaxima: 70,
-  danoContraJogador: 6,
-  defesa: 2,
-  raioPercepcao: 6,
-  xpRecompensa: 40,
-  saque: { itens: ["pele_lobo"], moedas: 4 },
-});
-registrarInimigo({
-  id: "escorpiao1",
-  nome: "Escorpião",
-  aparencia: "escorpiao",
-  area: "deserto",
-  x: 16,
-  y: 9,
-  vidaMaxima: 130,
-  danoContraJogador: 9,
-  defesa: 4,
-  raioPercepcao: 5,
-  xpRecompensa: 60,
-  saque: { itens: ["veneno_escorpiao"], moedas: 8 },
-  veneno: { ...VENENO_PADRAO },
-});
-registrarInimigo({
-  id: "bandido1",
-  nome: "Chefe dos saqueadores",
-  aparencia: "bandido",
-  area: "deserto",
-  x: 49,
-  y: 46,
-  vidaMaxima: 190,
-  danoContraJogador: 10,
-  defesa: 6,
-  raioPercepcao: 6,
-  xpRecompensa: 100,
-  saque: { itens: ["insignia_bandido"], moedas: 15 },
-});
+// Todas as criaturas vêm de dados/criaturas.js.
+for (const criatura of DADOS_CRIATURAS) registrarInimigo(clonarDados(criatura));
 
 // Trilhas terrestres contínuas e acessos aos cais.
 for (let x = 2; x <= 77; x++) {
@@ -528,7 +454,7 @@ for (const area of Object.values(areas)) {
 }
 
 // ---------------------------------------------------------------------
-// Capítulos e portais (preenchidos por expansao.js)
+// Capítulos e portais (dados/capitulos.js e dados/mundo.js)
 // ---------------------------------------------------------------------
 const CAPITULOS = {};
 const ORDEM_CAPITULOS = [];
@@ -544,6 +470,12 @@ function registrarPortal(portal) {
   abrirCasa(portal.area, portal.x, portal.y);
   abrirCasa(portal.destino, portal.chegada.x, portal.chegada.y);
 }
+
+for (const capitulo of DADOS_CAPITULOS) {
+  const { chave, ...dados } = clonarDados(capitulo);
+  registrarCapitulo(chave, dados);
+}
+for (const portal of DADOS_PORTAIS) registrarPortal(clonarDados(portal));
 
 function capituloDoInimigo(inimigoId) {
   return ORDEM_CAPITULOS.find((k) => CAPITULOS[k].inimigo === inimigoId) || null;

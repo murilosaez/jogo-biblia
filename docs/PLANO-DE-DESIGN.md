@@ -88,7 +88,7 @@ Base: servidor decide tudo (o cliente já só envia comandos via `Mundo.executar
 Retenção D1 40% / D7 20% / D30 8%; sessão 25–40 min; 1º nível < 2 min; 1º raro na 1ª hora; funil por capítulo.
 
 ## Backlog v0.2 (ordem sugerida)
-1. Extrair `ITENS`, inimigos, NPCs e missões para arquivos de dados (`dados/*.js` ou JSON).
+1. ~~Extrair `ITENS`, inimigos, NPCs e missões para arquivos de dados~~ — feito (JGB-1): `dados/*.js`. Pendente: as falas das missões de Eliabe e Noemi ainda estão no código de `logica.js`.
 2. Raridades + atributos aleatórios + brilho/cor do saque no chão.
 3. Tabela de saque por inimigo com chances (comum/raro/muito raro) e anúncio de raro.
 4. Campeões (5%, modificadores) e mais 2–3 criaturas por região existente com comportamentos novos (matilha, fuga, à distância).
