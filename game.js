@@ -15,6 +15,13 @@ class Cena extends Phaser.Scene {
     this.teclaE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.teclaAtaque = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.teclaPocao = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
+    this.teclaInventario = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this.teclasEquipamento = {
+      arma: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
+      escudo: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
+      armadura: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
+    };
+    this.inventarioAberto = false;
     this.personagem = Mundo.entrar(MEU_ID);
     this.areaAtual = this.personagem.area;
     this.movendo = false;
@@ -28,6 +35,7 @@ class Cena extends Phaser.Scene {
     this.sprite.setScale(1);
     this.desenharEntidades();
     this.criarHud();
+    this.criarPainelInventario();
     this.atualizarStatus();
   }
   criarTexturas() {
@@ -109,8 +117,29 @@ class Cena extends Phaser.Scene {
     this.statusXP = this.add.text(10, 37, "", box).setDepth(10);
     this.statusInventario = this.add.text(400, 37, "", box).setOrigin(0.5, 0).setDepth(10);
     this.statusMissao = this.add.text(10, 70, "", { ...box, fontSize: "13px", wordWrap: { width: 770 } }).setDepth(10);
+    this.statusCarga = this.add.text(10, 96, "", { ...box, fontSize: "12px" }).setDepth(10);
     this.add.rectangle(400, 548, 790, 48, 0x111111, 0.9).setScrollFactor(0).setDepth(10);
-    this.dialogo = this.add.text(16, 531, "Setas: andar | E: conversar | Espaço: atacar | H: usar poção", { fontFamily: "Arial", fontSize: "16px", color: "#fff", wordWrap: { width: 760 } }).setScrollFactor(0).setDepth(11);
+    this.dialogo = this.add.text(16, 531, "Setas: andar | E: conversar | Espaço: atacar | H: usar poção | I: mochila", { fontFamily: "Arial", fontSize: "16px", color: "#fff", wordWrap: { width: 760 } }).setScrollFactor(0).setDepth(11);
+  }
+  criarPainelInventario() {
+    this.inventarioSombra = this.add.rectangle(400, 288, 800, 576, 0x000000, 0.72).setScrollFactor(0).setDepth(20).setVisible(false);
+    this.inventarioFundo = this.add.rectangle(400, 288, 570, 340, 0x222019, 0.98).setStrokeStyle(3, 0xd6bd78).setScrollFactor(0).setDepth(21).setVisible(false);
+    this.inventarioTitulo = this.add.text(400, 145, "MOCHILA E EQUIPAMENTO", { fontFamily: "Arial", fontSize: "22px", bold: true, color: "#f5df9a" }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
+    this.inventarioTexto = this.add.text(150, 180, "", { fontFamily: "Arial", fontSize: "16px", color: "#fff", lineSpacing: 7, wordWrap: { width: 500 } }).setScrollFactor(0).setDepth(22).setVisible(false);
+    this.inventarioAjuda = this.add.text(400, 425, "1: arma  |  2: escudo  |  3: armadura  |  I: fechar", { fontFamily: "Arial", fontSize: "14px", color: "#f5df9a" }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
+  }
+  atualizarPainelInventario() {
+    if (!this.inventarioTexto) return;
+    const p = this.personagem, grupos = {};
+    for (const id of p.inventario) grupos[id] = (grupos[id] || 0) + 1;
+    const linhasItens = Object.keys(grupos).length
+      ? Object.entries(grupos).map(([id, qtd]) => `• ${nomeItem(id)}${qtd > 1 ? ` ×${qtd}` : ""}`).join("\n")
+      : "Mochila vazia";
+    const eq = p.equipamento || {};
+    const texto = `Carga: ${pesoCarregado(p)}/${capacidadeCarga(p)} kg\n\nEquipado\nArma: ${eq.arma ? nomeItem(eq.arma) : "—"} (+${eq.arma ? (ITENS[eq.arma]?.bonus || 0) : 0} dano)\nEscudo: ${eq.escudo ? nomeItem(eq.escudo) : "—"}\nArmadura: ${eq.armadura ? nomeItem(eq.armadura) : "—"}\nDefesa total: ${defesaEquipamento(p)}\n\nMochila\n${linhasItens}`;
+    this.inventarioTexto.setText(texto);
+    const visivel = this.inventarioAberto;
+    for (const item of [this.inventarioSombra, this.inventarioFundo, this.inventarioTitulo, this.inventarioTexto, this.inventarioAjuda]) item.setVisible(visivel);
   }
   textoMissao() {
     const p = this.personagem;
@@ -134,6 +163,9 @@ class Cena extends Phaser.Scene {
     const inv = `Poções: ${Mundo.contarItem(MEU_ID, "pocao")} | Ervas: ${Mundo.contarItem(MEU_ID, "erva")} | Odres: ${Mundo.contarItem(MEU_ID, "odre_agua")}`;
     this.statusInventario.setText(inv);
     this.statusMissao.setText(this.textoMissao());
+    const eq = p.equipamento || {};
+    this.statusCarga.setText(`Carga ${pesoCarregado(p)}/${capacidadeCarga(p)} kg | Arma: ${eq.arma ? nomeItem(eq.arma) : "nenhuma"} | Defesa: ${defesaEquipamento(p)} | I: mochila`);
+    this.atualizarPainelInventario();
     const e = Object.values(inimigos).find((x) => x.area === p.area);
     if (!e) this.statusInimigo.setText("");
     else { const hp = Mundo.obterVidaInimigo(MEU_ID, e.id); this.statusInimigo.setText(hp > 0 ? `${e.nome}: ${hp}/${e.vidaMaxima}` : `${e.nome}: aguardando respawn`); }
@@ -157,6 +189,20 @@ class Cena extends Phaser.Scene {
       if (ev.tipo === "renasceu") { this.scene.restart(); return; }
     }
     if (eventos.length) this.atualizarStatus();
+    if (Phaser.Input.Keyboard.JustDown(this.teclaInventario)) {
+      this.inventarioAberto = !this.inventarioAberto;
+      this.atualizarPainelInventario();
+    }
+    if (this.inventarioAberto) {
+      for (const [slot, tecla] of Object.entries(this.teclasEquipamento)) {
+        if (Phaser.Input.Keyboard.JustDown(tecla)) {
+          const r = Mundo.executar(MEU_ID, { tipo: "alternarEquipamento", slot });
+          if (r.mensagem) this.dialogo.setText(r.mensagem);
+          this.atualizarStatus();
+        }
+      }
+      return;
+    }
     if (Phaser.Input.Keyboard.JustDown(this.teclaE)) this.interagir();
     if (Phaser.Input.Keyboard.JustDown(this.teclaAtaque)) this.atacar();
     if (Phaser.Input.Keyboard.JustDown(this.teclaPocao)) { const r = Mundo.executar(MEU_ID, { tipo: "usarPocao" }); if (r.mensagem) this.dialogo.setText(r.mensagem); this.atualizarStatus(); }
@@ -167,6 +213,7 @@ class Cena extends Phaser.Scene {
     const r = Mundo.executar(MEU_ID, { tipo: "mover", dx, dy });
     if (!r.ok) return;
     if (r.areaAlterada) { this.scene.restart(); return; }
+    if (r.mensagem) this.dialogo.setText(r.mensagem);
     if (r.itemColetado) {
       if (this.spritesItens[r.itemColetado]) { this.spritesItens[r.itemColetado].destroy(); delete this.spritesItens[r.itemColetado]; }
       this.dialogo.setText(r.mensagem); this.atualizarStatus();
