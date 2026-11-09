@@ -1,24 +1,20 @@
-JORNADA BÍBLICA — mochila e equipamentos mais claros
+JORNADA BÍBLICA — ataque à distância e saques
 
-ATUALIZAÇÃO
-A mochila mostra o efeito numérico dos equipamentos e permite equipar/guardar com clique. As teclas também continuam disponíveis.
+NOVIDADES
+- Arco de madeira como equipamento independente da espada; espada e arco podem ficar equipados ao mesmo tempo.
+- Ataque à distância com R: exige arco equipado e uma flecha, seleciona o inimigo mais próximo na mesma linha ou coluna, até 5 casas e sem obstáculo; cada disparo consome uma flecha.
+- Dano à distância: 15 base + 5 por nível acima do nível 1 + bônus do arco (+10). Espaço continua sendo o ataque corpo a corpo.
+- Noemi recompensa a missão dos odres com arco e 8 flechas além das recompensas já existentes. Saves com a missão dela concluída recebem o arco e até 8 flechas uma única vez.
+- Saques aparecem no chão e são recolhidos ao caminhar sobre eles: o lobo deixa pele de lobo e o escorpião deixa 2 flechas. Permanecem salvos ao trocar de área.
 
-COMO EQUIPAR
+COMO EQUIPAR E USAR
 1. Abra a mochila com I.
-2. Clique no botão correspondente a arma, escudo ou armadura; ou pressione 1, 2 ou 3 enquanto a mochila estiver aberta.
-3. O botão informa o item e o efeito antes de equipá-lo.
-
-O QUE CADA ITEM MELHORA
-- Espada de madeira: +5 de dano por ataque.
-- Espada de ferro (recompensa de Eliabe): +12 de dano por ataque; substitui o bônus da arma anterior.
-- Escudo de madeira: +3 de defesa.
-- Túnica de pano: +2 de defesa.
-- Armadura de couro (recompensa de Noemi): +5 de defesa.
-- Escudo e armadura somam defesa; ela reduz o dano recebido por golpe, até o mínimo de 1.
-- Dano: 25 base + 5 por nível acima do nível 1 + bônus da arma equipada.
+2. Clique no botão do arco ou pressione 4; isso não substitui a espada.
+3. Tenha flechas na mochila e pressione R quando houver um inimigo alinhado, até 5 casas, sem obstáculo entre vocês.
+4. Pressione Espaço para atacar inimigos adjacentes com a arma corpo a corpo.
 
 ARQUIVOS
-O pacote contém os quatro arquivos completos: index.html, storage.js, logica.js e game.js. Faça uma cópia de segurança e substitua os arquivos do projeto pelos deste pacote. Abra index.html pelo Live Server. O save do navegador é mantido.
+O pacote contém os quatro arquivos completos: index.html, storage.js, logica.js e game.js, além deste guia. Faça uma cópia de segurança e substitua os arquivos do projeto pelos deste pacote. Abra index.html pelo Live Server. O save atual é mantido.
 
 CONTROLES
-Setas: andar | E: conversar | Espaço: atacar | H: poção | I: mochila | com a mochila aberta: clique nos botões ou use 1 (arma), 2 (escudo), 3 (armadura).
+Setas: andar | E: conversar | Espaço: corpo a corpo | R: ataque à distância | H: poção | I: mochila | 1 arma | 2 escudo | 3 armadura | 4 arco.

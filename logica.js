@@ -24,8 +24,11 @@ const ITENS = {
   escudo_madeira: { nome: "Escudo de madeira", peso: 5, tipo: "escudo", defesa: 3 },
   tunica_pano: { nome: "Túnica de pano", peso: 4, tipo: "armadura", defesa: 2 },
   armadura_couro: { nome: "Armadura de couro", peso: 8, tipo: "armadura", defesa: 5 },
+  arco_madeira: { nome: "Arco de madeira", peso: 7, tipo: "arma_distancia", bonus: 10 },
+  flecha: { nome: "Flecha", peso: 0.1, tipo: "municao" },
+  pele_lobo: { nome: "Pele de lobo", peso: 2, tipo: "recurso" },
 };
-const SLOTS_EQUIPAMENTO = { arma: "arma", escudo: "escudo", armadura: "armadura" };
+const SLOTS_EQUIPAMENTO = { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
 function nomeItem(id) { return ITENS[id]?.nome || id; }
 function pesoItem(id) { return ITENS[id]?.peso ?? 1; }
 function capacidadeCarga(p) { return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL; }
@@ -38,6 +41,7 @@ function defesaEquipamento(p) {
   return Object.values(p.equipamento || {}).reduce((soma, item) => soma + (item ? (ITENS[item]?.defesa || 0) : 0), 0);
 }
 function bonusArma(p) { const item = p.equipamento?.arma; return item ? (ITENS[item]?.bonus || 0) : 0; }
+function bonusArco(p) { const item = p.equipamento?.arco; return item ? (ITENS[item]?.bonus || 0) : 0; }
 
 function vidaMaxima(personagem) { return VIDA_BASE + Math.max(0, (personagem.nivel || 1) - 1) * 10; }
 function limiarNivel(nivel) {
@@ -113,8 +117,10 @@ const Mundo = {
     if (!p || typeof p !== "object") p = { id, area: "canaan", x: 2, y: 2, vida: VIDA_BASE, inventario: [], itensIniciaisEntregues: false, inimigosDerrotados: [], vidaInimigos: {}, ervasColetadas: [], odresColetados: [], xp: 0, nivel: 1 };
     p.id = id;
     if (!Array.isArray(p.inventario)) p.inventario = [];
-    if (!p.equipamento || typeof p.equipamento !== "object") p.equipamento = { arma: null, escudo: null, armadura: null };
+    if (!p.equipamento || typeof p.equipamento !== "object") p.equipamento = { arma: null, arco: null, escudo: null, armadura: null };
     for (const slot of Object.keys(SLOTS_EQUIPAMENTO)) if (!(slot in p.equipamento)) p.equipamento[slot] = null;
+    if (!Array.isArray(p.saqueNoChao)) p.saqueNoChao = [];
+    p.saqueNoChao = p.saqueNoChao.filter((s) => s && typeof s.id === "string" && areas[s.area] && Number.isInteger(s.x) && Number.isInteger(s.y) && ITENS[s.item]);
     for (const [slot, tipo] of Object.entries(SLOTS_EQUIPAMENTO)) {
       const item = p.equipamento[slot];
       if (item && ITENS[item]?.tipo !== tipo) p.equipamento[slot] = null;
@@ -145,6 +151,13 @@ const Mundo = {
     for (const m of [p.missaoEliabe, p.missaoErvas, p.missaoDeserto]) if (typeof m.recompensaRecebida !== "boolean") m.recompensaRecebida = false;
     if (!Array.isArray(p.missaoErvas.ervasMissaoColetadas)) p.missaoErvas.ervasMissaoColetadas = [];
     if (!Array.isArray(p.missaoDeserto.odresMissaoColetados)) p.missaoDeserto.odresMissaoColetados = [];
+    // Saves antigos que já concluíram a missão recebem a nova recompensa de distância uma única vez.
+    if (p.missaoDeserto.status === "concluida" && !p.atualizacaoDistanciaEntregue) {
+      if (!p.equipamento.arco && !p.inventario.includes("arco_madeira")) this.adicionarItem(p, "arco_madeira");
+      for (let i = 0; i < 8; i++) if (!this.adicionarItem(p, "flecha")) break;
+      p.atualizacaoDistanciaEntregue = true;
+      p.avisoAtualizacao = "Nova recompensa: Arco de madeira e flechas. Abra a mochila (I), equipe o arco com 4 e use R para atirar.";
+    }
     p.versao = VERSAO_SAVE;
     for (const e of Object.values(inimigos)) {
       const hp = p.vidaInimigos[e.id];
@@ -236,6 +249,13 @@ const Mundo = {
         p.area = next; p.x = areas[next].chegada.x; p.y = areas[next].chegada.y; Storage.salvar(p);
         return { ok: true, areaAlterada: true, mensagem: `Você chegou a ${areas[next].nome}.` };
       }
+      const saqueNoPiso = p.saqueNoChao.find((s) => s.area === p.area && s.x === nx && s.y === ny);
+      if (saqueNoPiso) {
+        if (!this.adicionarItem(p, saqueNoPiso.item)) return { ok: true, mensagem: `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). O saque continua no chão.` };
+        p.saqueNoChao = p.saqueNoChao.filter((s) => s.id !== saqueNoPiso.id);
+        Storage.salvar(p);
+        return { ok: true, itemColetado: saqueNoPiso.id, mensagem: `Você pegou: ${nomeItem(saqueNoPiso.item)}.` };
+      }
       if (p.area === "canaan") {
         const item = ervas.find((x) => x.x === nx && x.y === ny && !p.ervasColetadas.includes(x.id));
         if (item) {
@@ -291,6 +311,31 @@ const Mundo = {
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN; Storage.salvar(p);
       return { ok: true, mensagem: `Você usou uma poção e recuperou ${p.vida - antes} de vida. Vida: ${p.vida}/${vidaMaxima(p)}.` };
     }
+    if (comando.tipo === "atacarDistancia") {
+      if (!p.equipamento.arco) return { ok: false, mensagem: "Equipe um arco na mochila antes de atacar à distância." };
+      const flechaIndex = p.inventario.indexOf("flecha");
+      if (flechaIndex < 0) return { ok: false, mensagem: "Você não tem flechas." };
+      const alvos = Object.values(inimigos).filter((e) => {
+        if (e.area !== p.area || !this.inimigoVivo(p, e.id)) return false;
+        const mesmaLinha = e.x === p.x, mesmaColuna = e.y === p.y;
+        const distancia = Math.abs(e.x - p.x) + Math.abs(e.y - p.y);
+        if ((!mesmaLinha && !mesmaColuna) || distancia < 1 || distancia > 5) return false;
+        const dx = Math.sign(e.x - p.x), dy = Math.sign(e.y - p.y);
+        for (let passo = 1; passo < distancia; passo++) if (mapas[p.area][p.y + dy * passo][p.x + dx * passo] !== 0) return false;
+        return true;
+      }).sort((a, b) => (Math.abs(a.x - p.x) + Math.abs(a.y - p.y)) - (Math.abs(b.x - p.x) + Math.abs(b.y - p.y)));
+      const e = alvos[0];
+      if (!e) return { ok: false, mensagem: "Nenhum inimigo alinhado e desimpedido até 5 casas. Posicione-se na mesma linha ou coluna." };
+      p.inventario.splice(flechaIndex, 1);
+      this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
+      const dano = 15 + (p.nivel - 1) * 5 + bonusArco(p);
+      const r = this.resolverDano(id, e, dano);
+      r.mensagem = r.derrotado
+        ? `Você atingiu ${e.nome.toLowerCase()} com uma flecha! ${r.mensagem}`
+        : `Você atingiu ${e.nome.toLowerCase()} à distância (${dano} de dano). ${r.mensagem}`;
+      Storage.salvar(p);
+      return r;
+    }
     if (comando.tipo === "atacar") {
       const e = comando.alvoId ? inimigos[comando.alvoId] : Object.values(inimigos).find((x) => x.area === p.area && this.inimigoVivo(p, x.id) && Math.abs(p.x - x.x) + Math.abs(p.y - x.y) === 1);
       if (!e || e.area !== p.area) return { ok: false, mensagem: "Não há inimigos por perto." };
@@ -298,16 +343,7 @@ const Mundo = {
       if (Math.abs(p.x - e.x) + Math.abs(p.y - e.y) !== 1) return { ok: false, mensagem: `Chegue ao lado de ${e.nome.toLowerCase()} para atacá-lo.` };
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
       const dano = e.danoDoAtaque + (p.nivel - 1) * 5 + bonusArma(p);
-      p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - dano);
-      if (p.vidaInimigos[e.id] === 0) {
-        if (!p.inimigosDerrotados.includes(e.id)) p.inimigosDerrotados.push(e.id);
-        if (e.id === "lobo1" && p.missaoEliabe.status === "em_andamento") p.missaoEliabe.loboDerrotado = true;
-        const niveis = adicionarXP(p, e.xpRecompensa);
-        Storage.salvar(p);
-        const up = niveis.length ? ` Você subiu para o nível ${p.nivel}! Vida máxima: ${vidaMaxima(p)}.` : "";
-        return { ok: true, derrotado: true, inimigoId: e.id, mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${e.xpRecompensa} XP.${up} Ele reaparecerá em 5 segundos.` };
-      }
-      Storage.salvar(p); return { ok: true, derrotado: false, inimigoId: e.id, mensagem: `Você acertou ${e.nome.toLowerCase()}! Vida dele: ${p.vidaInimigos[e.id]}/${e.vidaMaxima}.` };
+      return this.resolverDano(id, e, dano);
     }
     return { ok: false };
   },
@@ -351,11 +387,11 @@ const Mundo = {
     if (m.status === "em_andamento") {
       const count = m.odresMissaoColetados.length;
       if (count >= QUANTIDADE_ODRES_MISSAO) {
-        const recompensas = ["pocao", "pocao", "armadura_couro"];
-        if (!this.podeReceberComRemocao(p, recompensas, [["odre_agua", QUANTIDADE_ODRES_MISSAO]])) return { ok: true, mensagem: "Noemi: Sua mochila está cheia. Libere espaço para receber 2 poções e uma armadura de couro." };
+        const recompensas = ["pocao", "pocao", "armadura_couro", "arco_madeira", ...Array(8).fill("flecha")];
+        if (!this.podeReceberComRemocao(p, recompensas, [["odre_agua", QUANTIDADE_ODRES_MISSAO]])) return { ok: true, mensagem: "Noemi: Sua mochila está cheia. Libere espaço para receber as poções, armadura, arco e flechas." };
         this.removerItens(p, "odre_agua", QUANTIDADE_ODRES_MISSAO); for (const item of recompensas) this.adicionarItem(p, item);
-        m.status = "concluida"; m.recompensaRecebida = true; const niveis = adicionarXP(p, 100); Storage.salvar(p);
-        return { ok: true, mensagem: `Noemi: Água para a caravana! Receba 2 poções, uma armadura de couro (+5 defesa) e 100 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}` };
+        m.status = "concluida"; m.recompensaRecebida = true; p.atualizacaoDistanciaEntregue = true; const niveis = adicionarXP(p, 100); Storage.salvar(p);
+        return { ok: true, mensagem: `Noemi: Água para a caravana! Receba 2 poções, armadura de couro (+5 defesa), arco de madeira (+10 dano à distância), 8 flechas e 100 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}` };
       }
       return { ok: true, mensagem: `Noemi: Ainda faltam odres. Você encontrou ${count}/${QUANTIDADE_ODRES_MISSAO}.` };
     }
@@ -364,5 +400,29 @@ const Mundo = {
   removerItens(p, item, quantidade) {
     let restante = quantidade;
     p.inventario = p.inventario.filter((x) => { if (x === item && restante > 0) { restante--; return false; } return true; });
+  },
+  criarSaque(p, e) {
+    const itens = e.id === "lobo1" ? ["pele_lobo"] : e.id === "escorpiao1" ? ["flecha", "flecha"] : [];
+    const agora = Date.now();
+    for (let i = 0; i < itens.length; i++) {
+      p.saqueNoChao.push({ id: `saque_${e.id}_${agora}_${i}`, area: e.area, x: e.x, y: e.y, item: itens[i] });
+    }
+    return itens;
+  },
+  resolverDano(id, e, dano) {
+    const p = this.jogadores[id];
+    p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - dano);
+    if (p.vidaInimigos[e.id] === 0) {
+      if (!p.inimigosDerrotados.includes(e.id)) p.inimigosDerrotados.push(e.id);
+      if (e.id === "lobo1" && p.missaoEliabe.status === "em_andamento") p.missaoEliabe.loboDerrotado = true;
+      const niveis = adicionarXP(p, e.xpRecompensa);
+      const saque = this.criarSaque(p, e);
+      Storage.salvar(p);
+      const up = niveis.length ? ` Você subiu para o nível ${p.nivel}! Vida máxima: ${vidaMaxima(p)}.` : "";
+      const textoSaque = saque.length ? ` Saque no chão: ${saque.map(nomeItem).join(", ")}.` : "";
+      return { ok: true, derrotado: true, inimigoId: e.id, saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id), mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${e.xpRecompensa} XP.${up}${textoSaque} Ele reaparecerá em 5 segundos.` };
+    }
+    Storage.salvar(p);
+    return { ok: true, derrotado: false, inimigoId: e.id, mensagem: `Você acertou ${e.nome.toLowerCase()}! Vida dele: ${p.vidaInimigos[e.id]}/${e.vidaMaxima}.` };
   },
 };

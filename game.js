@@ -7,6 +7,8 @@ const PIXEL_PATTERNS = {
   escorpiao: { cores: { "1": "#462519", "2": "#9e492b", "3": "#d5773d", "4": "#f0c34e" }, linhas: ["......11....", ".....1331...", ".....1331...", "......11....", "..11..11..11", ".1331111331.", "113333333311", ".1333333331.", "..11333311..", ".11.3333.11.", "11..3333..11", "....3333...."] },
   erva: { cores: { "1": "#285b2b", "2": "#63b84e", "3": "#a3d85d", "4": "#785531" }, linhas: ["......2.....", ".....222....", "....2222....", "......2.....", "..222.2.222..", ".23332222332.", "..222.2.222..", "......2.....", "......2.....", ".....444....", ".....444....", ".....444...."] },
   odre: { cores: { "1": "#503521", "2": "#a66b39", "3": "#d3a657", "4": "#e9d29a" }, linhas: ["....1111....", "....3333....", "....1111....", "...222222...", "..22222222..", ".2222222222.", ".2222222222.", ".2222442222.", ".2222442222.", "..22222222..", "...222222...", "....1111...."] },
+  flecha: { cores: { "1": "#4b3321", "2": "#d8d0b5", "3": "#b94c36" }, linhas: ["..........1.", ".........111", "..........1.", "...222221...", "..222221....", ".222221.....", "..222221....", "...222221...", "..........1.", "..........1.", "..........1.", "..........1."] },
+  pele_lobo: { cores: { "1": "#57352b", "2": "#a85b48", "3": "#d0956e" }, linhas: ["...111111...", "..12222221..", ".1222222221.", "122222222221", "122222222221", "122222222221", ".1222222221.", "..12222221..", "...122221...", "....2222....", "....3333....", ".....11....."] },
 };
 
 class Cena extends Phaser.Scene {
@@ -20,7 +22,9 @@ class Cena extends Phaser.Scene {
       arma: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       escudo: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
       armadura: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
+      arco: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
     };
+    this.teclaDistancia = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
     this.inventarioAberto = false;
     this.personagem = Mundo.entrar(MEU_ID);
     this.areaAtual = this.personagem.area;
@@ -37,6 +41,11 @@ class Cena extends Phaser.Scene {
     this.criarHud();
     this.criarPainelInventario();
     this.atualizarStatus();
+    if (this.personagem.avisoAtualizacao) {
+      this.dialogo.setText(this.personagem.avisoAtualizacao);
+      delete this.personagem.avisoAtualizacao;
+      Storage.salvar(this.personagem);
+    }
   }
   criarTexturas() {
     for (const [nome, def] of Object.entries(PIXEL_PATTERNS)) {
@@ -81,6 +90,7 @@ class Cena extends Phaser.Scene {
     } else {
       for (const item of odres) if (!p.odresColetados.includes(item.id)) this.criarItem(item, "odre", "odre_agua");
     }
+    this.criarSaques();
     for (const e of Object.values(inimigos).filter((x) => x.area === p.area)) {
       if (Mundo.obterVidaInimigo(MEU_ID, e.id) > 0) this.criarInimigo(e);
       else this.agendarRespawn(e.id);
@@ -89,6 +99,13 @@ class Cena extends Phaser.Scene {
   criarItem(item, textura, itemId) {
     this.spritesItens[item.id] = this.add.image(item.x * TILE + 16, item.y * TILE + 16, textura).setDepth(4);
     this.spritesItens[item.id].setData("itemId", itemId);
+  }
+  criarSaques() {
+    for (const saque of this.personagem.saqueNoChao || []) {
+      if (saque.area !== this.areaAtual || this.spritesItens[saque.id]) continue;
+      const textura = saque.item === "flecha" ? "flecha" : "pele_lobo";
+      this.criarItem({ id: saque.id, x: saque.x, y: saque.y }, textura, saque.item);
+    }
   }
   criarInimigo(e) {
     if (this.spritesInimigos[e.id]) this.spritesInimigos[e.id].destroy(true);
@@ -119,7 +136,7 @@ class Cena extends Phaser.Scene {
     this.statusMissao = this.add.text(10, 70, "", { ...box, fontSize: "13px", wordWrap: { width: 770 } }).setDepth(10);
     this.statusCarga = this.add.text(10, 96, "", { ...box, fontSize: "12px" }).setDepth(10);
     this.add.rectangle(400, 548, 790, 48, 0x111111, 0.9).setScrollFactor(0).setDepth(10);
-    this.dialogo = this.add.text(16, 531, "Setas: andar | E: conversar | Espaço: atacar | H: usar poção | I: mochila", { fontFamily: "Arial", fontSize: "16px", color: "#fff", wordWrap: { width: 760 } }).setScrollFactor(0).setDepth(11);
+    this.dialogo = this.add.text(16, 531, "Setas: andar | E: conversar | Espaço: corpo a corpo | R: flecha | H: poção | I: mochila", { fontFamily: "Arial", fontSize: "16px", color: "#fff", wordWrap: { width: 760 } }).setScrollFactor(0).setDepth(11);
   }
   criarPainelInventario() {
     this.inventarioSombra = this.add.rectangle(400, 288, 800, 576, 0x000000, 0.74)
@@ -127,24 +144,25 @@ class Cena extends Phaser.Scene {
       .setInteractive().on("pointerdown", () => {
         if (this.inventarioAberto) { this.inventarioAberto = false; this.atualizarPainelInventario(); }
       });
-    this.inventarioFundo = this.add.rectangle(400, 288, 660, 440, 0x222019, 0.99)
+    this.inventarioFundo = this.add.rectangle(400, 288, 660, 480, 0x222019, 0.99)
       .setStrokeStyle(3, 0xd6bd78).setScrollFactor(0).setDepth(21).setVisible(false);
-    this.inventarioTitulo = this.add.text(400, 82, "MOCHILA E EQUIPAMENTO", {
+    this.inventarioTitulo = this.add.text(400, 58, "MOCHILA E EQUIPAMENTO", {
       fontFamily: "Arial", fontSize: "22px", bold: true, color: "#f5df9a"
     }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
-    this.inventarioTexto = this.add.text(95, 125, "", {
+    this.inventarioTexto = this.add.text(95, 100, "", {
       fontFamily: "Arial", fontSize: "14px", color: "#fff", lineSpacing: 6,
       wordWrap: { width: 330 }
     }).setScrollFactor(0).setDepth(22).setVisible(false);
-    this.inventarioAjuda = this.add.text(400, 485,
-      "Clique em um botão ou use 1/2/3. I fecha a mochila.", {
+    this.inventarioAjuda = this.add.text(400, 520,
+      "Clique em um botão ou use 1/2/3/4. I fecha a mochila.", {
         fontFamily: "Arial", fontSize: "14px", color: "#f5df9a"
       }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
     this.botoesEquipamento = {};
     const botoes = [
-      { slot: "arma", tecla: "1", y: 170 },
-      { slot: "escudo", tecla: "2", y: 265 },
-      { slot: "armadura", tecla: "3", y: 360 },
+      { slot: "arma", tecla: "1", y: 155 },
+      { slot: "arco", tecla: "4", y: 250 },
+      { slot: "escudo", tecla: "2", y: 345 },
+      { slot: "armadura", tecla: "3", y: 440 },
     ];
     for (const item of botoes) {
       const fundo = this.add.rectangle(555, item.y, 250, 72, 0x4b432f)
@@ -162,7 +180,8 @@ class Cena extends Phaser.Scene {
   efeitoItem(id) {
     const item = ITENS[id];
     if (!item) return "";
-    if (item.tipo === "arma") return `+${item.bonus || 0} dano`;
+    if (item.tipo === "arma") return `+${item.bonus || 0} dano corpo a corpo`;
+    if (item.tipo === "arma_distancia") return `+${item.bonus || 0} dano à distância`;
     if (item.tipo === "armadura" || item.tipo === "escudo") return `+${item.defesa || 0} defesa`;
     if (id === "pocao") return `cura ${CURA_POCAO} de vida`;
     return `${pesoItem(id)} kg`;
@@ -170,10 +189,11 @@ class Cena extends Phaser.Scene {
   textoBotaoEquipamento(slot, tecla) {
     const p = this.personagem;
     const atual = p.equipamento?.[slot];
+    const tipoEsperado = slot === "arco" ? "arma_distancia" : slot;
     const candidatos = p.inventario
-      .filter((id) => ITENS[id]?.tipo === slot)
+      .filter((id) => ITENS[id]?.tipo === tipoEsperado)
       .sort((a, b) => (ITENS[b].bonus || ITENS[b].defesa || 0) - (ITENS[a].bonus || ITENS[a].defesa || 0));
-    const titulo = slot === "arma" ? "ARMA" : slot === "escudo" ? "ESCUDO" : "ARMADURA";
+    const titulo = slot === "arma" ? "ARMA" : slot === "arco" ? "ARCO" : slot === "escudo" ? "ESCUDO" : "ARMADURA";
     if (candidatos.length) {
       const escolhido = candidatos[0];
       const acao = atual ? "Trocar" : "Equipar";
@@ -192,13 +212,14 @@ class Cena extends Phaser.Scene {
         ).join("\n")
       : "Mochila vazia";
     const eq = p.equipamento || {};
-    const linhasEquipados = ["arma", "escudo", "armadura"].map((slot) => {
+    const linhasEquipados = ["arma", "arco", "escudo", "armadura"].map((slot) => {
       const id = eq[slot];
-      const rotulo = slot === "arma" ? "Arma" : slot === "escudo" ? "Escudo" : "Armadura";
+      const rotulo = slot === "arma" ? "Arma" : slot === "arco" ? "Arco" : slot === "escudo" ? "Escudo" : "Armadura";
       return `${rotulo}: ${id ? `${nomeItem(id)} (${this.efeitoItem(id)})` : "—"}`;
     }).join("\n");
     const danoArma = bonusArma(p);
-    const texto = `Carga: ${pesoCarregado(p)}/${capacidadeCarga(p)} kg\n\nEQUIPADO\n${linhasEquipados}\nDefesa total: ${defesaEquipamento(p)}\n\nEFEITO NO COMBATE\nDano: 25 base + ${Math.max(0, p.nivel - 1) * 5} do nível + ${danoArma} da arma\nDano recebido: reduz pela defesa total (mínimo 1)\n\nITENS NA MOCHILA\n${linhasItens}`;
+    const danoDistancia = 15 + Math.max(0, p.nivel - 1) * 5 + bonusArco(p);
+    const texto = `Carga: ${pesoCarregado(p)}/${capacidadeCarga(p)} kg\n\nEQUIPADO\n${linhasEquipados}\nDefesa total: ${defesaEquipamento(p)}\n\nEFEITO NO COMBATE\nDano corpo a corpo: ${danoArma} de bônus da arma\nDano à distância: ${danoDistancia} por flecha (15 base + nível + arco)\nFlechas: ${Mundo.contarItem(MEU_ID, "flecha")} | alcance: até 5 casas em linha reta\nDano recebido: reduz pela defesa total (mínimo 1)\n\nITENS NA MOCHILA\n${linhasItens}`;
     this.inventarioTexto.setText(texto);
     const visivel = this.inventarioAberto;
     for (const item of [this.inventarioSombra, this.inventarioFundo, this.inventarioTitulo, this.inventarioTexto, this.inventarioAjuda]) item.setVisible(visivel);
@@ -236,7 +257,7 @@ class Cena extends Phaser.Scene {
     this.statusInventario.setText(inv);
     this.statusMissao.setText(this.textoMissao());
     const eq = p.equipamento || {};
-    this.statusCarga.setText(`Carga ${pesoCarregado(p)}/${capacidadeCarga(p)} kg | Arma: +${bonusArma(p)} dano | Defesa: ${defesaEquipamento(p)} | I: mochila`);
+    this.statusCarga.setText(`Carga ${pesoCarregado(p)}/${capacidadeCarga(p)} kg | Arma: +${bonusArma(p)} | Arco: +${bonusArco(p)} (${Mundo.contarItem(MEU_ID, "flecha")} flechas) | Defesa: ${defesaEquipamento(p)} | I: mochila`);
     this.atualizarPainelInventario();
     const e = Object.values(inimigos).find((x) => x.area === p.area);
     if (!e) this.statusInimigo.setText("");
@@ -251,6 +272,16 @@ class Cena extends Phaser.Scene {
     const r = Mundo.executar(MEU_ID, { tipo: "atacar" });
     if (r.mensagem) this.dialogo.setText(r.mensagem);
     if (r.derrotado) { const id = r.inimigoId; if (this.spritesInimigos[id]) { this.spritesInimigos[id].destroy(true); delete this.spritesInimigos[id]; } this.agendarRespawn(id); }
+    this.personagem = Mundo.jogadores[MEU_ID];
+    this.criarSaques();
+    this.atualizarStatus();
+  }
+  atacarDistancia() {
+    const r = Mundo.executar(MEU_ID, { tipo: "atacarDistancia" });
+    if (r.mensagem) this.dialogo.setText(r.mensagem);
+    if (r.derrotado) { const id = r.inimigoId; if (this.spritesInimigos[id]) { this.spritesInimigos[id].destroy(true); delete this.spritesInimigos[id]; } this.agendarRespawn(id); }
+    this.personagem = Mundo.jogadores[MEU_ID];
+    this.criarSaques();
     this.atualizarStatus();
   }
   update() {
@@ -275,6 +306,7 @@ class Cena extends Phaser.Scene {
     }
     if (Phaser.Input.Keyboard.JustDown(this.teclaE)) this.interagir();
     if (Phaser.Input.Keyboard.JustDown(this.teclaAtaque)) this.atacar();
+    if (Phaser.Input.Keyboard.JustDown(this.teclaDistancia)) this.atacarDistancia();
     if (Phaser.Input.Keyboard.JustDown(this.teclaPocao)) { const r = Mundo.executar(MEU_ID, { tipo: "usarPocao" }); if (r.mensagem) this.dialogo.setText(r.mensagem); this.atualizarStatus(); }
     if (this.movendo) return;
     let dx = 0, dy = 0;
@@ -286,6 +318,7 @@ class Cena extends Phaser.Scene {
     if (r.mensagem) this.dialogo.setText(r.mensagem);
     if (r.itemColetado) {
       if (this.spritesItens[r.itemColetado]) { this.spritesItens[r.itemColetado].destroy(); delete this.spritesItens[r.itemColetado]; }
+      this.personagem = Mundo.jogadores[MEU_ID];
       this.dialogo.setText(r.mensagem); this.atualizarStatus();
     }
     this.personagem = Mundo.jogadores[MEU_ID];
