@@ -98,9 +98,9 @@ Retenção D1 40% / D7 20% / D30 8%; sessão 25–40 min; 1º nível < 2 min; 1�
 8. Maná diário e XP de descanso.
 9. Estender a simulação de balanceamento para cada novidade.
 
-## Decisões em aberto (do dono do jogo)
-1. Público-alvo (crianças/famílias, jovens, adultos cristãos).
-2. Plataforma principal (navegador no PC ou celular).
-3. Escala do multiplayer (dezenas cooperativo vs. milhares).
-4. Monetização (cosméticos, compra única, sem fins lucrativos).
-5. Revisor teológico para falas e representação de personagens.
+## Decisões do dono do jogo (registradas)
+1. **Público-alvo:** jovens e adultos cristãos → dificuldade média/alta, PvP opcional permitido, chat aberto com moderação e filtro.
+2. **Plataforma principal:** navegador no PC → teclado e mouse são prioridade; o toque fica como secundário.
+3. **Escala do multiplayer:** dezenas de jogadores no início → um único servidor Node + WebSocket, sem sharding; instâncias só para masmorras.
+4. **Monetização:** começar com cosméticos e compra única; **RMT (comércio com dinheiro real) no futuro**. Antes de liberar RMT, desenhar a economia para não virar pay-to-win: itens de poder só obtidos jogando, RMT restrito a cosméticos/moeda premium trocável, e proteção contra bots e farm.
+5. **Revisor teológico:** sim — toda fala, missão e representação de personagem bíblico passa por revisão antes de publicar. Marcar textos novos com `// revisao-teologica: pendente` até aprovação.
