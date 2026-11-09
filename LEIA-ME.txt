@@ -1,20 +1,17 @@
-JORNADA BÍBLICA — interface RPG de navegador
+JOGO BÍBLICO — EXPANSÃO DO MUNDO E COMBATE
 
-COMO USAR
-1. Faça uma cópia de segurança do projeto atual.
-2. Extraia este pacote e substitua os quatro arquivos da pasta do jogo.
-3. Abra index.html pelo Live Server no VS Code.
-4. Clique em “Tela cheia” para expandir o jogo.
+Instalação
+1. Faça uma cópia de segurança da pasta atual do jogo.
+2. Extraia este pacote.
+3. Substitua os quatro arquivos do projeto pelos arquivos desta pasta.
+4. Abra index.html pelo seu servidor local (por exemplo, Live Server).
 
-CONTROLES
-- Movimento: W, A, S, D ou setas. Diagonais: Q (↖), E (↗), Z (↙), C (↘).
-- Conversar: F perto de um NPC; clicar no NPC também tenta conversar. E é a diagonal para cima e direita.
-- Combate: clique em um inimigo no mapa ou na Lista de Batalha para selecioná-lo. Ataques automáticos tentam ocorrer a cada 2 segundos. Espaço faz ataque corpo a corpo e R dispara uma flecha quando o alvo está alinhado e dentro do alcance.
-- Mochilas: arraste arma, arco, escudo ou armadura para o respectivo espaço de equipamento; arraste o equipamento de volta à mochila para guardar. Os itens aparecem em grades separadas por tipo, com ícone e quantidade.
-- Hotkeys: arraste poções para um dos seis espaços da barra e pressione a tecla 1–6. H continua usando uma poção.
-- I oculta ou reabre os painéis de mochila.
+O progresso existente no navegador é mantido; não apague os dados do navegador.
 
-ITENS E EFEITOS
-A espada de ferro aumenta o dano corpo a corpo em 12; o arco de madeira acrescenta 10 ao dano à distância, ataca até 5 casas em linha reta e consome uma flecha por disparo. Escudo de madeira reduz 3 de dano, armadura de couro reduz 5 e túnica de pano reduz 2. O peso carregado considera mochila e equipamento; a capacidade aumenta ao subir de nível.
+Novidades
+- Folhas medicinais e odres reaparecem após 18 segundos; ao iniciar cada missão, os itens são repostos para evitar bloqueios.
+- Canaã e Deserto agora têm mapas de 80 x 60 casas. A câmera acompanha o personagem; explore para encontrar os itens e personagens.
+- Valores flutuantes mostram o dano aplicado ao inimigo e o dano recebido pelo personagem, incluindo a redução da defesa.
+- Mantidos os recursos anteriores: inventário/equipamento, seleção de alvo, autoataque, arco, hotkeys e movimento diagonal.
 
-O pacote mantém os recursos anteriores: progressão de nível/XP, missões de Eliabe e Noemi, Deserto, inimigos, saques no chão e salvamento local. O save atual é mantido e adaptado ao novo formato; faça backup antes de substituir os arquivos. O jogo precisa de conexão para carregar Phaser pelo CDN.
+Controles estão disponíveis pelo botão “Controles” dentro do jogo.

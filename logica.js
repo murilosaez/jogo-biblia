@@ -1,6 +1,6 @@
 const TILE = 32;
-const COLS = 25;
-const ROWS = 18;
+const COLS = 80;
+const ROWS = 60;
 const VERSAO_SAVE = 3;
 const VIDA_BASE = 100;
 const TEMPO_REGEN = 10000;
@@ -8,6 +8,7 @@ const INTERVALO_MOVIMENTO = 600;
 const INTERVALO_ATAQUE = 1200;
 const INTERVALO_AUTO_ATAQUE = 2000;
 const TEMPO_RESPAWN_INIMIGO = 5000;
+const TEMPO_RESPAWN_COLETAVEL = 18000;
 const CURA_POCAO = 30;
 const QUANTIDADE_POCOES_INICIAIS = 3;
 const QUANTIDADE_ERVAS_MISSAO = 3;
@@ -61,8 +62,8 @@ function adicionarXP(personagem, quantidade) {
 }
 
 const areas = {
-  canaan: { id: "canaan", nome: "Canaã", passagem: { x: 22, y: 15 }, chegada: { x: 21, y: 15 } },
-  deserto: { id: "deserto", nome: "Deserto", passagem: { x: 2, y: 15 }, chegada: { x: 3, y: 15 } },
+  canaan: { id: "canaan", nome: "Canaã", passagem: { x: 77, y: 56 }, chegada: { x: 75, y: 56 } },
+  deserto: { id: "deserto", nome: "Deserto", passagem: { x: 2, y: 56 }, chegada: { x: 4, y: 56 } },
 };
 
 function criarMapa(areaId) {
@@ -75,7 +76,7 @@ function criarMapa(areaId) {
       if (areaId === "canaan") obstaculo = x % 6 === 3 && y % 4 === 2;
       else {
         obstaculo = (x * 7 + y * 11) % 23 === 0;
-        if (y === 15 && x >= 1 && x <= 5) obstaculo = false;
+        if (y === ROWS - 4 && x >= 1 && x <= 5) obstaculo = false;
       }
       mapa[y][x] = borda || obstaculo ? 1 : 0;
     }
@@ -85,13 +86,13 @@ function criarMapa(areaId) {
 const mapas = { canaan: criarMapa("canaan"), deserto: criarMapa("deserto") };
 const npcs = {
   viajante1: { id: "viajante1", nome: "Eliabe", area: "canaan", x: 2, y: 5 },
-  noemi1: { id: "noemi1", nome: "Noemi", area: "deserto", x: 20, y: 4 },
+  noemi1: { id: "noemi1", nome: "Noemi", area: "deserto", x: 68, y: 8 },
 };
 const ervas = [
-  { id: "erva1", x: 9, y: 4 }, { id: "erva2", x: 14, y: 9 }, { id: "erva3", x: 20, y: 13 },
+  { id: "erva1", x: 13, y: 12 }, { id: "erva2", x: 41, y: 31 }, { id: "erva3", x: 71, y: 49 },
 ];
 const odres = [
-  { id: "odre1", x: 7, y: 5 }, { id: "odre2", x: 13, y: 8 }, { id: "odre3", x: 18, y: 12 },
+  { id: "odre1", x: 11, y: 48 }, { id: "odre2", x: 39, y: 34 }, { id: "odre3", x: 70, y: 15 },
 ];
 const inimigos = {
   lobo1: { id: "lobo1", nome: "Lobo", area: "canaan", x: 6, y: 5, inicioX: 6, inicioY: 5, vidaMaxima: 50, danoDoAtaque: 25, danoContraJogador: 8, raioPercepcao: 6, xpRecompensa: 40, proximoMovimento: 0, proximoAtaque: 0 },
@@ -115,7 +116,7 @@ const Mundo = {
   jogadores: {}, estado: {},
   entrar(id) {
     let p = Storage.carregar(id);
-    if (!p || typeof p !== "object") p = { id, area: "canaan", x: 2, y: 2, vida: VIDA_BASE, inventario: [], itensIniciaisEntregues: false, inimigosDerrotados: [], vidaInimigos: {}, ervasColetadas: [], odresColetados: [], xp: 0, nivel: 1 };
+    if (!p || typeof p !== "object") p = { id, area: "canaan", x: 2, y: 2, vida: VIDA_BASE, inventario: [], itensIniciaisEntregues: false, inimigosDerrotados: [], vidaInimigos: {}, ervasColetadas: [], odresColetados: [], ervasRespawn: {}, odresRespawn: {}, xp: 0, nivel: 1 };
     p.id = id;
     if (!Array.isArray(p.inventario)) p.inventario = [];
     if (!p.equipamento || typeof p.equipamento !== "object") p.equipamento = { arma: null, arco: null, escudo: null, armadura: null };
@@ -134,6 +135,8 @@ const Mundo = {
       p.equipamento.arco = null;
     }
     for (const chave of ["inimigosDerrotados", "ervasColetadas", "odresColetados"]) if (!Array.isArray(p[chave])) p[chave] = [];
+    if (!p.ervasRespawn || typeof p.ervasRespawn !== "object") p.ervasRespawn = {};
+    if (!p.odresRespawn || typeof p.odresRespawn !== "object") p.odresRespawn = {};
     if (!p.vidaInimigos || typeof p.vidaInimigos !== "object") p.vidaInimigos = {};
     if (!areas[p.area]) { p.area = "canaan"; p.x = 2; p.y = 2; }
     p.nivel = Number.isInteger(p.nivel) ? Math.max(1, Math.min(20, p.nivel)) : 1;
@@ -180,6 +183,12 @@ const Mundo = {
   inimigoVivo(p, enemyId) { return !p.inimigosDerrotados.includes(enemyId) && p.vidaInimigos[enemyId] > 0; },
   obterVidaInimigo(id, enemyId) { const p = this.jogadores[id], e = inimigos[enemyId]; return p && e ? (p.inimigosDerrotados.includes(enemyId) ? 0 : p.vidaInimigos[enemyId]) : null; },
   contarItem(id, item) { const p = this.jogadores[id]; return p ? p.inventario.filter((x) => x === item).length : 0; },
+  coletavelDisponivel(id, area, itemId) {
+    const p = this.jogadores[id];
+    if (!p) return false;
+    const tempos = area === "canaan" ? p.ervasRespawn : p.odresRespawn;
+    return !tempos?.[itemId] || Date.now() >= tempos[itemId];
+  },
   equiparItem(id, itemId, slot) {
     const p = this.jogadores[id], tipo = SLOTS_EQUIPAMENTO[slot];
     if (!p || !tipo || ITENS[itemId]?.tipo !== tipo) return { ok: false, mensagem: "Esse item não serve neste espaço." };
@@ -249,14 +258,15 @@ const Mundo = {
       if (distancia === 1) {
         if (agora >= e.proximoAtaque) {
           e.proximoAtaque = agora + INTERVALO_ATAQUE; estado.proximaRegen = agora + TEMPO_REGEN;
-          const danoReal = Math.max(1, e.danoContraJogador - defesaEquipamento(p));
+          const defesaTotal = defesaEquipamento(p);
+          const danoReal = Math.max(1, e.danoContraJogador - defesaTotal);
           p.vida = Math.max(0, p.vida - danoReal);
           if (p.vida === 0) {
             p.area = "canaan"; p.x = 2; p.y = 2; p.vida = vidaMaxima(p);
             for (const outro of Object.values(inimigos)) if (this.inimigoVivo(p, outro.id)) { outro.x = outro.inicioX; outro.y = outro.inicioY; outro.proximoAtaque = 0; outro.proximoMovimento = 0; p.vidaInimigos[outro.id] = outro.vidaMaxima; }
             Storage.salvar(p); eventos.push({ tipo: "renasceu", mensagem: "Você foi derrotado e voltou ao início de Canaã com a vida restaurada. Seu nível, inventário e missões foram preservados." }); return eventos;
           }
-          Storage.salvar(p); eventos.push({ tipo: "jogadorAtingido", mensagem: `${e.nome} atingiu você! Vida: ${p.vida}/${vidaMaxima(p)}.` });
+          Storage.salvar(p); eventos.push({ tipo: "jogadorAtingido", dano: danoReal, defesaBloqueada: Math.max(0, e.danoContraJogador - danoReal), mensagem: `${e.nome} atingiu você por ${danoReal} de dano! Vida: ${p.vida}/${vidaMaxima(p)}.` });
         }
         continue;
       }
@@ -294,18 +304,20 @@ const Mundo = {
         return { ok: true, itemColetado: saqueNoPiso.id, mensagem: `Você pegou: ${nomeItem(saqueNoPiso.item)}.` };
       }
       if (p.area === "canaan") {
-        const item = ervas.find((x) => x.x === nx && x.y === ny && !p.ervasColetadas.includes(x.id));
+        const item = ervas.find((x) => x.x === nx && x.y === ny && this.coletavelDisponivel(id, "canaan", x.id));
         if (item) {
           if (!this.adicionarItem(p, "erva")) return { ok: true, mensagem: `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). Libere espaço para coletar a erva.` };
           p.ervasColetadas.push(item.id);
+          p.ervasRespawn[item.id] = Date.now() + TEMPO_RESPAWN_COLETAVEL;
           if (p.missaoErvas.status === "em_andamento" && !p.missaoErvas.ervasMissaoColetadas.includes(item.id)) p.missaoErvas.ervasMissaoColetadas.push(item.id);
           Storage.salvar(p); return { ok: true, itemColetado: item.id, mensagem: "Você coletou uma erva medicinal." };
         }
       } else {
-        const item = odres.find((x) => x.x === nx && x.y === ny && !p.odresColetados.includes(x.id));
+        const item = odres.find((x) => x.x === nx && x.y === ny && this.coletavelDisponivel(id, "deserto", x.id));
         if (item) {
           if (!this.adicionarItem(p, "odre_agua")) return { ok: true, mensagem: `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). Libere espaço para pegar o odre.` };
           p.odresColetados.push(item.id);
+          p.odresRespawn[item.id] = Date.now() + TEMPO_RESPAWN_COLETAVEL;
           if (p.missaoDeserto.status === "em_andamento" && !p.missaoDeserto.odresMissaoColetados.includes(item.id)) p.missaoDeserto.odresMissaoColetados.push(item.id);
           Storage.salvar(p); return { ok: true, itemColetado: item.id, mensagem: "Você encontrou um odre de água." };
         }
@@ -406,8 +418,9 @@ const Mundo = {
     if (m2.status === "bloqueada") {
       m2.status = "em_andamento"; m2.ervasMissaoColetadas = [];
       // Esta missão pede três ervas novas; as plantas reaparecem, sem apagar as ervas do inventário.
-      p.ervasColetadas = p.ervasColetadas.filter((idErva) => !ervas.some((x) => x.id === idErva));
-      Storage.salvar(p); return { ok: true, mensagem: "Eliabe: Preciso de 3 ervas medicinais. As plantas reapareceram pelo caminho; colete três novas e volte." };
+      p.ervasColetadas = [];
+      for (const planta of ervas) p.ervasRespawn[planta.id] = Date.now();
+      Storage.salvar(p); return { ok: true, missaoErvasIniciada: true, mensagem: "Eliabe: Preciso de 3 ervas medicinais. As folhas foram repostas; colete três e volte." };
     }
     if (m2.status === "em_andamento") {
       const count = m2.ervasMissaoColetadas.length;
@@ -427,7 +440,8 @@ const Mundo = {
     if (m.status === "bloqueada") {
       m.status = "em_andamento"; m.odresMissaoColetados = [];
       p.odresColetados = [];
-      Storage.salvar(p); return { ok: true, mensagem: "Noemi: A caravana precisa de água. Encontre 3 odres pelo deserto e traga-os para mim." };
+      for (const odre of odres) p.odresRespawn[odre.id] = Date.now();
+      Storage.salvar(p); return { ok: true, missaoDesertoIniciada: true, mensagem: "Noemi: A caravana precisa de água. Encontre 3 odres pelo deserto e traga-os para mim." };
     }
     if (m.status === "em_andamento") {
       const count = m.odresMissaoColetados.length;
@@ -465,9 +479,9 @@ const Mundo = {
       Storage.salvar(p);
       const up = niveis.length ? ` Você subiu para o nível ${p.nivel}! Vida máxima: ${vidaMaxima(p)}.` : "";
       const textoSaque = saque.length ? ` Saque no chão: ${saque.map(nomeItem).join(", ")}.` : "";
-      return { ok: true, derrotado: true, inimigoId: e.id, saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id), mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${e.xpRecompensa} XP.${up}${textoSaque} Ele reaparecerá em 5 segundos.` };
+      return { ok: true, derrotado: true, danoAplicado: dano, inimigoId: e.id, saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id), mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${e.xpRecompensa} XP.${up}${textoSaque} Ele reaparecerá em 5 segundos.` };
     }
     Storage.salvar(p);
-    return { ok: true, derrotado: false, inimigoId: e.id, mensagem: `Você acertou ${e.nome.toLowerCase()}! Vida dele: ${p.vidaInimigos[e.id]}/${e.vidaMaxima}.` };
+    return { ok: true, derrotado: false, danoAplicado: dano, inimigoId: e.id, mensagem: `Você acertou ${e.nome.toLowerCase()}! Vida dele: ${p.vidaInimigos[e.id]}/${e.vidaMaxima}.` };
   },
 };
