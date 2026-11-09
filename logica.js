@@ -9,6 +9,7 @@ const INTERVALO_ATAQUE = 1200;
 const INTERVALO_AUTO_ATAQUE = 2000;
 const TEMPO_RESPAWN_INIMIGO = 5000;
 const TEMPO_RESPAWN_COLETAVEL = 18000;
+const TEMPO_RESPAWN_PESCA = 12000;
 const CURA_POCAO = 30;
 const QUANTIDADE_POCOES_INICIAIS = 3;
 const QUANTIDADE_ERVAS_MISSAO = 3;
@@ -31,10 +32,11 @@ const ITENS = {
   pele_lobo: { nome: "Pele de lobo", peso: 2, tipo: "recurso" },
   veneno_escorpiao: { nome: "Veneno de escorpião", peso: 0.5, tipo: "recurso" },
   insignia_bandido: { nome: "Insígnia do bando", peso: 0.5, tipo: "recurso" },
+  peixe: { nome: "Peixe fresco", peso: 1, tipo: "recurso" },
 };
 const SLOTS_EQUIPAMENTO = { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
 const PRECOS_LOJA = { pocao: 12, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
-const VALORES_VENDA = { pele_lobo: 5, erva: 2, odre_agua: 3 };
+const VALORES_VENDA = { pele_lobo: 5, erva: 2, odre_agua: 3, peixe: 6 };
 function nomeItem(id) { return ITENS[id]?.nome || id; }
 function pesoItem(id) { return ITENS[id]?.peso ?? 1; }
 function capacidadeCarga(p) { return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL; }
@@ -68,8 +70,9 @@ function adicionarXP(personagem, quantidade) {
 }
 
 const areas = {
-  canaan: { id: "canaan", nome: "Canaã", passagem: { x: 77, y: 56 }, chegada: { x: 75, y: 56 } },
-  deserto: { id: "deserto", nome: "Deserto", passagem: { x: 2, y: 56 }, chegada: { x: 4, y: 56 } },
+  canaan: { id: "canaan", nome: "Canaã", passagem: { x: 77, y: 56 }, chegada: { x: 75, y: 56 }, cais: { x: 40, y: 2 } },
+  deserto: { id: "deserto", nome: "Deserto", passagem: { x: 2, y: 56 }, chegada: { x: 4, y: 56 }, cais: { x: 40, y: 2 } },
+  mar: { id: "mar", nome: "Mar das Rotas", caisCanaa: { x: 2, y: 30 }, caisDeserto: { x: 77, y: 30 } },
 };
 
 function criarMapa(areaId) {
@@ -80,21 +83,27 @@ function criarMapa(areaId) {
       const borda = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
       let obstaculo = false;
       if (areaId === "canaan") obstaculo = x % 6 === 3 && y % 4 === 2;
-      else {
+      else if (areaId === "deserto") {
         obstaculo = (x * 7 + y * 11) % 23 === 0;
         if (y === ROWS - 4 && x >= 1 && x <= 5) obstaculo = false;
+      } else {
+        obstaculo = x > 7 && x < COLS - 8 && y > 4 && y < ROWS - 5 && (x * 17 + y * 23) % 41 === 0;
+        if (y === 30) obstaculo = false;
       }
       mapa[y][x] = borda || obstaculo ? 1 : 0;
     }
   }
   return mapa;
 }
-const mapas = { canaan: criarMapa("canaan"), deserto: criarMapa("deserto") };
+const mapas = { canaan: criarMapa("canaan"), deserto: criarMapa("deserto"), mar: criarMapa("mar") };
 const npcs = {
   viajante1: { id: "viajante1", nome: "Eliabe", area: "canaan", x: 2, y: 5 },
   noemi1: { id: "noemi1", nome: "Noemi", area: "deserto", x: 68, y: 8 },
   mercador1: { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 72, y: 10 },
+  guia_canaa: { id: "guia_canaa", nome: "Micael, guia de caravanas", area: "canaan", x: 5, y: 5 },
+  guia_deserto: { id: "guia_deserto", nome: "Tamar, guia de caravanas", area: "deserto", x: 66, y: 12 },
 };
+const pontosPesca = [{ id: "pesca1", x: 18, y: 15 }, { id: "pesca2", x: 40, y: 42 }, { id: "pesca3", x: 62, y: 18 }, { id: "pesca4", x: 49, y: 32 }];
 const ervas = [
   { id: "erva1", x: 13, y: 12 }, { id: "erva2", x: 41, y: 31 }, { id: "erva3", x: 71, y: 49 },
 ];
@@ -110,11 +119,19 @@ const inimigos = {
 for (const npc of Object.values(npcs)) mapas[npc.area][npc.y][npc.x] = 0;
 for (const inimigo of Object.values(inimigos)) mapas[inimigo.area][inimigo.y][inimigo.x] = 0;
 for (const item of [...ervas, ...odres]) mapas[item.id.startsWith("erva") ? "canaan" : "deserto"][item.y][item.x] = 0;
+// Trilhas terrestres contínuas e acessos aos cais.
+for (let x = 2; x <= 77; x++) { mapas.canaan[56][x] = 0; mapas.deserto[56][x] = 0; }
+for (let y = 2; y <= 56; y++) { mapas.canaan[y][2] = 0; mapas.deserto[y][40] = 0; }
+for (let x = 2; x <= 77; x++) mapas.canaan[2][x] = 0;
+for (let x = 40; x <= 77; x++) mapas.deserto[2][x] = 0;
+for (let x = 1; x <= 78; x++) mapas.mar[30][x] = 0;
+for (const point of pontosPesca) mapas.mar[point.y][point.x] = 0;
 for (const [areaId, area] of Object.entries(areas)) {
-  mapas[areaId][area.passagem.y][area.passagem.x] = 0;
-  mapas[areaId][area.chegada.y][area.chegada.x] = 0;
+  if (area.passagem) { mapas[areaId][area.passagem.y][area.passagem.x] = 0; mapas[areaId][area.chegada.y][area.chegada.x] = 0; }
+  if (area.cais) { mapas[areaId][area.cais.y][area.cais.x] = 0; mapas[areaId][area.cais.y + 1][area.cais.x] = 0; }
 }
-mapas.canaan[2][2] = 0;
+mapas.mar[30][2] = 0; mapas.mar[30][77] = 0;
+mapas.canaan[2][2] = 0; mapas.canaan[5][5] = 0; mapas.deserto[12][66] = 0;
 
 function missaoEliabeNova() { return { status: "nao_iniciada", loboDerrotado: false, recompensaRecebida: false }; }
 function missaoErvasNova() { return { status: "bloqueada", recompensaRecebida: false, ervasMissaoColetadas: [] }; }
@@ -124,7 +141,7 @@ const Mundo = {
   jogadores: {}, estado: {},
   entrar(id) {
     let p = Storage.carregar(id);
-    if (!p || typeof p !== "object") p = { id, area: "canaan", x: 2, y: 2, vida: VIDA_BASE, inventario: [], itensIniciaisEntregues: false, inimigosDerrotados: [], vidaInimigos: {}, ervasColetadas: [], odresColetados: [], ervasRespawn: {}, odresRespawn: {}, xp: 0, nivel: 1, moedas: 30, economiaInicialEntregue: true, habilidades: { corpo: 0, distancia: 0, defesa: 0 }, mortes: 0 };
+    if (!p || typeof p !== "object") p = { id, area: "canaan", x: 2, y: 2, vida: VIDA_BASE, inventario: [], itensIniciaisEntregues: false, inimigosDerrotados: [], vidaInimigos: {}, ervasColetadas: [], odresColetados: [], ervasRespawn: {}, odresRespawn: {}, pescaRespawn: {}, xp: 0, nivel: 1, moedas: 30, economiaInicialEntregue: true, habilidades: { corpo: 0, distancia: 0, defesa: 0 }, mortes: 0 };
     p.id = id;
     if (!Array.isArray(p.inventario)) p.inventario = [];
     if (!p.economiaInicialEntregue) { p.moedas = Math.max(0, Number(p.moedas) || 0) + 30; p.economiaInicialEntregue = true; }
@@ -150,6 +167,7 @@ const Mundo = {
     for (const chave of ["inimigosDerrotados", "ervasColetadas", "odresColetados"]) if (!Array.isArray(p[chave])) p[chave] = [];
     if (!p.ervasRespawn || typeof p.ervasRespawn !== "object") p.ervasRespawn = {};
     if (!p.odresRespawn || typeof p.odresRespawn !== "object") p.odresRespawn = {};
+    if (!p.pescaRespawn || typeof p.pescaRespawn !== "object") p.pescaRespawn = {};
     if (!p.vidaInimigos || typeof p.vidaInimigos !== "object") p.vidaInimigos = {};
     if (!areas[p.area]) { p.area = "canaan"; p.x = 2; p.y = 2; }
     p.nivel = Number.isInteger(p.nivel) ? Math.max(1, Math.min(20, p.nivel)) : 1;
@@ -205,6 +223,7 @@ const Mundo = {
     const tempos = area === "canaan" ? p.ervasRespawn : p.odresRespawn;
     return !tempos?.[itemId] || Date.now() >= tempos[itemId];
   },
+  pescaDisponivel(id, pontoId) { const p = this.jogadores[id]; return !!p && (!p.pescaRespawn?.[pontoId] || Date.now() >= p.pescaRespawn[pontoId]); },
   coletarSaque(id, saqueId) {
     const p = this.jogadores[id], s = p?.saqueNoChao.find((x) => x.id === saqueId && x.area === p.area);
     if (!s) return { ok: false, mensagem: "Esse saque não está mais no chão." };
@@ -336,11 +355,21 @@ const Mundo = {
       if (!mapas[p.area][ny] || mapas[p.area][ny][nx] !== 0) return { ok: false };
       if (Object.values(npcs).some((n) => n.area === p.area && n.x === nx && n.y === ny) || Object.values(inimigos).some((e) => e.area === p.area && this.inimigoVivo(p, e.id) && e.x === nx && e.y === ny)) return { ok: false };
       p.x = nx; p.y = ny;
-      const passage = areas[p.area].passagem;
-      if (nx === passage.x && ny === passage.y) {
-        const next = p.area === "canaan" ? "deserto" : "canaan";
-        p.area = next; p.x = areas[next].chegada.x; p.y = areas[next].chegada.y; Storage.salvar(p);
-        return { ok: true, areaAlterada: true, mensagem: `Você chegou a ${areas[next].nome}.` };
+      if (p.area === "mar") {
+        if (nx === areas.mar.caisCanaa.x && ny === areas.mar.caisCanaa.y) { p.area = "canaan"; p.x = 40; p.y = 3; Storage.salvar(p); return { ok: true, areaAlterada: true, mensagem: "O barco chegou ao cais de Canaã." }; }
+        if (nx === areas.mar.caisDeserto.x && ny === areas.mar.caisDeserto.y) { p.area = "deserto"; p.x = 40; p.y = 3; Storage.salvar(p); return { ok: true, areaAlterada: true, mensagem: "O barco chegou ao cais do Deserto." }; }
+      } else {
+        const passage = areas[p.area].passagem;
+        if (nx === passage.x && ny === passage.y) {
+          const next = p.area === "canaan" ? "deserto" : "canaan";
+          p.area = next; p.x = areas[next].chegada.x; p.y = areas[next].chegada.y; Storage.salvar(p);
+          return { ok: true, areaAlterada: true, mensagem: `Você percorreu a trilha terrestre e chegou a ${areas[next].nome}.` };
+        }
+        const cais = areas[p.area].cais;
+        if (nx === cais.x && ny === cais.y) {
+          const origem = p.area; p.area = "mar"; p.x = origem === "canaan" ? 3 : 76; p.y = 30; Storage.salvar(p);
+          return { ok: true, areaAlterada: true, mensagem: "Você embarcou no cais. Navegue até o marcador Canaã ou Deserto para desembarcar." };
+        }
       }
       const saqueNoPiso = p.saqueNoChao.find((s) => s.area === p.area && s.x === nx && s.y === ny);
       if (saqueNoPiso) return this.coletarSaque(id, saqueNoPiso.id);
@@ -367,6 +396,23 @@ const Mundo = {
     }
     if (comando.tipo === "coletarSaque") return this.coletarSaque(id, comando.saqueId);
     if (comando.tipo === "comprar") return this.comprarItem(id, comando.item);
+    if (comando.tipo === "pescar") {
+      if (p.area !== "mar") return { ok: false, mensagem: "A pesca só é possível no mar, a partir do barco." };
+      const ponto = pontosPesca.find((x) => Math.max(Math.abs(p.x-x.x), Math.abs(p.y-x.y)) <= 1);
+      if (!ponto) return { ok: false, mensagem: "Aproxime o barco de um ponto de pesca marcado com o peixe e pressione P." };
+      if (!this.pescaDisponivel(id, ponto.id)) return { ok: false, mensagem: "Esse ponto está descansando. Tente outro local ou volte em alguns instantes." };
+      if (!this.adicionarItem(p, "peixe")) return { ok: false, mensagem: `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). Libere espaço antes de pescar.` };
+      p.pescaRespawn[ponto.id] = Date.now() + TEMPO_RESPAWN_PESCA; Storage.salvar(p);
+      return { ok: true, mensagem: "Você pescou um peixe fresco! Azarias compra cada peixe por 6 moedas." };
+    }
+    if (comando.tipo === "viajar") {
+      const guia = Object.values(npcs).find((n) => n.id.startsWith("guia_") && n.area === p.area && Math.abs(p.x-n.x)+Math.abs(p.y-n.y) <= 1);
+      const destino = comando.areaDestino;
+      if (!guia) return { ok: false, mensagem: "Aproxime-se de um guia de caravanas para usar a viagem rápida." };
+      if (!["canaan", "deserto"].includes(destino) || destino === p.area) return { ok: false, mensagem: "Destino indisponível." };
+      p.area = destino; p.x = destino === "canaan" ? 6 : 65; p.y = destino === "canaan" ? 5 : 12; Storage.salvar(p);
+      return { ok: true, areaAlterada: true, mensagem: `Viagem rápida para ${areas[destino].nome}. A trilha terrestre continua disponível para viajar a pé.` };
+    }
     if (comando.tipo === "vender") return this.venderItem(id, comando.item);
     if (comando.tipo === "interagir") {
       const npc = comando.alvoId ? npcs[comando.alvoId] : Object.values(npcs).find((n) => n.area === p.area && Math.abs(p.x - n.x) + Math.abs(p.y - n.y) <= 1);
@@ -375,6 +421,7 @@ const Mundo = {
       if (npc.id === "viajante1") return this.interagirEliabe(id);
       if (npc.id === "noemi1") return this.interagirNoemi(id);
       if (npc.id === "mercador1") return { ok:true, abrirLoja:true, mensagem:"Azarias: Tenho provisões, flechas e equipamentos para vender." };
+      if (npc.id === "guia_canaa" || npc.id === "guia_deserto") return { ok:true, abrirViagem:true, mensagem:`${npc.nome}: Posso levar você rapidamente entre Canaã e o Deserto. A viagem é gratuita; também há uma trilha terrestre para caminhar.` };
     }
     if (comando.tipo === "alternarEquipamento") {
       const slot = comando.slot;
