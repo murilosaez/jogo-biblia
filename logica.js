@@ -6,6 +6,7 @@ const VIDA_BASE = 100;
 const TEMPO_REGEN = 10000;
 const INTERVALO_MOVIMENTO = 600;
 const INTERVALO_ATAQUE = 1200;
+const INTERVALO_AUTO_ATAQUE = 2000;
 const TEMPO_RESPAWN_INIMIGO = 5000;
 const CURA_POCAO = 30;
 const QUANTIDADE_POCOES_INICIAIS = 3;
@@ -119,11 +120,18 @@ const Mundo = {
     if (!Array.isArray(p.inventario)) p.inventario = [];
     if (!p.equipamento || typeof p.equipamento !== "object") p.equipamento = { arma: null, arco: null, escudo: null, armadura: null };
     for (const slot of Object.keys(SLOTS_EQUIPAMENTO)) if (!(slot in p.equipamento)) p.equipamento[slot] = null;
+    if (!Array.isArray(p.hotkeys)) p.hotkeys = ["pocao", null, null, null, null, null];
+    p.hotkeys = Array.from({ length: 6 }, (_, i) => p.hotkeys[i] || null);
     if (!Array.isArray(p.saqueNoChao)) p.saqueNoChao = [];
     p.saqueNoChao = p.saqueNoChao.filter((s) => s && typeof s.id === "string" && areas[s.area] && Number.isInteger(s.x) && Number.isInteger(s.y) && ITENS[s.item]);
     for (const [slot, tipo] of Object.entries(SLOTS_EQUIPAMENTO)) {
       const item = p.equipamento[slot];
       if (item && ITENS[item]?.tipo !== tipo) p.equipamento[slot] = null;
+    }
+    // Se um save antigo tiver espada e arco equipados, mantém a espada e guarda o arco sem perder o item.
+    if (p.equipamento.arma && p.equipamento.arco) {
+      p.inventario.push(p.equipamento.arco);
+      p.equipamento.arco = null;
     }
     for (const chave of ["inimigosDerrotados", "ervasColetadas", "odresColetados"]) if (!Array.isArray(p[chave])) p[chave] = [];
     if (!p.vidaInimigos || typeof p.vidaInimigos !== "object") p.vidaInimigos = {};
@@ -172,6 +180,35 @@ const Mundo = {
   inimigoVivo(p, enemyId) { return !p.inimigosDerrotados.includes(enemyId) && p.vidaInimigos[enemyId] > 0; },
   obterVidaInimigo(id, enemyId) { const p = this.jogadores[id], e = inimigos[enemyId]; return p && e ? (p.inimigosDerrotados.includes(enemyId) ? 0 : p.vidaInimigos[enemyId]) : null; },
   contarItem(id, item) { const p = this.jogadores[id]; return p ? p.inventario.filter((x) => x === item).length : 0; },
+  equiparItem(id, itemId, slot) {
+    const p = this.jogadores[id], tipo = SLOTS_EQUIPAMENTO[slot];
+    if (!p || !tipo || ITENS[itemId]?.tipo !== tipo) return { ok: false, mensagem: "Esse item não serve neste espaço." };
+    const indice = p.inventario.indexOf(itemId);
+    if (indice < 0) return { ok: false, mensagem: "O item não está na mochila." };
+    const slotIncompativel = slot === "arma" ? "arco" : slot === "arco" ? "arma" : null;
+    if (slotIncompativel && p.equipamento[slotIncompativel]) {
+      p.inventario.push(p.equipamento[slotIncompativel]);
+      p.equipamento[slotIncompativel] = null;
+    }
+    const anterior = p.equipamento[slot];
+    p.inventario.splice(indice, 1);
+    if (anterior) p.inventario.push(anterior);
+    p.equipamento[slot] = itemId;
+    Storage.salvar(p);
+    return { ok: true, mensagem: `${nomeItem(itemId)} equipado. ${nomeItem(itemId)}: ${ITENS[itemId].bonus ? `+${ITENS[itemId].bonus} de bônus` : `+${ITENS[itemId].defesa || 0} de defesa`}.` };
+  },
+  desequiparItem(id, slot) {
+    const p = this.jogadores[id], item = p?.equipamento?.[slot];
+    if (!item) return { ok: false };
+    p.inventario.push(item); p.equipamento[slot] = null; Storage.salvar(p);
+    return { ok: true, mensagem: `${nomeItem(item)} voltou para a mochila.` };
+  },
+  atribuirHotkey(id, indice, item) {
+    const p = this.jogadores[id];
+    if (!p || indice < 0 || indice > 5) return { ok: false };
+    if (item && (ITENS[item]?.tipo !== "consumivel" || !p.inventario.includes(item))) return { ok: false, mensagem: "A hotkey aceita consumíveis que estejam na mochila." };
+    p.hotkeys[indice] = item || null; Storage.salvar(p); return { ok: true };
+  },
   adicionarItem(p, item) {
     if (!ITENS[item] || pesoCarregado(p) + pesoItem(item) > capacidadeCarga(p) + 0.0001) return false;
     p.inventario.push(item); return true;
@@ -238,7 +275,7 @@ const Mundo = {
     if (!p || !comando || typeof comando.tipo !== "string") return { ok: false };
     if (comando.tipo === "mover") {
       const dx = Number(comando.dx), dy = Number(comando.dy);
-      if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx) + Math.abs(dy) !== 1) return { ok: false };
+      if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)) return { ok: false };
       const nx = p.x + dx, ny = p.y + dy;
       if (!mapas[p.area][ny] || mapas[p.area][ny][nx] !== 0) return { ok: false };
       if (Object.values(npcs).some((n) => n.area === p.area && n.x === nx && n.y === ny) || Object.values(inimigos).some((e) => e.area === p.area && this.inimigoVivo(p, e.id) && e.x === nx && e.y === ny)) return { ok: false };
@@ -300,8 +337,13 @@ const Mundo = {
       }
       if (!candidatos.length) return { ok: false, mensagem: `Você não tem item para equipar no espaço: ${slot}.` };
       const escolhido = candidatos[0];
+      const slotIncompativel = slot === "arma" ? "arco" : slot === "arco" ? "arma" : null;
+      if (slotIncompativel && p.equipamento[slotIncompativel]) {
+        p.inventario.push(p.equipamento[slotIncompativel]);
+        p.equipamento[slotIncompativel] = null;
+      }
       p.inventario.splice(p.inventario.indexOf(escolhido), 1); p.equipamento[slot] = escolhido;
-      Storage.salvar(p); return { ok: true, mensagem: `Equipado: ${nomeItem(escolhido)}.` };
+      Storage.salvar(p); return { ok: true, mensagem: `Equipado: ${nomeItem(escolhido)}.${slotIncompativel ? " Espada e arco não podem ser usados ao mesmo tempo; o outro foi para a mochila." : ""}` };
     }
     if (comando.tipo === "usarPocao") {
       const i = p.inventario.indexOf("pocao");
@@ -316,16 +358,19 @@ const Mundo = {
       const flechaIndex = p.inventario.indexOf("flecha");
       if (flechaIndex < 0) return { ok: false, mensagem: "Você não tem flechas." };
       const alvos = Object.values(inimigos).filter((e) => {
+        if (comando.alvoId && e.id !== comando.alvoId) return false;
         if (e.area !== p.area || !this.inimigoVivo(p, e.id)) return false;
-        const mesmaLinha = e.x === p.x, mesmaColuna = e.y === p.y;
-        const distancia = Math.abs(e.x - p.x) + Math.abs(e.y - p.y);
-        if ((!mesmaLinha && !mesmaColuna) || distancia < 1 || distancia > 5) return false;
+        const deltaX = Math.abs(e.x - p.x), deltaY = Math.abs(e.y - p.y);
+        const mesmaLinha = e.y === p.y, mesmaColuna = e.x === p.x;
+        const diagonal = deltaX === deltaY;
+        const distancia = Math.max(deltaX, deltaY);
+        if ((!mesmaLinha && !mesmaColuna && !diagonal) || distancia < 1 || distancia > 5) return false;
         const dx = Math.sign(e.x - p.x), dy = Math.sign(e.y - p.y);
         for (let passo = 1; passo < distancia; passo++) if (mapas[p.area][p.y + dy * passo][p.x + dx * passo] !== 0) return false;
         return true;
       }).sort((a, b) => (Math.abs(a.x - p.x) + Math.abs(a.y - p.y)) - (Math.abs(b.x - p.x) + Math.abs(b.y - p.y)));
       const e = alvos[0];
-      if (!e) return { ok: false, mensagem: "Nenhum inimigo alinhado e desimpedido até 5 casas. Posicione-se na mesma linha ou coluna." };
+      if (!e) return { ok: false, mensagem: "Nenhum inimigo alinhado e desimpedido até 5 casas. Posicione-se na mesma linha, coluna ou diagonal." };
       p.inventario.splice(flechaIndex, 1);
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
       const dano = 15 + (p.nivel - 1) * 5 + bonusArco(p);
@@ -340,7 +385,7 @@ const Mundo = {
       const e = comando.alvoId ? inimigos[comando.alvoId] : Object.values(inimigos).find((x) => x.area === p.area && this.inimigoVivo(p, x.id) && Math.abs(p.x - x.x) + Math.abs(p.y - x.y) === 1);
       if (!e || e.area !== p.area) return { ok: false, mensagem: "Não há inimigos por perto." };
       if (!this.inimigoVivo(p, e.id)) return { ok: false, mensagem: "Esse inimigo já foi derrotado." };
-      if (Math.abs(p.x - e.x) + Math.abs(p.y - e.y) !== 1) return { ok: false, mensagem: `Chegue ao lado de ${e.nome.toLowerCase()} para atacá-lo.` };
+      if (Math.max(Math.abs(p.x - e.x), Math.abs(p.y - e.y)) !== 1) return { ok: false, mensagem: `Chegue ao lado de ${e.nome.toLowerCase()} para atacá-lo.` };
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
       const dano = e.danoDoAtaque + (p.nivel - 1) * 5 + bonusArma(p);
       return this.resolverDano(id, e, dano);

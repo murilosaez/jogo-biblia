@@ -1,20 +1,20 @@
-JORNADA BÍBLICA — ataque à distância e saques
+JORNADA BÍBLICA — interface RPG de navegador
 
-NOVIDADES
-- Arco de madeira como equipamento independente da espada; espada e arco podem ficar equipados ao mesmo tempo.
-- Ataque à distância com R: exige arco equipado e uma flecha, seleciona o inimigo mais próximo na mesma linha ou coluna, até 5 casas e sem obstáculo; cada disparo consome uma flecha.
-- Dano à distância: 15 base + 5 por nível acima do nível 1 + bônus do arco (+10). Espaço continua sendo o ataque corpo a corpo.
-- Noemi recompensa a missão dos odres com arco e 8 flechas além das recompensas já existentes. Saves com a missão dela concluída recebem o arco e até 8 flechas uma única vez.
-- Saques aparecem no chão e são recolhidos ao caminhar sobre eles: o lobo deixa pele de lobo e o escorpião deixa 2 flechas. Permanecem salvos ao trocar de área.
-
-COMO EQUIPAR E USAR
-1. Abra a mochila com I.
-2. Clique no botão do arco ou pressione 4; isso não substitui a espada.
-3. Tenha flechas na mochila e pressione R quando houver um inimigo alinhado, até 5 casas, sem obstáculo entre vocês.
-4. Pressione Espaço para atacar inimigos adjacentes com a arma corpo a corpo.
-
-ARQUIVOS
-O pacote contém os quatro arquivos completos: index.html, storage.js, logica.js e game.js, além deste guia. Faça uma cópia de segurança e substitua os arquivos do projeto pelos deste pacote. Abra index.html pelo Live Server. O save atual é mantido.
+COMO USAR
+1. Faça uma cópia de segurança do projeto atual.
+2. Extraia este pacote e substitua os quatro arquivos da pasta do jogo.
+3. Abra index.html pelo Live Server no VS Code.
+4. Clique em “Tela cheia” para expandir o jogo.
 
 CONTROLES
-Setas: andar | E: conversar | Espaço: corpo a corpo | R: ataque à distância | H: poção | I: mochila | 1 arma | 2 escudo | 3 armadura | 4 arco.
+- Movimento: W, A, S, D ou setas. Diagonais: Q (↖), E (↗), Z (↙), C (↘).
+- Conversar: F perto de um NPC; clicar no NPC também tenta conversar. E é a diagonal para cima e direita.
+- Combate: clique em um inimigo no mapa ou na Lista de Batalha para selecioná-lo. Ataques automáticos tentam ocorrer a cada 2 segundos. Espaço faz ataque corpo a corpo e R dispara uma flecha quando o alvo está alinhado e dentro do alcance.
+- Mochilas: arraste arma, arco, escudo ou armadura para o respectivo espaço de equipamento; arraste o equipamento de volta à mochila para guardar. Os itens aparecem em grades separadas por tipo, com ícone e quantidade.
+- Hotkeys: arraste poções para um dos seis espaços da barra e pressione a tecla 1–6. H continua usando uma poção.
+- I oculta ou reabre os painéis de mochila.
+
+ITENS E EFEITOS
+A espada de ferro aumenta o dano corpo a corpo em 12; o arco de madeira acrescenta 10 ao dano à distância, ataca até 5 casas em linha reta e consome uma flecha por disparo. Escudo de madeira reduz 3 de dano, armadura de couro reduz 5 e túnica de pano reduz 2. O peso carregado considera mochila e equipamento; a capacidade aumenta ao subir de nível.
+
+O pacote mantém os recursos anteriores: progressão de nível/XP, missões de Eliabe e Noemi, Deserto, inimigos, saques no chão e salvamento local. O save atual é mantido e adaptado ao novo formato; faça backup antes de substituir os arquivos. O jogo precisa de conexão para carregar Phaser pelo CDN.

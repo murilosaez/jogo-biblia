@@ -1,329 +1,49 @@
-const MEU_ID = "jogador1";
-const PIXEL_PATTERNS = {
-  jogador: { cores: { "1": "#34261e", "2": "#d9a06c", "3": "#315e9b", "4": "#e6c548", "5": "#493328" }, linhas: ["....1111....", "...122221...", "...122221...", "....1111....", "...333333...", "..33333333..", "..33333333..", "...333333...", "....3333....", "....5555....", "...555555...", "...555555...", "...555555...", "...55..55...", "...55..55...", "..555..555.."] },
-  eliabe: { cores: { "1": "#4a2f20", "2": "#c98d5b", "3": "#446e8a", "4": "#e4d6bd", "5": "#76513b" }, linhas: ["....1111....", "...122221...", "...122221...", "....1111....", "...444444...", "..44444444..", "..33333333..", "...333333...", "....3333....", "....3333....", "....3333....", "....5555....", "...555555...", "...555555...", "...55..55...", "..555..555.."] },
-  noemi: { cores: { "1": "#553b2d", "2": "#d69a6b", "3": "#874d36", "4": "#c7a45b", "5": "#473225" }, linhas: ["....1111....", "...122221...", "...122221...", "..11111111..", "...444444...", "..44444444..", "..33333333..", ".3333333333.", ".3333333333.", "..33333333..", "..33333333..", "...333333...", "...555555...", "...555555...", "..555..555..", "..555..555.."] },
-  lobo: { cores: { "1": "#713c35", "2": "#a85243", "3": "#e6c8a8", "4": "#2a1d1a" }, linhas: ["...1....1...", "..111..111..", ".1111111111.", "111221122111", "112221122211", ".1222222221.", "..22222222..", "...222222...", "..222..222..", ".2222..2222.", ".2222..2222.", "..44....44.."] },
-  escorpiao: { cores: { "1": "#462519", "2": "#9e492b", "3": "#d5773d", "4": "#f0c34e" }, linhas: ["......11....", ".....1331...", ".....1331...", "......11....", "..11..11..11", ".1331111331.", "113333333311", ".1333333331.", "..11333311..", ".11.3333.11.", "11..3333..11", "....3333...."] },
-  erva: { cores: { "1": "#285b2b", "2": "#63b84e", "3": "#a3d85d", "4": "#785531" }, linhas: ["......2.....", ".....222....", "....2222....", "......2.....", "..222.2.222..", ".23332222332.", "..222.2.222..", "......2.....", "......2.....", ".....444....", ".....444....", ".....444...."] },
-  odre: { cores: { "1": "#503521", "2": "#a66b39", "3": "#d3a657", "4": "#e9d29a" }, linhas: ["....1111....", "....3333....", "....1111....", "...222222...", "..22222222..", ".2222222222.", ".2222222222.", ".2222442222.", ".2222442222.", "..22222222..", "...222222...", "....1111...."] },
-  flecha: { cores: { "1": "#4b3321", "2": "#d8d0b5", "3": "#b94c36" }, linhas: ["..........1.", ".........111", "..........1.", "...222221...", "..222221....", ".222221.....", "..222221....", "...222221...", "..........1.", "..........1.", "..........1.", "..........1."] },
-  pele_lobo: { cores: { "1": "#57352b", "2": "#a85b48", "3": "#d0956e" }, linhas: ["...111111...", "..12222221..", ".1222222221.", "122222222221", "122222222221", "122222222221", ".1222222221.", "..12222221..", "...122221...", "....2222....", "....3333....", ".....11....."] },
+const MEU_ID="jogador1";
+const ITEM_ICON={pocao:"🧪",erva:"🌿",odre_agua:"🏺",espada_madeira:"⚔️",espada_ferro:"🗡️",escudo_madeira:"🛡️",tunica_pano:"👘",armadura_couro:"🥋",arco_madeira:"🏹",flecha:"➶",pele_lobo:"🟫"};
+const PIXEL_PATTERNS={
+ jogador:{cores:{1:"#34261e",2:"#d9a06c",3:"#315e9b",4:"#e6c548",5:"#493328"},linhas:["....1111....","...122221...","...122221...","....1111....","...333333...","..33333333..","..33333333..","...333333...","....3333....","....5555....","...555555...","...555555...","...555555...","...55..55...","...55..55...","..555..555.."]},
+ eliabe:{cores:{1:"#4a2f20",2:"#c98d5b",3:"#446e8a",4:"#e4d6bd",5:"#76513b"},linhas:["....1111....","...122221...","...122221...","....1111....","...444444...","..44444444..","..33333333..","...333333...","....3333....","....3333....","....3333....","....5555....","...555555...","...555555...","...55..55...","..555..555.."]},
+ noemi:{cores:{1:"#553b2d",2:"#d69a6b",3:"#874d36",4:"#c7a45b",5:"#473225"},linhas:["....1111....","...122221...","...122221...","..11111111..","...444444...","..44444444..","..33333333..",".3333333333.",".3333333333.","..33333333..","..33333333..","...333333...","...555555...","...555555...","..555..555..","..555..555.."]},
+ lobo:{cores:{1:"#713c35",2:"#a85243",3:"#e6c8a8",4:"#2a1d1a"},linhas:["...1....1...","..111..111..",".1111111111.","111221122111","112221122211",".1222222221.","..22222222..","...222222...","..222..222..",".2222..2222.",".2222..2222.","..44....44.."]},
+ escorpiao:{cores:{1:"#462519",2:"#9e492b",3:"#d5773d",4:"#f0c34e"},linhas:["......11....",".....1331...",".....1331...","......11....","..11..11..11",".1331111331.","113333333311",".1333333331.","..11333311..",".11.3333.11.","11..3333..11","....3333...."]},
+ erva:{cores:{1:"#285b2b",2:"#63b84e",3:"#a3d85d",4:"#785531"},linhas:["......2.....",".....222....","....2222....","......2.....","..222.2.222..",".23332222332.","..222.2.222..","......2.....","......2.....",".....444....",".....444....",".....444...."]},
+ odre:{cores:{1:"#503521",2:"#a66b39",3:"#d3a657",4:"#e9d29a"},linhas:["....1111....","....3333....","....1111....","...222222...","..22222222..",".2222222222.",".2222222222.",".2222442222.",".2222442222.","..22222222..","...222222...","....1111...."]},
+ flecha:{cores:{1:"#4b3321",2:"#d8d0b5",3:"#b94c36"},linhas:["..........1.",".........111","..........1.","...222221...","..222221....",".222221.....","..222221....","...222221...","..........1.","..........1.","..........1.","..........1."]},
+ pele_lobo:{cores:{1:"#57352b",2:"#a85b48",3:"#d0956e"},linhas:["...111111...","..12222221..",".1222222221.","122222222221","122222222221","122222222221",".1222222221.","..12222221..","...122221...","....2222....","....3333....",".....11....."]}
 };
+class Cena extends Phaser.Scene{
+ create(){this.teclas=this.input.keyboard.addKeys({w:"W",a:"A",s:"S",d:"D",q:"Q",e:"E",z:"Z",c:"C",f:"F",space:"SPACE",r:"R",h:"H",i:"I",up:"UP",down:"DOWN",left:"LEFT",right:"RIGHT"});this.p=Mundo.entrar(MEU_ID);this.areaAtual=this.p.area;this.proximoPasso=0;this.proximoAutoAtaque=0;this.alvoId=null;this.respawns=new Set();this.inimigosVisuais={};this.spritesItens={};this.criarTexturas();this.desenharMapa();this.desenharPassagem();this.sprite=this.add.image(this.p.x*32+16,this.p.y*32+16,"jogador").setDepth(6);this.desenharEntidades();this.input.keyboard.addCapture(["UP","DOWN","LEFT","RIGHT","SPACE"]);window.gameScene=this;window.atualizarInterface?.();window.mostrarMensagem?.("Bem-vindo! Arraste os itens para os espaços de equipamento.");this.events.once("shutdown",()=>{if(window.gameScene===this)window.gameScene=null})}
+ criarTexturas(){for(const[n,d]of Object.entries(PIXEL_PATTERNS)){const g=this.make.graphics({x:0,y:0,add:false});d.linhas.forEach((l,y)=>[...l].forEach((ch,x)=>{if(d.cores[ch]){g.fillStyle(Phaser.Display.Color.HexStringToColor(d.cores[ch]).color,1);g.fillRect(x*2,y*2,2,2)}}));g.generateTexture(n,24,32);g.destroy()}for(const a of["canaan","deserto"]){const g=this.make.graphics({x:0,y:0,add:false});if(a==="canaan"){g.fillStyle(0x3e722f);g.fillRect(4,5,24,23);g.fillStyle(0x579344);g.fillRect(1,3,12,13);g.fillRect(18,0,13,14);g.fillStyle(0x2c5228);g.fillRect(8,11,15,14)}else{g.fillStyle(0x8a6840);g.fillRect(4,11,24,17);g.fillStyle(0xb28b55);g.fillRect(1,7,20,12);g.fillStyle(0x715331);g.fillRect(8,16,18,10)}g.generateTexture("obstaculo_"+a,32,32);g.destroy()}}
+ desenharMapa(){const m=mapas[this.areaAtual];for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){const cx=x*32+16,cy=y*32+16,color=this.areaAtual==="canaan"?(m[y][x]?0x688954:0x8fbf6a):(m[y][x]?0x9b7b4d:0xd6bd78);this.add.rectangle(cx,cy,32,32,color).setStrokeStyle(1,0x342b1d,.08);if(m[y][x])this.add.image(cx,cy,"obstaculo_"+this.areaAtual).setDepth(1);else if(this.areaAtual==="deserto"&&(x*13+y*7)%37===0)this.add.circle(cx,cy,2,0x9b7b4d,.38).setDepth(1)}}
+ desenharPassagem(){const p=areas[this.areaAtual].passagem,x=p.x*32+16,y=p.y*32+16;this.add.circle(x,y,12,0x22c9e8,.85).setStrokeStyle(3,0xe7fcff).setDepth(2);this.add.text(x,y-25,"PASSAGEM",{fontFamily:"Arial",fontSize:"10px",color:"#fff",backgroundColor:"#173d49",padding:{x:3,y:2}}).setOrigin(.5).setDepth(3)}
+ desenharEntidades(){for(const n of Object.values(npcs).filter(n=>n.area===this.p.area)){const x=n.x*32+16,y=n.y*32+16,im=this.add.image(0,5,n.id==="viajante1"?"eliabe":"noemi"),label=this.add.text(0,-18,n.nome,{fontFamily:"Arial",fontSize:"11px",color:"#fff",backgroundColor:"#222",padding:{x:3,y:1}}).setOrigin(.5),c=this.add.container(x,y,[im,label]).setDepth(7).setSize(34,42).setInteractive(new Phaser.Geom.Rectangle(-17,-21,34,42),Phaser.Geom.Rectangle.Contains);c.on("pointerdown",()=>{const r=Mundo.executar(MEU_ID,{tipo:"interagir",alvoId:n.id});this.mensagem(r.mensagem);window.atualizarInterface?.()});c.on("pointerover",()=>this.game.canvas.style.cursor="pointer");c.on("pointerout",()=>this.game.canvas.style.cursor="crosshair")}
+ const collection=this.p.area==="canaan"?ervas:odres,owned=this.p.area==="canaan"?this.p.ervasColetadas:this.p.odresColetados;for(const it of collection)if(!owned.includes(it.id))this.addItemVisual(it,this.p.area==="canaan"?"erva":"odre",this.p.area==="canaan"?"erva":"odre_agua");this.criarSaques();for(const e of Object.values(inimigos).filter(e=>e.area===this.p.area)){if(Mundo.obterVidaInimigo(MEU_ID,e.id)>0)this.criarInimigo(e);else this.agendarRespawn(e.id)}}
+ addItemVisual(item,texture,itemId){const s=this.add.image(item.x*32+16,item.y*32+16,texture).setDepth(4);s.setData("itemId",itemId);this.spritesItens[item.id]=s}
+ criarSaques(){for(const s of this.p.saqueNoChao||[]){if(s.area!==this.areaAtual||this.spritesItens[s.id])continue;this.addItemVisual(s,s.item==="flecha"?"flecha":"pele_lobo",s.item)}}
+ criarInimigo(e){this.inimigosVisuais[e.id]?.destroy(true);const im=this.add.image(0,5,e.id==="lobo1"?"lobo":"escorpiao"),label=this.add.text(0,-17,e.nome,{fontFamily:"Arial",fontSize:"10px",color:"#fff",backgroundColor:"#222",padding:{x:3,y:1}}).setOrigin(.5),c=this.add.container(e.x*32+16,e.y*32+16,[im,label]).setDepth(7).setSize(34,38).setInteractive(new Phaser.Geom.Rectangle(-17,-19,34,38),Phaser.Geom.Rectangle.Contains);c.on("pointerdown",()=>this.selecionarAlvo(e.id));c.on("pointerover",()=>this.game.canvas.style.cursor="crosshair");this.inimigosVisuais[e.id]=c}
+ agendarRespawn(id){if(this.respawns.has(id))return;this.respawns.add(id);this.time.delayedCall(TEMPO_RESPAWN_INIMIGO,()=>{this.respawns.delete(id);const e=inimigos[id];if(this.areaAtual===e.area&&Mundo.reaparecerInimigo(MEU_ID,id)){this.criarInimigo(e);this.mensagem(`${e.nome} reapareceu.`);window.atualizarInterface?.()}})}
+ selecionarAlvo(id){if(!inimigos[id]||Mundo.obterVidaInimigo(MEU_ID,id)<=0)return;this.alvoId=id;this.proximoAutoAtaque=Date.now()+INTERVALO_AUTO_ATAQUE;window.atualizarInterface?.();this.mensagem(`${inimigos[id].nome} selecionado; autoataque a cada 2 segundos.`)}
+ mensagem(t){if(t)window.mostrarMensagem?.(t)}
+ interagir(){const r=Mundo.executar(MEU_ID,{tipo:"interagir"});this.mensagem(r.mensagem);window.atualizarInterface?.()}
+ atacarAlvo(distancia=false){let id=this.alvoId;if(!id){const e=Object.values(inimigos).find(x=>x.area===this.areaAtual&&Mundo.obterVidaInimigo(MEU_ID,x.id)>0&&Math.max(Math.abs(this.p.x-x.x),Math.abs(this.p.y-x.y))<=1);if(e)id=e.id}const r=Mundo.executar(MEU_ID,{tipo:distancia?"atacarDistancia":"atacar",alvoId:id});this.mensagem(r.mensagem);this.aposAtaque(r)}
+ autoAtacar(){const e=inimigos[this.alvoId];if(!e||Mundo.obterVidaInimigo(MEU_ID,e.id)<=0){this.alvoId=null;window.atualizarInterface?.();return}const dx=Math.abs(e.x-this.p.x),dy=Math.abs(e.y-this.p.y),aligned=dx===0||dy===0||dx===dy,dist=Math.max(dx,dy);const canShoot=this.p.equipamento.arco&&Mundo.contarItem(MEU_ID,"flecha")>0&&aligned&&dist<=5;this.atacarAlvo(!!canShoot)}
+ aposAtaque(r){if(r.derrotado){const id=r.inimigoId;this.inimigosVisuais[id]?.destroy(true);delete this.inimigosVisuais[id];this.agendarRespawn(id);this.alvoId=null}this.p=Mundo.jogadores[MEU_ID];this.criarSaques();window.atualizarInterface?.()}
+ usarPocao(){const r=Mundo.executar(MEU_ID,{tipo:"usarPocao"});this.mensagem(r.mensagem);window.atualizarInterface?.()}
+ usarHotkey(i){const id=this.p.hotkeys[i];if(id==="pocao")this.usarPocao();else if(id)this.mensagem("Este item não é utilizável no momento.")}
+ mover(dx,dy){const r=Mundo.executar(MEU_ID,{tipo:"mover",dx,dy});if(!r.ok)return;if(r.areaAlterada){this.scene.restart();return}this.p=Mundo.jogadores[MEU_ID];if(r.itemColetado){this.spritesItens[r.itemColetado]?.destroy();delete this.spritesItens[r.itemColetado];this.mensagem(r.mensagem);window.atualizarInterface?.()}else if(r.mensagem)this.mensagem(r.mensagem);this.tweens.add({targets:this.sprite,x:this.p.x*32+16,y:this.p.y*32+16,duration:90});window.atualizarInterface?.()}
+ update(time){if(Phaser.Input.Keyboard.JustDown(this.teclas.f))this.interagir();if(Phaser.Input.Keyboard.JustDown(this.teclas.space))this.atacarAlvo(false);if(Phaser.Input.Keyboard.JustDown(this.teclas.r))this.atacarAlvo(true);if(Phaser.Input.Keyboard.JustDown(this.teclas.h))this.usarPocao();if(Phaser.Input.Keyboard.JustDown(this.teclas.i))document.body.classList.toggle("hideBags");if(this.alvoId&&Date.now()>=this.proximoAutoAtaque){this.proximoAutoAtaque=Date.now()+INTERVALO_AUTO_ATAQUE;this.autoAtacar()}
+ const ev=Mundo.atualizar(MEU_ID,Date.now());for(const x of ev){if(x.tipo==="inimigoMoveu"&&this.inimigosVisuais[x.id])this.tweens.add({targets:this.inimigosVisuais[x.id],x:inimigos[x.id].x*32+16,y:inimigos[x.id].y*32+16,duration:200});if(x.tipo==="jogadorAtingido")this.mensagem(x.mensagem);if(x.tipo==="renasceu"){this.alvoId=null;this.mensagem(x.mensagem);this.scene.restart();return}}if(ev.length)window.atualizarInterface?.();if(time<this.proximoPasso)return;let dx=0,dy=0;if(this.teclas.a.isDown||this.teclas.left.isDown)dx=-1;else if(this.teclas.d.isDown||this.teclas.right.isDown)dx=1;if(this.teclas.w.isDown||this.teclas.up.isDown)dy=-1;else if(this.teclas.s.isDown||this.teclas.down.isDown)dy=1;if(this.teclas.q.isDown){dx=-1;dy=-1}else if(this.teclas.e.isDown){dx=1;dy=-1}else if(this.teclas.z.isDown){dx=-1;dy=1}else if(this.teclas.c.isDown){dx=1;dy=1}if(dx||dy){this.proximoPasso=time+140;this.mover(dx,dy)}}}
+new Phaser.Game({type:Phaser.AUTO,parent:"game-root",width:COLS*TILE,height:ROWS*TILE,pixelArt:true,scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},scene:Cena});
 
-class Cena extends Phaser.Scene {
-  create() {
-    this.teclas = this.input.keyboard.createCursorKeys();
-    this.teclaE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.teclaAtaque = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    this.teclaPocao = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
-    this.teclaInventario = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.I);
-    this.teclasEquipamento = {
-      arma: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
-      escudo: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
-      armadura: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
-      arco: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
-    };
-    this.teclaDistancia = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    this.inventarioAberto = false;
-    this.personagem = Mundo.entrar(MEU_ID);
-    this.areaAtual = this.personagem.area;
-    this.movendo = false;
-    this.respawnsAgendados = new Set();
-    this.spritesInimigos = {};
-    this.spritesItens = {};
-    this.criarTexturas();
-    this.desenharMapa();
-    this.desenharPassagem();
-    this.sprite = this.add.image(this.personagem.x * TILE + TILE / 2, this.personagem.y * TILE + TILE / 2, "jogador").setDepth(6);
-    this.sprite.setScale(1);
-    this.desenharEntidades();
-    this.criarHud();
-    this.criarPainelInventario();
-    this.atualizarStatus();
-    if (this.personagem.avisoAtualizacao) {
-      this.dialogo.setText(this.personagem.avisoAtualizacao);
-      delete this.personagem.avisoAtualizacao;
-      Storage.salvar(this.personagem);
-    }
-  }
-  criarTexturas() {
-    for (const [nome, def] of Object.entries(PIXEL_PATTERNS)) {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
-      def.linhas.forEach((linha, y) => [...linha].forEach((ch, x) => { if (def.cores[ch]) { g.fillStyle(Phaser.Display.Color.HexStringToColor(def.cores[ch]).color, 1); g.fillRect(x * 2, y * 2, 2, 2); } }));
-      g.generateTexture(nome, 24, 24); g.destroy();
-    }
-    for (const areaId of ["canaan", "deserto"]) {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
-      if (areaId === "canaan") {
-        g.fillStyle(0x3e722f); g.fillRect(4, 5, 24, 23); g.fillStyle(0x579344); g.fillRect(1, 3, 12, 13); g.fillRect(18, 0, 13, 14); g.fillStyle(0x2c5228); g.fillRect(8, 11, 15, 14);
-      } else {
-        g.fillStyle(0x8a6840); g.fillRect(4, 11, 24, 17); g.fillStyle(0xb28b55); g.fillRect(1, 7, 20, 12); g.fillStyle(0x715331); g.fillRect(8, 16, 18, 10);
-      }
-      g.generateTexture("obstaculo_" + areaId, 32, 32); g.destroy();
-    }
-  }
-  desenharMapa() {
-    const mapa = mapas[this.areaAtual];
-    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-      const cx = x * TILE + TILE / 2, cy = y * TILE + TILE / 2;
-      const cor = this.areaAtual === "canaan" ? (mapa[y][x] ? 0x688954 : 0x8fbf6a) : (mapa[y][x] ? 0x9b7b4d : 0xd6bd78);
-      this.add.rectangle(cx, cy, TILE, TILE, cor).setStrokeStyle(1, 0x342b1d, 0.08);
-      if (mapa[y][x] === 1) this.add.image(cx, cy, "obstaculo_" + this.areaAtual).setDepth(1);
-      else if (this.areaAtual === "deserto" && ((x * 13 + y * 7) % 37 === 0)) this.add.circle(cx, cy, 2, 0x9b7b4d, 0.38).setDepth(1);
-    }
-  }
-  desenharPassagem() {
-    const p = areas[this.areaAtual].passagem, x = p.x * TILE + 16, y = p.y * TILE + 16;
-    this.add.circle(x, y, 12, 0x22c9e8, 0.85).setStrokeStyle(3, 0xe7fcff).setDepth(2);
-    this.add.text(x, y - 25, "PASSAGEM", { fontFamily: "Arial", fontSize: "10px", color: "#fff", backgroundColor: "#173d49", padding: { x: 3, y: 2 } }).setOrigin(0.5).setDepth(3);
-  }
-  desenharEntidades() {
-    const p = this.personagem;
-    for (const npc of Object.values(npcs).filter((n) => n.area === p.area)) {
-      const x = npc.x * TILE + 16, y = npc.y * TILE + 16;
-      this.add.image(x, y, npc.id === "viajante1" ? "eliabe" : "noemi").setDepth(5);
-      this.add.text(x, y - 27, npc.nome, { fontFamily: "Arial", fontSize: "12px", color: "#fff", backgroundColor: "#222", padding: { x: 4, y: 2 } }).setOrigin(0.5).setDepth(7);
-    }
-    if (p.area === "canaan") {
-      for (const item of ervas) if (!p.ervasColetadas.includes(item.id)) this.criarItem(item, "erva", "erva");
-    } else {
-      for (const item of odres) if (!p.odresColetados.includes(item.id)) this.criarItem(item, "odre", "odre_agua");
-    }
-    this.criarSaques();
-    for (const e of Object.values(inimigos).filter((x) => x.area === p.area)) {
-      if (Mundo.obterVidaInimigo(MEU_ID, e.id) > 0) this.criarInimigo(e);
-      else this.agendarRespawn(e.id);
-    }
-  }
-  criarItem(item, textura, itemId) {
-    this.spritesItens[item.id] = this.add.image(item.x * TILE + 16, item.y * TILE + 16, textura).setDepth(4);
-    this.spritesItens[item.id].setData("itemId", itemId);
-  }
-  criarSaques() {
-    for (const saque of this.personagem.saqueNoChao || []) {
-      if (saque.area !== this.areaAtual || this.spritesItens[saque.id]) continue;
-      const textura = saque.item === "flecha" ? "flecha" : "pele_lobo";
-      this.criarItem({ id: saque.id, x: saque.x, y: saque.y }, textura, saque.item);
-    }
-  }
-  criarInimigo(e) {
-    if (this.spritesInimigos[e.id]) this.spritesInimigos[e.id].destroy(true);
-    const texture = e.id === "lobo1" ? "lobo" : "escorpiao";
-    const x = e.x * TILE + 16, y = e.y * TILE + 16;
-    const imagem = this.add.image(0, 7, texture);
-    const etiqueta = this.add.text(0, -15, e.nome, { fontFamily: "Arial", fontSize: "11px", color: "#fff", backgroundColor: "#222", padding: { x: 3, y: 1 } }).setOrigin(0.5);
-    this.spritesInimigos[e.id] = this.add.container(x, y, [imagem, etiqueta]).setDepth(7);
-  }
-  agendarRespawn(enemyId) {
-    if (this.respawnsAgendados.has(enemyId)) return;
-    this.respawnsAgendados.add(enemyId);
-    this.time.delayedCall(TEMPO_RESPAWN_INIMIGO, () => {
-      this.respawnsAgendados.delete(enemyId);
-      const e = inimigos[enemyId];
-      if (this.areaAtual === e.area && Mundo.reaparecerInimigo(MEU_ID, enemyId)) {
-        this.criarInimigo(e); this.dialogo.setText(`${e.nome} reapareceu.`); this.atualizarStatus();
-      }
-    });
-  }
-  criarHud() {
-    const box = { fontFamily: "Arial", fontSize: "14px", color: "#fff", backgroundColor: "#222d", padding: { x: 6, y: 4 } };
-    this.statusVida = this.add.text(10, 8, "", { ...box, fontSize: "15px" }).setDepth(10);
-    this.statusArea = this.add.text(400, 8, "", box).setOrigin(0.5, 0).setDepth(10);
-    this.statusInimigo = this.add.text(790, 8, "", box).setOrigin(1, 0).setDepth(10);
-    this.statusXP = this.add.text(10, 37, "", box).setDepth(10);
-    this.statusInventario = this.add.text(400, 37, "", box).setOrigin(0.5, 0).setDepth(10);
-    this.statusMissao = this.add.text(10, 70, "", { ...box, fontSize: "13px", wordWrap: { width: 770 } }).setDepth(10);
-    this.statusCarga = this.add.text(10, 96, "", { ...box, fontSize: "12px" }).setDepth(10);
-    this.add.rectangle(400, 548, 790, 48, 0x111111, 0.9).setScrollFactor(0).setDepth(10);
-    this.dialogo = this.add.text(16, 531, "Setas: andar | E: conversar | Espaço: corpo a corpo | R: flecha | H: poção | I: mochila", { fontFamily: "Arial", fontSize: "16px", color: "#fff", wordWrap: { width: 760 } }).setScrollFactor(0).setDepth(11);
-  }
-  criarPainelInventario() {
-    this.inventarioSombra = this.add.rectangle(400, 288, 800, 576, 0x000000, 0.74)
-      .setScrollFactor(0).setDepth(20).setVisible(false)
-      .setInteractive().on("pointerdown", () => {
-        if (this.inventarioAberto) { this.inventarioAberto = false; this.atualizarPainelInventario(); }
-      });
-    this.inventarioFundo = this.add.rectangle(400, 288, 660, 480, 0x222019, 0.99)
-      .setStrokeStyle(3, 0xd6bd78).setScrollFactor(0).setDepth(21).setVisible(false);
-    this.inventarioTitulo = this.add.text(400, 58, "MOCHILA E EQUIPAMENTO", {
-      fontFamily: "Arial", fontSize: "22px", bold: true, color: "#f5df9a"
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
-    this.inventarioTexto = this.add.text(95, 100, "", {
-      fontFamily: "Arial", fontSize: "14px", color: "#fff", lineSpacing: 6,
-      wordWrap: { width: 330 }
-    }).setScrollFactor(0).setDepth(22).setVisible(false);
-    this.inventarioAjuda = this.add.text(400, 520,
-      "Clique em um botão ou use 1/2/3/4. I fecha a mochila.", {
-        fontFamily: "Arial", fontSize: "14px", color: "#f5df9a"
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
-    this.botoesEquipamento = {};
-    const botoes = [
-      { slot: "arma", tecla: "1", y: 155 },
-      { slot: "arco", tecla: "4", y: 250 },
-      { slot: "escudo", tecla: "2", y: 345 },
-      { slot: "armadura", tecla: "3", y: 440 },
-    ];
-    for (const item of botoes) {
-      const fundo = this.add.rectangle(555, item.y, 250, 72, 0x4b432f)
-        .setStrokeStyle(2, 0xd6bd78).setScrollFactor(0).setDepth(22).setVisible(false)
-        .setInteractive({ useHandCursor: true });
-      const texto = this.add.text(555, item.y, "", {
-        fontFamily: "Arial", fontSize: "13px", color: "#fff", align: "center",
-        wordWrap: { width: 225 }, lineSpacing: 3
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(23).setVisible(false);
-      fundo.on("pointerdown", () => this.acionarEquipamento(item.slot));
-      this.botoesEquipamento[item.slot] = { fundo, texto, tecla: item.tecla };
-    }
-    this.atualizarPainelInventario();
-  }
-  efeitoItem(id) {
-    const item = ITENS[id];
-    if (!item) return "";
-    if (item.tipo === "arma") return `+${item.bonus || 0} dano corpo a corpo`;
-    if (item.tipo === "arma_distancia") return `+${item.bonus || 0} dano à distância`;
-    if (item.tipo === "armadura" || item.tipo === "escudo") return `+${item.defesa || 0} defesa`;
-    if (id === "pocao") return `cura ${CURA_POCAO} de vida`;
-    return `${pesoItem(id)} kg`;
-  }
-  textoBotaoEquipamento(slot, tecla) {
-    const p = this.personagem;
-    const atual = p.equipamento?.[slot];
-    const tipoEsperado = slot === "arco" ? "arma_distancia" : slot;
-    const candidatos = p.inventario
-      .filter((id) => ITENS[id]?.tipo === tipoEsperado)
-      .sort((a, b) => (ITENS[b].bonus || ITENS[b].defesa || 0) - (ITENS[a].bonus || ITENS[a].defesa || 0));
-    const titulo = slot === "arma" ? "ARMA" : slot === "arco" ? "ARCO" : slot === "escudo" ? "ESCUDO" : "ARMADURA";
-    if (candidatos.length) {
-      const escolhido = candidatos[0];
-      const acao = atual ? "Trocar" : "Equipar";
-      return `${tecla} — ${acao}: ${nomeItem(escolhido)}\n${this.efeitoItem(escolhido)}${atual ? `\nAtual: ${nomeItem(atual)}` : ""}`;
-    }
-    if (atual) return `${tecla} — Guardar ${titulo.toLowerCase()}\n${nomeItem(atual)} (${this.efeitoItem(atual)})`;
-    return `${tecla} — ${titulo}\nNenhum item disponível`;
-  }
-  atualizarPainelInventario() {
-    if (!this.inventarioTexto) return;
-    const p = this.personagem, grupos = {};
-    for (const id of p.inventario) grupos[id] = (grupos[id] || 0) + 1;
-    const linhasItens = Object.keys(grupos).length
-      ? Object.entries(grupos).map(([id, qtd]) =>
-          `• ${nomeItem(id)}${qtd > 1 ? ` ×${qtd}` : ""} — ${this.efeitoItem(id)}`
-        ).join("\n")
-      : "Mochila vazia";
-    const eq = p.equipamento || {};
-    const linhasEquipados = ["arma", "arco", "escudo", "armadura"].map((slot) => {
-      const id = eq[slot];
-      const rotulo = slot === "arma" ? "Arma" : slot === "arco" ? "Arco" : slot === "escudo" ? "Escudo" : "Armadura";
-      return `${rotulo}: ${id ? `${nomeItem(id)} (${this.efeitoItem(id)})` : "—"}`;
-    }).join("\n");
-    const danoArma = bonusArma(p);
-    const danoDistancia = 15 + Math.max(0, p.nivel - 1) * 5 + bonusArco(p);
-    const texto = `Carga: ${pesoCarregado(p)}/${capacidadeCarga(p)} kg\n\nEQUIPADO\n${linhasEquipados}\nDefesa total: ${defesaEquipamento(p)}\n\nEFEITO NO COMBATE\nDano corpo a corpo: ${danoArma} de bônus da arma\nDano à distância: ${danoDistancia} por flecha (15 base + nível + arco)\nFlechas: ${Mundo.contarItem(MEU_ID, "flecha")} | alcance: até 5 casas em linha reta\nDano recebido: reduz pela defesa total (mínimo 1)\n\nITENS NA MOCHILA\n${linhasItens}`;
-    this.inventarioTexto.setText(texto);
-    const visivel = this.inventarioAberto;
-    for (const item of [this.inventarioSombra, this.inventarioFundo, this.inventarioTitulo, this.inventarioTexto, this.inventarioAjuda]) item.setVisible(visivel);
-    for (const [slot, botao] of Object.entries(this.botoesEquipamento || {})) {
-      botao.texto.setText(this.textoBotaoEquipamento(slot, botao.tecla));
-      botao.fundo.setVisible(visivel); botao.texto.setVisible(visivel);
-    }
-  }
-  acionarEquipamento(slot) {
-    const r = Mundo.executar(MEU_ID, { tipo: "alternarEquipamento", slot });
-    if (r.mensagem) this.dialogo.setText(r.mensagem);
-    this.personagem = Mundo.jogadores[MEU_ID];
-    this.atualizarStatus();
-  }
-  textoMissao() {
-    const p = this.personagem;
-    if (p.area === "canaan") {
-      if (p.missaoEliabe.status === "nao_iniciada") return "Missão: fale com Eliabe.";
-      if (p.missaoEliabe.status === "em_andamento") return p.missaoEliabe.loboDerrotado ? "Missão: volte a Eliabe." : "Missão: derrote o lobo e volte a Eliabe.";
-      if (p.missaoErvas.status === "bloqueada") return "Missão: fale com Eliabe para outra tarefa.";
-      if (p.missaoErvas.status === "em_andamento") return `Missão: colete ervas novas (${p.missaoErvas.ervasMissaoColetadas.length}/${QUANTIDADE_ERVAS_MISSAO}).`;
-      return "Tarefas de Canaã concluídas.";
-    }
-    const m = p.missaoDeserto;
-    if (m.status === "bloqueada") return "Missão: encontre Noemi perto do acampamento.";
-    if (m.status === "em_andamento") return `Missão: encontre 3 odres de água (${m.odresMissaoColetados.length}/${QUANTIDADE_ODRES_MISSAO}) e volte a Noemi.`;
-    return "Missão do Deserto concluída. Explore a região!";
-  }
-  atualizarStatus() {
-    const p = this.personagem, maxVida = vidaMaxima(p), next = limiarNivel(p.nivel);
-    this.statusArea.setText(`Área: ${areas[p.area].nome}`);
-    this.statusVida.setText(`Vida: ${p.vida}/${maxVida}`);
-    this.statusXP.setText(`Nível ${p.nivel} | XP: ${p.xp}/${next}`);
-    const inv = `Poções: ${Mundo.contarItem(MEU_ID, "pocao")} | Ervas: ${Mundo.contarItem(MEU_ID, "erva")} | Odres: ${Mundo.contarItem(MEU_ID, "odre_agua")}`;
-    this.statusInventario.setText(inv);
-    this.statusMissao.setText(this.textoMissao());
-    const eq = p.equipamento || {};
-    this.statusCarga.setText(`Carga ${pesoCarregado(p)}/${capacidadeCarga(p)} kg | Arma: +${bonusArma(p)} | Arco: +${bonusArco(p)} (${Mundo.contarItem(MEU_ID, "flecha")} flechas) | Defesa: ${defesaEquipamento(p)} | I: mochila`);
-    this.atualizarPainelInventario();
-    const e = Object.values(inimigos).find((x) => x.area === p.area);
-    if (!e) this.statusInimigo.setText("");
-    else { const hp = Mundo.obterVidaInimigo(MEU_ID, e.id); this.statusInimigo.setText(hp > 0 ? `${e.nome}: ${hp}/${e.vidaMaxima}` : `${e.nome}: aguardando respawn`); }
-  }
-  interagir() {
-    const r = Mundo.executar(MEU_ID, { tipo: "interagir" });
-    if (r.mensagem) this.dialogo.setText(r.mensagem);
-    if (r.ok) this.atualizarStatus();
-  }
-  atacar() {
-    const r = Mundo.executar(MEU_ID, { tipo: "atacar" });
-    if (r.mensagem) this.dialogo.setText(r.mensagem);
-    if (r.derrotado) { const id = r.inimigoId; if (this.spritesInimigos[id]) { this.spritesInimigos[id].destroy(true); delete this.spritesInimigos[id]; } this.agendarRespawn(id); }
-    this.personagem = Mundo.jogadores[MEU_ID];
-    this.criarSaques();
-    this.atualizarStatus();
-  }
-  atacarDistancia() {
-    const r = Mundo.executar(MEU_ID, { tipo: "atacarDistancia" });
-    if (r.mensagem) this.dialogo.setText(r.mensagem);
-    if (r.derrotado) { const id = r.inimigoId; if (this.spritesInimigos[id]) { this.spritesInimigos[id].destroy(true); delete this.spritesInimigos[id]; } this.agendarRespawn(id); }
-    this.personagem = Mundo.jogadores[MEU_ID];
-    this.criarSaques();
-    this.atualizarStatus();
-  }
-  update() {
-    const eventos = Mundo.atualizar(MEU_ID, Date.now());
-    for (const ev of eventos) {
-      if (ev.tipo === "inimigoMoveu" && this.spritesInimigos[ev.id]) { const e = inimigos[ev.id]; this.tweens.add({ targets: this.spritesInimigos[ev.id], x: e.x * TILE + 16, y: e.y * TILE + 16, duration: 250 }); }
-      if (ev.tipo === "jogadorAtingido") this.dialogo.setText(ev.mensagem);
-      if (ev.tipo === "renasceu") { this.scene.restart(); return; }
-    }
-    if (eventos.length) this.atualizarStatus();
-    if (Phaser.Input.Keyboard.JustDown(this.teclaInventario)) {
-      this.inventarioAberto = !this.inventarioAberto;
-      this.atualizarPainelInventario();
-    }
-    if (this.inventarioAberto) {
-      for (const [slot, tecla] of Object.entries(this.teclasEquipamento)) {
-        if (Phaser.Input.Keyboard.JustDown(tecla)) {
-          this.acionarEquipamento(slot);
-        }
-      }
-      return;
-    }
-    if (Phaser.Input.Keyboard.JustDown(this.teclaE)) this.interagir();
-    if (Phaser.Input.Keyboard.JustDown(this.teclaAtaque)) this.atacar();
-    if (Phaser.Input.Keyboard.JustDown(this.teclaDistancia)) this.atacarDistancia();
-    if (Phaser.Input.Keyboard.JustDown(this.teclaPocao)) { const r = Mundo.executar(MEU_ID, { tipo: "usarPocao" }); if (r.mensagem) this.dialogo.setText(r.mensagem); this.atualizarStatus(); }
-    if (this.movendo) return;
-    let dx = 0, dy = 0;
-    if (this.teclas.left.isDown) dx = -1; else if (this.teclas.right.isDown) dx = 1; else if (this.teclas.up.isDown) dy = -1; else if (this.teclas.down.isDown) dy = 1;
-    if (!dx && !dy) return;
-    const r = Mundo.executar(MEU_ID, { tipo: "mover", dx, dy });
-    if (!r.ok) return;
-    if (r.areaAlterada) { this.scene.restart(); return; }
-    if (r.mensagem) this.dialogo.setText(r.mensagem);
-    if (r.itemColetado) {
-      if (this.spritesItens[r.itemColetado]) { this.spritesItens[r.itemColetado].destroy(); delete this.spritesItens[r.itemColetado]; }
-      this.personagem = Mundo.jogadores[MEU_ID];
-      this.dialogo.setText(r.mensagem); this.atualizarStatus();
-    }
-    this.personagem = Mundo.jogadores[MEU_ID];
-    this.movendo = true;
-    this.tweens.add({ targets: this.sprite, x: this.personagem.x * TILE + 16, y: this.personagem.y * TILE + 16, duration: 120, onComplete: () => { this.movendo = false; } });
-  }
-}
-new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: COLS * TILE, height: ROWS * TILE, pixelArt: true, scene: Cena });
+const ITEM_TYPES={consumivel:["consumivel"],gear:["arma","arma_distancia","escudo","armadura"],other:["recurso","municao"]};
+function groups(items){const g={};for(const i of items)g[i]=(g[i]||0)+1;return g}
+function atualizarInterface(){const p=Mundo.jogadores[MEU_ID];if(!p)return;const g=groups(p.inventario);document.querySelector("#areaName").textContent=areas[p.area].nome;const target=window.gameScene?.alvoId;document.querySelector("#targetLabel").textContent=target?`Alvo: ${inimigos[target].nome}`:"Alvo: nenhum";document.querySelector("#weightText").textContent=`${pesoCarregado(p).toFixed(1)} / ${capacidadeCarga(p)} kg`;const max=vidaMaxima(p);document.querySelector("#hpText").textContent=`${p.vida} / ${max}`;document.querySelector("#hpBar").style.width=`${100*p.vida/max}%`;document.querySelector("#levelText").textContent=p.nivel;document.querySelector("#xpBar").style.width=`${Math.min(100,100*p.xp/limiarNivel(p.nivel))}%`;const hand=bonusArma(p),ranged=15+(p.nivel-1)*5+bonusArco(p);document.querySelector("#combatStats").textContent=`Dano corpo a corpo ${10+(p.nivel-1)*5+hand} · À distância ${ranged} · Defesa ${defesaEquipamento(p)} · Carga ${pesoCarregado(p).toFixed(1)}/${capacidadeCarga(p)} kg`;
+ const quest=document.querySelector("#questText");if(p.area==="canaan"){quest.textContent=p.missaoEliabe.status==="nao_iniciada"?"Fale com Eliabe para iniciar.":p.missaoEliabe.status==="em_andamento"?(p.missaoEliabe.loboDerrotado?"Volte a Eliabe para a recompensa.":"Derrote o lobo e volte a Eliabe."):p.missaoErvas.status==="bloqueada"?"Fale com Eliabe para a próxima tarefa.":p.missaoErvas.status==="em_andamento"?`Colete ervas novas: ${p.missaoErvas.ervasMissaoColetadas.length}/3.`:"Tarefas de Canaã concluídas."}else quest.textContent=p.missaoDeserto.status==="bloqueada"?"Encontre Noemi no acampamento.":p.missaoDeserto.status==="em_andamento"?`Encontre odres de água: ${p.missaoDeserto.odresMissaoColetados.length}/3.`:"Missão do Deserto concluída.";
+ const ids=[...new Set([...Object.keys(g),...Object.values(p.equipamento).filter(Boolean)])];const inv=document.querySelector("#inventoryGrid"),store=document.querySelector("#storageGrid");inv.innerHTML="";store.innerHTML="";for(const id of ids){if(!g[id])continue;const item=ITENS[id];if(!item)continue;const box=document.createElement("div");box.className="item-slot";box.draggable=true;box.dataset.item=id;box.title=`${nomeItem(id)} · ${item.bonus?`+${item.bonus} dano`:item.defesa?`+${item.defesa} defesa`:pesoItem(id)+" kg"}`;box.innerHTML=`<span>${ITEM_ICON[id]||"📦"}</span><span class="count">${g[id]}</span>`;box.ondragstart=e=>{e.dataTransfer.setData("text/item",id);e.dataTransfer.effectAllowed="move"};box.onclick=()=>document.querySelector("#itemTip").textContent=`${nomeItem(id)}: ${box.title.split("·")[1]}`;const type=item.tipo;if(ITEM_TYPES.gear.includes(type)||type==="municao")inv.appendChild(box);else store.appendChild(box)}for(const el of[inv,store])for(let i=el.children.length;i<15;i++){const blank=document.createElement("div");blank.className="item-slot";blank.style.opacity=".24";blank.style.cursor="default";el.appendChild(blank)}
+ const slotIcons={arma:["⚔️","Arma"],arco:["🏹","Arco"],escudo:["🛡️","Escudo"],armadura:["🥋","Armadura"]};document.querySelectorAll(".equip-slot").forEach(el=>{const slot=el.dataset.slot,id=p.equipamento[slot],d=ITENS[id];if(id&&d){el.classList.add("filled");el.draggable=true;el.dataset.equipped=id;el.innerHTML=`<span>${ITEM_ICON[id]||"📦"}</span><small>${nomeItem(id)}</small>`;el.title=`${nomeItem(id)} — ${d.bonus?`+${d.bonus} dano`:d.defesa?`+${d.defesa} defesa`:pesoItem(id)+" kg"}. Arraste para a mochila para guardar.`;el.ondragstart=e=>{e.dataTransfer.setData("text/equip",slot)}}else{el.classList.remove("filled");el.draggable=false;el.innerHTML=`<span>${slotIcons[slot][0]}</span><small>${slotIcons[slot][1]}</small>`;el.title=`Slot de ${slotIcons[slot][1]}`}el.ondragover=e=>e.preventDefault();el.ondrop=e=>{e.preventDefault();const item=e.dataTransfer.getData("text/item");if(item){const r=Mundo.equiparItem(MEU_ID,item,slot);if(r.mensagem)mostrarMensagem(r.mensagem);atualizarInterface()}}});
+ const rows=document.querySelector("#battleRows");rows.innerHTML="";for(const e of Object.values(inimigos).filter(e=>e.area===p.area&&Mundo.obterVidaInimigo(MEU_ID,e.id)>0)){const row=document.createElement("div");row.className="battle-row"+(target===e.id?" selected":"");row.innerHTML=`<span class="creature">${e.id==="lobo1"?"🐺":"🦂"}</span><span>${e.nome}</span><span class="hp">${Mundo.obterVidaInimigo(MEU_ID,e.id)}/${e.vidaMaxima}</span>`;row.onclick=()=>window.gameScene?.selecionarAlvo(e.id);rows.appendChild(row)}if(!rows.children.length)rows.innerHTML='<div class="panel-body subtle">Nenhum inimigo vivo na área.</div>';
+ const hk=document.querySelector("#hotkeys");hk.innerHTML="";p.hotkeys.forEach((id,i)=>{const el=document.createElement("div"),d=ITENS[id];el.className="hotkey-slot";el.innerHTML=`<kbd>${i+1}</kbd>${d?`<span>${ITEM_ICON[id]||"📦"}</span><span class="hk-count">${Mundo.contarItem(MEU_ID,id)||""}</span>`:""}`;el.title=d?`${nomeItem(id)} · pressione ${i+1}`:`Solte um consumível · tecla ${i+1}`;el.ondragover=e=>e.preventDefault();el.ondrop=e=>{e.preventDefault();const item=e.dataTransfer.getData("text/item");const result=Mundo.atribuirHotkey(MEU_ID,i,item);if(result.mensagem)mostrarMensagem(result.mensagem);atualizarInterface()};el.onclick=()=>window.gameScene?.usarHotkey(i);hk.appendChild(el)})}
+function mostrarMensagem(text){const el=document.querySelector("#message");el.textContent=text;el.style.display="block";clearTimeout(window.timerMensagem);window.timerMensagem=setTimeout(()=>el.style.display="none",4200)}
+window.atualizarInterface=atualizarInterface;window.mostrarMensagem=mostrarMensagem;
+for(const selector of["#inventoryGrid","#storageGrid"]){const el=document.querySelector(selector);el.ondragover=e=>e.preventDefault();el.ondrop=e=>{e.preventDefault();const slot=e.dataTransfer.getData("text/equip");if(slot){const r=Mundo.desequiparItem(MEU_ID,slot);if(r.mensagem)mostrarMensagem(r.mensagem);atualizarInterface()}}}
+document.querySelector("#fullscreenBtn").onclick=async()=>{try{if(!document.fullscreenElement)await document.querySelector("#app").requestFullscreen();else await document.exitFullscreen()}catch{mostrarMensagem("Seu navegador não permitiu ativar a tela cheia.")}};document.querySelector("#helpBtn").onclick=()=>document.querySelector("#modal").classList.add("show");document.querySelector("#closeHelp").onclick=()=>document.querySelector("#modal").classList.remove("show");document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelector("#modal").classList.remove("show");if(/^[1-6]$/.test(e.key))window.gameScene?.usarHotkey(Number(e.key)-1)});
