@@ -1,7 +1,7 @@
 const TILE = 32;
 const COLS = 80;
 const ROWS = 60;
-const VERSAO_SAVE = 3;
+const VERSAO_SAVE = 4;
 const VIDA_BASE = 100;
 const TEMPO_REGEN = 10000;
 const INTERVALO_MOVIMENTO = 600;
@@ -29,8 +29,12 @@ const ITENS = {
   arco_madeira: { nome: "Arco de madeira", peso: 7, tipo: "arma_distancia", bonus: 10 },
   flecha: { nome: "Flecha", peso: 0.1, tipo: "municao" },
   pele_lobo: { nome: "Pele de lobo", peso: 2, tipo: "recurso" },
+  veneno_escorpiao: { nome: "Veneno de escorpião", peso: 0.5, tipo: "recurso" },
+  insignia_bandido: { nome: "Insígnia do bando", peso: 0.5, tipo: "recurso" },
 };
 const SLOTS_EQUIPAMENTO = { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
+const PRECOS_LOJA = { pocao: 12, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
+const VALORES_VENDA = { pele_lobo: 5, erva: 2, odre_agua: 3 };
 function nomeItem(id) { return ITENS[id]?.nome || id; }
 function pesoItem(id) { return ITENS[id]?.peso ?? 1; }
 function capacidadeCarga(p) { return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL; }
@@ -44,6 +48,8 @@ function defesaEquipamento(p) {
 }
 function bonusArma(p) { const item = p.equipamento?.arma; return item ? (ITENS[item]?.bonus || 0) : 0; }
 function bonusArco(p) { const item = p.equipamento?.arco; return item ? (ITENS[item]?.bonus || 0) : 0; }
+function bonusHabilidade(p, chave) { return Math.min(chave === "defesa" ? 5 : 8, Math.floor((p.habilidades?.[chave] || 0) / (chave === "defesa" ? 10 : 5))); }
+function defesaTotal(p) { return defesaEquipamento(p) + bonusHabilidade(p, "defesa"); }
 
 function vidaMaxima(personagem) { return VIDA_BASE + Math.max(0, (personagem.nivel || 1) - 1) * 10; }
 function limiarNivel(nivel) {
@@ -87,6 +93,7 @@ const mapas = { canaan: criarMapa("canaan"), deserto: criarMapa("deserto") };
 const npcs = {
   viajante1: { id: "viajante1", nome: "Eliabe", area: "canaan", x: 2, y: 5 },
   noemi1: { id: "noemi1", nome: "Noemi", area: "deserto", x: 68, y: 8 },
+  mercador1: { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 72, y: 10 },
 };
 const ervas = [
   { id: "erva1", x: 13, y: 12 }, { id: "erva2", x: 41, y: 31 }, { id: "erva3", x: 71, y: 49 },
@@ -97,6 +104,7 @@ const odres = [
 const inimigos = {
   lobo1: { id: "lobo1", nome: "Lobo", area: "canaan", x: 6, y: 5, inicioX: 6, inicioY: 5, vidaMaxima: 50, danoDoAtaque: 25, danoContraJogador: 8, raioPercepcao: 6, xpRecompensa: 40, proximoMovimento: 0, proximoAtaque: 0 },
   escorpiao1: { id: "escorpiao1", nome: "Escorpião", area: "deserto", x: 16, y: 9, inicioX: 16, inicioY: 9, vidaMaxima: 70, danoDoAtaque: 20, danoContraJogador: 12, raioPercepcao: 5, xpRecompensa: 60, proximoMovimento: 0, proximoAtaque: 0 },
+  bandido1: { id: "bandido1", nome: "Chefe dos saqueadores", area: "deserto", x: 49, y: 46, inicioX: 49, inicioY: 46, vidaMaxima: 100, danoDoAtaque: 26, danoContraJogador: 15, raioPercepcao: 6, xpRecompensa: 100, proximoMovimento: 0, proximoAtaque: 0 },
 };
 // Espaços garantidamente transitáveis para personagens, inimigos, itens e passagens.
 for (const npc of Object.values(npcs)) mapas[npc.area][npc.y][npc.x] = 0;
@@ -110,21 +118,26 @@ mapas.canaan[2][2] = 0;
 
 function missaoEliabeNova() { return { status: "nao_iniciada", loboDerrotado: false, recompensaRecebida: false }; }
 function missaoErvasNova() { return { status: "bloqueada", recompensaRecebida: false, ervasMissaoColetadas: [] }; }
-function missaoDesertoNova() { return { status: "bloqueada", recompensaRecebida: false, odresMissaoColetados: [] }; }
+function missaoDesertoNova() { return { status: "bloqueada", etapa: 0, recompensaRecebida: false, odresMissaoColetados: [], venenosMissaoColetados: [], insigniasMissaoColetadas: [] }; }
 
 const Mundo = {
   jogadores: {}, estado: {},
   entrar(id) {
     let p = Storage.carregar(id);
-    if (!p || typeof p !== "object") p = { id, area: "canaan", x: 2, y: 2, vida: VIDA_BASE, inventario: [], itensIniciaisEntregues: false, inimigosDerrotados: [], vidaInimigos: {}, ervasColetadas: [], odresColetados: [], ervasRespawn: {}, odresRespawn: {}, xp: 0, nivel: 1 };
+    if (!p || typeof p !== "object") p = { id, area: "canaan", x: 2, y: 2, vida: VIDA_BASE, inventario: [], itensIniciaisEntregues: false, inimigosDerrotados: [], vidaInimigos: {}, ervasColetadas: [], odresColetados: [], ervasRespawn: {}, odresRespawn: {}, xp: 0, nivel: 1, moedas: 30, economiaInicialEntregue: true, habilidades: { corpo: 0, distancia: 0, defesa: 0 }, mortes: 0 };
     p.id = id;
     if (!Array.isArray(p.inventario)) p.inventario = [];
+    if (!p.economiaInicialEntregue) { p.moedas = Math.max(0, Number(p.moedas) || 0) + 30; p.economiaInicialEntregue = true; }
+    p.moedas = Number.isFinite(p.moedas) ? Math.max(0, Math.floor(p.moedas)) : 30;
+    p.mortes = Number.isInteger(p.mortes) ? Math.max(0, p.mortes) : 0;
+    if (!p.habilidades || typeof p.habilidades !== "object") p.habilidades = { corpo: 0, distancia: 0, defesa: 0 };
+    for (const habilidade of ["corpo", "distancia", "defesa"]) p.habilidades[habilidade] = Number.isInteger(p.habilidades[habilidade]) ? Math.max(0, p.habilidades[habilidade]) : 0;
     if (!p.equipamento || typeof p.equipamento !== "object") p.equipamento = { arma: null, arco: null, escudo: null, armadura: null };
     for (const slot of Object.keys(SLOTS_EQUIPAMENTO)) if (!(slot in p.equipamento)) p.equipamento[slot] = null;
     if (!Array.isArray(p.hotkeys)) p.hotkeys = ["pocao", null, null, null, null, null];
     p.hotkeys = Array.from({ length: 6 }, (_, i) => p.hotkeys[i] || null);
     if (!Array.isArray(p.saqueNoChao)) p.saqueNoChao = [];
-    p.saqueNoChao = p.saqueNoChao.filter((s) => s && typeof s.id === "string" && areas[s.area] && Number.isInteger(s.x) && Number.isInteger(s.y) && ITENS[s.item]);
+    p.saqueNoChao = p.saqueNoChao.filter((s) => s && typeof s.id === "string" && areas[s.area] && Number.isInteger(s.x) && Number.isInteger(s.y) && (Number.isInteger(s.moedas) || ITENS[s.item]));
     for (const [slot, tipo] of Object.entries(SLOTS_EQUIPAMENTO)) {
       const item = p.equipamento[slot];
       if (item && ITENS[item]?.tipo !== tipo) p.equipamento[slot] = null;
@@ -161,7 +174,10 @@ const Mundo = {
     if (typeof p.missaoEliabe.loboDerrotado !== "boolean") p.missaoEliabe.loboDerrotado = false;
     for (const m of [p.missaoEliabe, p.missaoErvas, p.missaoDeserto]) if (typeof m.recompensaRecebida !== "boolean") m.recompensaRecebida = false;
     if (!Array.isArray(p.missaoErvas.ervasMissaoColetadas)) p.missaoErvas.ervasMissaoColetadas = [];
+    if (!Number.isInteger(p.missaoDeserto.etapa)) p.missaoDeserto.etapa = p.missaoDeserto.status === "concluida" ? 4 : p.missaoDeserto.status === "em_andamento" ? 1 : 0;
     if (!Array.isArray(p.missaoDeserto.odresMissaoColetados)) p.missaoDeserto.odresMissaoColetados = [];
+    if (!Array.isArray(p.missaoDeserto.venenosMissaoColetados)) p.missaoDeserto.venenosMissaoColetados = [];
+    if (!Array.isArray(p.missaoDeserto.insigniasMissaoColetadas)) p.missaoDeserto.insigniasMissaoColetadas = [];
     // Saves antigos que já concluíram a missão recebem a nova recompensa de distância uma única vez.
     if (p.missaoDeserto.status === "concluida" && !p.atualizacaoDistanciaEntregue) {
       if (!p.equipamento.arco && !p.inventario.includes("arco_madeira")) this.adicionarItem(p, "arco_madeira");
@@ -188,6 +204,34 @@ const Mundo = {
     if (!p) return false;
     const tempos = area === "canaan" ? p.ervasRespawn : p.odresRespawn;
     return !tempos?.[itemId] || Date.now() >= tempos[itemId];
+  },
+  coletarSaque(id, saqueId) {
+    const p = this.jogadores[id], s = p?.saqueNoChao.find((x) => x.id === saqueId && x.area === p.area);
+    if (!s) return { ok: false, mensagem: "Esse saque não está mais no chão." };
+    if (Math.max(Math.abs(p.x - s.x), Math.abs(p.y - s.y)) > 1) return { ok: false, mensagem: "Chegue ao lado do item para pegá-lo." };
+    if (s.moedas) { p.moedas += s.moedas; p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id); Storage.salvar(p); return { ok: true, moedas: s.moedas, itemColetado: s.id, mensagem: `Você pegou ${s.moedas} moedas.` }; }
+    if (!this.adicionarItem(p, s.item)) return { ok: false, mensagem: `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). Libere espaço para pegar o item.` };
+    p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id);
+    const m = p.missaoDeserto;
+    if (m.status === "em_andamento" && m.etapa === 2 && s.item === "veneno_escorpiao" && !m.venenosMissaoColetados.includes(s.id)) m.venenosMissaoColetados.push(s.id);
+    if (m.status === "em_andamento" && m.etapa === 3 && s.item === "insignia_bandido" && !m.insigniasMissaoColetadas.includes(s.id)) m.insigniasMissaoColetadas.push(s.id);
+    Storage.salvar(p); return { ok: true, itemColetado: s.id, mensagem: `Você pegou: ${nomeItem(s.item)}.` };
+  },
+  comprarItem(id, item) {
+    const p = this.jogadores[id], n = npcs.mercador1;
+    if (!p || p.area !== n.area || Math.abs(p.x-n.x)+Math.abs(p.y-n.y)>1) return { ok:false, mensagem:"Aproxime-se do mercador para comprar." };
+    const preco = PRECOS_LOJA[item]; if (!preco) return { ok:false, mensagem:"Esse item não está à venda." };
+    const lista = item === "flechas" ? Array(5).fill("flecha") : [item];
+    if (p.moedas < preco) return { ok:false, mensagem:`Você precisa de ${preco} moedas.` };
+    if (!this.podeReceberComRemocao(p, lista)) return { ok:false, mensagem:"A mochila está cheia." };
+    p.moedas -= preco; for (const x of lista) this.adicionarItem(p,x); Storage.salvar(p);
+    return {ok:true,mensagem:`Compra realizada: ${item === "flechas" ? "5 flechas" : nomeItem(item)} por ${preco} moedas.`};
+  },
+  venderItem(id,item) {
+    const p=this.jogadores[id], n=npcs.mercador1, valor=VALORES_VENDA[item];
+    if(!p||p.area!==n.area||Math.abs(p.x-n.x)+Math.abs(p.y-n.y)>1) return {ok:false,mensagem:"Aproxime-se do mercador para vender."};
+    const i=p.inventario.indexOf(item); if(!valor||i<0) return {ok:false,mensagem:"O mercador não compra esse item ou você não o tem."};
+    p.inventario.splice(i,1); p.moedas+=valor; Storage.salvar(p); return {ok:true,mensagem:`Você vendeu ${nomeItem(item)} por ${valor} moedas.`};
   },
   equiparItem(id, itemId, slot) {
     const p = this.jogadores[id], tipo = SLOTS_EQUIPAMENTO[slot];
@@ -258,13 +302,15 @@ const Mundo = {
       if (distancia === 1) {
         if (agora >= e.proximoAtaque) {
           e.proximoAtaque = agora + INTERVALO_ATAQUE; estado.proximaRegen = agora + TEMPO_REGEN;
-          const defesaTotal = defesaEquipamento(p);
-          const danoReal = Math.max(1, e.danoContraJogador - defesaTotal);
+          p.habilidades.defesa++;
+          const defesaTotalAtual = defesaTotal(p);
+          const danoReal = Math.max(1, e.danoContraJogador - defesaTotalAtual);
           p.vida = Math.max(0, p.vida - danoReal);
           if (p.vida === 0) {
+            const moedasPerdidas = Math.floor(p.moedas * 0.10); p.moedas -= moedasPerdidas; p.mortes++;
             p.area = "canaan"; p.x = 2; p.y = 2; p.vida = vidaMaxima(p);
             for (const outro of Object.values(inimigos)) if (this.inimigoVivo(p, outro.id)) { outro.x = outro.inicioX; outro.y = outro.inicioY; outro.proximoAtaque = 0; outro.proximoMovimento = 0; p.vidaInimigos[outro.id] = outro.vidaMaxima; }
-            Storage.salvar(p); eventos.push({ tipo: "renasceu", mensagem: "Você foi derrotado e voltou ao início de Canaã com a vida restaurada. Seu nível, inventário e missões foram preservados." }); return eventos;
+            Storage.salvar(p); eventos.push({ tipo: "renasceu", mensagem: `Você foi derrotado e voltou a Canaã. Penalidade: ${moedasPerdidas} moedas (10% do que carregava). Nível, inventário e missões foram preservados.` }); return eventos;
           }
           Storage.salvar(p); eventos.push({ tipo: "jogadorAtingido", dano: danoReal, defesaBloqueada: Math.max(0, e.danoContraJogador - danoReal), mensagem: `${e.nome} atingiu você por ${danoReal} de dano! Vida: ${p.vida}/${vidaMaxima(p)}.` });
         }
@@ -297,12 +343,7 @@ const Mundo = {
         return { ok: true, areaAlterada: true, mensagem: `Você chegou a ${areas[next].nome}.` };
       }
       const saqueNoPiso = p.saqueNoChao.find((s) => s.area === p.area && s.x === nx && s.y === ny);
-      if (saqueNoPiso) {
-        if (!this.adicionarItem(p, saqueNoPiso.item)) return { ok: true, mensagem: `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). O saque continua no chão.` };
-        p.saqueNoChao = p.saqueNoChao.filter((s) => s.id !== saqueNoPiso.id);
-        Storage.salvar(p);
-        return { ok: true, itemColetado: saqueNoPiso.id, mensagem: `Você pegou: ${nomeItem(saqueNoPiso.item)}.` };
-      }
+      if (saqueNoPiso) return this.coletarSaque(id, saqueNoPiso.id);
       if (p.area === "canaan") {
         const item = ervas.find((x) => x.x === nx && x.y === ny && this.coletavelDisponivel(id, "canaan", x.id));
         if (item) {
@@ -318,18 +359,22 @@ const Mundo = {
           if (!this.adicionarItem(p, "odre_agua")) return { ok: true, mensagem: `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). Libere espaço para pegar o odre.` };
           p.odresColetados.push(item.id);
           p.odresRespawn[item.id] = Date.now() + TEMPO_RESPAWN_COLETAVEL;
-          if (p.missaoDeserto.status === "em_andamento" && !p.missaoDeserto.odresMissaoColetados.includes(item.id)) p.missaoDeserto.odresMissaoColetados.push(item.id);
+          if (p.missaoDeserto.status === "em_andamento" && p.missaoDeserto.etapa === 1 && !p.missaoDeserto.odresMissaoColetados.includes(item.id)) p.missaoDeserto.odresMissaoColetados.push(item.id);
           Storage.salvar(p); return { ok: true, itemColetado: item.id, mensagem: "Você encontrou um odre de água." };
         }
       }
       Storage.salvar(p); return { ok: true };
     }
+    if (comando.tipo === "coletarSaque") return this.coletarSaque(id, comando.saqueId);
+    if (comando.tipo === "comprar") return this.comprarItem(id, comando.item);
+    if (comando.tipo === "vender") return this.venderItem(id, comando.item);
     if (comando.tipo === "interagir") {
       const npc = comando.alvoId ? npcs[comando.alvoId] : Object.values(npcs).find((n) => n.area === p.area && Math.abs(p.x - n.x) + Math.abs(p.y - n.y) <= 1);
       if (!npc || npc.area !== p.area) return { ok: false, mensagem: "Não há ninguém por perto para conversar." };
       if (Math.abs(p.x - npc.x) + Math.abs(p.y - npc.y) > 1) return { ok: false, mensagem: "Chegue mais perto para conversar." };
       if (npc.id === "viajante1") return this.interagirEliabe(id);
       if (npc.id === "noemi1") return this.interagirNoemi(id);
+      if (npc.id === "mercador1") return { ok:true, abrirLoja:true, mensagem:"Azarias: Tenho provisões, flechas e equipamentos para vender." };
     }
     if (comando.tipo === "alternarEquipamento") {
       const slot = comando.slot;
@@ -385,7 +430,8 @@ const Mundo = {
       if (!e) return { ok: false, mensagem: "Nenhum inimigo alinhado e desimpedido até 5 casas. Posicione-se na mesma linha, coluna ou diagonal." };
       p.inventario.splice(flechaIndex, 1);
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
-      const dano = 15 + (p.nivel - 1) * 5 + bonusArco(p);
+      p.habilidades.distancia++;
+      const dano = 15 + (p.nivel - 1) * 4 + bonusArco(p) + bonusHabilidade(p, "distancia");
       const r = this.resolverDano(id, e, dano);
       r.mensagem = r.derrotado
         ? `Você atingiu ${e.nome.toLowerCase()} com uma flecha! ${r.mensagem}`
@@ -399,7 +445,8 @@ const Mundo = {
       if (!this.inimigoVivo(p, e.id)) return { ok: false, mensagem: "Esse inimigo já foi derrotado." };
       if (Math.max(Math.abs(p.x - e.x), Math.abs(p.y - e.y)) !== 1) return { ok: false, mensagem: `Chegue ao lado de ${e.nome.toLowerCase()} para atacá-lo.` };
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
-      const dano = e.danoDoAtaque + (p.nivel - 1) * 5 + bonusArma(p);
+      p.habilidades.corpo++;
+      const dano = 10 + (p.nivel - 1) * 4 + bonusArma(p) + bonusHabilidade(p, "corpo");
       return this.resolverDano(id, e, dano);
     }
     return { ok: false };
@@ -438,35 +485,44 @@ const Mundo = {
   interagirNoemi(id) {
     const p = this.jogadores[id], m = p.missaoDeserto;
     if (m.status === "bloqueada") {
-      m.status = "em_andamento"; m.odresMissaoColetados = [];
+      m.status = "em_andamento"; m.etapa = 1; m.odresMissaoColetados = [];
       p.odresColetados = [];
       for (const odre of odres) p.odresRespawn[odre.id] = Date.now();
-      Storage.salvar(p); return { ok: true, missaoDesertoIniciada: true, mensagem: "Noemi: A caravana precisa de água. Encontre 3 odres pelo deserto e traga-os para mim." };
+      Storage.salvar(p); return { ok:true, missaoDesertoIniciada:true, mensagem:"Noemi: A caravana precisa de água. Encontre 3 odres espalhados pelo deserto e traga-os para mim." };
     }
-    if (m.status === "em_andamento") {
-      const count = m.odresMissaoColetados.length;
-      if (count >= QUANTIDADE_ODRES_MISSAO) {
-        const recompensas = ["pocao", "pocao", "armadura_couro", "arco_madeira", ...Array(8).fill("flecha")];
-        if (!this.podeReceberComRemocao(p, recompensas, [["odre_agua", QUANTIDADE_ODRES_MISSAO]])) return { ok: true, mensagem: "Noemi: Sua mochila está cheia. Libere espaço para receber as poções, armadura, arco e flechas." };
-        this.removerItens(p, "odre_agua", QUANTIDADE_ODRES_MISSAO); for (const item of recompensas) this.adicionarItem(p, item);
-        m.status = "concluida"; m.recompensaRecebida = true; p.atualizacaoDistanciaEntregue = true; const niveis = adicionarXP(p, 100); Storage.salvar(p);
-        return { ok: true, mensagem: `Noemi: Água para a caravana! Receba 2 poções, armadura de couro (+5 defesa), arco de madeira (+10 dano à distância), 8 flechas e 100 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}` };
-      }
-      return { ok: true, mensagem: `Noemi: Ainda faltam odres. Você encontrou ${count}/${QUANTIDADE_ODRES_MISSAO}.` };
+    if (m.status === "em_andamento" && m.etapa === 1) {
+      const count=m.odresMissaoColetados.length;
+      if(count<3) return {ok:true,mensagem:`Noemi: Ainda faltam odres. Você encontrou ${count}/3.`};
+      const recompensas=["pocao","pocao","armadura_couro","arco_madeira",...Array(8).fill("flecha")];
+      if(!this.podeReceberComRemocao(p,recompensas,[["odre_agua",3]])) return {ok:true,mensagem:"Noemi: Sua mochila está cheia. Libere espaço para receber poções, armadura, arco e flechas."};
+      this.removerItens(p,"odre_agua",3); for(const item of recompensas)this.adicionarItem(p,item);
+      m.etapa=2;m.venenosMissaoColetados=[];const niveis=adicionarXP(p,100);Storage.salvar(p);
+      return {ok:true,mensagem:`Noemi: A água salvou a caravana! Receba 2 poções, armadura, arco, 8 flechas e 100 XP. Agora derrote o escorpião e traga 2 amostras do veneno. Próxima etapa!${niveis.length?` Nível ${p.nivel}!`:""}`};
     }
-    return { ok: true, mensagem: "Noemi: Obrigada por ajudar a caravana. A água será bem aproveitada." };
+    if(m.status==="em_andamento"&&m.etapa===2){
+      const count=m.venenosMissaoColetados.length;
+      if(count<2)return {ok:true,mensagem:`Noemi: Encontre o escorpião e pegue o veneno que ele deixa. Amostras: ${count}/2.`};
+      this.removerItens(p,"veneno_escorpiao",2);m.etapa=3;m.insigniasMissaoColetadas=[];p.moedas+=25;const niveis=adicionarXP(p,100);Storage.salvar(p);
+      return {ok:true,mensagem:`Noemi: Ótimo trabalho. Receba 25 moedas e 100 XP. Os saqueadores ameaçam o acampamento: derrote o chefe e traga a insígnia dele. Etapa final!${niveis.length?` Nível ${p.nivel}!`:""}`};
+    }
+    if(m.status==="em_andamento"&&m.etapa===3){
+      const count=m.insigniasMissaoColetadas.length;
+      if(count<1)return {ok:true,mensagem:"Noemi: Encontre o chefe dos saqueadores no deserto, derrote-o e traga a insígnia que ele deixar."};
+      this.removerItens(p,"insignia_bandido",1);m.etapa=4;m.status="concluida";m.recompensaRecebida=true;p.moedas+=100;const niveis=adicionarXP(p,180);Storage.salvar(p);
+      return {ok:true,mensagem:`Noemi: A caravana está segura! Receba 100 moedas e 180 XP. Capítulo do Deserto concluído!${niveis.length?` Nível ${p.nivel}!`:""}`};
+    }
+    return {ok:true,mensagem:"Noemi: A caravana está segura graças a você. Obrigada, viajante."};
   },
   removerItens(p, item, quantidade) {
     let restante = quantidade;
     p.inventario = p.inventario.filter((x) => { if (x === item && restante > 0) { restante--; return false; } return true; });
   },
   criarSaque(p, e) {
-    const itens = e.id === "lobo1" ? ["pele_lobo"] : e.id === "escorpiao1" ? ["flecha", "flecha"] : [];
-    const agora = Date.now();
-    for (let i = 0; i < itens.length; i++) {
-      p.saqueNoChao.push({ id: `saque_${e.id}_${agora}_${i}`, area: e.area, x: e.x, y: e.y, item: itens[i] });
-    }
-    return itens;
+    const agora=Date.now(), itens=e.id==="lobo1"?["pele_lobo"]:e.id==="escorpiao1"?["veneno_escorpiao"]:e.id==="bandido1"?["insignia_bandido"]:[];
+    const moedas=e.id==="lobo1"?4:e.id==="escorpiao1"?8:15;
+    for(let i=0;i<itens.length;i++)p.saqueNoChao.push({id:`saque_${e.id}_${agora}_${i}`,area:e.area,x:e.x,y:e.y,item:itens[i]});
+    p.saqueNoChao.push({id:`saque_${e.id}_${agora}_moedas`,area:e.area,x:e.x,y:e.y,moedas});
+    return [...itens,`${moedas} moedas`];
   },
   resolverDano(id, e, dano) {
     const p = this.jogadores[id];
@@ -478,7 +534,7 @@ const Mundo = {
       const saque = this.criarSaque(p, e);
       Storage.salvar(p);
       const up = niveis.length ? ` Você subiu para o nível ${p.nivel}! Vida máxima: ${vidaMaxima(p)}.` : "";
-      const textoSaque = saque.length ? ` Saque no chão: ${saque.map(nomeItem).join(", ")}.` : "";
+      const textoSaque = saque.length ? ` Saque no chão: ${saque.join(", ")}. Clique no saque ao lado ou caminhe sobre ele para pegá-lo.` : "";
       return { ok: true, derrotado: true, danoAplicado: dano, inimigoId: e.id, saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id), mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${e.xpRecompensa} XP.${up}${textoSaque} Ele reaparecerá em 5 segundos.` };
     }
     Storage.salvar(p);

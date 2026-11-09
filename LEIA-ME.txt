@@ -1,4 +1,4 @@
-JOGO BÍBLICO — EXPANSÃO DO MUNDO E COMBATE
+JOGO BÍBLICO — CAPÍTULO DO DESERTO E ECONOMIA
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual do jogo.
@@ -6,12 +6,15 @@ Instalação
 3. Substitua os quatro arquivos do projeto pelos arquivos desta pasta.
 4. Abra index.html pelo seu servidor local (por exemplo, Live Server).
 
-O progresso existente no navegador é mantido; não apague os dados do navegador.
+O progresso existente no navegador é mantido. Saves anteriores recebem 30 moedas uma única vez; não apague os dados do navegador.
 
 Novidades
-- Folhas medicinais e odres reaparecem após 18 segundos; ao iniciar cada missão, os itens são repostos para evitar bloqueios.
-- Canaã e Deserto agora têm mapas de 80 x 60 casas. A câmera acompanha o personagem; explore para encontrar os itens e personagens.
-- Valores flutuantes mostram o dano aplicado ao inimigo e o dano recebido pelo personagem, incluindo a redução da defesa.
-- Mantidos os recursos anteriores: inventário/equipamento, seleção de alvo, autoataque, arco, hotkeys e movimento diagonal.
+- Capítulo do Deserto em três etapas: reúna água para Noemi; derrote o escorpião e recolha duas amostras de veneno; por fim, derrote o chefe dos saqueadores e leve sua insígnia.
+- Novo mercador Azarias, com compra de poções, flechas, escudo, armadura e arco; também compra alguns recursos.
+- Moedas caem de inimigos, podem ser recolhidas no chão, gastas na loja e sofrem penalidade de 10% ao morrer.
+- Saques podem ser pegos imediatamente clicando no chão quando o personagem estiver ao lado ou caminhando sobre o item.
+- Habilidades de combate corpo a corpo, distância e defesa melhoram com o uso; a cada marco de usos, aumentam o dano ou reduzem o dano recebido.
+- Novo chefe dos saqueadores, itens de missão obtidos como loot e recompensas de XP e moedas.
+- Mantidos mapas amplos, câmera acompanhando o personagem, missões de Canaã, mochila, equipamento, arco, hotkeys, seleção de alvo e salvamento local.
 
-Controles estão disponíveis pelo botão “Controles” dentro do jogo.
+Controles ficam no botão “Controles” dentro do jogo. Para abrir a loja, aproxime-se de Azarias no Deserto e interaja (F ou clique nele).
