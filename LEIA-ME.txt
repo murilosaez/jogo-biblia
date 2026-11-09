@@ -1,0 +1,26 @@
+JORNADA BÍBLICA — versão com sprites, missão no Deserto e níveis
+
+ARQUIVOS
+- index.html
+- storage.js
+- logica.js
+- game.js
+
+COMO TESTAR
+1. Faça uma cópia de segurança da pasta atual do jogo.
+2. Substitua os quatro arquivos pelos arquivos deste pacote.
+3. Abra index.html pelo Live Server no VS Code.
+4. O jogo salva no armazenamento local do mesmo navegador.
+
+CONTROLES
+Setas: andar | E: conversar | Espaço: atacar | H: usar poção
+
+NOVIDADES
+- Sprites pixel art originais desenhados pelo próprio jogo, sem baixar imagens ou depender de licença externa.
+- Canaã mantém as missões de Eliabe; a missão das ervas conta apenas as ervas colhidas depois de aceitá-la.
+- No Deserto, Noemi oferece uma missão de coletar três odres de água; há também um escorpião que persegue e ataca.
+- Inimigos e missões concedem XP; ao subir de nível, a vida máxima aumenta em 10 e o dano de ataque em 5.
+- Progresso, nível, XP, inventário e missões são salvos no navegador.
+
+OBSERVAÇÃO SOBRE O SAVE
+A versão mantém os dados já existentes (inventário e missões) e acrescenta os campos de XP e nível. Recomenda-se manter um backup do save antes do primeiro teste da versão nova.
