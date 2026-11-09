@@ -3,8 +3,13 @@ const MEU_ID = "jogador1";
 class Cena extends Phaser.Scene {
   create() {
     this.teclas = this.input.keyboard.createCursorKeys();
+
     this.teclaE = this.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.E
+    );
+
+    this.teclaAtaque = this.input.keyboard.addKey(
+      Phaser.Input.Keyboard.KeyCodes.SPACE
     );
 
     // Desenha o mapa.
@@ -24,10 +29,11 @@ class Cena extends Phaser.Scene {
       }
     }
 
-    // Entra no mundo e desenha o jogador.
+    // Carrega o personagem salvo ou cria um novo.
     const personagem = Mundo.entrar(MEU_ID);
 
     this.movendo = false;
+
     this.sprite = this.add.rectangle(
       personagem.x * TILE + TILE / 2,
       personagem.y * TILE + TILE / 2,
@@ -36,7 +42,7 @@ class Cena extends Phaser.Scene {
       0xffd700
     );
 
-    // Desenha Eliabe usando formas simples, sem baixar imagens.
+    // Desenha Eliabe.
     const npc = npcs.viajante1;
     const npcX = npc.x * TILE + TILE / 2;
     const npcY = npc.y * TILE + TILE / 2;
@@ -54,25 +60,58 @@ class Cena extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // Caixa de instrução e diálogo.
+    // Desenha o lobo, se ainda estiver vivo.
+    this.loboVisual = null;
+
+    if (Mundo.obterVidaInimigo(MEU_ID, "lobo1") > 0) {
+      this.loboVisual = this.desenharLobo();
+    }
+
+    // Caixa de instruções e mensagens.
     this.add
       .rectangle(400, 548, 790, 48, 0x111111, 0.9)
       .setScrollFactor(0)
       .setDepth(10);
 
     this.dialogo = this.add
-      .text(16, 531, "Fale com Eliabe: aproxime-se e pressione E.", {
-        fontFamily: "Arial",
-        fontSize: "16px",
-        color: "#ffffff",
-        wordWrap: { width: 760 },
-      })
+      .text(
+        16,
+        531,
+        "E: conversar com Eliabe | Espaço: atacar o lobo ao lado.",
+        {
+          fontFamily: "Arial",
+          fontSize: "16px",
+          color: "#ffffff",
+          wordWrap: { width: 760 },
+        }
+      )
       .setScrollFactor(0)
       .setDepth(11);
   }
 
+  desenharLobo() {
+    const lobo = inimigos.lobo1;
+    const loboX = lobo.x * TILE + TILE / 2;
+    const loboY = lobo.y * TILE + TILE / 2;
+
+    return [
+      this.add.circle(loboX, loboY, 12, 0xb53030),
+      this.add.circle(loboX - 4, loboY - 2, 2, 0xffffff),
+      this.add.circle(loboX + 4, loboY - 2, 2, 0xffffff),
+      this.add
+        .text(loboX, loboY - 30, lobo.nome, {
+          fontFamily: "Arial",
+          fontSize: "12px",
+          color: "#ffffff",
+          backgroundColor: "#222222",
+          padding: { x: 4, y: 2 },
+        })
+        .setOrigin(0.5),
+    ];
+  }
+
   update() {
-    // Interação com o NPC: o comando vai para a lógica do jogo.
+    // Conversa com Eliabe ao pressionar E.
     if (Phaser.Input.Keyboard.JustDown(this.teclaE)) {
       const resultado = Mundo.executar(MEU_ID, {
         tipo: "interagir",
@@ -81,6 +120,23 @@ class Cena extends Phaser.Scene {
 
       if (resultado.mensagem) {
         this.dialogo.setText(resultado.mensagem);
+      }
+    }
+
+    // Ataca o lobo ao pressionar Espaço.
+    if (Phaser.Input.Keyboard.JustDown(this.teclaAtaque)) {
+      const resultado = Mundo.executar(MEU_ID, {
+        tipo: "atacar",
+        alvoId: "lobo1",
+      });
+
+      if (resultado.mensagem) {
+        this.dialogo.setText(resultado.mensagem);
+      }
+
+      if (resultado.derrotado && this.loboVisual) {
+        this.loboVisual.forEach((parte) => parte.destroy());
+        this.loboVisual = null;
       }
     }
 
