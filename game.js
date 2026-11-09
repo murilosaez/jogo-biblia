@@ -39,6 +39,7 @@ class Cena extends Phaser.Scene {
     this.movendo = false;
     this.respawnAgendado = false;
     this.loboVisual = null;
+    this.ervasVisuais = {};
 
     this.sprite = this.add.rectangle(
       personagem.x * TILE + TILE / 2,
@@ -48,23 +49,8 @@ class Cena extends Phaser.Scene {
       0xffd700
     );
 
-    // Desenha Eliabe.
-    const npc = npcs.viajante1;
-    const npcX = npc.x * TILE + TILE / 2;
-    const npcY = npc.y * TILE + TILE / 2;
-
-    this.add.circle(npcX, npcY - 7, 7, 0xf1c27d);
-    this.add.rectangle(npcX, npcY + 7, 18, 18, 0x446e8a);
-
-    this.add
-      .text(npcX, npcY - 31, npc.nome, {
-        fontFamily: "Arial",
-        fontSize: "12px",
-        color: "#ffffff",
-        backgroundColor: "#222222",
-        padding: { x: 4, y: 2 },
-      })
-      .setOrigin(0.5);
+    this.desenharEliabe();
+    this.desenharErvas();
 
     if (Mundo.obterVidaInimigo(MEU_ID, "lobo1") > 0) {
       this.loboVisual = this.desenharLobo();
@@ -93,10 +79,10 @@ class Cena extends Phaser.Scene {
       .setOrigin(1, 0)
       .setDepth(10);
 
-    this.statusPocoes = this.add
+    this.statusInventario = this.add
       .text(400, 10, "", {
         fontFamily: "Arial",
-        fontSize: "16px",
+        fontSize: "15px",
         color: "#ffffff",
         backgroundColor: "#222222",
         padding: { x: 6, y: 4 },
@@ -135,6 +121,47 @@ class Cena extends Phaser.Scene {
       .setDepth(11);
 
     this.atualizarStatus();
+  }
+
+  desenharEliabe() {
+    const npc = npcs.viajante1;
+    const npcX = npc.x * TILE + TILE / 2;
+    const npcY = npc.y * TILE + TILE / 2;
+
+    this.add.circle(npcX, npcY - 7, 7, 0xf1c27d);
+    this.add.rectangle(npcX, npcY + 7, 18, 18, 0x446e8a);
+
+    this.add
+      .text(npcX, npcY - 31, npc.nome, {
+        fontFamily: "Arial",
+        fontSize: "12px",
+        color: "#ffffff",
+        backgroundColor: "#222222",
+        padding: { x: 4, y: 2 },
+      })
+      .setOrigin(0.5);
+  }
+
+  desenharErvas() {
+    const personagem = Mundo.jogadores[MEU_ID];
+
+    for (const erva of ervas) {
+      if (personagem.ervasColetadas.includes(erva.id)) {
+        continue;
+      }
+
+      const x = erva.x * TILE + TILE / 2;
+      const y = erva.y * TILE + TILE / 2;
+
+      const partes = [
+        this.add.circle(x, y, 7, 0x2b7a36),
+        this.add.circle(x - 5, y + 4, 4, 0x7ee36a),
+        this.add.circle(x + 5, y + 4, 4, 0x7ee36a),
+        this.add.rectangle(x, y + 8, 3, 8, 0x5b3a1e),
+      ];
+
+      this.ervasVisuais[erva.id] = partes;
+    }
   }
 
   desenharLobo() {
@@ -177,9 +204,7 @@ class Cena extends Phaser.Scene {
     this.time.delayedCall(TEMPO_RESPAWN_LOBO, () => {
       this.respawnAgendado = false;
 
-      const reapareceu = Mundo.reaparecerInimigo(MEU_ID, "lobo1");
-
-      if (reapareceu) {
+      if (Mundo.reaparecerInimigo(MEU_ID, "lobo1")) {
         this.loboVisual = this.desenharLobo();
         this.dialogo.setText("O lobo reapareceu!");
         this.atualizarStatus();
@@ -189,33 +214,50 @@ class Cena extends Phaser.Scene {
 
   textoObjetivoMissao() {
     const personagem = Mundo.jogadores[MEU_ID];
-    const missao = personagem.missaoEliabe;
+    const missao1 = personagem.missaoEliabe;
+    const missao2 = personagem.missaoErvas;
+    const quantidadeErvas = Mundo.contarItem(MEU_ID, "erva");
 
-    if (missao.status === "nao_iniciada") {
+    if (missao1.status === "nao_iniciada") {
       return "Missão: fale com Eliabe para começar.";
     }
 
-    if (missao.status === "em_andamento" && missao.loboDerrotado) {
-      return "Missão: volte até Eliabe para receber a recompensa.";
+    if (missao1.status === "em_andamento" && missao1.loboDerrotado) {
+      return "Missão: volte até Eliabe para concluir.";
     }
 
-    if (missao.status === "em_andamento") {
+    if (missao1.status === "em_andamento") {
       return "Missão: derrote o lobo e volte até Eliabe.";
     }
 
-    return "Missão concluída.";
+    if (missao2.status === "bloqueada") {
+      return "Missão: fale com Eliabe para receber outra tarefa.";
+    }
+
+    if (missao2.status === "em_andamento") {
+      return (
+        `Missão: colete ervas e volte até Eliabe ` +
+        `(${quantidadeErvas}/${QUANTIDADE_ERVAS_MISSAO}).`
+      );
+    }
+
+    return "Missões de teste concluídas.";
   }
 
   atualizarStatus() {
     const personagem = Mundo.jogadores[MEU_ID];
     const vidaLobo = Mundo.obterVidaInimigo(MEU_ID, "lobo1");
-    const quantidadePocoes = Mundo.contarItem(MEU_ID, "pocao");
+    const pocoes = Mundo.contarItem(MEU_ID, "pocao");
+    const quantidadeErvas = Mundo.contarItem(MEU_ID, "erva");
 
     this.statusVida.setText(
       `Vida: ${personagem.vida}/${VIDA_MAXIMA_JOGADOR}`
     );
 
-    this.statusPocoes.setText(`Poções: ${quantidadePocoes}`);
+    this.statusInventario.setText(
+      `Poções: ${pocoes} | Ervas: ${quantidadeErvas}`
+    );
+
     this.statusMissao.setText(this.textoObjetivoMissao());
 
     if (vidaLobo > 0) {
@@ -228,7 +270,6 @@ class Cena extends Phaser.Scene {
   }
 
   update() {
-    // Atualiza perseguição, ataques inimigos e regeneração.
     const eventos = Mundo.atualizar(MEU_ID, Date.now());
 
     for (const evento of eventos) {
@@ -252,7 +293,6 @@ class Cena extends Phaser.Scene {
         const lobo = inimigos.lobo1;
 
         this.dialogo.setText(evento.mensagem);
-
         this.tweens.killTweensOf(this.sprite);
         this.movendo = false;
 
@@ -275,7 +315,6 @@ class Cena extends Phaser.Scene {
       this.atualizarStatus();
     }
 
-    // Conversa com Eliabe e inicia/atualiza a missão.
     if (Phaser.Input.Keyboard.JustDown(this.teclaE)) {
       const resultado = Mundo.executar(MEU_ID, {
         tipo: "interagir",
@@ -289,7 +328,6 @@ class Cena extends Phaser.Scene {
       this.atualizarStatus();
     }
 
-    // Ataca o lobo com Espaço.
     if (Phaser.Input.Keyboard.JustDown(this.teclaAtaque)) {
       const resultado = Mundo.executar(MEU_ID, {
         tipo: "atacar",
@@ -310,7 +348,6 @@ class Cena extends Phaser.Scene {
       this.atualizarStatus();
     }
 
-    // Usa uma poção com H.
     if (Phaser.Input.Keyboard.JustDown(this.teclaPocao)) {
       const resultado = Mundo.executar(MEU_ID, {
         tipo: "usarPocao",
@@ -352,6 +389,18 @@ class Cena extends Phaser.Scene {
 
     if (!resultado.ok) {
       return;
+    }
+
+    if (resultado.ervaColetada) {
+      const partes = this.ervasVisuais[resultado.ervaColetada];
+
+      if (partes) {
+        partes.forEach((parte) => parte.destroy());
+        delete this.ervasVisuais[resultado.ervaColetada];
+      }
+
+      this.dialogo.setText(resultado.mensagem);
+      this.atualizarStatus();
     }
 
     const personagem = Mundo.jogadores[MEU_ID];
