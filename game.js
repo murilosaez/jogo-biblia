@@ -104,6 +104,16 @@ class Cena extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(10);
 
+    this.statusMissao = this.add
+      .text(12, 40, "", {
+        fontFamily: "Arial",
+        fontSize: "14px",
+        color: "#ffffff",
+        backgroundColor: "#222222",
+        padding: { x: 6, y: 4 },
+      })
+      .setDepth(10);
+
     this.add
       .rectangle(400, 548, 790, 48, 0x111111, 0.9)
       .setScrollFactor(0)
@@ -177,6 +187,25 @@ class Cena extends Phaser.Scene {
     });
   }
 
+  textoObjetivoMissao() {
+    const personagem = Mundo.jogadores[MEU_ID];
+    const missao = personagem.missaoEliabe;
+
+    if (missao.status === "nao_iniciada") {
+      return "Missão: fale com Eliabe para começar.";
+    }
+
+    if (missao.status === "em_andamento" && missao.loboDerrotado) {
+      return "Missão: volte até Eliabe para receber a recompensa.";
+    }
+
+    if (missao.status === "em_andamento") {
+      return "Missão: derrote o lobo e volte até Eliabe.";
+    }
+
+    return "Missão concluída.";
+  }
+
   atualizarStatus() {
     const personagem = Mundo.jogadores[MEU_ID];
     const vidaLobo = Mundo.obterVidaInimigo(MEU_ID, "lobo1");
@@ -187,6 +216,7 @@ class Cena extends Phaser.Scene {
     );
 
     this.statusPocoes.setText(`Poções: ${quantidadePocoes}`);
+    this.statusMissao.setText(this.textoObjetivoMissao());
 
     if (vidaLobo > 0) {
       this.statusLobo.setText(
@@ -245,7 +275,7 @@ class Cena extends Phaser.Scene {
       this.atualizarStatus();
     }
 
-    // Conversa com Eliabe.
+    // Conversa com Eliabe e inicia/atualiza a missão.
     if (Phaser.Input.Keyboard.JustDown(this.teclaE)) {
       const resultado = Mundo.executar(MEU_ID, {
         tipo: "interagir",
@@ -255,6 +285,8 @@ class Cena extends Phaser.Scene {
       if (resultado.mensagem) {
         this.dialogo.setText(resultado.mensagem);
       }
+
+      this.atualizarStatus();
     }
 
     // Ataca o lobo com Espaço.

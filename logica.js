@@ -10,6 +10,7 @@ const INTERVALO_MOVIMENTO = 600;
 const INTERVALO_ATAQUE = 1200;
 const CURA_POCAO = 30;
 const QUANTIDADE_POCOES_INICIAIS = 3;
+const RECOMPENSA_MISSAO_POCOES = 2;
 
 // Mapa: 1 = obstáculo, 0 = chão
 const mapa = [];
@@ -75,6 +76,7 @@ const Mundo = {
         itensIniciaisEntregues: false,
         inimigosDerrotados: [],
         vidaInimigos: {},
+        missaoEliabe: null,
       };
     }
 
@@ -120,6 +122,37 @@ const Mundo = {
       personagem.itensIniciaisEntregues = true;
     }
 
+    // Cria ou corrige os dados da missão no save.
+    if (
+      !personagem.missaoEliabe ||
+      typeof personagem.missaoEliabe !== "object"
+    ) {
+      personagem.missaoEliabe = {
+        status: "nao_iniciada",
+        loboDerrotado: false,
+        recompensaRecebida: false,
+      };
+    }
+
+    const missao = personagem.missaoEliabe;
+    const statusValidos = [
+      "nao_iniciada",
+      "em_andamento",
+      "concluida",
+    ];
+
+    if (!statusValidos.includes(missao.status)) {
+      missao.status = "nao_iniciada";
+    }
+
+    if (typeof missao.loboDerrotado !== "boolean") {
+      missao.loboDerrotado = false;
+    }
+
+    if (typeof missao.recompensaRecebida !== "boolean") {
+      missao.recompensaRecebida = false;
+    }
+
     personagem.versao = VERSAO_SAVE;
 
     for (const inimigo of Object.values(inimigos)) {
@@ -139,6 +172,7 @@ const Mundo = {
         );
       }
 
+      // Todo inimigo começa no ponto original ao carregar o jogo.
       inimigo.x = inimigo.inicioX;
       inimigo.y = inimigo.inicioY;
       inimigo.proximoMovimento = 0;
@@ -303,6 +337,7 @@ const Mundo = {
             personagem.y = 2;
             personagem.vida = VIDA_MAXIMA_JOGADOR;
 
+            // Inimigos vivos voltam ao início com vida cheia.
             for (const outro of Object.values(inimigos)) {
               if (this.inimigoVivo(personagem, outro.id)) {
                 outro.x = outro.inicioX;
@@ -455,11 +490,70 @@ const Mundo = {
         };
       }
 
+      if (npc.id === "viajante1") {
+        const missao = personagem.missaoEliabe;
+
+        // Inicia a missão.
+        if (missao.status === "nao_iniciada") {
+          missao.status = "em_andamento";
+          Storage.salvar(personagem);
+
+          return {
+            ok: true,
+            missaoAtualizada: true,
+            mensagem:
+              "Eliabe: Um lobo ameaça os viajantes. Derrote-o e " +
+              "volte para falar comigo.",
+          };
+        }
+
+        // Entrega a recompensa ao voltar depois de derrotar o lobo.
+        if (
+          missao.status === "em_andamento" &&
+          missao.loboDerrotado &&
+          !missao.recompensaRecebida
+        ) {
+          for (let i = 0; i < RECOMPENSA_MISSAO_POCOES; i++) {
+            personagem.inventario.push("pocao");
+          }
+
+          missao.recompensaRecebida = true;
+          missao.status = "concluida";
+          Storage.salvar(personagem);
+
+          return {
+            ok: true,
+            missaoAtualizada: true,
+            recompensaRecebida: true,
+            mensagem:
+              `Eliabe: Obrigado por ajudar! Aqui estão ` +
+              `${RECOMPENSA_MISSAO_POCOES} poções como recompensa. ` +
+              "Missão concluída!",
+          };
+        }
+
+        if (missao.status === "em_andamento") {
+          return {
+            ok: true,
+            mensagem:
+              "Eliabe: Ainda precisamos derrotar o lobo. " +
+              "Encontre-o e volte quando conseguir.",
+          };
+        }
+
+        if (missao.status === "concluida") {
+          return {
+            ok: true,
+            mensagem:
+              "Eliabe: Obrigado novamente por ajudar. " +
+              "Você já concluiu essa missão.",
+          };
+        }
+      }
+
       return {
         ok: true,
-        mensagem:
-          `${npc.nome}: Paz, viajante! Nossa jornada começa no princípio. ` +
-          "Explore com atenção e procure aprender com as histórias.",
+        mensagem: `${npc.nome}: Paz, viajante!`,
       };
     }
 
@@ -488,7 +582,6 @@ const Mundo = {
         personagem.vida + CURA_POCAO
       );
 
-      // Usar uma poção durante a batalha reinicia o tempo de regeneração.
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
 
       Storage.salvar(personagem);
@@ -545,12 +638,20 @@ const Mundo = {
           personagem.inimigosDerrotados.push(inimigo.id);
         }
 
+        // Só conta para a missão se ela já tiver sido iniciada.
+        if (personagem.missaoEliabe.status === "em_andamento") {
+          personagem.missaoEliabe.loboDerrotado = true;
+        }
+
         Storage.salvar(personagem);
 
         return {
           ok: true,
           derrotado: true,
-          mensagem: "Você derrotou o lobo! Ele reaparecerá em 5 segundos.",
+          missaoAtualizada: true,
+          mensagem:
+            "Você derrotou o lobo! Volte até Eliabe para concluir a missão. " +
+            "O lobo reaparecerá em 5 segundos.",
         };
       }
 
