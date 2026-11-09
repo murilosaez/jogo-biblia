@@ -4,7 +4,7 @@ const ROWS = 18;
 const VERSAO_SAVE = 1;
 const VIDA_MAXIMA_JOGADOR = 100;
 
-// Parâmetros provisórios de teste.
+// Parâmetros provisórios para teste.
 const TEMPO_REGEN = 10000;
 const INTERVALO_MOVIMENTO = 600;
 const INTERVALO_ATAQUE = 1200;
@@ -13,23 +13,59 @@ const QUANTIDADE_POCOES_INICIAIS = 3;
 const QUANTIDADE_ERVAS_MISSAO = 3;
 const RECOMPENSA_MISSAO_POCOES = 2;
 
-// Mapa: 1 = obstáculo, 0 = chão.
-const mapa = [];
+const areas = {
+  canaan: {
+    id: "canaan",
+    nome: "Canaã",
+    passagem: { x: 22, y: 15 },
+    chegada: { x: 21, y: 15 },
+  },
+  deserto: {
+    id: "deserto",
+    nome: "Deserto",
+    passagem: { x: 2, y: 15 },
+    chegada: { x: 3, y: 15 },
+  },
+};
 
-for (let y = 0; y < ROWS; y++) {
-  mapa[y] = [];
+function criarMapa(areaId) {
+  const resultado = [];
 
-  for (let x = 0; x < COLS; x++) {
-    const borda =
-      x === 0 ||
-      y === 0 ||
-      x === COLS - 1 ||
-      y === ROWS - 1;
+  for (let y = 0; y < ROWS; y++) {
+    resultado[y] = [];
 
-    const obstaculo = x % 6 === 3 && y % 4 === 2;
-    mapa[y][x] = borda || obstaculo ? 1 : 0;
+    for (let x = 0; x < COLS; x++) {
+      const borda =
+        x === 0 ||
+        y === 0 ||
+        x === COLS - 1 ||
+        y === ROWS - 1;
+
+      let obstaculo = false;
+
+      if (areaId === "canaan") {
+        obstaculo = x % 6 === 3 && y % 4 === 2;
+      } else {
+        // Obstáculos diferentes para dar aparência própria ao Deserto.
+        obstaculo = (x * 7 + y * 11) % 19 === 0;
+
+        // Caminho livre até a passagem do Deserto.
+        if (y === 15 && x >= 1 && x <= 5) {
+          obstaculo = false;
+        }
+      }
+
+      resultado[y][x] = borda || obstaculo ? 1 : 0;
+    }
   }
+
+  return resultado;
 }
+
+const mapas = {
+  canaan: criarMapa("canaan"),
+  deserto: criarMapa("deserto"),
+};
 
 const npcs = {
   viajante1: {
@@ -40,7 +76,6 @@ const npcs = {
   },
 };
 
-// Ervas coletáveis. Caminhe sobre uma erva para pegá-la.
 const ervas = [
   { id: "erva1", x: 9, y: 4 },
   { id: "erva2", x: 14, y: 9 },
@@ -75,6 +110,7 @@ const Mundo = {
       personagem = {
         versao: VERSAO_SAVE,
         id,
+        area: "canaan",
         x: 2,
         y: 2,
         vida: VIDA_MAXIMA_JOGADOR,
@@ -107,6 +143,12 @@ const Mundo = {
       personagem.ervasColetadas = [];
     }
 
+    if (!areas[personagem.area]) {
+      personagem.area = "canaan";
+      personagem.x = 2;
+      personagem.y = 2;
+    }
+
     if (
       typeof personagem.vida !== "number" ||
       !Number.isFinite(personagem.vida)
@@ -120,12 +162,12 @@ const Mundo = {
     );
 
     if (personagem.vida <= 0) {
+      personagem.area = "canaan";
       personagem.x = 2;
       personagem.y = 2;
       personagem.vida = VIDA_MAXIMA_JOGADOR;
     }
 
-    // Entrega as poções iniciais apenas uma vez, inclusive em saves antigos.
     if (!personagem.itensIniciaisEntregues) {
       for (let i = 0; i < QUANTIDADE_POCOES_INICIAIS; i++) {
         personagem.inventario.push("pocao");
@@ -155,13 +197,13 @@ const Mundo = {
       };
     }
 
-    const statusValidosMissao1 = [
+    const statusMissao1 = [
       "nao_iniciada",
       "em_andamento",
       "concluida",
     ];
 
-    if (!statusValidosMissao1.includes(personagem.missaoEliabe.status)) {
+    if (!statusMissao1.includes(personagem.missaoEliabe.status)) {
       personagem.missaoEliabe.status = "nao_iniciada";
     }
 
@@ -173,13 +215,9 @@ const Mundo = {
       personagem.missaoEliabe.recompensaRecebida = false;
     }
 
-    const statusValidosMissao2 = [
-      "bloqueada",
-      "em_andamento",
-      "concluida",
-    ];
+    const statusMissao2 = ["bloqueada", "em_andamento", "concluida"];
 
-    if (!statusValidosMissao2.includes(personagem.missaoErvas.status)) {
+    if (!statusMissao2.includes(personagem.missaoErvas.status)) {
       personagem.missaoErvas.status = "bloqueada";
     }
 
@@ -280,7 +318,9 @@ const Mundo = {
   },
 
   casaLivreParaInimigo(x, y, personagem) {
-    if (!mapa[y] || mapa[y][x] !== 0) {
+    const mapaAtual = mapas[personagem.area];
+
+    if (!mapaAtual[y] || mapaAtual[y][x] !== 0) {
       return false;
     }
 
@@ -342,95 +382,99 @@ const Mundo = {
       return eventos;
     }
 
-    for (const inimigo of Object.values(inimigos)) {
-      if (!this.inimigoVivo(personagem, inimigo.id)) {
-        continue;
-      }
+    // O lobo e a regeneração de combate só atuam em Canaã.
+    if (personagem.area === "canaan") {
+      for (const inimigo of Object.values(inimigos)) {
+        if (!this.inimigoVivo(personagem, inimigo.id)) {
+          continue;
+        }
 
-      const distancia =
-        Math.abs(personagem.x - inimigo.x) +
-        Math.abs(personagem.y - inimigo.y);
+        const distancia =
+          Math.abs(personagem.x - inimigo.x) +
+          Math.abs(personagem.y - inimigo.y);
 
-      if (distancia === 1) {
-        if (agora >= inimigo.proximoAtaque) {
-          inimigo.proximoAtaque = agora + INTERVALO_ATAQUE;
-          estado.proximaRegen = agora + TEMPO_REGEN;
+        if (distancia === 1) {
+          if (agora >= inimigo.proximoAtaque) {
+            inimigo.proximoAtaque = agora + INTERVALO_ATAQUE;
+            estado.proximaRegen = agora + TEMPO_REGEN;
 
-          personagem.vida = Math.max(
-            0,
-            personagem.vida - inimigo.danoContraJogador
-          );
+            personagem.vida = Math.max(
+              0,
+              personagem.vida - inimigo.danoContraJogador
+            );
 
-          if (personagem.vida === 0) {
-            personagem.x = 2;
-            personagem.y = 2;
-            personagem.vida = VIDA_MAXIMA_JOGADOR;
+            if (personagem.vida === 0) {
+              personagem.area = "canaan";
+              personagem.x = 2;
+              personagem.y = 2;
+              personagem.vida = VIDA_MAXIMA_JOGADOR;
 
-            for (const outro of Object.values(inimigos)) {
-              if (this.inimigoVivo(personagem, outro.id)) {
-                outro.x = outro.inicioX;
-                outro.y = outro.inicioY;
-                outro.proximoAtaque = 0;
-                outro.proximoMovimento = 0;
-                personagem.vidaInimigos[outro.id] =
-                  outro.vidaMaxima;
+              for (const outro of Object.values(inimigos)) {
+                if (this.inimigoVivo(personagem, outro.id)) {
+                  outro.x = outro.inicioX;
+                  outro.y = outro.inicioY;
+                  outro.proximoAtaque = 0;
+                  outro.proximoMovimento = 0;
+                  personagem.vidaInimigos[outro.id] =
+                    outro.vidaMaxima;
+                }
               }
+
+              Storage.salvar(personagem);
+
+              eventos.push({
+                tipo: "renasceu",
+                mensagem:
+                  "O lobo derrubou você! Você voltou ao início " +
+                  "de Canaã com a vida restaurada.",
+              });
+
+              return eventos;
             }
 
             Storage.salvar(personagem);
 
             eventos.push({
-              tipo: "renasceu",
+              tipo: "jogadorAtingido",
               mensagem:
-                "O lobo derrubou você! Você voltou ao início " +
-                "com a vida restaurada.",
+                `O lobo mordeu você! Sua vida: ` +
+                `${personagem.vida}/${VIDA_MAXIMA_JOGADOR}.`,
             });
-
-            return eventos;
           }
 
-          Storage.salvar(personagem);
-
-          eventos.push({
-            tipo: "jogadorAtingido",
-            mensagem:
-              `O lobo mordeu você! Sua vida: ` +
-              `${personagem.vida}/${VIDA_MAXIMA_JOGADOR}.`,
-          });
+          continue;
         }
 
-        continue;
-      }
+        if (agora < inimigo.proximoMovimento) {
+          continue;
+        }
 
-      if (agora < inimigo.proximoMovimento) {
-        continue;
-      }
+        inimigo.proximoMovimento = agora + INTERVALO_MOVIMENTO;
 
-      inimigo.proximoMovimento = agora + INTERVALO_MOVIMENTO;
+        let alvoX = inimigo.inicioX;
+        let alvoY = inimigo.inicioY;
 
-      let alvoX = inimigo.inicioX;
-      let alvoY = inimigo.inicioY;
+        if (distancia <= inimigo.raioPercepcao) {
+          alvoX = personagem.x;
+          alvoY = personagem.y;
+        } else if (
+          inimigo.x === inimigo.inicioX &&
+          inimigo.y === inimigo.inicioY
+        ) {
+          continue;
+        }
 
-      if (distancia <= inimigo.raioPercepcao) {
-        alvoX = personagem.x;
-        alvoY = personagem.y;
-      } else if (
-        inimigo.x === inimigo.inicioX &&
-        inimigo.y === inimigo.inicioY
-      ) {
-        continue;
-      }
+        if (this.passoInimigo(inimigo, alvoX, alvoY, personagem)) {
+          inimigo.proximoAtaque = Math.max(
+            inimigo.proximoAtaque,
+            agora + 600
+          );
 
-      if (this.passoInimigo(inimigo, alvoX, alvoY, personagem)) {
-        inimigo.proximoAtaque = Math.max(
-          inimigo.proximoAtaque,
-          agora + 600
-        );
-
-        eventos.push({
-          tipo: "inimigoMoveu",
-          id: inimigo.id,
-        });
+          eventos.push({
+            tipo: "inimigoMoveu",
+            id: inimigo.id,
+          });
+        }
       }
     }
 
@@ -469,46 +513,71 @@ const Mundo = {
 
       const novoX = personagem.x + dx;
       const novoY = personagem.y + dy;
+      const mapaAtual = mapas[personagem.area];
 
-      if (!mapa[novoY] || mapa[novoY][novoX] !== 0) {
+      if (!mapaAtual[novoY] || mapaAtual[novoY][novoX] !== 0) {
         return { ok: false };
       }
 
-      const npcOcupandoCasa = Object.values(npcs).some(
-        (npc) => npc.x === novoX && npc.y === novoY
-      );
+      if (personagem.area === "canaan") {
+        const npcOcupandoCasa = Object.values(npcs).some(
+          (npc) => npc.x === novoX && npc.y === novoY
+        );
 
-      const inimigoOcupandoCasa = Object.values(inimigos).some(
-        (inimigo) =>
-          this.inimigoVivo(personagem, inimigo.id) &&
-          inimigo.x === novoX &&
-          inimigo.y === novoY
-      );
+        const inimigoOcupandoCasa = Object.values(inimigos).some(
+          (inimigo) =>
+            this.inimigoVivo(personagem, inimigo.id) &&
+            inimigo.x === novoX &&
+            inimigo.y === novoY
+        );
 
-      if (npcOcupandoCasa || inimigoOcupandoCasa) {
-        return { ok: false };
+        if (npcOcupandoCasa || inimigoOcupandoCasa) {
+          return { ok: false };
+        }
       }
 
       personagem.x = novoX;
       personagem.y = novoY;
 
-      const erva = ervas.find(
-        (item) =>
-          item.x === novoX &&
-          item.y === novoY &&
-          !personagem.ervasColetadas.includes(item.id)
-      );
+      // Ao pisar na passagem, troca de área e salva a chegada.
+      const passagemAtual = areas[personagem.area].passagem;
 
-      if (erva) {
-        personagem.ervasColetadas.push(erva.id);
-        personagem.inventario.push("erva");
+      if (novoX === passagemAtual.x && novoY === passagemAtual.y) {
+        const novaArea =
+          personagem.area === "canaan" ? "deserto" : "canaan";
+
+        personagem.area = novaArea;
+        personagem.x = areas[novaArea].chegada.x;
+        personagem.y = areas[novaArea].chegada.y;
+
         Storage.salvar(personagem);
 
         return {
           ok: true,
-          ervaColetada: erva.id,
-          mensagem: "Você coletou uma erva medicinal.",
+          areaAlterada: true,
+          mensagem: `Você chegou a ${areas[novaArea].nome}.`,
         };
+      }
+
+      if (personagem.area === "canaan") {
+        const erva = ervas.find(
+          (item) =>
+            item.x === novoX &&
+            item.y === novoY &&
+            !personagem.ervasColetadas.includes(item.id)
+        );
+
+        if (erva) {
+          personagem.ervasColetadas.push(erva.id);
+          personagem.inventario.push("erva");
+          Storage.salvar(personagem);
+
+          return {
+            ok: true,
+            ervaColetada: erva.id,
+            mensagem: "Você coletou uma erva medicinal.",
+          };
+        }
       }
 
       Storage.salvar(personagem);
@@ -516,6 +585,13 @@ const Mundo = {
     }
 
     if (comando.tipo === "interagir") {
+      if (personagem.area !== "canaan") {
+        return {
+          ok: false,
+          mensagem: "Não há ninguém por perto para conversar.",
+        };
+      }
+
       const npc = npcs[comando.alvoId];
 
       if (!npc) {
@@ -536,116 +612,107 @@ const Mundo = {
         };
       }
 
-      if (npc.id === "viajante1") {
-        const missao1 = personagem.missaoEliabe;
-        const missao2 = personagem.missaoErvas;
+      const missao1 = personagem.missaoEliabe;
+      const missao2 = personagem.missaoErvas;
 
-        if (missao1.status === "nao_iniciada") {
-          missao1.status = "em_andamento";
-          Storage.salvar(personagem);
+      if (missao1.status === "nao_iniciada") {
+        missao1.status = "em_andamento";
+        Storage.salvar(personagem);
 
-          return {
-            ok: true,
-            mensagem:
-              "Eliabe: Um lobo ameaça os viajantes. Derrote-o e " +
-              "volte para falar comigo.",
-          };
+        return {
+          ok: true,
+          mensagem:
+            "Eliabe: Um lobo ameaça os viajantes. Derrote-o e " +
+            "volte para falar comigo.",
+        };
+      }
+
+      if (
+        missao1.status === "em_andamento" &&
+        missao1.loboDerrotado &&
+        !missao1.recompensaRecebida
+      ) {
+        for (let i = 0; i < RECOMPENSA_MISSAO_POCOES; i++) {
+          personagem.inventario.push("pocao");
         }
 
-        if (
-          missao1.status === "em_andamento" &&
-          missao1.loboDerrotado &&
-          !missao1.recompensaRecebida
-        ) {
+        missao1.recompensaRecebida = true;
+        missao1.status = "concluida";
+        Storage.salvar(personagem);
+
+        return {
+          ok: true,
+          mensagem:
+            `Eliabe: Obrigado por ajudar! Aqui estão ` +
+            `${RECOMPENSA_MISSAO_POCOES} poções. Primeira missão concluída!`,
+        };
+      }
+
+      if (missao1.status === "em_andamento") {
+        return {
+          ok: true,
+          mensagem:
+            "Eliabe: Ainda precisamos derrotar o lobo. " +
+            "Encontre-o e volte quando conseguir.",
+        };
+      }
+
+      if (missao2.status === "bloqueada") {
+        missao2.status = "em_andamento";
+        Storage.salvar(personagem);
+
+        return {
+          ok: true,
+          mensagem:
+            "Eliabe: Agora preciso de 3 ervas medicinais. " +
+            "Procure-as pelo caminho e volte com elas.",
+        };
+      }
+
+      if (missao2.status === "em_andamento") {
+        const quantidadeErvas = this.contarItem(id, "erva");
+
+        if (quantidadeErvas >= QUANTIDADE_ERVAS_MISSAO) {
+          let paraRemover = QUANTIDADE_ERVAS_MISSAO;
+
+          personagem.inventario = personagem.inventario.filter((item) => {
+            if (item === "erva" && paraRemover > 0) {
+              paraRemover--;
+              return false;
+            }
+
+            return true;
+          });
+
           for (let i = 0; i < RECOMPENSA_MISSAO_POCOES; i++) {
             personagem.inventario.push("pocao");
           }
 
-          missao1.recompensaRecebida = true;
-          missao1.status = "concluida";
+          missao2.recompensaRecebida = true;
+          missao2.status = "concluida";
           Storage.salvar(personagem);
 
           return {
             ok: true,
             mensagem:
-              `Eliabe: Obrigado por ajudar! Aqui estão ` +
-              `${RECOMPENSA_MISSAO_POCOES} poções. Primeira missão concluída!`,
+              "Eliabe: Excelente! Essas ervas vão ajudar os viajantes. " +
+              `Receba ${RECOMPENSA_MISSAO_POCOES} poções. Missão concluída!`,
           };
         }
 
-        if (missao1.status === "em_andamento") {
-          return {
-            ok: true,
-            mensagem:
-              "Eliabe: Ainda precisamos derrotar o lobo. " +
-              "Encontre-o e volte quando conseguir.",
-          };
-        }
-
-        if (missao2.status === "bloqueada") {
-          missao2.status = "em_andamento";
-          Storage.salvar(personagem);
-
-          return {
-            ok: true,
-            mensagem:
-              "Eliabe: Agora preciso de 3 ervas medicinais. " +
-              "Procure-as pelo caminho e volte com elas.",
-          };
-        }
-
-        if (missao2.status === "em_andamento") {
-          const quantidadeErvas = this.contarItem(id, "erva");
-
-          if (quantidadeErvas >= QUANTIDADE_ERVAS_MISSAO) {
-            let paraRemover = QUANTIDADE_ERVAS_MISSAO;
-
-            personagem.inventario = personagem.inventario.filter((item) => {
-              if (item === "erva" && paraRemover > 0) {
-                paraRemover--;
-                return false;
-              }
-
-              return true;
-            });
-
-            for (let i = 0; i < RECOMPENSA_MISSAO_POCOES; i++) {
-              personagem.inventario.push("pocao");
-            }
-
-            missao2.recompensaRecebida = true;
-            missao2.status = "concluida";
-            Storage.salvar(personagem);
-
-            return {
-              ok: true,
-              mensagem:
-                "Eliabe: Excelente! Essas ervas vão ajudar os viajantes. " +
-                `Receba ${RECOMPENSA_MISSAO_POCOES} poções. Missão concluída!`,
-            };
-          }
-
-          return {
-            ok: true,
-            mensagem:
-              `Eliabe: Ainda faltam ervas. Você tem ` +
-              `${quantidadeErvas}/${QUANTIDADE_ERVAS_MISSAO}.`,
-          };
-        }
-
-        if (missao2.status === "concluida") {
-          return {
-            ok: true,
-            mensagem:
-              "Eliabe: Obrigado por ajudar os viajantes. " +
-              "Você já concluiu as missões de teste.",
-          };
-        }
+        return {
+          ok: true,
+          mensagem:
+            `Eliabe: Ainda faltam ervas. Você tem ` +
+            `${quantidadeErvas}/${QUANTIDADE_ERVAS_MISSAO}.`,
+        };
       }
 
       return {
         ok: true,
-        mensagem: `${npc.nome}: Paz, viajante!`,
+        mensagem:
+          "Eliabe: Obrigado por ajudar os viajantes. " +
+          "Você já concluiu as missões de teste.",
       };
     }
 
@@ -653,10 +720,7 @@ const Mundo = {
       const indicePocao = personagem.inventario.indexOf("pocao");
 
       if (indicePocao === -1) {
-        return {
-          ok: false,
-          mensagem: "Você não tem poções.",
-        };
+        return { ok: false, mensagem: "Você não tem poções." };
       }
 
       if (personagem.vida >= VIDA_MAXIMA_JOGADOR) {
@@ -687,6 +751,13 @@ const Mundo = {
     }
 
     if (comando.tipo === "atacar") {
+      if (personagem.area !== "canaan") {
+        return {
+          ok: false,
+          mensagem: "Não há inimigos nesta área de teste.",
+        };
+      }
+
       const inimigo = inimigos[comando.alvoId];
 
       if (!inimigo) {

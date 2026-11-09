@@ -8,38 +8,22 @@ class Cena extends Phaser.Scene {
     this.teclaE = this.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.E
     );
-
     this.teclaAtaque = this.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.SPACE
     );
-
     this.teclaPocao = this.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.H
     );
 
-    // Desenha o mapa.
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        const cor = mapa[y][x] === 1 ? 0x2d5a27 : 0x8fbf6a;
-
-        this.add
-          .rectangle(
-            x * TILE + TILE / 2,
-            y * TILE + TILE / 2,
-            TILE,
-            TILE,
-            cor
-          )
-          .setStrokeStyle(1, 0x000000, 0.1);
-      }
-    }
-
     const personagem = Mundo.entrar(MEU_ID);
-
+    this.areaAtual = personagem.area;
     this.movendo = false;
     this.respawnAgendado = false;
     this.loboVisual = null;
     this.ervasVisuais = {};
+
+    this.desenharMapa();
+    this.desenharPassagem();
 
     this.sprite = this.add.rectangle(
       personagem.x * TILE + TILE / 2,
@@ -49,14 +33,27 @@ class Cena extends Phaser.Scene {
       0xffd700
     );
 
-    this.desenharEliabe();
-    this.desenharErvas();
+    if (this.areaAtual === "canaan") {
+      this.desenharEliabe();
+      this.desenharErvas();
 
-    if (Mundo.obterVidaInimigo(MEU_ID, "lobo1") > 0) {
-      this.loboVisual = this.desenharLobo();
-    } else {
-      this.agendarRespawnLobo();
+      if (Mundo.obterVidaInimigo(MEU_ID, "lobo1") > 0) {
+        this.loboVisual = this.desenharLobo();
+      } else {
+        this.agendarRespawnLobo();
+      }
     }
+
+    this.statusArea = this.add
+      .text(400, 10, "", {
+        fontFamily: "Arial",
+        fontSize: "16px",
+        color: "#ffffff",
+        backgroundColor: "#222222",
+        padding: { x: 6, y: 4 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(10);
 
     this.statusVida = this.add
       .text(12, 10, "", {
@@ -80,9 +77,9 @@ class Cena extends Phaser.Scene {
       .setDepth(10);
 
     this.statusInventario = this.add
-      .text(400, 10, "", {
+      .text(400, 35, "", {
         fontFamily: "Arial",
-        fontSize: "15px",
+        fontSize: "14px",
         color: "#ffffff",
         backgroundColor: "#222222",
         padding: { x: 6, y: 4 },
@@ -123,16 +120,64 @@ class Cena extends Phaser.Scene {
     this.atualizarStatus();
   }
 
-  desenharEliabe() {
-    const npc = npcs.viajante1;
-    const npcX = npc.x * TILE + TILE / 2;
-    const npcY = npc.y * TILE + TILE / 2;
+  desenharMapa() {
+    const mapaAtual = mapas[this.areaAtual];
 
-    this.add.circle(npcX, npcY - 7, 7, 0xf1c27d);
-    this.add.rectangle(npcX, npcY + 7, 18, 18, 0x446e8a);
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        let cor;
+
+        if (this.areaAtual === "canaan") {
+          cor = mapaAtual[y][x] === 1 ? 0x2d5a27 : 0x8fbf6a;
+        } else {
+          cor = mapaAtual[y][x] === 1 ? 0x80643b : 0xd6bd78;
+        }
+
+        this.add
+          .rectangle(
+            x * TILE + TILE / 2,
+            y * TILE + TILE / 2,
+            TILE,
+            TILE,
+            cor
+          )
+          .setStrokeStyle(1, 0x000000, 0.1);
+      }
+    }
+  }
+
+  desenharPassagem() {
+    const passagem = areas[this.areaAtual].passagem;
+    const x = passagem.x * TILE + TILE / 2;
+    const y = passagem.y * TILE + TILE / 2;
 
     this.add
-      .text(npcX, npcY - 31, npc.nome, {
+      .circle(x, y, 13, 0x22c9e8, 0.85)
+      .setStrokeStyle(3, 0xe7fcff, 1)
+      .setDepth(2);
+
+    this.add
+      .text(x, y - 25, "PASSAGEM", {
+        fontFamily: "Arial",
+        fontSize: "10px",
+        color: "#ffffff",
+        backgroundColor: "#173d49",
+        padding: { x: 3, y: 2 },
+      })
+      .setOrigin(0.5)
+      .setDepth(3);
+  }
+
+  desenharEliabe() {
+    const npc = npcs.viajante1;
+    const x = npc.x * TILE + TILE / 2;
+    const y = npc.y * TILE + TILE / 2;
+
+    this.add.circle(x, y - 7, 7, 0xf1c27d);
+    this.add.rectangle(x, y + 7, 18, 18, 0x446e8a);
+
+    this.add
+      .text(x, y - 31, npc.nome, {
         fontFamily: "Arial",
         fontSize: "12px",
         color: "#ffffff",
@@ -153,41 +198,33 @@ class Cena extends Phaser.Scene {
       const x = erva.x * TILE + TILE / 2;
       const y = erva.y * TILE + TILE / 2;
 
-      const partes = [
+      this.ervasVisuais[erva.id] = [
         this.add.circle(x, y, 7, 0x2b7a36),
         this.add.circle(x - 5, y + 4, 4, 0x7ee36a),
         this.add.circle(x + 5, y + 4, 4, 0x7ee36a),
         this.add.rectangle(x, y + 8, 3, 8, 0x5b3a1e),
       ];
-
-      this.ervasVisuais[erva.id] = partes;
     }
   }
 
   desenharLobo() {
     const lobo = inimigos.lobo1;
-    const loboX = lobo.x * TILE + TILE / 2;
-    const loboY = lobo.y * TILE + TILE / 2;
+    const x = lobo.x * TILE + TILE / 2;
+    const y = lobo.y * TILE + TILE / 2;
 
-    const corpo = this.add.circle(0, 0, 12, 0xb53030);
-    const olhoEsq = this.add.circle(-4, -2, 2, 0xffffff);
-    const olhoDir = this.add.circle(4, -2, 2, 0xffffff);
-
-    const nome = this.add
-      .text(0, -30, lobo.nome, {
-        fontFamily: "Arial",
-        fontSize: "12px",
-        color: "#ffffff",
-        backgroundColor: "#222222",
-        padding: { x: 4, y: 2 },
-      })
-      .setOrigin(0.5);
-
-    const grupo = this.add.container(loboX, loboY, [
-      corpo,
-      olhoEsq,
-      olhoDir,
-      nome,
+    const grupo = this.add.container(x, y, [
+      this.add.circle(0, 0, 12, 0xb53030),
+      this.add.circle(-4, -2, 2, 0xffffff),
+      this.add.circle(4, -2, 2, 0xffffff),
+      this.add
+        .text(0, -30, lobo.nome, {
+          fontFamily: "Arial",
+          fontSize: "12px",
+          color: "#ffffff",
+          backgroundColor: "#222222",
+          padding: { x: 4, y: 2 },
+        })
+        .setOrigin(0.5),
     ]);
 
     grupo.setDepth(5);
@@ -204,7 +241,10 @@ class Cena extends Phaser.Scene {
     this.time.delayedCall(TEMPO_RESPAWN_LOBO, () => {
       this.respawnAgendado = false;
 
-      if (Mundo.reaparecerInimigo(MEU_ID, "lobo1")) {
+      if (
+        this.areaAtual === "canaan" &&
+        Mundo.reaparecerInimigo(MEU_ID, "lobo1")
+      ) {
         this.loboVisual = this.desenharLobo();
         this.dialogo.setText("O lobo reapareceu!");
         this.atualizarStatus();
@@ -214,6 +254,11 @@ class Cena extends Phaser.Scene {
 
   textoObjetivoMissao() {
     const personagem = Mundo.jogadores[MEU_ID];
+
+    if (personagem.area !== "canaan") {
+      return "Explore a área e encontre a passagem para voltar.";
+    }
+
     const missao1 = personagem.missaoEliabe;
     const missao2 = personagem.missaoErvas;
     const quantidadeErvas = Mundo.contarItem(MEU_ID, "erva");
@@ -222,7 +267,10 @@ class Cena extends Phaser.Scene {
       return "Missão: fale com Eliabe para começar.";
     }
 
-    if (missao1.status === "em_andamento" && missao1.loboDerrotado) {
+    if (
+      missao1.status === "em_andamento" &&
+      missao1.loboDerrotado
+    ) {
       return "Missão: volte até Eliabe para concluir.";
     }
 
@@ -250,17 +298,18 @@ class Cena extends Phaser.Scene {
     const pocoes = Mundo.contarItem(MEU_ID, "pocao");
     const quantidadeErvas = Mundo.contarItem(MEU_ID, "erva");
 
+    this.statusArea.setText(`Área: ${areas[personagem.area].nome}`);
     this.statusVida.setText(
       `Vida: ${personagem.vida}/${VIDA_MAXIMA_JOGADOR}`
     );
-
     this.statusInventario.setText(
       `Poções: ${pocoes} | Ervas: ${quantidadeErvas}`
     );
-
     this.statusMissao.setText(this.textoObjetivoMissao());
 
-    if (vidaLobo > 0) {
+    if (personagem.area !== "canaan") {
+      this.statusLobo.setText("");
+    } else if (vidaLobo > 0) {
       this.statusLobo.setText(
         `Lobo: ${vidaLobo}/${inimigos.lobo1.vidaMaxima}`
       );
@@ -290,24 +339,10 @@ class Cena extends Phaser.Scene {
 
       if (evento.tipo === "renasceu") {
         const personagem = Mundo.jogadores[MEU_ID];
-        const lobo = inimigos.lobo1;
 
         this.dialogo.setText(evento.mensagem);
-        this.tweens.killTweensOf(this.sprite);
-        this.movendo = false;
-
-        this.sprite.setPosition(
-          personagem.x * TILE + TILE / 2,
-          personagem.y * TILE + TILE / 2
-        );
-
-        if (this.loboVisual) {
-          this.tweens.killTweensOf(this.loboVisual);
-          this.loboVisual.setPosition(
-            lobo.x * TILE + TILE / 2,
-            lobo.y * TILE + TILE / 2
-          );
-        }
+        this.scene.restart();
+        return;
       }
     }
 
@@ -388,6 +423,11 @@ class Cena extends Phaser.Scene {
     });
 
     if (!resultado.ok) {
+      return;
+    }
+
+    if (resultado.areaAlterada) {
+      this.scene.restart();
       return;
     }
 
