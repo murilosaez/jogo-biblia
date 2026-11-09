@@ -1,29 +1,24 @@
-JORNADA BÍBLICA — versão com sprites, missão no Deserto e níveis
+JORNADA BÍBLICA — mochila e equipamentos mais claros
+
+ATUALIZAÇÃO
+A mochila mostra o efeito numérico dos equipamentos e permite equipar/guardar com clique. As teclas também continuam disponíveis.
+
+COMO EQUIPAR
+1. Abra a mochila com I.
+2. Clique no botão correspondente a arma, escudo ou armadura; ou pressione 1, 2 ou 3 enquanto a mochila estiver aberta.
+3. O botão informa o item e o efeito antes de equipá-lo.
+
+O QUE CADA ITEM MELHORA
+- Espada de madeira: +5 de dano por ataque.
+- Espada de ferro (recompensa de Eliabe): +12 de dano por ataque; substitui o bônus da arma anterior.
+- Escudo de madeira: +3 de defesa.
+- Túnica de pano: +2 de defesa.
+- Armadura de couro (recompensa de Noemi): +5 de defesa.
+- Escudo e armadura somam defesa; ela reduz o dano recebido por golpe, até o mínimo de 1.
+- Dano: 25 base + 5 por nível acima do nível 1 + bônus da arma equipada.
 
 ARQUIVOS
-- index.html
-- storage.js
-- logica.js
-- game.js
-
-COMO TESTAR
-1. Faça uma cópia de segurança da pasta atual do jogo.
-2. Substitua os quatro arquivos pelos arquivos deste pacote.
-3. Abra index.html pelo Live Server no VS Code.
-4. O jogo salva no armazenamento local do mesmo navegador.
+O pacote contém os quatro arquivos completos: index.html, storage.js, logica.js e game.js. Faça uma cópia de segurança e substitua os arquivos do projeto pelos deste pacote. Abra index.html pelo Live Server. O save do navegador é mantido.
 
 CONTROLES
-Setas: andar | E: conversar | Espaço: atacar | H: usar poção | I: abrir/fechar mochila | com a mochila aberta, 1/2/3 equipam ou guardam arma, escudo e armadura
-
-NOVIDADES
-- Sprites pixel art originais desenhados pelo próprio jogo, sem baixar imagens ou depender de licença externa.
-- Canaã mantém as missões de Eliabe; a missão das ervas conta apenas as ervas colhidas depois de aceitá-la.
-- No Deserto, Noemi oferece uma missão de coletar três odres de água; há também um escorpião que persegue e ataca.
-- Inimigos e missões concedem XP; ao subir de nível, a vida máxima aumenta em 10 e o dano de ataque em 5.
-- Mochila com capacidade de carga que cresce a cada nível; ervas, odres e poções têm peso.
-- Armas aumentam o dano; escudos e armaduras reduzem o dano recebido. Equipamentos podem ser alternados pela mochila.
-- As missões de Eliabe e Noemi também concedem equipamento; se a mochila não comportar a recompensa, ela fica pendente até liberar espaço.
-- Progresso, nível, XP, inventário, equipamentos e missões são salvos no navegador.
-
-OBSERVAÇÃO SOBRE O SAVE
-A versão mantém os dados já existentes (inventário e missões) e acrescenta os campos de XP e nível. Recomenda-se manter um backup do save antes do primeiro teste da versão nova.
+Setas: andar | E: conversar | Espaço: atacar | H: poção | I: mochila | com a mochila aberta: clique nos botões ou use 1 (arma), 2 (escudo), 3 (armadura).

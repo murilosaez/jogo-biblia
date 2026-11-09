@@ -122,24 +122,96 @@ class Cena extends Phaser.Scene {
     this.dialogo = this.add.text(16, 531, "Setas: andar | E: conversar | Espaço: atacar | H: usar poção | I: mochila", { fontFamily: "Arial", fontSize: "16px", color: "#fff", wordWrap: { width: 760 } }).setScrollFactor(0).setDepth(11);
   }
   criarPainelInventario() {
-    this.inventarioSombra = this.add.rectangle(400, 288, 800, 576, 0x000000, 0.72).setScrollFactor(0).setDepth(20).setVisible(false);
-    this.inventarioFundo = this.add.rectangle(400, 288, 570, 340, 0x222019, 0.98).setStrokeStyle(3, 0xd6bd78).setScrollFactor(0).setDepth(21).setVisible(false);
-    this.inventarioTitulo = this.add.text(400, 145, "MOCHILA E EQUIPAMENTO", { fontFamily: "Arial", fontSize: "22px", bold: true, color: "#f5df9a" }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
-    this.inventarioTexto = this.add.text(150, 180, "", { fontFamily: "Arial", fontSize: "16px", color: "#fff", lineSpacing: 7, wordWrap: { width: 500 } }).setScrollFactor(0).setDepth(22).setVisible(false);
-    this.inventarioAjuda = this.add.text(400, 425, "1: arma  |  2: escudo  |  3: armadura  |  I: fechar", { fontFamily: "Arial", fontSize: "14px", color: "#f5df9a" }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
+    this.inventarioSombra = this.add.rectangle(400, 288, 800, 576, 0x000000, 0.74)
+      .setScrollFactor(0).setDepth(20).setVisible(false)
+      .setInteractive().on("pointerdown", () => {
+        if (this.inventarioAberto) { this.inventarioAberto = false; this.atualizarPainelInventario(); }
+      });
+    this.inventarioFundo = this.add.rectangle(400, 288, 660, 440, 0x222019, 0.99)
+      .setStrokeStyle(3, 0xd6bd78).setScrollFactor(0).setDepth(21).setVisible(false);
+    this.inventarioTitulo = this.add.text(400, 82, "MOCHILA E EQUIPAMENTO", {
+      fontFamily: "Arial", fontSize: "22px", bold: true, color: "#f5df9a"
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
+    this.inventarioTexto = this.add.text(95, 125, "", {
+      fontFamily: "Arial", fontSize: "14px", color: "#fff", lineSpacing: 6,
+      wordWrap: { width: 330 }
+    }).setScrollFactor(0).setDepth(22).setVisible(false);
+    this.inventarioAjuda = this.add.text(400, 485,
+      "Clique em um botão ou use 1/2/3. I fecha a mochila.", {
+        fontFamily: "Arial", fontSize: "14px", color: "#f5df9a"
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setVisible(false);
+    this.botoesEquipamento = {};
+    const botoes = [
+      { slot: "arma", tecla: "1", y: 170 },
+      { slot: "escudo", tecla: "2", y: 265 },
+      { slot: "armadura", tecla: "3", y: 360 },
+    ];
+    for (const item of botoes) {
+      const fundo = this.add.rectangle(555, item.y, 250, 72, 0x4b432f)
+        .setStrokeStyle(2, 0xd6bd78).setScrollFactor(0).setDepth(22).setVisible(false)
+        .setInteractive({ useHandCursor: true });
+      const texto = this.add.text(555, item.y, "", {
+        fontFamily: "Arial", fontSize: "13px", color: "#fff", align: "center",
+        wordWrap: { width: 225 }, lineSpacing: 3
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(23).setVisible(false);
+      fundo.on("pointerdown", () => this.acionarEquipamento(item.slot));
+      this.botoesEquipamento[item.slot] = { fundo, texto, tecla: item.tecla };
+    }
+    this.atualizarPainelInventario();
+  }
+  efeitoItem(id) {
+    const item = ITENS[id];
+    if (!item) return "";
+    if (item.tipo === "arma") return `+${item.bonus || 0} dano`;
+    if (item.tipo === "armadura" || item.tipo === "escudo") return `+${item.defesa || 0} defesa`;
+    if (id === "pocao") return `cura ${CURA_POCAO} de vida`;
+    return `${pesoItem(id)} kg`;
+  }
+  textoBotaoEquipamento(slot, tecla) {
+    const p = this.personagem;
+    const atual = p.equipamento?.[slot];
+    const candidatos = p.inventario
+      .filter((id) => ITENS[id]?.tipo === slot)
+      .sort((a, b) => (ITENS[b].bonus || ITENS[b].defesa || 0) - (ITENS[a].bonus || ITENS[a].defesa || 0));
+    const titulo = slot === "arma" ? "ARMA" : slot === "escudo" ? "ESCUDO" : "ARMADURA";
+    if (candidatos.length) {
+      const escolhido = candidatos[0];
+      const acao = atual ? "Trocar" : "Equipar";
+      return `${tecla} — ${acao}: ${nomeItem(escolhido)}\n${this.efeitoItem(escolhido)}${atual ? `\nAtual: ${nomeItem(atual)}` : ""}`;
+    }
+    if (atual) return `${tecla} — Guardar ${titulo.toLowerCase()}\n${nomeItem(atual)} (${this.efeitoItem(atual)})`;
+    return `${tecla} — ${titulo}\nNenhum item disponível`;
   }
   atualizarPainelInventario() {
     if (!this.inventarioTexto) return;
     const p = this.personagem, grupos = {};
     for (const id of p.inventario) grupos[id] = (grupos[id] || 0) + 1;
     const linhasItens = Object.keys(grupos).length
-      ? Object.entries(grupos).map(([id, qtd]) => `• ${nomeItem(id)}${qtd > 1 ? ` ×${qtd}` : ""}`).join("\n")
+      ? Object.entries(grupos).map(([id, qtd]) =>
+          `• ${nomeItem(id)}${qtd > 1 ? ` ×${qtd}` : ""} — ${this.efeitoItem(id)}`
+        ).join("\n")
       : "Mochila vazia";
     const eq = p.equipamento || {};
-    const texto = `Carga: ${pesoCarregado(p)}/${capacidadeCarga(p)} kg\n\nEquipado\nArma: ${eq.arma ? nomeItem(eq.arma) : "—"} (+${eq.arma ? (ITENS[eq.arma]?.bonus || 0) : 0} dano)\nEscudo: ${eq.escudo ? nomeItem(eq.escudo) : "—"}\nArmadura: ${eq.armadura ? nomeItem(eq.armadura) : "—"}\nDefesa total: ${defesaEquipamento(p)}\n\nMochila\n${linhasItens}`;
+    const linhasEquipados = ["arma", "escudo", "armadura"].map((slot) => {
+      const id = eq[slot];
+      const rotulo = slot === "arma" ? "Arma" : slot === "escudo" ? "Escudo" : "Armadura";
+      return `${rotulo}: ${id ? `${nomeItem(id)} (${this.efeitoItem(id)})` : "—"}`;
+    }).join("\n");
+    const danoArma = bonusArma(p);
+    const texto = `Carga: ${pesoCarregado(p)}/${capacidadeCarga(p)} kg\n\nEQUIPADO\n${linhasEquipados}\nDefesa total: ${defesaEquipamento(p)}\n\nEFEITO NO COMBATE\nDano: 25 base + ${Math.max(0, p.nivel - 1) * 5} do nível + ${danoArma} da arma\nDano recebido: reduz pela defesa total (mínimo 1)\n\nITENS NA MOCHILA\n${linhasItens}`;
     this.inventarioTexto.setText(texto);
     const visivel = this.inventarioAberto;
     for (const item of [this.inventarioSombra, this.inventarioFundo, this.inventarioTitulo, this.inventarioTexto, this.inventarioAjuda]) item.setVisible(visivel);
+    for (const [slot, botao] of Object.entries(this.botoesEquipamento || {})) {
+      botao.texto.setText(this.textoBotaoEquipamento(slot, botao.tecla));
+      botao.fundo.setVisible(visivel); botao.texto.setVisible(visivel);
+    }
+  }
+  acionarEquipamento(slot) {
+    const r = Mundo.executar(MEU_ID, { tipo: "alternarEquipamento", slot });
+    if (r.mensagem) this.dialogo.setText(r.mensagem);
+    this.personagem = Mundo.jogadores[MEU_ID];
+    this.atualizarStatus();
   }
   textoMissao() {
     const p = this.personagem;
@@ -164,7 +236,7 @@ class Cena extends Phaser.Scene {
     this.statusInventario.setText(inv);
     this.statusMissao.setText(this.textoMissao());
     const eq = p.equipamento || {};
-    this.statusCarga.setText(`Carga ${pesoCarregado(p)}/${capacidadeCarga(p)} kg | Arma: ${eq.arma ? nomeItem(eq.arma) : "nenhuma"} | Defesa: ${defesaEquipamento(p)} | I: mochila`);
+    this.statusCarga.setText(`Carga ${pesoCarregado(p)}/${capacidadeCarga(p)} kg | Arma: +${bonusArma(p)} dano | Defesa: ${defesaEquipamento(p)} | I: mochila`);
     this.atualizarPainelInventario();
     const e = Object.values(inimigos).find((x) => x.area === p.area);
     if (!e) this.statusInimigo.setText("");
@@ -196,9 +268,7 @@ class Cena extends Phaser.Scene {
     if (this.inventarioAberto) {
       for (const [slot, tecla] of Object.entries(this.teclasEquipamento)) {
         if (Phaser.Input.Keyboard.JustDown(tecla)) {
-          const r = Mundo.executar(MEU_ID, { tipo: "alternarEquipamento", slot });
-          if (r.mensagem) this.dialogo.setText(r.mensagem);
-          this.atualizarStatus();
+          this.acionarEquipamento(slot);
         }
       }
       return;

@@ -319,7 +319,7 @@ const Mundo = {
       if (!this.podeReceberComRemocao(p, recompensas)) return { ok: true, mensagem: "Eliabe: Sua mochila está cheia. Libere espaço para receber 2 poções e uma espada de ferro." };
       for (const item of recompensas) this.adicionarItem(p, item);
       m1.recompensaRecebida = true; m1.status = "concluida"; const niveis = adicionarXP(p, 50); Storage.salvar(p);
-      return { ok: true, mensagem: `Eliabe: Obrigado! Receba 2 poções, uma espada de ferro e 50 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}` };
+      return { ok: true, mensagem: `Eliabe: Obrigado! Receba 2 poções, uma espada de ferro (+12 dano) e 50 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}` };
     }
     if (m1.status === "em_andamento") return { ok: true, mensagem: "Eliabe: Ainda precisamos derrotar o lobo. Encontre-o e volte quando conseguir." };
     if (m2.status === "bloqueada") {
@@ -355,7 +355,7 @@ const Mundo = {
         if (!this.podeReceberComRemocao(p, recompensas, [["odre_agua", QUANTIDADE_ODRES_MISSAO]])) return { ok: true, mensagem: "Noemi: Sua mochila está cheia. Libere espaço para receber 2 poções e uma armadura de couro." };
         this.removerItens(p, "odre_agua", QUANTIDADE_ODRES_MISSAO); for (const item of recompensas) this.adicionarItem(p, item);
         m.status = "concluida"; m.recompensaRecebida = true; const niveis = adicionarXP(p, 100); Storage.salvar(p);
-        return { ok: true, mensagem: `Noemi: Água para a caravana! Receba 2 poções, uma armadura de couro e 100 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}` };
+        return { ok: true, mensagem: `Noemi: Água para a caravana! Receba 2 poções, uma armadura de couro (+5 defesa) e 100 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}` };
       }
       return { ok: true, mensagem: `Noemi: Ainda faltam odres. Você encontrou ${count}/${QUANTIDADE_ODRES_MISSAO}.` };
     }
