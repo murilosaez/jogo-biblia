@@ -13,6 +13,10 @@ class Cena extends Phaser.Scene {
       Phaser.Input.Keyboard.KeyCodes.SPACE
     );
 
+    this.teclaPocao = this.input.keyboard.addKey(
+      Phaser.Input.Keyboard.KeyCodes.H
+    );
+
     // Desenha o mapa.
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
@@ -62,14 +66,12 @@ class Cena extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // Desenha o lobo ou agenda o respawn caso esteja derrotado.
     if (Mundo.obterVidaInimigo(MEU_ID, "lobo1") > 0) {
       this.loboVisual = this.desenharLobo();
     } else {
       this.agendarRespawnLobo();
     }
 
-    // Mostra a vida do jogador e do lobo.
     this.statusVida = this.add
       .text(12, 10, "", {
         fontFamily: "Arial",
@@ -91,7 +93,17 @@ class Cena extends Phaser.Scene {
       .setOrigin(1, 0)
       .setDepth(10);
 
-    // Caixa de instruções e mensagens.
+    this.statusPocoes = this.add
+      .text(400, 10, "", {
+        fontFamily: "Arial",
+        fontSize: "16px",
+        color: "#ffffff",
+        backgroundColor: "#222222",
+        padding: { x: 6, y: 4 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(10);
+
     this.add
       .rectangle(400, 548, 790, 48, 0x111111, 0.9)
       .setScrollFactor(0)
@@ -101,7 +113,7 @@ class Cena extends Phaser.Scene {
       .text(
         16,
         531,
-        "Setas: andar | E: conversar | Espaço: atacar o lobo ao lado.",
+        "Setas: andar | E: conversar | Espaço: atacar | H: usar poção",
         {
           fontFamily: "Arial",
           fontSize: "16px",
@@ -115,7 +127,6 @@ class Cena extends Phaser.Scene {
     this.atualizarStatus();
   }
 
-  // O lobo é um "grupo" (container) para poder andar todo junto.
   desenharLobo() {
     const lobo = inimigos.lobo1;
     const loboX = lobo.x * TILE + TILE / 2;
@@ -169,10 +180,13 @@ class Cena extends Phaser.Scene {
   atualizarStatus() {
     const personagem = Mundo.jogadores[MEU_ID];
     const vidaLobo = Mundo.obterVidaInimigo(MEU_ID, "lobo1");
+    const quantidadePocoes = Mundo.contarItem(MEU_ID, "pocao");
 
     this.statusVida.setText(
       `Vida: ${personagem.vida}/${VIDA_MAXIMA_JOGADOR}`
     );
+
+    this.statusPocoes.setText(`Poções: ${quantidadePocoes}`);
 
     if (vidaLobo > 0) {
       this.statusLobo.setText(
@@ -184,7 +198,7 @@ class Cena extends Phaser.Scene {
   }
 
   update() {
-    // Atualiza o mundo: lobo persegue, ataca e a vida regenera.
+    // Atualiza perseguição, ataques inimigos e regeneração.
     const eventos = Mundo.atualizar(MEU_ID, Date.now());
 
     for (const evento of eventos) {
@@ -219,7 +233,6 @@ class Cena extends Phaser.Scene {
 
         if (this.loboVisual) {
           this.tweens.killTweensOf(this.loboVisual);
-
           this.loboVisual.setPosition(
             lobo.x * TILE + TILE / 2,
             lobo.y * TILE + TILE / 2
@@ -232,7 +245,7 @@ class Cena extends Phaser.Scene {
       this.atualizarStatus();
     }
 
-    // Conversa com Eliabe ao pressionar E.
+    // Conversa com Eliabe.
     if (Phaser.Input.Keyboard.JustDown(this.teclaE)) {
       const resultado = Mundo.executar(MEU_ID, {
         tipo: "interagir",
@@ -244,7 +257,7 @@ class Cena extends Phaser.Scene {
       }
     }
 
-    // Ataca o lobo ao pressionar Espaço.
+    // Ataca o lobo com Espaço.
     if (Phaser.Input.Keyboard.JustDown(this.teclaAtaque)) {
       const resultado = Mundo.executar(MEU_ID, {
         tipo: "atacar",
@@ -260,6 +273,19 @@ class Cena extends Phaser.Scene {
         this.loboVisual.destroy();
         this.loboVisual = null;
         this.agendarRespawnLobo();
+      }
+
+      this.atualizarStatus();
+    }
+
+    // Usa uma poção com H.
+    if (Phaser.Input.Keyboard.JustDown(this.teclaPocao)) {
+      const resultado = Mundo.executar(MEU_ID, {
+        tipo: "usarPocao",
+      });
+
+      if (resultado.mensagem) {
+        this.dialogo.setText(resultado.mensagem);
       }
 
       this.atualizarStatus();

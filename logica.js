@@ -4,10 +4,12 @@ const ROWS = 18;
 const VERSAO_SAVE = 1;
 const VIDA_MAXIMA_JOGADOR = 100;
 
-// Tempos em milissegundos
-const TEMPO_REGEN = 10000; // +1 de vida a cada 10 s fora de batalha
-const INTERVALO_MOVIMENTO = 600; // velocidade do lobo
-const INTERVALO_ATAQUE = 1200; // tempo entre ataques do lobo
+// Valores provisórios para testar as mecânicas.
+const TEMPO_REGEN = 10000;
+const INTERVALO_MOVIMENTO = 600;
+const INTERVALO_ATAQUE = 1200;
+const CURA_POCAO = 30;
+const QUANTIDADE_POCOES_INICIAIS = 3;
 
 // Mapa: 1 = obstáculo, 0 = chão
 const mapa = [];
@@ -27,7 +29,7 @@ for (let y = 0; y < ROWS; y++) {
   }
 }
 
-// Dados do NPC
+// Personagens não controlados pelo jogador.
 const npcs = {
   viajante1: {
     id: "viajante1",
@@ -37,8 +39,7 @@ const npcs = {
   },
 };
 
-// Configuração dos inimigos.
-// x e y mudam durante o jogo; inicioX e inicioY guardam o ponto original.
+// Valores provisórios para testar o comportamento dos inimigos.
 const inimigos = {
   lobo1: {
     id: "lobo1",
@@ -58,7 +59,7 @@ const inimigos = {
 
 const Mundo = {
   jogadores: {},
-  estado: {}, // dados temporários (não vão para o save)
+  estado: {},
 
   entrar(id) {
     let personagem = Storage.carregar(id);
@@ -71,9 +72,14 @@ const Mundo = {
         y: 2,
         vida: VIDA_MAXIMA_JOGADOR,
         inventario: [],
+        itensIniciaisEntregues: false,
         inimigosDerrotados: [],
         vidaInimigos: {},
       };
+    }
+
+    if (!Array.isArray(personagem.inventario)) {
+      personagem.inventario = [];
     }
 
     if (!Array.isArray(personagem.inimigosDerrotados)) {
@@ -105,6 +111,15 @@ const Mundo = {
       personagem.vida = VIDA_MAXIMA_JOGADOR;
     }
 
+    // Dá 3 poções uma única vez, inclusive em saves antigos.
+    if (!personagem.itensIniciaisEntregues) {
+      for (let i = 0; i < QUANTIDADE_POCOES_INICIAIS; i++) {
+        personagem.inventario.push("pocao");
+      }
+
+      personagem.itensIniciaisEntregues = true;
+    }
+
     personagem.versao = VERSAO_SAVE;
 
     for (const inimigo of Object.values(inimigos)) {
@@ -124,7 +139,6 @@ const Mundo = {
         );
       }
 
-      // Todo inimigo começa no ponto original ao carregar o jogo.
       inimigo.x = inimigo.inicioX;
       inimigo.y = inimigo.inicioY;
       inimigo.proximoMovimento = 0;
@@ -132,9 +146,11 @@ const Mundo = {
     }
 
     this.jogadores[id] = personagem;
-    this.estado[id] = { proximaRegen: Date.now() + TEMPO_REGEN };
-    Storage.salvar(personagem);
+    this.estado[id] = {
+      proximaRegen: Date.now() + TEMPO_REGEN,
+    };
 
+    Storage.salvar(personagem);
     return personagem;
   },
 
@@ -158,6 +174,16 @@ const Mundo = {
     }
 
     return personagem.vidaInimigos[idInimigo];
+  },
+
+  contarItem(idJogador, idItem) {
+    const personagem = this.jogadores[idJogador];
+
+    if (!personagem || !Array.isArray(personagem.inventario)) {
+      return 0;
+    }
+
+    return personagem.inventario.filter((item) => item === idItem).length;
   },
 
   reaparecerInimigo(idJogador, idInimigo) {
@@ -186,7 +212,6 @@ const Mundo = {
     return true;
   },
 
-  // Verifica se uma casa está livre para um inimigo pisar.
   casaLivreParaInimigo(x, y, personagem) {
     if (!mapa[y] || mapa[y][x] !== 0) {
       return false;
@@ -214,17 +239,14 @@ const Mundo = {
     return !outroInimigo;
   },
 
-  // Dá um passo do inimigo em direção ao alvo. Retorna true se andou.
   passoInimigo(inimigo, alvoX, alvoY, personagem) {
     const difX = alvoX - inimigo.x;
     const difY = alvoY - inimigo.y;
 
     const passoX = { dx: Math.sign(difX), dy: 0 };
     const passoY = { dx: 0, dy: Math.sign(difY) };
-
     const tentativas = [];
 
-    // Tenta primeiro o eixo com maior distância.
     if (Math.abs(difX) >= Math.abs(difY)) {
       if (passoX.dx !== 0) tentativas.push(passoX);
       if (passoY.dy !== 0) tentativas.push(passoY);
@@ -233,9 +255,9 @@ const Mundo = {
       if (passoX.dx !== 0) tentativas.push(passoX);
     }
 
-    for (const t of tentativas) {
-      const novoX = inimigo.x + t.dx;
-      const novoY = inimigo.y + t.dy;
+    for (const passo of tentativas) {
+      const novoX = inimigo.x + passo.dx;
+      const novoY = inimigo.y + passo.dy;
 
       if (this.casaLivreParaInimigo(novoX, novoY, personagem)) {
         inimigo.x = novoX;
@@ -247,8 +269,6 @@ const Mundo = {
     return false;
   },
 
-  // Chamada a cada frame: move inimigos, aplica ataques e regenera vida.
-  // Retorna uma lista de eventos para a tela mostrar.
   atualizar(id, agora) {
     const personagem = this.jogadores[id];
     const estado = this.estado[id];
@@ -267,7 +287,7 @@ const Mundo = {
         Math.abs(personagem.x - inimigo.x) +
         Math.abs(personagem.y - inimigo.y);
 
-      // Ao lado do jogador: ataca.
+      // Se estiver ao lado, o inimigo pode atacar.
       if (distancia === 1) {
         if (agora >= inimigo.proximoAtaque) {
           inimigo.proximoAtaque = agora + INTERVALO_ATAQUE;
@@ -283,14 +303,14 @@ const Mundo = {
             personagem.y = 2;
             personagem.vida = VIDA_MAXIMA_JOGADOR;
 
-            // Os inimigos vivos voltam ao início com vida cheia.
             for (const outro of Object.values(inimigos)) {
               if (this.inimigoVivo(personagem, outro.id)) {
                 outro.x = outro.inicioX;
                 outro.y = outro.inicioY;
                 outro.proximoAtaque = 0;
                 outro.proximoMovimento = 0;
-                personagem.vidaInimigos[outro.id] = outro.vidaMaxima;
+                personagem.vidaInimigos[outro.id] =
+                  outro.vidaMaxima;
               }
             }
 
@@ -319,7 +339,6 @@ const Mundo = {
         continue;
       }
 
-      // Longe do jogador: persegue ou volta ao ponto inicial.
       if (agora < inimigo.proximoMovimento) {
         continue;
       }
@@ -332,22 +351,27 @@ const Mundo = {
       if (distancia <= inimigo.raioPercepcao) {
         alvoX = personagem.x;
         alvoY = personagem.y;
-      } else if (inimigo.x === inimigo.inicioX && inimigo.y === inimigo.inicioY) {
+      } else if (
+        inimigo.x === inimigo.inicioX &&
+        inimigo.y === inimigo.inicioY
+      ) {
         continue;
       }
 
       if (this.passoInimigo(inimigo, alvoX, alvoY, personagem)) {
-        // Dá um pequeno intervalo antes do primeiro ataque ao chegar.
         inimigo.proximoAtaque = Math.max(
           inimigo.proximoAtaque,
           agora + 600
         );
 
-        eventos.push({ tipo: "inimigoMoveu", id: inimigo.id });
+        eventos.push({
+          tipo: "inimigoMoveu",
+          id: inimigo.id,
+        });
       }
     }
 
-    // Regeneração: +1 de vida a cada TEMPO_REGEN fora de batalha.
+    // Recupera 1 ponto a cada 10 segundos fora de batalha.
     if (
       personagem.vida < VIDA_MAXIMA_JOGADOR &&
       agora >= estado.proximaRegen
@@ -439,6 +463,45 @@ const Mundo = {
       };
     }
 
+    if (comando.tipo === "usarPocao") {
+      const indicePocao = personagem.inventario.indexOf("pocao");
+
+      if (indicePocao === -1) {
+        return {
+          ok: false,
+          mensagem: "Você não tem poções.",
+        };
+      }
+
+      if (personagem.vida >= VIDA_MAXIMA_JOGADOR) {
+        return {
+          ok: false,
+          mensagem: "Sua vida já está cheia. A poção não foi consumida.",
+        };
+      }
+
+      personagem.inventario.splice(indicePocao, 1);
+
+      const vidaAnterior = personagem.vida;
+      personagem.vida = Math.min(
+        VIDA_MAXIMA_JOGADOR,
+        personagem.vida + CURA_POCAO
+      );
+
+      // Usar uma poção durante a batalha reinicia o tempo de regeneração.
+      this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
+
+      Storage.salvar(personagem);
+
+      return {
+        ok: true,
+        mensagem:
+          `Você usou uma poção e recuperou ` +
+          `${personagem.vida - vidaAnterior} de vida. ` +
+          `Vida: ${personagem.vida}/${VIDA_MAXIMA_JOGADOR}.`,
+      };
+    }
+
     if (comando.tipo === "atacar") {
       const inimigo = inimigos[comando.alvoId];
 
@@ -467,12 +530,12 @@ const Mundo = {
         };
       }
 
-      // Atacar também conta como estar em batalha.
       this.estado[id].proximaRegen = Date.now() + TEMPO_REGEN;
 
       const novaVidaInimigo = Math.max(
         0,
-        personagem.vidaInimigos[inimigo.id] - inimigo.danoDoAtaque
+        personagem.vidaInimigos[inimigo.id] -
+          inimigo.danoDoAtaque
       );
 
       personagem.vidaInimigos[inimigo.id] = novaVidaInimigo;
