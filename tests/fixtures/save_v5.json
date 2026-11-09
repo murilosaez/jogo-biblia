@@ -1,0 +1,153 @@
+{
+  "id": "jogador1",
+  "area": "egito",
+  "x": 20,
+  "y": 40,
+  "vida": 95,
+  "inventario": [
+    "pocao",
+    "pocao",
+    "pocao",
+    "espada_madeira",
+    "escudo_madeira",
+    "pele_lobo",
+    "pele_lobo",
+    "peixe",
+    "pocao_fe",
+    "flecha",
+    "flecha",
+    "flecha",
+    "arco_madeira",
+    "flecha",
+    "flecha",
+    "flecha",
+    "flecha",
+    "flecha",
+    "flecha",
+    "flecha",
+    "flecha"
+  ],
+  "itensIniciaisEntregues": true,
+  "inimigosDerrotados": [
+    "lobo1"
+  ],
+  "vidaInimigos": {
+    "lobo1": 0,
+    "escorpiao1": 70,
+    "bandido1": 100,
+    "soldadoEgito1": 40,
+    "perseguidorMar1": 100,
+    "guardiaoSinai1": 115,
+    "ameaçaGalileia1": 130
+  },
+  "ervasColetadas": [],
+  "odresColetados": [],
+  "ervasRespawn": {},
+  "odresRespawn": {},
+  "pescaRespawn": {},
+  "xp": 1100,
+  "nivel": 6,
+  "moedas": 187,
+  "economiaInicialEntregue": true,
+  "habilidades": {
+    "corpo": 7,
+    "distancia": 0,
+    "defesa": 4,
+    "oracao": 0
+  },
+  "mortes": 2,
+  "equipamento": {
+    "arma": "espada_ferro",
+    "arco": null,
+    "escudo": null,
+    "armadura": "tunica_pano"
+  },
+  "hotkeys": [
+    "pocao",
+    "pocao_fe",
+    null,
+    null,
+    null,
+    null
+  ],
+  "saqueNoChao": [
+    {
+      "id": "saque_lobo1_1699999990000_0",
+      "area": "canaan",
+      "x": 6,
+      "y": 5,
+      "item": "pele_lobo"
+    },
+    {
+      "id": "saque_lobo1_1699999990000_moedas",
+      "area": "canaan",
+      "x": 6,
+      "y": 5,
+      "moedas": 4
+    }
+  ],
+  "equipamentoInicialEntregue": true,
+  "missaoEliabe": {
+    "status": "concluida",
+    "loboDerrotado": true,
+    "recompensaRecebida": true
+  },
+  "missaoErvas": {
+    "status": "concluida",
+    "recompensaRecebida": true,
+    "ervasMissaoColetadas": [
+      "erva1",
+      "erva2",
+      "erva3"
+    ]
+  },
+  "missaoDeserto": {
+    "status": "concluida",
+    "etapa": 4,
+    "recompensaRecebida": true,
+    "odresMissaoColetados": [
+      "odre1",
+      "odre2",
+      "odre3"
+    ],
+    "venenosMissaoColetados": [
+      "a",
+      "b"
+    ],
+    "insigniasMissaoColetadas": [
+      "c"
+    ]
+  },
+  "versao": 5,
+  "capitulos": {
+    "egito": {
+      "status": "em_andamento",
+      "alvo": false
+    },
+    "marVermelho": {
+      "status": "bloqueado",
+      "alvo": false
+    },
+    "sinai": {
+      "status": "bloqueado",
+      "alvo": false
+    },
+    "galileia": {
+      "status": "bloqueado",
+      "alvo": false
+    }
+  },
+  "skillXp": {
+    "corpo": 120,
+    "distancia": 0,
+    "defesa": 30,
+    "oracao": 0
+  },
+  "fe": 100,
+  "oracaoDesbloqueada": false,
+  "envenenadoAte": 1699999950000,
+  "proximoDanoVeneno": 1699999947000,
+  "atualizacaoDistanciaEntregue": true,
+  "avisoAtualizacao": "Nova recompensa: Arco de madeira e flechas. Abra a mochila (I), equipe o arco com 4 e use R para atirar.",
+  "proximaRegenFe": 0
+}
