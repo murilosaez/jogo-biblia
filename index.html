@@ -47,7 +47,8 @@ button{font:600 var(--fs-13)/1 var(--f-pixel);color:var(--perg-100);cursor:point
 :focus{outline:none}
 :focus-visible{outline:2px solid var(--foco);outline-offset:1px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--perg-100);
+/* Teclas: a Pixelify em 12 px confunde E/C/e com ε/0/s; letra das teclas em Alegreya Sans negrito. */
+kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;font:700 var(--fs-13)/1 var(--f-texto);letter-spacing:.02em;color:var(--perg-100);
  background:linear-gradient(var(--bronze-500),var(--bronze-700));border:2px solid var(--tinta);box-shadow:var(--relevo);border-radius:var(--raio);text-shadow:1px 1px 0 #1c1210}
 
 /* ---------- botões (um design) ---------- */
@@ -129,14 +130,16 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 .envenenado .estado-veneno{display:inline-block}
 
 /* ---------- personagem ---------- */
-.ficha{display:flex;gap:10px;align-items:center}
+.ficha{display:flex;gap:8px;align-items:flex-start}
+.ficha-dados{flex:1;min-width:0}
+.ficha-dados .linha-barra{margin-top:4px}
 .retrato{position:relative;flex:0 0 auto;width:56px;height:52px;display:grid;place-items:end center;overflow:hidden;
  background:radial-gradient(circle at 40% 30%,#6a4a32,#24150e);border:2px solid var(--tinta);outline:2px solid var(--bronze-500);outline-offset:-4px;box-shadow:inset 0 0 0 4px var(--bronze-700)}
 .retrato img{width:48px;height:39px}
 .selo{position:absolute;right:-2px;bottom:-2px;min-width:24px;height:22px;padding:0 3px;display:grid;place-items:center;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--ouro-300);
  background:radial-gradient(circle at 35% 30%,var(--vida-2),var(--vida-1));border:2px solid var(--tinta);clip-path:polygon(4px 0,calc(100% - 4px) 0,100% 4px,100% calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,0 calc(100% - 4px),0 4px)}
-.ficha-nome{min-width:0}
-.ficha-nome strong{display:block;font:700 var(--fs-14)/1.1 var(--f-titulo);color:var(--ouro-300)}
+.ficha-nome{min-width:0;display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.ficha-nome strong{font:700 var(--fs-14)/1.1 var(--f-titulo);color:var(--ouro-300)}
 .ficha-nome span{font:400 var(--fs-12)/1.3 var(--f-pixel);color:var(--texto-2)}
 .habilidades{margin:8px 0 0;font:400 var(--fs-12)/1.4 var(--f-pixel);color:var(--texto-2)}
 .atributos{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin:6px 0 0;padding:6px 0 0;border-top:1px solid #0006;box-shadow:0 -1px 0 #ffe9a815 inset}
@@ -162,13 +165,15 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 @keyframes entra{0%{filter:brightness(2)}100%{filter:none}}
 
 /* equipamento */
-#gradeEquip{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
-.equip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:4px 2px 3px;border:2px solid transparent;background:#0003;cursor:pointer;color:var(--texto);text-align:center}
+#gradeEquip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px}
+.equip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:4px 0 3px;border:solid transparent;border-width:2px 0;background:#0003;cursor:pointer;color:var(--texto);text-align:center}
 .equip .slot{flex:0 0 auto;width:44px;height:44px}
 .equip.cheio .slot{border-color:var(--bronze-500)}
 .equip .slot img.silhueta{opacity:.35}
 .equip-txt{min-width:0;max-width:100%;display:flex;flex-direction:column;gap:2px}
-.equip-txt small{font:500 var(--fs-11)/1 var(--f-texto);color:var(--texto-mudo);text-transform:uppercase;letter-spacing:.05em}
+/* "ARMADURA" é o rótulo mais longo: sem espaçamento extra cabe na célula; a
+   reticência só aparece com a fonte de reserva (sem internet) */
+.equip-txt small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 var(--fs-11)/1 var(--f-texto);color:var(--texto-mudo);text-transform:uppercase;letter-spacing:0}
 .equip-txt em{font:400 var(--fs-11)/1 var(--f-pixel);font-style:normal;color:var(--texto-2);white-space:nowrap}
 .equip.vazio .equip-txt em{color:var(--texto-mudo)}
 .equip.selecionado{outline:2px solid var(--ouro-200);animation:pisca .8s steps(2) infinite}
@@ -180,7 +185,10 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 
 /* lista de batalha */
 #pBatalha{min-height:110px}
-#colDir #pBatalha{flex:1 0 auto}
+/* na coluna direita, a Batalha ocupa a altura que sobra e rola por dentro:
+   a moldura de baixo aparece sempre, sem rolar a coluna */
+#colDir #pBatalha{flex:1 1 0;min-height:88px;display:flex;flex-direction:column}
+#colDir #linhasBatalha{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent}
 #linhasBatalha{display:flex;flex-direction:column}
 .linha-inimigo{display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 8px 4px 5px;border:0;border-left:3px solid transparent;border-bottom:1px solid #0005;background:none;color:var(--texto);text-align:left;width:100%;font:inherit;cursor:pointer}
 .linha-inimigo:hover{background:#ffe9a80d}
@@ -208,9 +216,13 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 /* minimapa */
 #pMapa .painel-corpo{display:flex;justify-content:center;padding:6px}
 #miniMap{display:block;width:160px;height:120px;image-rendering:pixelated;background:var(--perg-300);border:2px solid var(--tinta);box-shadow:0 2px 0 #0008}
-.mapa-moldura{position:relative;line-height:0}
-.mapa-moldura .rosa{position:absolute;right:4px;top:4px;width:16px;height:16px}
-.mapa-moldura .coord{position:absolute;left:4px;bottom:4px;padding:1px 4px;font:600 var(--fs-11)/1.2 var(--f-pixel);color:var(--tinta);background:#e6cf9ccc;border:1px solid var(--tinta)}
+/* rosa e coordenadas numa margem à direita do mapa, nunca por cima dele
+   (cobriam NPCs, portais e a passagem perto dos cantos); a largura mínima
+   das coordenadas evita que a margem mude de tamanho conforme a posição */
+.mapa-moldura{display:flex;align-items:stretch;line-height:0}
+.mapa-margem{display:flex;flex-direction:column;justify-content:space-between;align-items:center;gap:4px;padding:2px 0 0 4px}
+.mapa-moldura .rosa{width:22px;height:22px;padding:2px;background:var(--perg-300);border:1px solid var(--tinta)}
+.mapa-moldura .coord{min-width:52px;padding:1px 3px;font:600 var(--fs-11)/1.2 var(--f-pixel);color:var(--tinta);background:var(--perg-300);border:1px solid var(--tinta);white-space:nowrap;text-align:center}
 #pMapa{background:var(--tex-couro),linear-gradient(160deg,var(--couro-600),var(--couro-800))}
 #pMapa .painel-corpo{padding:4px}
 
@@ -241,12 +253,19 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 #game-root canvas{display:block;cursor:crosshair}
 
 /* minimapa sobre o mundo (médio/estreito) */
-#mapaSobre{position:absolute;top:8px;right:8px;z-index:var(--z-hud);line-height:0}
+/* Ele cobre um canto do mundo: não pega cliques (o canvas recebe) e fica
+   translúcido com alguém embaixo (classe "encoberto", posta pelo game.js). */
+#mapaSobre{position:absolute;top:8px;right:8px;z-index:var(--z-hud);line-height:0;pointer-events:none;transition:opacity .15s}
+#mapaSobre.encoberto{opacity:.3}
+#mapaSobre .mapa-margem{padding:4px;background:#2c1a12d9;border:2px solid var(--bronze-700);border-left:0}
 #mapaSobre:empty{display:none}
 body.mapa-oculto #mapaSobre,body.mapa-oculto #pMapa{display:none}
 
 /* avisos (toasts) */
 #avisos{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:var(--z-toast);display:flex;flex-direction:column;align-items:center;gap:6px;width:min(560px,calc(100% - 24px));pointer-events:none}
+/* largo em tela baixa: o minimapa fica sobre o mundo, no canto direito; os
+   avisos usam a faixa à esquerda dele */
+body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;max-width:560px;margin:0 auto;transform:none}
 .aviso{pointer-events:auto;display:flex;align-items:center;gap:8px;max-width:100%;padding:6px 12px 6px 8px;color:var(--tinta);font:500 var(--fs-13)/1.3 var(--f-texto);
  background:var(--tex-perg),var(--perg-200);background-blend-mode:multiply,normal;border:2px solid var(--tinta);border-left:4px solid var(--cor,var(--tinta-suave));box-shadow:0 2px 0 #0009,0 4px 10px #0006;animation:aviso-entra .2s steps(3)}
 .aviso img{width:16px;height:16px;flex:0 0 16px}
@@ -285,7 +304,11 @@ body.mapa-oculto #mapaSobre,body.mapa-oculto #pMapa{display:none}
 
 /* ---------- abas (médio e estreito) ---------- */
 .abas{display:flex;gap:4px;padding:0 0 0 2px;flex:0 0 auto}
-.aba{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:36px;border:2px solid var(--bronze-700);border-bottom:0;background:linear-gradient(var(--couro-700),var(--couro-800));color:var(--texto-2);font:600 var(--fs-12)/1 var(--f-pixel)}
+/* as abas encolhem por igual e cortam o rótulo com reticências (sem as
+   fontes da web, a reserva monoespaçada é mais larga) */
+.aba{flex:1 1 auto;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 4px;height:36px;border:2px solid var(--bronze-700);border-bottom:0;background:linear-gradient(var(--couro-700),var(--couro-800));color:var(--texto-2);font:600 var(--fs-12)/1 var(--f-pixel)}
+.aba>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aba>img{flex:0 0 auto}
 .aba[aria-selected="true"]{background:linear-gradient(var(--couro-500),var(--couro-600));color:var(--ouro-300);border-color:var(--bronze-500)}
 .painel-aba{display:flex;flex-direction:column;gap:8px}
 .painel-aba[hidden]{display:none}
@@ -332,7 +355,10 @@ body.mapa-oculto #mapaSobre,body.mapa-oculto #pMapa{display:none}
 /* viagem */
 .mapa-antigo{position:relative;width:320px;max-width:100%;margin:0 auto 10px;aspect-ratio:16/10}
 .mapa-antigo canvas{width:100%;height:100%;display:block;image-rendering:pixelated;border:2px solid var(--tinta)}
-.destino,.destino:active{position:absolute;transform:translate(-50%,-50%);min-height:40px}
+/* o botão fica ao lado do selo (não em cima): o selo e o ponto "você está aqui" seguem visíveis */
+.destino,.destino:active{position:absolute;min-height:40px;white-space:nowrap}
+.destino.acima{transform:translate(-50%,calc(-100% - 12px))}
+.destino.abaixo{transform:translate(-50%,12px)}
 .destino:active{margin-top:1px}
 
 /* oração */
@@ -358,6 +384,9 @@ body.mapa-oculto #mapaSobre,body.mapa-oculto #pMapa{display:none}
 @media (pointer:coarse){#toque{display:block}}
 body.toque-forcado #toque{display:block}
 body.toque-desligado #toque{display:none}
+/* com a fala aberta, os controles de toque saem de cena: a caixa cobriria só
+   parte deles. Tocar na caixa avança ou fecha a fala, e ela fecha sozinha. */
+body.dialogo-aberto #toque{visibility:hidden}
 #dpad{position:absolute;left:12px;bottom:12px;z-index:var(--z-toque);display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);touch-action:none;user-select:none;-webkit-user-select:none}
 #dpad span{display:grid;place-items:center;background:#3b2418b3;border:2px solid #1c1210b3}
 #dpad span.centro{background:#3b241866;border-color:transparent}
@@ -396,7 +425,8 @@ body.toque-desligado #toque{display:none}
  #hud .barra>b{display:none}
  #hud .val{min-width:52px;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--perg-100);text-align:right}
  #hud .quadro-alvo{display:none}
- #avisos{width:min(560px,calc(100% - 392px));min-width:260px}
+ /* avisos entre o HUD (esquerda) e o minimapa com a margem (direita) */
+ #avisos{left:200px;right:240px;width:auto;max-width:560px;margin:0 auto;transform:none}
  #pMochila .nota,#pBolsa .nota{display:none}
 }
 /* ======================================================================
@@ -438,9 +468,18 @@ body.toque-desligado #toque{display:none}
  #missaoLinha[aria-expanded="true"] .txt{white-space:normal}
  #missaoLinha .prog{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--perg-100);background:var(--fe-2);padding:2px 5px;border:1px solid var(--tinta)}
  #missaoLinha .prog:empty{display:none}
- #avisos{top:160px;width:calc(100% - 16px)}
+ #avisos{top:160px;left:8px;right:8px;max-width:none}
  #avisos .aviso:nth-last-child(n+3){display:none}
  body:not(.com-alvo) #avisos{top:124px}
+ /* minimapa do celular: 96×72 (guia §9.10); com ele aberto, os avisos descem para baixo dele */
+ #miniMap{width:96px;height:72px}
+ body.mapa-visivel-cel:not(.com-alvo) #avisos{top:136px}
+ /* folha inferior aberta: só o aviso mais novo, logo acima da borda da folha e
+    nunca acima do fim do HUD (--avisos-topo, medido em interface.js); se não
+    couber nessa faixa, fica oculto (o texto está no Registro) */
+ body.folha-aberta #palco #avisos{top:var(--avisos-topo,auto);bottom:calc(var(--altura-folha,0px) + 8px);justify-content:flex-end}
+ body.folha-aberta #avisos.sem-espaco{visibility:hidden}
+ body.folha-aberta #avisos .aviso:not(:last-child){display:none}
  #dialogo{left:8px;right:8px;bottom:8px;max-height:46%}
  #dialogo .retrato{width:52px;height:48px}
  .dlg-dica{display:none}
@@ -593,7 +632,7 @@ body.toque-forcado #dpad{display:grid}
 
   <section class="painel" id="pMapa" aria-labelledby="tMapa">
     <h2 class="sr" id="tMapa">Mapa</h2>
-    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><img class="px rosa" data-glifo="ui_rosa" alt=""><span class="coord" id="mapaCoord" aria-label="Posição"></span></div></div>
+    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><div class="mapa-margem"><img class="px rosa" data-glifo="ui_rosa" alt=""><span class="coord" id="mapaCoord" aria-label="Posição"></span></div></div></div>
   </section>
 
   <section class="painel" id="pPersonagem" aria-labelledby="tPersonagem">
@@ -601,11 +640,13 @@ body.toque-forcado #dpad{display:grid}
     <div class="painel-corpo">
       <div class="ficha">
         <div class="retrato"><img class="px" id="retratoJogador" alt="Retrato do viajante"><span class="selo" id="seloNivel" title="Nível">1</span></div>
-        <div class="ficha-nome"><strong>Viajante</strong><span id="fichaNivel">Nível 1</span></div>
+        <div class="ficha-dados">
+          <div class="ficha-nome"><strong>Viajante</strong><span id="fichaNivel">Nível 1</span></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_coracao" alt="Vida"><div class="barra vida" id="barraVida" role="meter" aria-label="Vida"><i></i><b></b></div></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_candeia" alt="Fé"><div class="barra fe" id="barraFe" role="meter" aria-label="Fé"><i></i><b></b></div></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="barraXp" role="meter" aria-label="Experiência"><i></i><b></b></div></div>
+        </div>
       </div>
-      <div class="linha-barra"><img class="px g16" data-glifo="ui_coracao" alt="Vida"><div class="barra vida" id="barraVida" role="meter" aria-label="Vida"><i></i><b></b></div></div>
-      <div class="linha-barra"><img class="px g16" data-glifo="ui_candeia" alt="Fé"><div class="barra fe" id="barraFe" role="meter" aria-label="Fé"><i></i><b></b></div></div>
-      <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="barraXp" role="meter" aria-label="Experiência"><i></i><b></b></div></div>
       <p class="habilidades" id="habilidades"></p>
       <dl class="atributos" id="atributos"></dl>
     </div>

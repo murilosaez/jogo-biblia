@@ -29,6 +29,7 @@ const ESTILO_NUM = {
 
 const COR = {
   amigo: "#f3e4c0", hostil: "#ef6a5e", saida: "#b98ad0", agua: "#6fd0d0", tinta: "#1c1210",
+  fechada: "#b9a27a", // portal de capítulo ainda não liberado
 };
 
 const reduzMovimento = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -110,12 +111,16 @@ class Cena extends Phaser.Scene {
     this.registry.set("mensagemPendente", null);
     if (pendente) this.mensagem(pendente);
     else if (!ultima) this.mensagem("Bem-vindo! Arraste os itens para os espaços de equipamento.");
-    let aviso, atraso = pendente ? 2600 : 1800;
-    while ((aviso = Mundo.consumirAviso?.(MEU_ID))) {
-      const texto = aviso;
-      this.time.delayedCall(atraso, () => this.mensagem(texto));
-      atraso += 3200;
-    }
+    // Cada aviso da lógica só é consumido na hora de aparecer: se a cena
+    // reiniciar antes (troca de área, morte, viagem), o relógio dela descarta
+    // o timer e o aviso segue pendente no save para o próximo create.
+    const proximoAviso = (atraso) => this.time.delayedCall(atraso, () => {
+      const texto = Mundo.consumirAviso?.(MEU_ID);
+      if (!texto) return;
+      this.mensagem(texto);
+      proximoAviso(3200);
+    });
+    proximoAviso(pendente ? 2600 : 1800);
     if (window.Arte && typeof console !== "undefined")
       console.debug(`[mundo] ${this.areaAtual}: ${this.children.list.length} objetos; tileset ${Arte.gerarTileset(this.areaAtual).ms.toFixed(1)} ms`);
   }
@@ -219,17 +224,22 @@ class Cena extends Phaser.Scene {
     const setas = (x, y, paraOeste, fechado) => {
       const s = this.add.sprite(centroX(x), y * TAM + TAM / 2, "mk_setas", fechado ? 3 : 0).setDepth(PROF.marcadorChao).setFlipX(paraOeste);
       if (!fechado) this.animados.push({ img: s, quadros: 3, fps: 5 });
+      return s;
     };
-    // Portais entre regiões
+    // Portais entre regiões. Guardados em this.portais para que
+    // atualizarPortais() os abra quando o capítulo anterior for concluído
+    // sem trocar de área (ex.: falar com Moisés depois de vencer o alvo).
+    this.portais = [];
     for (const p of PORTAIS.filter((x) => x.area === a)) {
-      const fechado = p.capitulo && typeof capituloAnteriorConcluido === "function" && !capituloAnteriorConcluido(this.p, p.capitulo);
+      const fechado = this.portalFechado(p);
       const chave = Arte.garantirTextura(this, `mk_portal_${a}_${p.destino}`);
       const img = this.add.sprite(centroX(p.x), p.y * TAM + TAM + 2, chave, fechado ? 4 : 0).setOrigin(0.5, 1).setDepth(PROF.entidade + p.y * TAM + TAM - 3);
       if (!fechado) this.animados.push({ img, quadros: 4, fps: 6 });
       const oeste = p.x < COLS / 2;
-      setas(p.x + (oeste ? 1 : -1), p.y, oeste, fechado);
+      const s = setas(p.x + (oeste ? 1 : -1), p.y, oeste, fechado);
       this.add.image(centroX(p.x) + 6, baseY(p.y) - 1, "fx_sombra_g").setDepth(PROF.sombra);
-      rotulo(fechado ? `${p.texto} · fechada` : p.texto, p.x, p.y, fechado ? "#b9a27a" : COR.saida);
+      const t = rotulo(fechado ? `${p.texto} · fechada` : p.texto, p.x, p.y, fechado ? COR.fechada : COR.saida);
+      this.portais.push({ dados: p, img, setas: s, rotulo: t, fechado });
     }
     // Trilha terrestre Canaã ↔ Deserto
     if (area?.passagem) {
@@ -343,6 +353,22 @@ class Cena extends Phaser.Scene {
   }
 
   // ===== entidades ====================================================
+  portalFechado(p) {
+    return !!p.capitulo && typeof capituloAnteriorConcluido === "function" && !capituloAnteriorConcluido(this.p, p.capitulo);
+  }
+  // Abre (quadro, animação e rótulo) os portais cujo capítulo anterior acabou
+  // de ser concluído nesta mesma cena.
+  atualizarPortais() {
+    for (const portal of this.portais || []) {
+      if (!portal.fechado || this.portalFechado(portal.dados)) continue;
+      portal.fechado = false;
+      portal.img.setFrame(0);
+      portal.setas.setFrame(0);
+      this.animados.push({ img: portal.img, quadros: 4, fps: 6 }, { img: portal.setas, quadros: 3, fps: 5 });
+      portal.rotulo.setText(portal.dados.texto).setColor(COR.saida);
+      this.particulasSimples(portal.img.x, portal.img.y - 24, "#f2d27a", 10, { subir: true, dur: 800 });
+    }
+  }
   textoRotulo(texto, cor) {
     return this.add.text(0, 0, texto, { fontFamily: FONTE_PIXEL, fontSize: "11px", color: cor, stroke: COR.tinta, strokeThickness: 3, resolution: 2 })
       .setOrigin(0.5, 1).setDepth(PROF.rotulo).setAlpha(0);
@@ -501,12 +527,6 @@ class Cena extends Phaser.Scene {
     if (tipo === "critico" && !reduz) this.cameras.main.shake(80, 0.003);
     this.tweens.add({ targets: t, y: y - 26, duration: 700, ease: "Cubic.easeOut" });
     this.tweens.add({ targets: t, alpha: 0, delay: 450, duration: 300, onComplete: () => t.destroy() });
-  }
-  // Compatibilidade com a UI antiga (oração): cor verde → cura.
-  textoFlutuante(x, y, texto, cor) {
-    const n = String(texto).match(/[-+]?\d+/);
-    const verde = /8[df]|cura/i.test(cor || "") || /^\+/.test(texto);
-    this.numero(x, y, n ? (verde ? `+${Math.abs(+n[0])}` : `−${Math.abs(+n[0])}`) : texto, verde ? "cura" : "recebido");
   }
   efeitoQuadro(chave, x, y, quadros, ms, opts = {}) {
     const s = this.add.sprite(x, y, chave, 0).setDepth(opts.depth || PROF.numero - 1);
@@ -681,6 +701,11 @@ class Cena extends Phaser.Scene {
   }
 
   interagir(alvoId) {
+    // Com a fala deste NPC aberta, F (ou clicar nele) só completa e depois
+    // fecha a caixa, como diz a dica "clique ou F". Falar de novo avançaria
+    // a missão e trocaria a fala (briefing, recompensa) pela seguinte.
+    const npcAlvo = alvoId ? npcs[alvoId] : Mundo.npcProximo?.(this.p);
+    if (npcAlvo && window.UI?.avancarDialogo?.(npcAlvo.id)) return { ok: true };
     const r = Mundo.executar(MEU_ID, alvoId ? { tipo: "interagir", alvoId } : { tipo: "interagir" });
     this.mensagem(r.mensagem, r.ok ? "fala" : undefined);
     if (r.ok) {
@@ -697,6 +722,7 @@ class Cena extends Phaser.Scene {
     if (r.missaoErvasIniciada || r.missaoDesertoIniciada) this.atualizarColetaveis();
     if (r.capituloConcluido || r.oracaoAprendida) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 12, { subir: true, dur: 800 });
     this.p = Mundo.jogadores[MEU_ID];
+    if (r.capituloConcluido) this.atualizarPortais();
     this.atualizarBaloes();
     this.verificarNivel();
     this.atualizarVisualJogador();
@@ -791,7 +817,10 @@ class Cena extends Phaser.Scene {
     }
     const dx = Math.abs(e.x - this.p.x), dy = Math.abs(e.y - this.p.y);
     const alinhado = dx === 0 || dy === 0 || dx === dy, dist = Math.max(dx, dy);
-    const podeAtirar = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0 && alinhado && dist <= ALCANCE_ARCO && dist > 1;
+    // Também a 1 casa: espada e arco são exclusivos, então com o arco nas
+    // mãos o golpe corpo a corpo sairia sem arma (a lógica aceita o tiro
+    // a partir de 1 casa).
+    const podeAtirar = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0 && alinhado && dist <= ALCANCE_ARCO;
     this.ultimoAutoAtaque = this.time.now;
     this.atacarAlvo(!!podeAtirar, true);
   }
@@ -895,11 +924,15 @@ class Cena extends Phaser.Scene {
     if (!r.ok) return;
     if (r.areaAlterada) return this.trocarArea(r.mensagem);
     this.p = Mundo.jogadores[MEU_ID];
-    if (r.itemColetado || r.moedas) {
-      const s = this.spritesItens[r.itemColetado];
-      if (s && r.moedas) this.numero(s.x, s.y - 16, `+${r.moedas}`, "moeda");
-      s?.destroy();
-      delete this.spritesItens[r.itemColetado];
+    // Pilha de saque: a lógica recolhe tudo o que couber (itensColetados);
+    // r.itemColetado sozinho vem dos coletáveis (erva, odre).
+    const coletados = r.itensColetados || (r.itemColetado ? [r.itemColetado] : []);
+    if (coletados.length) {
+      if (r.moedas) this.numero(centroX(this.p.x), this.p.y * TAM + 8, `+${r.moedas}`, "moeda");
+      for (const id of coletados) {
+        this.spritesItens[id]?.destroy();
+        delete this.spritesItens[id];
+      }
       this.mensagem(r.mensagem, "saque");
       this.atualizarBaloes();
     } else if (r.mensagem) this.mensagem(r.mensagem);
@@ -951,6 +984,7 @@ class Cena extends Phaser.Scene {
       this.proximoMinimapa = time + 250;
       this.p = Mundo.jogadores[MEU_ID] || this.p;
       this.desenharMinimapa();
+      this.atualizarMapaSobre();
       Arte.animarAgua(this, this.areaAtual, time / 250);
       this.atualizarVisualJogador();
     }
@@ -962,6 +996,7 @@ class Cena extends Phaser.Scene {
     if (time >= this.proximoBalao) {
       this.proximoBalao = time + 500;
       this.atualizarBaloes();
+      this.atualizarPortais(); // também cobre conclusões vindas de fora do diálogo
     }
 
     if (!this.trocando) this.lerTeclas(time, agora);
@@ -1036,7 +1071,14 @@ class Cena extends Phaser.Scene {
     }
     this.mensagem(x.mensagem, "combate");
     this.numero(jx, jy, `−${x.dano}`, "recebido");
-    if (x.defesaBloqueada > 0) this.time.delayedCall(120, () => this.numero(jx + 14, jy + 10, `BLOQ ${x.defesaBloqueada}`, "bloqueio"));
+    if (x.defesaBloqueada > 0) {
+      // BLOQ sai do lado oposto ao atacante, ao lado do corpo, para não
+      // atravessar o rótulo do inimigo (que fica sobre a cabeça dele).
+      const atacante = inimigos[x.inimigoId];
+      const lado = atacante && atacante.x > this.p.x ? -1 : 1;
+      const by = atacante && atacante.y > this.p.y ? jy : jy + 24;
+      this.time.delayedCall(120, () => this.numero(jx + lado * 36, by, `BLOQ ${x.defesaBloqueada}`, "bloqueio"));
+    }
     this.jogador.setTint(0xff7a5c);
     this.time.delayedCall(100, () => this.jogador.active && this.jogador.clearTint());
     this.pulsoVinheta(0.35, 150);
@@ -1076,7 +1118,7 @@ class Cena extends Phaser.Scene {
       s.setDepth(PROF.entidade + s.y);
       ent.sombra.setPosition(s.x + 3, s.y - 1);
       if (ent.tipo === "npc" && ent.acaoAte < time && this.p.x !== ent.dados.x && cheb(this.p, ent.dados) <= 3) s.setFlipX(this.p.x < ent.dados.x);
-      if (ent.balao && ent.balao.visible) ent.balao.setPosition(s.x, s.y - ent.alturaCabeca - 4 + (reduz ? 0 : Math.floor(time / 500) % 2 ? -2 : 0));
+      if (ent.balao && ent.balao.visible) this.posicionarBalao(ent, reduz ? 0 : Math.floor(time / 500) % 2 ? -2 : 0);
     }
 
     // animações simples por quadro
@@ -1168,7 +1210,25 @@ class Cena extends Phaser.Scene {
     }
   }
 
+  // Retângulo do sprite do jogador (base no meio dos pés). O jogador é a
+  // prioridade visual nº 1 (§1.8): rótulos e balões não passam por cima dele.
+  retanguloJogador() {
+    const j = this.jogador;
+    return { x: j.x, y: j.y, w: 28, h: j.displayHeight - 4 };
+  }
+  // Balão (!, ?, loja, guia) sobre a cabeça do NPC; se cruzar o jogador
+  // (NPC logo abaixo dele), vai para o lado oposto ao jogador.
+  posicionarBalao(ent, quique) {
+    const s = ent.sprite, b = ent.balao, corpo = this.retanguloJogador();
+    let x = s.x;
+    const y = s.y - ent.alturaCabeca - 4 + quique;
+    const cruza = Math.abs(corpo.x - x) < (corpo.w + b.displayWidth) / 2 && y > corpo.y - corpo.h && y - b.displayHeight < corpo.y;
+    if (cruza) x = corpo.x + (s.x >= corpo.x ? 1 : -1) * ((corpo.w + b.displayWidth) / 2 + 2);
+    b.setPosition(x, y);
+  }
+
   // Rótulos: proximidade, ponteiro, alvo ou Alt; anti-sobreposição (§8.2)
+  // entre rótulos e contra o sprite do jogador.
   atualizarRotulos() {
     const todos = this.teclas.alt.isDown;
     const visiveis = [];
@@ -1186,17 +1246,23 @@ class Cena extends Phaser.Scene {
       visiveis.push({ t: m.rotulo, x: centroX(m.x), y: m.y * TAM + TAM + m.dy });
     }
     visiveis.sort((a, b) => a.y - b.y);
+    // Retângulos com base em y (rótulos têm origem embaixo, 12 px de altura).
+    const bate = (r, x, y, w, h) => Math.abs(r.x - x) < (r.w + w) / 2 + 2 && y > r.y - r.h && y - h < r.y;
+    // Rótulo que cairia sobre o jogador (NPC logo abaixo dele) fica oculto:
+    // o jogador vem primeiro (§1.8) e, ao lado, o aviso "F · Falar" já marca
+    // o NPC; o nome aparece no quadro de diálogo.
+    const corpo = this.retanguloJogador();
     const colocados = [];
     for (const v of visiveis) {
       const w = v.t.width, h = 12;
+      if (bate(corpo, v.x, v.y, w, h)) { this.desvanecer(v.t, false); continue; }
       let y = v.y, ok = false;
       for (let k = 0; k < 3; k++) {
-        const bate = colocados.some((r) => Math.abs(r.x - v.x) < (r.w + w) / 2 + 2 && Math.abs(r.y - y) < h);
-        if (!bate) { ok = true; break; }
+        if (!colocados.some((r) => bate(r, v.x, y, w, h)) && !bate(corpo, v.x, y, w, h)) { ok = true; break; }
         y -= 12;
       }
       if (!ok) { this.desvanecer(v.t, false); continue; }
-      colocados.push({ x: v.x, y, w });
+      colocados.push({ x: v.x, y, w, h });
       v.t.setPosition(Math.round(v.x), Math.round(y));
       this.desvanecer(v.t, true);
     }
@@ -1217,11 +1283,37 @@ class Cena extends Phaser.Scene {
     const texto = `${alvo.tecla} · ${alvo.rotulo}`;
     if (this.dica.text !== texto) this.dica.setText(texto);
     const ent = alvo.tipo === "npc" && this.entidades[alvo.id];
-    const x = ent ? ent.sprite.x : centroX(alvo.x), y = (ent ? ent.sprite.y : baseY(alvo.y)) + 4;
+    let x = ent ? ent.sprite.x : centroX(alvo.x), y = (ent ? ent.sprite.y : baseY(alvo.y)) + 4;
+    // Alvo logo ao norte: a pílula (origem no topo) cairia sobre o tronco
+    // do jogador. Nesse caso ela vai para baixo dos pés dele (§1.8).
+    const corpo = this.retanguloJogador(), w = this.dica.width, h = this.dica.height;
+    const cruza = Math.abs(corpo.x - x) < (corpo.w + w) / 2 && y < corpo.y && y + h > corpo.y - corpo.h;
+    if (cruza) { x = corpo.x; y = corpo.y + 4; }
     this.dica.setPosition(Math.round(x), Math.round(y)).setVisible(true);
   }
 
   // ===== minimapa (DOM; mesmas cores do mundo) ========================
+  // Minimapa sobre o mundo (médio, celular e largo em tela baixa): ele não
+  // recebe cliques (pointer-events:none no CSS, o clique chega ao canvas) e
+  // fica translúcido quando o jogador, um inimigo ou um NPC passa por baixo.
+  atualizarMapaSobre() {
+    const caixa = document.getElementById("mapaSobre"), canvas = this.game.canvas;
+    if (!caixa || !canvas) return;
+    const m = caixa.getBoundingClientRect();
+    let coberto = false;
+    if (m.width && m.height) {
+      const c = canvas.getBoundingClientRect(), cam = this.cameras.main, v = cam.worldView;
+      const kx = c.width / this.scale.width, ky = c.height / this.scale.height;
+      const tela = (s) => [c.left + (cam.x + (s.x - v.x) * cam.zoom) * kx, c.top + (cam.y + (s.y - v.y) * cam.zoom) * ky];
+      const sprites = [this.jogador, ...Object.values(this.entidades).map((e) => e.sprite)];
+      coberto = sprites.some((s) => {
+        if (!s || !s.visible) return false;
+        const [x, y] = tela(s), meiaL = (s.displayWidth * cam.zoom * kx) / 2, alt = s.displayHeight * cam.zoom * ky;
+        return x + meiaL > m.left && x - meiaL < m.right && y > m.top && y - alt < m.bottom;
+      });
+    }
+    caixa.classList.toggle("encoberto", coberto);
+  }
   desenharMinimapa() {
     const canvas = document.querySelector("#miniMap"), ctx = canvas?.getContext("2d");
     if (!ctx || !this.p) return;
@@ -1231,17 +1323,20 @@ class Cena extends Phaser.Scene {
       const c = document.createElement("canvas");
       c.width = W; c.height = H;
       const g = c.getContext("2d"), m = mapas[this.areaAtual], ts = this.tileset;
+      const noMar = this.areaAtual === "mar";
       g.fillStyle = cores.fundo; g.fillRect(0, 0, W, H);
       for (let y = 0; y < ROWS; y++)
         for (let x = 0; x < COLS; x++) {
           const borda = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
           const idx = ts.indice(x, y);
+          // No mar toda casa usa um índice de água (o "chão" já é água);
+          // ali valem borda, ilhas/rochedos e a rota da linha 30.
+          const agua = !noMar && idx >= Arte.ID_TILE.COSTA && idx < Arte.ID_TILE.BORDA;
           let cor = cores.chao;
-          if (idx >= Arte.ID_TILE.COSTA && idx < Arte.ID_TILE.BORDA) cor = cores.agua;
+          if (agua) cor = cores.agua;
           else if (borda) cor = cores.borda;
           else if (m[y][x]) cor = cores.obstaculo;
-          else if (this.areaAtual !== "mar" && ts.ehCaminho(x, y)) cor = cores.caminho;
-          else if (this.areaAtual === "mar" && y === 30) cor = cores.caminho;
+          else if (noMar ? y === 30 : ts.ehCaminho(x, y)) cor = cores.caminho;
           g.fillStyle = cor;
           g.fillRect(Math.floor(x * sx), Math.floor(y * sy), Math.ceil(sx), Math.ceil(sy));
         }

@@ -809,8 +809,11 @@
   glifo("ui_pergaminho", [".kkkkkk.", "kPPPPPPk", "kkPlllPk", ".kPPPPPk", ".kPlllPk", ".kPPPPkk", ".kPPPPPk", ".kkkkkk."], { P: "#e6cf9c", l: "#5a3a24" });
   glifo("ui_espadas", ["k......k", "kIk..kIk", ".kIkkIk.", "..kIIk..", "..kIIk..", ".kBkkBk.", "kBk..kBk", "kk....kk"], { I: "#e4ecf0", B: "#b07a38" });
   glifo("ui_personagem", ["..kkkk..", ".kHHHHk.", ".kSSSSk.", ".kSkkSk.", "..kSSk..", ".kRRRRk.", "kRRAARRk", "kkkkkkkk"], { H: "#4a2f20", S: "#e0a878", R: "#eadcb6", A: "#3b5a9a" });
-  glifo("ui_registro", [".....kk.", "....kWk.", "...kWk..", "..kWk...", ".kWk....", ".kk.....", "k.......", "kkkkk..."], { W: "#f3e4c0" });
-  glifo("ui_rosa", ["...k....", "..kRk...", "..kRk...", "kkkYkkkk", ".kkYkk..", "..kDk...", "..kDk...", "...k...."], { R: "#c2452d", Y: "#e8b94a", D: "#e6cf9c" });
+  // Pena e rosa-dos-ventos aparecem sobre couro escuro (barra do topo, abas
+  // do celular) e sobre pergaminho: todo traço tem miolo claro e contorno
+  // de tinta, para ler nos dois fundos.
+  glifo("ui_registro", [".....kkk", "....kWWk", "...kWWwk", "..kWWwk.", ".kWwwk..", ".kNkk...", "kNk.....", "kYYYYYk."], { W: "#f3e4c0", w: "#c9b48a", N: "#b07a38", Y: "#e8b94a" });
+  glifo("ui_rosa", ["...k....", "..kRk...", ".kkRkk..", "kDDYddk.", ".kkDkk..", "..kDk...", "...k....", "........"], { R: "#c2452d", Y: "#e8b94a", D: "#e6cf9c", d: "#c9ad78" });
   glifo("ui_tela_cheia", ["YYY..YYY", "Y......Y", "Y......Y", "........", "........", "Y......Y", "Y......Y", "YYY..YYY"], { Y: "#e6cf9c" });
   glifo("ui_ajuda", ["..kkkk..", ".kYYYYk.", "kYkkkYYk", "kYYYkYYk", "kYYkYYYk", "kYYYYYYk", ".kYkYYk.", "..kkkk.."], { Y: "#e8b94a" });
   glifo("ui_fechar", ["DD....DD", "DDD..DDD", ".DDDDDD.", "..DDDD..", "..DDDD..", ".DDDDDD.", "DDD..DDD", "DD....DD"], { D: "#e6cf9c" });
@@ -1501,6 +1504,8 @@
   });
   obstaculo("ob_galileia_basalto_muro", false, 2, (g, v, b) => {
     g.sombra(10, b, 8, 1.3);
+    // Basalto preto (guia §3.3): pedra no tom escuro da rampa, juntas no
+    // mais escuro e realce claro só no canto de cima/esquerda (luz do oeste).
     const c = ["#262422", "#363432", "#4c4a48", "#6e6a64"];
     for (let fila = 0; fila < 3; fila++) {
       const y0 = b - 11 + fila * 4;
@@ -1508,17 +1513,18 @@
       if (fila === 0) x = 1;
       while (x < 17) {
         const w = Math.min(17 - x, 3 + Math.floor(hash2(x, fila, 160 + v) * 3));
-        g.ret(x, y0, w, 3, (px, py) => (py === y0 ? c[3] : py === y0 + 2 ? c[1] : c[2]));
-        g.ret(x + w, y0, 1, 3, "#8a8680");
+        g.ret(x, y0, w, 3, (px, py) => (py === y0 ? (px === x ? c[3] : c[2]) : px === x ? c[2] : c[1]));
+        g.ret(x + w, y0, 1, 3, c[0]);
         x += w + 1;
       }
-      g.lin(1, y0 + 3, 16, y0 + 3, "#8a8680");
+      g.lin(1, y0 + 3, 16, y0 + 3, c[0]);
     }
   });
   obstaculo("ob_galileia_basalto", false, 2, (g, v, b) => {
     g.sombra(10, b, 7, 1.3);
     rocha(g, 2 + v, b - 9, 13 - v, 10, ["#262422", "#363432", "#4c4a48", "#6e6a64"], 170 + v);
-    for (let i = 0; i < 6; i++) { const x = 4 + Math.floor(hash2(i, v, 171) * 9), y = b - 7 + Math.floor(hash2(i, v, 172) * 6); if (g.g(x, y)) g.p(x, y, "#8a8680"); }
+    // vesículas do basalto: furinhos escuros
+    for (let i = 0; i < 6; i++) { const x = 4 + Math.floor(hash2(i, v, 171) * 9), y = b - 7 + Math.floor(hash2(i, v, 172) * 6); if (g.g(x, y)) g.p(x, y, "#262422"); }
   });
   obstaculo("ob_galileia_barco", false, 1, (g, v, b) => {
     g.sombra(10, b, 8.5, 1.3);
@@ -1678,7 +1684,9 @@
         pin.set(i, x, y, cor);
       }
       salpicar(pin, i, 9, [m.escuro, c.escuro], semente + 300 + mask);
-      if (area === "galileia") for (let k = 0; k < 4; k++) pin.set(i, 2 + Math.floor(hash2(k, mask, 9) * 12), 2 + Math.floor(hash2(mask, k, 9) * 12), k % 2 ? "#e2c044" : "#b8a0d0");
+      // As flores do "campo de flores" da Galileia não ficam no tile da mancha
+      // (todo tile interior tem a mesma máscara e repetiria as mesmas flores a
+      // cada 32 px): saem como decoração rasteira sorteada por casa (indiceDeco).
     }
   }
 
@@ -1789,7 +1797,7 @@
         }
       } else {
         // muros (tijolo, basalto) e paredão
-        const juntas = tipo === "muro_basalto" ? "#8a8680" : tipo === "paredao" ? r[0] : "#4a2a18";
+        const juntas = tipo === "muro_basalto" ? r[0] : tipo === "paredao" ? r[0] : "#4a2a18";
         for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
           let c;
           if (tipo === "paredao") {
@@ -1798,7 +1806,10 @@
             if (Math.abs(x - y * 0.6 - 4) < 0.5 || Math.abs(x + y * 0.3 - 13) < 0.5) c = r[0];
           } else {
             const fila = Math.floor(y / 4), dx = (x + (fila % 2) * 3) % 6;
-            c = y % 4 === 3 || dx === 5 ? juntas : y % 4 === 0 ? r[3] : dx === 0 ? r[2] : r[1];
+            if (tipo === "muro_basalto") {
+              // pedra escura; realce claro só no canto de cima/esquerda
+              c = y % 4 === 3 || dx === 5 ? juntas : y % 4 === 0 ? (dx === 0 ? r[3] : r[2]) : dx === 0 ? r[2] : r[1];
+            } else c = y % 4 === 3 || dx === 5 ? juntas : y % 4 === 0 ? r[3] : dx === 0 ? r[2] : r[1];
           }
           pin.set(i, x, y, c);
         }
@@ -1814,11 +1825,17 @@
   }
 
   // Decoração rasteira (transparente; sem contorno). Até 16 variantes.
-  function pintarDeco(pin, bio, area) {
+  // 16 variantes de decoração do bioma, repetidas conforme o peso.
+  function listaDeco(bio) {
     const lista = [];
     for (const d of bio.deco) for (let k = 0; k < d.peso && lista.length < 16; k++) lista.push(d);
     while (lista.length < 16) lista.push(bio.deco[lista.length % bio.deco.length]);
-    lista.forEach((d, k) => {
+    return lista;
+  }
+  const TIPOS_FLOR = new Set(["anemona", "flor_branca", "flor_amarela", "mostarda", "lirio"]);
+
+  function pintarDeco(pin, bio, area) {
+    listaDeco(bio).forEach((d, k) => {
       const i = ID.DECO + k, c = d.cor, ox = 3 + Math.floor(hash2(k, 1, 250) * 9), oy = 4 + Math.floor(hash2(k, 2, 250) * 8);
       const P = (x, y, cor = c, a = 1) => pin.set(i, ox + x, oy + y, cor, a);
       switch (d.tipo) {
@@ -2002,10 +2019,18 @@
       const r = hash2(x, y, 1);
       return r < 0.55 ? 0 : r < 0.7 ? 1 : r < 0.85 ? 2 : 3;
     }
+    // variantes de flor (para o campo de flores da Galileia)
+    const variantesFlor = listaDeco(bio).map((d, k) => (TIPOS_FLOR.has(d.tipo) ? k : -1)).filter((k) => k >= 0);
     function indiceDeco(x, y, proibido) {
       if (!mapa || x < 1 || y < 1 || x >= COLSm - 1 || y >= ROWSm - 1 || mapa[y][x]) return -1;
       if (area === "mar") return hash2(x, y, 7) < 0.015 ? ID.DECO : -1;
       if (ehCaminho(x, y) || (proibido && proibido(x, y))) return -1;
+      // Galileia: a mancha é um campo de flores; cada casa sorteia a sua flor
+      // (variante com posição própria), sem padrão de papel de parede.
+      if (area === "galileia" && variantesFlor.length && ehMancha(x, y)) {
+        if (hash2(x, y, 7) >= 0.3) return -1;
+        return ID.DECO + variantesFlor[Math.floor(hash2(x, y, 13) * variantesFlor.length)];
+      }
       let p = 0.07;
       for (const h of bio.hubs) if (Math.max(Math.abs(x - h.x), Math.abs(y - h.y)) <= h.raio) p = 0.15;
       if (hash2(x, y, 7) >= p) return -1;
@@ -2067,7 +2092,8 @@
     const agua = (bio.agua || BIOMAS.mar.agua).base;
     return {
       chao: p(area === "mar" ? agua : bio.chao.base),
-      caminho: p(bio.caminho.base),
+      // No mar a rota (linha 30) é a faixa clara de espuma, como na tela.
+      caminho: p(area === "mar" ? bio.agua.brilho : bio.caminho.base),
       obstaculo: p(area === "mar" ? "#c9ad78" : bio.borda.rampa[1]),
       agua: p(agua),
       borda: p(bio.borda.rampa[0]),

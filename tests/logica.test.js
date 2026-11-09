@@ -912,6 +912,7 @@ teste("12. sem código morto: versão única, aviso pendente consumível", () =>
   const fonteLog = FONTES[1];
   assert.doesNotMatch(fonteExp + fonteLog, /defesaP\b/);
   assert.doesNotMatch(fonteExp, /versao\s*=\s*5/);
+  assert.doesNotMatch(fonteLog, /^\s{2}avisosPendentes\(/m, "Mundo.avisosPendentes não tem uso: a UI usa consumirAviso");
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
@@ -1043,7 +1044,12 @@ teste("17. migração: save v5 carrega sem perder itens, moedas e progresso", ()
   assert.strictEqual(p.habilidades.defesa >= original.habilidades.defesa, true);
   assert.strictEqual(p.area, "egito");
   assert.strictEqual(p.envenenadoAte, 0, "veneno vencido é zerado na carga");
-  assert.strictEqual(p.vidaInimigos.soldadoEgito1, 40);
+  // A fixture gravou a vida cheia antiga (guarda 40, escorpião 70…): na v6
+  // todo inimigo vivo volta com a vida máxima rebalanceada.
+  for (const e of Object.values(j.g("inimigos"))) {
+    if (p.inimigosDerrotados.includes(e.id)) continue;
+    assert.strictEqual(p.vidaInimigos[e.id], e.vidaMaxima, `${e.id} começa ferido após a migração`);
+  }
   assert.ok(p.inimigosDerrotados.includes("lobo1"));
   assert.strictEqual(p.versao, j.g("VERSAO_SAVE"));
   assert.ok(!("avisoAtualizacao" in p), "campo antigo foi convertido");
@@ -1167,6 +1173,152 @@ teste("19. personagem novo começa com o equipamento inicial vestido e vence o l
   const j2 = carregarJogo({ store: j.store });
   const p2 = j2.entrar();
   assert.strictEqual(p2.inventario.filter((i) => i === "espada_madeira").length, 0);
+});
+
+teste("20. migração v6→v6 preserva a vida atual dos inimigos feridos", () => {
+  const j = carregarJogo();
+  j.entrar();
+  j.p.vidaInimigos.lobo1 = 33;
+  j.g("Storage").flush();
+  const j2 = carregarJogo({ store: j.store });
+  assert.strictEqual(j2.entrar().vidaInimigos.lobo1, 33);
+});
+
+teste("21. pisar na pilha de saque recolhe item e moedas juntos", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  p.missaoDeserto.status = "em_andamento";
+  p.missaoDeserto.etapa = 2;
+  const casa = { x: 14, y: 9 };
+  assert.ok(casaLivreParaJogador(j, "deserto", casa.x, casa.y));
+  const t = j.agora;
+  p.saqueNoChao.push(
+    { id: "s_moedas", area: "deserto", ...casa, moedas: 8, criadoEm: t },
+    { id: "s_veneno", area: "deserto", ...casa, item: "veneno_escorpiao", criadoEm: t },
+  );
+  const moedas = p.moedas;
+  const r = pisarEm(j, "deserto", casa);
+  assert.ok(r.ok);
+  assert.deepStrictEqual([...r.itensColetados].sort(), ["s_moedas", "s_veneno"]);
+  assert.strictEqual(r.itensColetados[0], "s_veneno", "item de missão vem primeiro");
+  assert.strictEqual(p.moedas, moedas + 8);
+  assert.match(r.mensagem, /Veneno de escorpião, 8 moedas/);
+  assert.ok(!p.saqueNoChao.some((s) => s.x === casa.x && s.y === casa.y));
+  assert.deepStrictEqual(json(p.missaoDeserto.venenosMissaoColetados), ["s_veneno"]);
+});
+
+teste("22. mochila cheia: o passo sobre o saque vale e a mensagem chega à UI", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const casa = { x: 14, y: 9 };
+  p.saqueNoChao.push(
+    { id: "s_espada", area: "deserto", ...casa, item: "espada_ferro", criadoEm: j.agora },
+    { id: "s_moedas", area: "deserto", ...casa, moedas: 5, criadoEm: j.agora },
+  );
+  posicionarAoLado(j, "deserto", casa);
+  while (j.g("pesoCarregado")(p) + 10 <= j.g("capacidadeCarga")(p)) p.inventario.push("espada_ferro");
+  const r = j.exec({ tipo: "mover", dx: casa.x - p.x, dy: casa.y - p.y });
+  assert.ok(r.ok, "o movimento não é recusado");
+  assert.deepStrictEqual([p.x, p.y], [casa.x, casa.y]);
+  assert.match(r.mensagem, /Mochila cheia/);
+  assert.match(r.mensagem, /5 moedas/, "as moedas da pilha são recolhidas mesmo assim");
+  assert.ok(p.saqueNoChao.some((s) => s.id === "s_espada"), "a espada fica no chão");
+});
+
+teste("23. veneno de 15 s com dano a cada 3 s aplica 5 vezes (15 de dano)", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  p.area = "deserto";
+  p.x = 40;
+  p.y = 40;
+  p.vida = 200;
+  j.M.aplicarVeneno(p, j.g("VENENO_PADRAO"), j.agora);
+  let ticks = 0;
+  let terminou = false;
+  for (let t = 0; t <= 20_000 && !terminou; t += 37) {
+    j.avancar(37);
+    for (const ev of j.atualizar()) {
+      if (ev.veneno) ticks++;
+      if (ev.tipo === "venenoTerminou") terminou = true;
+    }
+  }
+  assert.ok(terminou);
+  assert.strictEqual(ticks, 5);
+});
+
+teste("24. chegada a capítulo: dica só no início e preposição correta", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  p.missaoDeserto.status = "concluida";
+  const PORTAIS = j.g("PORTAIS");
+  const paraEgito = PORTAIS.find((t) => t.destino === "egito");
+  const passo = (portal) => {
+    const vizinho = VIZINHOS.map(([dx, dy]) => ({ dx, dy })).find(({ dx, dy }) =>
+      casaLivreParaJogador(j, portal.area, portal.x - dx, portal.y - dy),
+    );
+    return atravessar(j, portal.area, portal, vizinho.dx, vizinho.dy);
+  };
+  let r = passo(paraEgito);
+  assert.match(r.mensagem, /^Você chegou ao Egito\. Fale com os personagens/);
+  p.capitulos.egito.status = "concluida";
+  r = passo(paraEgito);
+  assert.strictEqual(r.mensagem, "Você chegou ao Egito.");
+  const paraGalileia = PORTAIS.find((t) => t.destino === "galileia");
+  for (const k of ["marVermelho", "sinai"]) p.capitulos[k].status = "concluida";
+  r = passo(paraGalileia);
+  assert.match(r.mensagem, /^Você chegou à Galileia\. Fale/);
+});
+
+const FONTE_GAME = fs.readFileSync(path.join(RAIZ, "game.js"), "utf8");
+
+teste("25. avisos pendentes só saem do save quando consumidos, um por vez", () => {
+  // game.js consome cada aviso só na hora de mostrá-lo (dentro do timer da
+  // cena); se a cena reiniciar antes, o aviso precisa continuar no save.
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  j.M.adicionarAviso(p, "a", "Primeiro");
+  j.M.adicionarAviso(p, "b", "Segundo");
+  j.g("Storage").flush();
+  // "Reinício da cena" sem consumir: nada se perde.
+  const j2 = carregarJogo({ store: j.store, inicio: INICIO_RELOGIO + 5_000 });
+  j2.entrar();
+  assert.strictEqual(j2.M.consumirAviso(ID), "Primeiro");
+  j2.g("Storage").flush();
+  // Consumiu um e a cena reiniciou de novo: o segundo continua pendente.
+  const j3 = carregarJogo({ store: j2.store, inicio: INICIO_RELOGIO + 10_000 });
+  j3.entrar();
+  assert.strictEqual(j3.M.consumirAviso(ID), "Segundo");
+  assert.strictEqual(j3.M.consumirAviso(ID), null);
+  // Na cena, consumirAviso fica dentro do delayedCall, e não num laço no create.
+  assert.doesNotMatch(FONTE_GAME, /while\s*\(\(\w+\s*=\s*Mundo\.consumirAviso/, "create não deve consumir todos os avisos de uma vez");
+  assert.match(FONTE_GAME, /delayedCall\([^)]*\(\)\s*=>\s*\{\s*const texto = Mundo\.consumirAviso/);
+});
+
+teste("26. com o arco nas mãos, o tiro a 1 casa vale e bate mais que o soco", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const e = j.g("inimigos").lobo1;
+  p.vidaInimigos.lobo1 = 10_000;
+  p.equipamento.arma = null;
+  p.equipamento.arco = "arco_madeira";
+  p.inventario.push("flecha", "flecha");
+  posicionarAoLado(j, "canaan", e);
+  assert.ok(j.M.linhaDeTiroLivre(p, e), "alvo ao lado está na linha de tiro");
+  const est = j.g("estatisticasCombate")(p);
+  assert.ok(est.danoDistancia > est.danoCorpo, "com o arco equipado o corpo a corpo é sem arma");
+  const tiro = j.exec({ tipo: "atacarDistancia", alvoId: "lobo1" });
+  assert.ok(tiro.danoAplicado);
+  assert.strictEqual(j.M.contarItem(ID, "flecha"), 1, "a flecha é gasta");
+  // O autoataque da cena não pode exigir distância > 1 para atirar.
+  const auto = FONTE_GAME.match(/const podeAtirar = [^;]*;/);
+  assert.ok(auto, "autoAtacar define podeAtirar");
+  assert.doesNotMatch(auto[0], /dist\s*>\s*1/);
 });
 
 // ---------------------------------------------------------------------

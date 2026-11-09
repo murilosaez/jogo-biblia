@@ -1,7 +1,7 @@
 // =====================================================================
 // logica.js — regras de "Jornada · RPG Bíblico" (sem DOM).
 //
-// Ordem de carga: storage.js → logica.js → expansao.js → game.js.
+// Ordem de carga: storage.js → logica.js → expansao.js → sprites.js → game.js → interface.js.
 // Este arquivo define o motor (Mundo) e os dados de Canaã, Deserto e Mar.
 // expansao.js apenas ACRESCENTA dados (áreas, NPCs, inimigos, capítulos e
 // portais) usando as funções registrar* daqui; nenhuma função é reembrulhada.
@@ -556,6 +556,21 @@ function capituloAnteriorConcluido(p, chave) {
   return p.capitulos?.[anterior]?.status === "concluida";
 }
 
+// "ao Egito", "à Galileia", "a Canaã": contração da preposição "a" com o
+// artigo de cada área (áreas sem entrada aqui usam só "a").
+const PREPOSICAO_AREA = {
+  canaan: "a",
+  deserto: "ao",
+  mar: "ao",
+  egito: "ao",
+  marVermelho: "ao",
+  sinai: "ao",
+  galileia: "à",
+};
+function nomeComPreposicao(areaId) {
+  return `${PREPOSICAO_AREA[areaId] || "a"} ${areas[areaId]?.nome || areaId}`;
+}
+
 // Fase do capítulo do ponto de vista do jogador.
 function faseCapitulo(p, chave) {
   if (!capituloAnteriorConcluido(p, chave)) return "bloqueado";
@@ -904,11 +919,15 @@ const Mundo = {
       p.y = inicio.y;
     }
 
-    // Vida dos inimigos.
+    // Vida dos inimigos. Saves anteriores à v6 gravaram a vida cheia da
+    // tabela antiga (lobo 50, chefe 100, guarda 40…): com o rebalanceamento,
+    // todo inimigo vivo volta com a vida máxima nova.
+    const vidaAntiga = versaoAnterior < 6;
     for (const e of Object.values(inimigos)) {
       const hp = p.vidaInimigos[e.id];
       if (p.inimigosDerrotados.includes(e.id)) p.vidaInimigos[e.id] = 0;
-      else p.vidaInimigos[e.id] = Number.isFinite(hp) && hp > 0 ? Math.min(hp, e.vidaMaxima) : e.vidaMaxima;
+      else if (vidaAntiga || !Number.isFinite(hp) || hp <= 0) p.vidaInimigos[e.id] = e.vidaMaxima;
+      else p.vidaInimigos[e.id] = Math.min(hp, e.vidaMaxima);
     }
     p.versao = VERSAO_SAVE;
     return p;
@@ -919,10 +938,6 @@ const Mundo = {
     if (!Array.isArray(p.avisosPendentes)) p.avisosPendentes = [];
     if (p.avisosPendentes.some((a) => a.id === avisoId)) return;
     p.avisosPendentes.push({ id: avisoId, texto });
-  },
-
-  avisosPendentes(id) {
-    return (this.jogadores[id]?.avisosPendentes || []).map((a) => a.texto);
   },
 
   // Retorna o próximo aviso (texto) e o remove; null se não houver.
@@ -1188,6 +1203,44 @@ const Mundo = {
     return { ok: true, itemColetado: s.id, mensagem: `Você pegou: ${nomeItem(s.item)}.` };
   },
 
+  // Ao pisar numa casa, recolhe toda a pilha de saque (item e moedas caem
+  // na mesma casa). Itens de missão vêm primeiro. Com a mochila cheia, o
+  // passo continua valendo: o resultado é ok e a mensagem explica o que ficou.
+  coletarPilhaDeSaque(id, p) {
+    const deMissao = this.itensDeMissaoPendentes(p);
+    const prioridade = (s) => (s.item && deMissao.includes(s.item) ? 1 : 0);
+    const pilha = p.saqueNoChao
+      .filter((s) => s.area === p.area && s.x === p.x && s.y === p.y)
+      .sort((a, b) => prioridade(b) - prioridade(a));
+    if (!pilha.length) return null;
+    const coletados = [];
+    const nomes = [];
+    let moedas = 0;
+    let falha = null;
+    for (const s of pilha) {
+      const r = this.coletarSaque(id, s.id);
+      if (!r.ok) {
+        falha = falha || r.mensagem;
+        continue;
+      }
+      coletados.push(s.id);
+      if (r.moedas) moedas += r.moedas;
+      else nomes.push(nomeItem(s.item));
+    }
+    if (moedas) nomes.push(`${moedas} moedas`);
+    const partes = [];
+    if (nomes.length) partes.push(`Você pegou: ${nomes.join(", ")}.`);
+    if (falha) partes.push(falha);
+    if (!coletados.length) this.salvar(p);
+    return {
+      ok: true,
+      itensColetados: coletados,
+      itemColetado: coletados[0],
+      moedas: moedas || undefined,
+      mensagem: partes.join(" "),
+    };
+  },
+
   // ----- Comércio -----
   mercadorProximo(p) {
     return this.npcProximo(p, (n) => n.papel === "loja");
@@ -1273,8 +1326,8 @@ const Mundo = {
     const transicao = this.verificarTransicao(p);
     if (transicao) return transicao;
 
-    const saque = p.saqueNoChao.find((s) => s.area === p.area && s.x === nx && s.y === ny);
-    if (saque) return this.coletarSaque(id, saque.id);
+    const pilha = this.coletarPilhaDeSaque(id, p);
+    if (pilha) return pilha;
 
     const coleta = this.coletarRecurso(id, p);
     if (coleta) return coleta;
@@ -1324,7 +1377,7 @@ const Mundo = {
         destino,
         chegada.x,
         chegada.y,
-        `Você percorreu a trilha terrestre e chegou a ${areas[destino].nome}.`,
+        `Você percorreu a trilha terrestre e chegou ${nomeComPreposicao(destino)}.`,
       );
     }
     if (area.cais && x === area.cais.x && y === area.cais.y) {
@@ -1347,14 +1400,14 @@ const Mundo = {
           mensagem: `O caminho ainda está bloqueado. Conclua o capítulo anterior antes de seguir para ${areas[portal.destino].nome}.`,
         };
       }
-      const destino = areas[portal.destino];
-      const dica = CAPITULOS[portal.destino] ? " Fale com os personagens para iniciar o capítulo." : "";
+      const novoCapitulo = CAPITULOS[portal.destino] && faseCapitulo(p, portal.destino) === "inicio";
+      const dica = novoCapitulo ? " Fale com os personagens para iniciar o capítulo." : "";
       return this.mudarDeArea(
         p,
         portal.destino,
         portal.chegada.x,
         portal.chegada.y,
-        `Você chegou a ${destino.nome}.${dica}`,
+        `Você chegou ${nomeComPreposicao(portal.destino)}.${dica}`,
       );
     }
     return null;
@@ -2085,14 +2138,17 @@ const Mundo = {
     }
 
     // Veneno: dano periódico; ao expirar, o estado é zerado para poder ser reaplicado.
+    // Os ticks seguem a grade do envenenamento (t+3 s, t+6 s, … t+15 s) e o
+    // tick que coincide com o fim ainda é aplicado: 15 s / 3 s = 5 ticks.
     if (p.envenenadoAte) {
-      if (agora >= p.envenenadoAte) {
+      const veneno = p.venenoAtual || VENENO_PADRAO;
+      const tickPendente = agora >= p.proximoDanoVeneno && p.proximoDanoVeneno <= p.envenenadoAte;
+      if (!tickPendente && agora >= p.envenenadoAte) {
         this.curarVeneno(p);
         this.salvar(p);
         eventos.push({ tipo: "venenoTerminou", mensagem: "O veneno perdeu o efeito." });
-      } else if (agora >= p.proximoDanoVeneno) {
-        const veneno = p.venenoAtual || VENENO_PADRAO;
-        p.proximoDanoVeneno = agora + veneno.intervalo;
+      } else if (tickPendente) {
+        p.proximoDanoVeneno += veneno.intervalo;
         p.vida = Math.max(0, p.vida - veneno.dano);
         estado.ultimoCombate = agora;
         if (p.vida === 0) {

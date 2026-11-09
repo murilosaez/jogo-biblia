@@ -12,6 +12,229 @@
 //   expõe    window.UI + apelidos antigos (atualizarInterface, mostrarMensagem,
 //            abrirLoja, abrirViagem, abrirOracao, alternarMinimapa)
 // =====================================================================
+
+// ---------------------------------------------------------------------
+// Dígitos legíveis em pixel art.
+// A Pixelify Sans (fonte dos números, guia §1) desenha o "2" como um Z e
+// o "5" igual ao "S": "210" parece "810", "12" parece "18". Em vez de
+// trocar de fonte, este bloco gera uma fonte TrueType mínima só com 0–9
+// (grade 5×7, um quadrado por pixel) e a registra com o MESMO nome de
+// família, restrita a U+0030–0039. O navegador passa a usar estes dígitos
+// em toda a Pixelify Sans: na interface e nos textos do Phaser.
+// ---------------------------------------------------------------------
+(function fonteDigitos() {
+  "use strict";
+  if (typeof FontFace !== "function" || !document.fonts) return;
+
+  const GRADES = {
+    0: [".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."],
+    1: ["..#..", ".##..", "#.#..", "..#..", "..#..", "..#..", "#####"],
+    2: [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
+    3: ["####.", "....#", "....#", ".###.", "....#", "....#", "####."],
+    4: ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."],
+    5: ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."],
+    6: ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."],
+    7: ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."],
+    8: [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."],
+    9: [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
+  };
+  const UPM = 1000, U = 100, LARG = 5, ALT = 7, MARGEM = 50, AVANCO = LARG * U + 2 * MARGEM;
+  const ASC = 800, DESC = 200;
+
+  // Matriz de pixels de um dígito. No negrito cada coluna vale meio pixel
+  // e todo traço ganha meio pixel à direita (traços verticais mais grossos).
+  function matriz(grade, negrito) {
+    if (!negrito) return { m: grade.map((l) => [...l].map((c) => c === "#")), ux: U };
+    const m = grade.map((l) => {
+      const linha = new Array(LARG * 2 + 1).fill(false);
+      [...l].forEach((c, x) => { if (c === "#") linha[2 * x] = linha[2 * x + 1] = linha[2 * x + 2] = true; });
+      return linha;
+    });
+    return { m, ux: U / 2 };
+  }
+
+  // Contorno: arestas de borda orientadas no sentido horário (eixo y para
+  // cima), encadeadas em laços, sem pontos colineares.
+  function contornos({ m, ux }) {
+    const alt = m.length, larg = m[0].length;
+    const cheio = (x, y) => y >= 0 && y < alt && x >= 0 && x < larg && m[y][x];
+    const saidas = new Map();
+    const aresta = (x0, y0, x1, y1) => {
+      const k = x0 + "," + y0;
+      if (!saidas.has(k)) saidas.set(k, []);
+      saidas.get(k).push([x1, y1]);
+    };
+    for (let y = 0; y < alt; y++) for (let x = 0; x < larg; x++) {
+      if (!cheio(x, y)) continue;
+      const b = alt - 1 - y; // base do pixel, com y para cima
+      if (!cheio(x, y - 1)) aresta(x, b + 1, x + 1, b + 1);
+      if (!cheio(x + 1, y)) aresta(x + 1, b + 1, x + 1, b);
+      if (!cheio(x, y + 1)) aresta(x + 1, b, x, b);
+      if (!cheio(x - 1, y)) aresta(x, b, x, b + 1);
+    }
+    const lacos = [];
+    while (saidas.size) {
+      const inicio = saidas.keys().next().value;
+      const pts = [inicio.split(",").map(Number)];
+      let atual = inicio;
+      for (;;) {
+        const lista = saidas.get(atual);
+        const prox = lista.pop();
+        if (!lista.length) saidas.delete(atual);
+        atual = prox.join(",");
+        if (atual === inicio) break;
+        pts.push(prox);
+      }
+      const limpo = pts.filter((p, i) => {
+        const a = pts[(i + pts.length - 1) % pts.length], c = pts[(i + 1) % pts.length];
+        return !((a[0] === p[0] && p[0] === c[0]) || (a[1] === p[1] && p[1] === c[1]));
+      });
+      lacos.push(limpo.map(([x, y]) => [MARGEM + x * ux, y * U]));
+    }
+    return lacos;
+  }
+
+  function Bytes() {
+    const b = [];
+    return {
+      b,
+      u8: (v) => b.push(v & 255),
+      u16(v) { b.push((v >> 8) & 255, v & 255); },
+      i16(v) { this.u16(v < 0 ? v + 65536 : v); },
+      u32(v) { b.push((v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255); },
+      tag(t) { for (const c of t) b.push(c.charCodeAt(0)); },
+      pad() { while (b.length % 4) b.push(0); },
+    };
+  }
+
+  function construir(negrito) {
+    // glifo 0 = .notdef (vazio); glifos 1–10 = "0"–"9"
+    const glifos = [null, ...Object.keys(GRADES).map((d) => contornos(matriz(GRADES[d], negrito)))];
+    const glyf = Bytes(), loca = [];
+    let maxPts = 0, maxCont = 0;
+    for (const lacos of glifos) {
+      loca.push(glyf.b.length);
+      if (!lacos) continue;
+      const todos = lacos.flat();
+      const xs = todos.map((p) => p[0]), ys = todos.map((p) => p[1]);
+      maxPts = Math.max(maxPts, todos.length);
+      maxCont = Math.max(maxCont, lacos.length);
+      glyf.i16(lacos.length);
+      glyf.i16(Math.min(...xs)); glyf.i16(Math.min(...ys)); glyf.i16(Math.max(...xs)); glyf.i16(Math.max(...ys));
+      let fim = -1;
+      for (const l of lacos) { fim += l.length; glyf.u16(fim); }
+      glyf.u16(0); // sem instruções
+      for (let i = 0; i < todos.length; i++) glyf.u8(1); // todos os pontos na curva
+      let px = 0, py = 0;
+      for (const [x] of todos) { glyf.i16(x - px); px = x; }
+      for (const [, y] of todos) { glyf.i16(y - py); py = y; }
+      glyf.pad();
+    }
+    loca.push(glyf.b.length);
+    const n = glifos.length;
+
+    const head = Bytes();
+    head.u32(0x00010000); head.u32(0x00010000); head.u32(0); head.u32(0x5f0f3cf5);
+    head.u16(0x000b); head.u16(UPM);
+    head.u32(0); head.u32(0); head.u32(0); head.u32(0); // datas
+    head.i16(MARGEM); head.i16(0); head.i16(MARGEM + LARG * U + (negrito ? U / 2 : 0)); head.i16(ALT * U);
+    head.u16(0); head.u16(8); head.i16(2); head.i16(1); head.i16(0);
+
+    const hhea = Bytes();
+    hhea.u32(0x00010000); hhea.i16(ASC); hhea.i16(-DESC); hhea.i16(0); hhea.u16(AVANCO);
+    hhea.i16(0); hhea.i16(0); hhea.i16(MARGEM + LARG * U);
+    hhea.i16(1); hhea.i16(0); hhea.i16(0);
+    for (let i = 0; i < 4; i++) hhea.i16(0);
+    hhea.i16(0); hhea.u16(n);
+
+    const hmtx = Bytes();
+    hmtx.u16(AVANCO); hmtx.i16(0);
+    for (let i = 1; i < n; i++) { hmtx.u16(AVANCO); hmtx.i16(MARGEM); }
+
+    const maxp = Bytes();
+    maxp.u32(0x00010000); maxp.u16(n); maxp.u16(maxPts); maxp.u16(maxCont);
+    maxp.u16(0); maxp.u16(0); maxp.u16(2);
+    for (let i = 0; i < 8; i++) maxp.u16(0);
+
+    const os2 = Bytes();
+    os2.u16(4); os2.i16(AVANCO); os2.u16(400); os2.u16(5); os2.u16(0);
+    for (const v of [650, 600, 0, 75, 650, 600, 0, 350, 50, 300]) os2.i16(v);
+    os2.i16(0);
+    for (let i = 0; i < 10; i++) os2.u8(0);
+    os2.u32(1); os2.u32(0); os2.u32(0); os2.u32(0);
+    os2.tag("JRND"); os2.u16(0x0040); os2.u16(0x30); os2.u16(0x39);
+    os2.i16(ASC); os2.i16(-DESC); os2.i16(0); os2.u16(ASC); os2.u16(DESC);
+    os2.u32(1); os2.u32(0);
+    os2.i16(500); os2.i16(ALT * U); os2.u16(0); os2.u16(0x20); os2.u16(0);
+
+    const cmap = Bytes();
+    cmap.u16(0); cmap.u16(1); cmap.u16(3); cmap.u16(1); cmap.u32(12);
+    cmap.u16(4); cmap.u16(32); cmap.u16(0); cmap.u16(4); cmap.u16(4); cmap.u16(1); cmap.u16(0);
+    cmap.u16(0x39); cmap.u16(0xffff); cmap.u16(0);
+    cmap.u16(0x30); cmap.u16(0xffff);
+    cmap.i16(1 - 0x30); cmap.i16(1);
+    cmap.u16(0); cmap.u16(0);
+
+    const textos = { 1: "Jornada Digitos", 2: "Regular", 4: "Jornada Digitos", 6: "JornadaDigitos" };
+    const name = Bytes();
+    const ids = Object.keys(textos);
+    name.u16(0); name.u16(ids.length); name.u16(6 + ids.length * 12);
+    let desloc = 0;
+    for (const id of ids) {
+      name.u16(3); name.u16(1); name.u16(0x409); name.u16(+id); name.u16(textos[id].length * 2); name.u16(desloc);
+      desloc += textos[id].length * 2;
+    }
+    for (const id of ids) for (const c of textos[id]) name.u16(c.charCodeAt(0));
+
+    const post = Bytes();
+    post.u32(0x00030000); post.u32(0); post.i16(-100); post.i16(50); post.u32(1);
+    post.u32(0); post.u32(0); post.u32(0); post.u32(0);
+
+    const locaB = Bytes();
+    for (const o of loca) locaB.u32(o);
+
+    const tabelas = { "OS/2": os2, cmap, glyf, head, hhea, hmtx, loca: locaB, maxp, name, post };
+    const tags = Object.keys(tabelas).sort();
+    const soma = (arr) => {
+      let s = 0;
+      for (let i = 0; i < arr.length; i += 4) s = (s + ((arr[i] << 24) | (arr[i + 1] << 16) | (arr[i + 2] << 8) | arr[i + 3])) >>> 0;
+      return s;
+    };
+    const fonte = Bytes();
+    const nt = tags.length, ent = Math.floor(Math.log2(nt)), sr = 16 * 2 ** ent;
+    fonte.u32(0x00010000); fonte.u16(nt); fonte.u16(sr); fonte.u16(ent); fonte.u16(nt * 16 - sr);
+    let pos = 12 + nt * 16;
+    const corpos = [];
+    for (const t of tags) {
+      const dados = tabelas[t].b.slice();
+      const tam = dados.length;
+      while (dados.length % 4) dados.push(0);
+      fonte.tag(t); fonte.u32(soma(dados)); fonte.u32(pos); fonte.u32(tam);
+      corpos.push({ t, dados });
+      pos += dados.length;
+    }
+    let posHead = 0;
+    for (const c of corpos) {
+      if (c.t === "head") posHead = fonte.b.length;
+      fonte.b.push(...c.dados);
+    }
+    const ajuste = (0xb1b0afba - soma(fonte.b)) >>> 0;
+    fonte.b.splice(posHead + 8, 4, (ajuste >>> 24) & 255, (ajuste >>> 16) & 255, (ajuste >>> 8) & 255, ajuste & 255);
+    return new Uint8Array(fonte.b).buffer;
+  }
+
+  try {
+    const regular = construir(false), negrito = construir(true);
+    for (const peso of ["400", "600", "700"]) {
+      const face = new FontFace("Pixelify Sans", peso === "400" ? regular : negrito, { weight: peso, unicodeRange: "U+0030-0039" });
+      document.fonts.add(face);
+      face.load().catch((e) => console.warn("[interface] fonte de dígitos recusada:", e && e.message));
+    }
+  } catch (e) {
+    console.warn("[interface] fonte de dígitos indisponível:", e && e.message);
+  }
+})();
+
 (function () {
   "use strict";
 
@@ -262,7 +485,10 @@
   }
 
   function atualizarItens(p, forcar) {
-    const ass = JSON.stringify([p.inventario, p.equipamento, p.hotkeys, selecao]);
+    // A seleção não entra na assinatura: marcá-la só troca a classe
+    // .selecionado (marcarSelecao), sem recriar os botões. Recriá-los entre
+    // os dois cliques impedia o navegador de reconhecer o duplo clique.
+    const ass = JSON.stringify([p.inventario, p.equipamento, p.hotkeys]);
     if (!forcar && ass === assinaturaItens) return;
     assinaturaItens = ass;
     const g = contar(p.inventario);
@@ -454,7 +680,26 @@
     el.addEventListener("mouseleave", () => agendarSaida(el));
     caixa.appendChild(el);
     while (caixa.children.length > 3) caixa.firstElementChild.remove();
+    posicionarAvisos();
     agendarSaida(el);
+  }
+  // Folha inferior aberta (celular): o aviso fica entre o HUD (e a linha da
+  // missão e o minimapa) e a borda da folha. Se não couber ali, como com a
+  // Mochila aberta, ele fica oculto em vez de cobrir o HUD; o texto continua
+  // no Registro.
+  function posicionarAvisos() {
+    const caixa = $("#avisos"), palco = $("#palco");
+    if (!caixa || !palco) return;
+    if (!document.body.classList.contains("folha-aberta")) { caixa.classList.remove("sem-espaco"); return; }
+    const base = palco.getBoundingClientRect().top;
+    let topo = 0;
+    for (const sel of ["#hud", "#missaoLinha", "#mapaSobre"]) {
+      const el = $(sel);
+      if (el && el.offsetParent) topo = Math.max(topo, el.getBoundingClientRect().bottom - base);
+    }
+    palco.style.setProperty("--avisos-topo", `${Math.round(topo + 8)}px`);
+    const ultimo = caixa.lastElementChild;
+    caixa.classList.toggle("sem-espaco", !!ultimo && ultimo.offsetHeight > caixa.clientHeight);
   }
   function agendarSaida(el) {
     clearTimeout(el._t);
@@ -469,6 +714,9 @@
   function mensagem(texto, tipo) {
     if (!texto) return;
     texto = String(texto);
+    // No toque não há arrastar com mouse: adapta a dica de boas-vindas da cena.
+    if (mm("(pointer: coarse)") && /^Bem-vindo! Arraste os itens/.test(texto))
+      texto = "Bem-vindo! Toque num item da mochila e depois no espaço de equipamento.";
     tipo = TIPOS[tipo] ? tipo : classificar(texto);
     registrar(texto, tipo);
     if (tipo === "fala") {
@@ -518,6 +766,7 @@
     if (url) img.src = url; else img.removeAttribute("src");
     img.alt = `Retrato de ${nomeCurto(nome || "")}`;
     caixa.classList.add("aberto");
+    document.body.classList.add("dialogo-aberto");
     clearInterval(dlg.timer);
     clearTimeout(dlg.fechar);
     if (reduzMovimento()) completarDialogo();
@@ -532,6 +781,14 @@
     }
     dlg.fechar = setTimeout(fecharDialogo, 9000 + corpo.length * 45);
   }
+  // F ou clique no NPC com a fala dele aberta: completa o texto e, se já
+  // estiver completo, fecha. Retorna false se não há fala aberta desse NPC.
+  function avancarDialogo(id) {
+    if (!$("#dialogo").classList.contains("aberto") || dlg.id !== id) return false;
+    if (dlg.mostrado < dlg.texto.length) completarDialogo();
+    else fecharDialogo();
+    return true;
+  }
   function completarDialogo() {
     clearInterval(dlg.timer);
     dlg.mostrado = dlg.texto.length;
@@ -541,6 +798,7 @@
     clearInterval(dlg.timer);
     clearTimeout(dlg.fechar);
     $("#dialogo").classList.remove("aberto");
+    document.body.classList.remove("dialogo-aberto");
     dlg.id = null;
   }
 
@@ -551,7 +809,15 @@
   function teclado(ligado) {
     const kb = window.gameScene?.input?.keyboard;
     if (!kb) return;
-    try { kb.enabled = ligado; if (!ligado && kb.resetKeys) kb.resetKeys(); } catch (e) { /* cena trocando */ }
+    try {
+      kb.enabled = ligado;
+      if (!ligado && kb.resetKeys) kb.resetKeys();
+      // O gerenciador de teclado do Phaser chama preventDefault nas teclas
+      // capturadas (Espaço, setas, letras) mesmo com kb.enabled = false; sem
+      // isto, Espaço não ativaria o botão focado nos modais.
+      if (ligado) kb.enableGlobalCapture?.();
+      else kb.disableGlobalCapture?.();
+    } catch (e) { /* cena trocando */ }
   }
   function abrirModal(id) {
     const m = document.getElementById(id);
@@ -641,9 +907,12 @@
   }
 
   // ----- Viagem -----
+  // x, y: selo no mapa (px do canvas 160×100). lado: o botão fica acima ou
+  // abaixo do selo, do lado oposto à trilha, para o selo, o ponto "você está
+  // aqui" e as pontas da trilha continuarem visíveis.
   const DESTINOS = [
-    { area: "canaan", x: 44, y: 34 },
-    { area: "deserto", x: 116, y: 66 },
+    { area: "canaan", x: 44, y: 34, lado: "acima" },
+    { area: "deserto", x: 116, y: 66, lado: "abaixo" },
   ];
   function abrirViagem() {
     const p = jogador();
@@ -657,7 +926,7 @@
     const nomeA = (a) => (typeof areas !== "undefined" && areas[a]?.nome) || a;
     $("#viagemCorpo").innerHTML = `${fala ? `<p class="fala-modal">${esc(fala)}</p>` : "<p>Escolha o destino. A viagem é gratuita; a trilha no extremo sul também liga as regiões a pé.</p>"}
       <div class="mapa-antigo"><canvas width="160" height="100" id="mapaViagem" aria-hidden="true"></canvas>
-      ${DESTINOS.map((d) => `<button type="button" class="btn primario destino" style="left:${(d.x / 160) * 100}%;top:${(d.y / 100) * 100}%" data-viajar="${d.area}"
+      ${DESTINOS.map((d) => `<button type="button" class="btn primario destino ${d.lado}" style="left:${(d.x / 160) * 100}%;top:${(d.y / 100) * 100}%" data-viajar="${d.area}"
         ${d.area === p.area ? 'disabled title="Você está aqui"' : ""} aria-label="${d.area === p.area ? `${nomeA(d.area)}: você está aqui` : `Viajar para ${nomeA(d.area)}`}">${esc(nomeA(d.area))}${d.area === p.area ? " · aqui" : ""}</button>`).join("")}
       </div>`;
     desenharMapaViagem(p);
@@ -722,28 +991,85 @@
     desenharOracao();
     abrirModal("modalOracao");
   }
+  // Estado que muda o que a janela mostra (fé, nível, vida e veneno). O
+  // tique() redesenha a janela aberta quando ele muda, para os cartões
+  // liberarem sozinhos enquanto a fé regenera.
+  let assinaturaOracao = "";
+  function estadoOracao(p) {
+    const nivelOr = typeof estatisticasCombate === "function" ? estatisticasCombate(p).habilidades.oracao?.nivel || 0 : 0;
+    return { nivelOr, ass: JSON.stringify([p.fe, nivelOr, p.vida, p.envenenadoAte > Date.now()]) };
+  }
+  // Os cartões são montados uma vez por nível de oração (o nível muda quais
+  // ficam travados); depois o tique() só atualiza no lugar a fé, os custos,
+  // o title e o aria-disabled. Recriar os botões a cada mudança de fé fazia o
+  // clique cair entre o botão antigo (mousedown) e o novo (mouseup) e sumir.
+  let nivelOracaoMontado = -1;
+  const dadosOracao = () => ({
+    nomes: typeof NOMES_ORACAO !== "undefined" ? NOMES_ORACAO : {},
+    custos: typeof CUSTO_ORACAO !== "undefined" ? CUSTO_ORACAO : {},
+    niveis: typeof NIVEL_ORACAO !== "undefined" ? NIVEL_ORACAO : {},
+    feMax: typeof FE_MAXIMA !== "undefined" ? FE_MAXIMA : 100,
+  });
   function desenharOracao() {
     const p = jogador();
     if (!p) return;
-    const nivelOr = typeof estatisticasCombate === "function" ? estatisticasCombate(p).habilidades.oracao?.nivel || 0 : 0;
-    const feMax = typeof FE_MAXIMA !== "undefined" ? FE_MAXIMA : 100;
-    $("#oracaoSub").textContent = `Oração nível ${nivelOr} · fé ${p.fe}/${feMax}`;
-    const nomes = typeof NOMES_ORACAO !== "undefined" ? NOMES_ORACAO : {};
-    const custos = typeof CUSTO_ORACAO !== "undefined" ? CUSTO_ORACAO : {};
-    const niveis = typeof NIVEL_ORACAO !== "undefined" ? NIVEL_ORACAO : {};
+    const { nivelOr, ass } = estadoOracao(p);
+    assinaturaOracao = ass;
+    if (nivelOr !== nivelOracaoMontado || !$("#oracaoCorpo [data-orar]")) montarOracao(nivelOr);
+    atualizarOracao(p, nivelOr);
+  }
+  function montarOracao(nivelOr) {
+    nivelOracaoMontado = nivelOr;
+    const focado = document.activeElement?.closest?.("#oracaoCorpo [data-orar]")?.dataset.orar;
+    const { nomes, niveis } = dadosOracao();
     const cartoes = ORACOES.map((o) => {
-      const custo = custos[o.acao] ?? 0, req = niveis[o.acao] ?? 0;
-      const travado = nivelOr < req, falta = custo - (p.fe || 0);
-      const desab = travado || falta > 0;
-      const motivo = travado ? `Oração nível ${req}` : falta > 0 ? `faltam ${falta} de fé` : "";
-      return `<button type="button" class="cartao" data-orar="${o.acao}" aria-disabled="${desab}" ${motivo ? `title="${esc(motivo)}"` : ""}
-        aria-label="${esc(nomes[o.acao] || o.acao)}, custa ${custo} de fé${motivo ? `; ${esc(motivo)}` : ""}">
-        ${imgGlifo(o.glifo, "px g24")}<strong>${esc(nomes[o.acao] || o.acao)}</strong><span>${esc(o.texto)}</span>
-        ${travado ? `<span class="trava">${imgGlifo("ui_cadeado", "px g16")}nível ${req}</span>` : `<span class="custo">${imgGlifo("ui_candeia", "px g16")}${custo} de fé${falta > 0 ? ` · faltam ${falta}` : ""}</span>`}</button>`;
+      const req = niveis[o.acao] ?? 0;
+      const estado = nivelOr < req
+        ? `<span class="trava">${imgGlifo("ui_cadeado", "px g16")}nível ${req}</span>`
+        : `<span class="custo">${imgGlifo("ui_candeia", "px g16")}<span class="custo-txt"></span></span>`;
+      return `<button type="button" class="cartao" data-orar="${o.acao}">
+        ${imgGlifo(o.glifo, "px g24")}<strong>${esc(nomes[o.acao] || o.acao)}</strong><span>${esc(o.texto)}</span>${estado}</button>`;
     }).join("");
-    $("#oracaoCorpo").innerHTML = `<div class="linha-barra" style="margin:0 0 10px">${imgGlifo("ui_candeia", "px g16", "Fé")}<div class="barra fe" id="oracaoFe"><i style="width:${(100 * (p.fe || 0)) / feMax}%"></i><b>${p.fe}/${feMax}</b></div></div>
+    $("#oracaoCorpo").innerHTML = `<div class="linha-barra" style="margin:0 0 10px">${imgGlifo("ui_candeia", "px g16", "Fé")}<div class="barra fe" id="oracaoFe"><i></i><b></b></div></div>
       <div class="cartoes">${cartoes}</div>
       <p class="nota" style="color:var(--tinta-suave)">O jogo é solo: a cura em área cura você e mostra o efeito 3×3. As poções de vida e de fé continuam disponíveis.</p>`;
+    if (focado) $(`#oracaoCorpo [data-orar="${focado}"]`)?.focus();
+  }
+  function atualizarOracao(p, nivelOr) {
+    const { nomes, custos, niveis, feMax } = dadosOracao();
+    const fe = p.fe || 0;
+    $("#oracaoSub").textContent = `Oração nível ${nivelOr} · fé ${fe}/${feMax}`;
+    $("#oracaoFe > i").style.width = `${(100 * fe) / feMax}%`;
+    $("#oracaoFe > b").textContent = `${fe}/${feMax}`;
+    for (const b of $$("#oracaoCorpo [data-orar]")) {
+      const acao = b.dataset.orar, custo = custos[acao] ?? 0, req = niveis[acao] ?? 0;
+      const travado = nivelOr < req, falta = custo - fe;
+      const motivo = travado ? `Oração nível ${req}` : falta > 0 ? `faltam ${falta} de fé` : "";
+      b.setAttribute("aria-disabled", String(travado || falta > 0));
+      if (motivo) b.title = motivo; else b.removeAttribute("title");
+      b.setAttribute("aria-label", `${nomes[acao] || acao}, custa ${custo} de fé${motivo ? `; ${motivo}` : ""}`);
+      const txt = b.querySelector(".custo-txt");
+      if (txt) txt.textContent = `${custo} de fé${falta > 0 ? ` · faltam ${falta}` : ""}`;
+    }
+  }
+
+  // ----- Controles de toque -----
+  // Aparecem sozinhos com (pointer: coarse); o botão da Ajuda alterna o que
+  // está valendo: em tela de toque liga/desliga "toque-desligado", fora dela
+  // liga/desliga "toque-forcado". O rótulo segue a visibilidade efetiva.
+  function controlesDeToqueVisiveis() {
+    const t = $("#toque");
+    return !!t && getComputedStyle(t).display !== "none";
+  }
+  function alternarControlesDeToque() {
+    const c = document.body.classList;
+    if (controlesDeToqueVisiveis()) {
+      c.remove("toque-forcado");
+      if (controlesDeToqueVisiveis()) c.add("toque-desligado");
+    } else {
+      c.remove("toque-desligado");
+      if (!controlesDeToqueVisiveis()) c.add("toque-forcado");
+    }
   }
 
   // ----- Ajuda -----
@@ -768,19 +1094,24 @@
       [k("?"), "Esta ajuda"],
       [k("Esc"), "Fechar janelas e conversas"],
     ];
-    const forcado = document.body.classList.contains("toque-forcado");
-    $("#ajudaCorpo").innerHTML = `
+    const comToque = controlesDeToqueVisiveis();
+    const secTeclado = `
       <h3>Teclado e mouse</h3>
-      <table class="teclas"><tbody>${linhas.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")}</tbody></table>
+      <table class="teclas"><tbody>${linhas.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")}</tbody></table>`;
+    const secItens = `
       <h3>Itens</h3>
-      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila. Botão direito numa tecla de atalho a esvazia.</p>
+      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele. Botão direito numa tecla de atalho a esvazia. Espada e arco ocupam as mãos: equipar um guarda o outro.</p>`;
+    const secToque = `
       <h3>Toque</h3>
-      <p>O direcional, à esquerda, anda nas 8 direções. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque longo num item mostra a descrição.</p>
+      <p>O direcional, à esquerda, anda nas 8 direções. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo. Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
+    // No toque, a seção de toque vem primeiro.
+    const toque = comToque || mm("(pointer: coarse)");
+    $("#ajudaCorpo").innerHTML = `${toque ? secToque + secItens + secTeclado : secTeclado + secItens + secToque}
       <h3>Regras</h3>
       <p>As habilidades (corpo, arco, defesa e oração) melhoram com o uso. Fora de combate, a vida volta aos poucos. ${esc(regra)}</p>
       <p>Viagem rápida: fale com Micael em Canaã ou Tamar no Deserto. A trilha no extremo sul liga as regiões a pé. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. Azarias, no Deserto, vende provisões e compra recursos. No mar, pesque nos pontos com ondulação.</p>
       <div class="acoes-modal">
-        <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${forcado}">${forcado ? "Ocultar" : "Mostrar"} controles de toque</button>
+        <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${comToque}">${comToque ? "Ocultar" : "Mostrar"} controles de toque</button>
         <button type="button" class="btn secundario" data-tela-cheia>${imgGlifo("ui_tela_cheia", "px g16")}Tela cheia</button>
         <button type="button" class="btn primario" data-fechar data-foco-inicial>Entendi</button>
       </div>`;
@@ -815,6 +1146,11 @@
     registro: { titulo: "Registro", paineis: ["pRegistro"] },
   };
   const calcModo = () => (mm("(min-width: 1280px)") ? "largo" : mm("(max-width: 760px)") ? "estreito" : "medio");
+  // Largo em tela baixa (até 760 px de altura, ex.: 1280×720): o minimapa vai
+  // para cima do mundo, como no médio, e a coluna direita fica com
+  // Personagem, Equipamento e Batalha inteiros.
+  const TELA_BAIXA = "(max-height: 760px)";
+  let chaveLayout = null;
   const painel = (id) => document.getElementById(id);
 
   function abrirRegistro(aberto) {
@@ -825,8 +1161,12 @@
 
   function montar() {
     const novo = calcModo();
-    if (novo === modo) return;
+    const baixa = novo === "largo" && mm(TELA_BAIXA);
+    const chave = `${novo}${baixa ? ":baixa" : ""}`;
+    if (chave === chaveLayout) return;
+    chaveLayout = chave;
     modo = novo;
+    document.body.classList.toggle("mapa-sobre-mundo", baixa);
     const dep = $("#deposito");
     for (const id of ["pMissao", "pMochila", "pBolsa", "pRegistro", "pMapa", "pPersonagem", "pEquip", "pBatalha"]) dep.appendChild(painel(id));
     $("#colEsq").innerHTML = "";
@@ -835,8 +1175,8 @@
     const moldura = $("#mapaMoldura");
     if (modo === "largo") {
       for (const id of ["pMissao", "pMochila", "pBolsa", "pRegistro"]) $("#colEsq").appendChild(painel(id));
-      for (const id of ["pMapa", "pPersonagem", "pEquip", "pBatalha"]) $("#colDir").appendChild(painel(id));
-      $("#mapaCasa").appendChild(moldura);
+      for (const id of [...(baixa ? [] : ["pMapa"]), "pPersonagem", "pEquip", "pBatalha"]) $("#colDir").appendChild(painel(id));
+      (baixa ? $("#mapaSobre") : $("#mapaCasa")).appendChild(moldura);
       abrirRegistro(true);
     } else if (modo === "medio") {
       $("#colDir").appendChild(painel("pMissao"));
@@ -845,7 +1185,7 @@
       nav.setAttribute("role", "tablist");
       nav.setAttribute("aria-label", "Painéis");
       nav.innerHTML = Object.entries(ABAS_MEDIO).map(([k, a]) =>
-        `<button type="button" class="aba" role="tab" id="aba-${k}" data-aba="${k}" aria-controls="painelAba" aria-selected="${k === abaMedia}">${imgGlifo(a.glifo)}${a.rotulo}</button>`).join("");
+        `<button type="button" class="aba" role="tab" id="aba-${k}" data-aba="${k}" aria-controls="painelAba" aria-selected="${k === abaMedia}" title="${a.rotulo}">${imgGlifo(a.glifo)}<span>${a.rotulo}</span></button>`).join("");
       $("#colDir").appendChild(nav);
       const caixa = document.createElement("div");
       caixa.className = "painel-aba";
@@ -886,20 +1226,36 @@
     const f = $("#folha");
     f.classList.add("aberta");
     f.setAttribute("aria-hidden", "false");
+    document.body.classList.add("folha-aberta");
     for (const b of $$("#abasCel [data-folha]")) b.setAttribute("aria-expanded", String(b.dataset.folha === k));
     medirRodape();
+    posicionarAvisos();
   }
   function fecharFolha() {
     const f = $("#folha");
     if (!f) return;
     f.classList.remove("aberta");
     f.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("folha-aberta");
+    posicionarAvisos();
     folhaAtual = null;
     for (const b of $$("#abasCel [data-folha]")) b.setAttribute("aria-expanded", "false");
   }
   function medirRodape() {
     const r = $("#rodape");
     if (r) document.documentElement.style.setProperty("--altura-rodape", `${r.offsetHeight}px`);
+  }
+  // Altura da folha inferior aberta: os avisos ficam logo acima da borda dela
+  // e abaixo do HUD (que cresce com o quadro do alvo).
+  function observarFolha() {
+    const f = $("#folha");
+    if (!f || typeof ResizeObserver !== "function") return;
+    new ResizeObserver(() => {
+      document.documentElement.style.setProperty("--altura-folha", `${f.offsetHeight}px`);
+      posicionarAvisos();
+    }).observe(f);
+    const ro = new ResizeObserver(() => posicionarAvisos());
+    for (const sel of ["#hud", "#missaoLinha", "#mapaSobre"]) if ($(sel)) ro.observe($(sel));
   }
 
   // A tecla I do MUNDO alterna body.hideBags; no médio/estreito isso abre a mochila.
@@ -917,16 +1273,31 @@
   // ------------------------------------------------------------------
   // Itens: arrastar, tocar-para-equipar, duplo clique, dica
   // ------------------------------------------------------------------
+  function marcarSelecao() {
+    for (const b of $$(".slot.selecionado, .equip.selecionado")) b.classList.remove("selecionado");
+    let alvo = [];
+    if (selecao?.origem === "item") alvo = $$(".slot[data-item]").filter((b) => b.dataset.item === selecao.id);
+    else if (selecao?.origem === "equip") alvo = $$(`.equip[data-equip-slot="${selecao.slot}"]`);
+    for (const b of alvo) b.classList.add("selecionado");
+  }
+  // aviso: dica de "tocar-para-equipar"; só aparece no toque e no teclado
+  // (no mouse o caminho natural é arrastar ou dar duplo clique).
   function selecionar(nova, aviso) {
     selecao = nova;
-    const p = jogador();
-    if (p) atualizarItens(p, true);
+    marcarSelecao();
     if (nova && aviso) mensagem(aviso, "sistema");
   }
 
   function equipar(id, slot) {
+    // A lógica guarda a espada ao equipar o arco (e vice-versa): avisar.
+    const p = jogador();
+    const outro = slot === "arma" ? "arco" : slot === "arco" ? "arma" : null;
+    const guardado = p && outro ? p.equipamento[outro] : null;
     const r = Mundo.equiparItem(ID, id, slot);
-    if (r && r.mensagem) mensagem(r.mensagem, r.ok ? "sistema" : "perigo");
+    if (r && r.mensagem) {
+      const extra = r.ok && guardado ? ` ${nomeDoItem(guardado)} voltou para a mochila (espada e arco não ficam juntos).` : "";
+      mensagem(r.mensagem + extra, r.ok ? "sistema" : "perigo");
+    }
     window.gameScene?.atualizarVisualJogador?.();
     selecao = null;
     atualizar();
@@ -990,24 +1361,31 @@
     doc.addEventListener("click", (e) => {
       if (suprimirClique) { suprimirClique = false; e.preventDefault(); return; }
       const t = e.target;
-      const it = t.closest("[data-item]");
+      const it = t.closest(".slot[data-item]");
       const eq = t.closest("[data-equip-slot]");
       const hk = t.closest("[data-atalho]");
       const zona = t.closest(".zona-soltar");
       const linha = t.closest("[data-alvo]");
       if (linha) { window.Jogo?.selecionarAlvo(linha.dataset.alvo === alvoAtual() ? null : linha.dataset.alvo); atualizar(); return; }
+      // Duplo clique (2º clique da sequência, e.detail === 2): item da
+      // mochila/bolsa é usado ou equipado; equipamento volta para a mochila.
+      if (e.detail === 2 && it) { selecao = null; marcarSelecao(); return usarItem(it.dataset.item); }
+      // (o 1º clique selecionou este mesmo espaço; um clique que acabou de
+      // equipar não conta como metade de um duplo clique)
+      if (e.detail === 2 && eq && selecao?.origem === "equip" && selecao.slot === eq.dataset.equipSlot) return desequipar(selecao.slot);
+      const mouse = e.pointerType === "mouse";
       if (it) {
         const id = it.dataset.item;
         if (selecao && selecao.origem === "item" && selecao.id === id) return selecionar(null);
         const d = ITENS[id];
-        const dica = slotDoTipo(d.tipo) ? "Toque num espaço de equipamento para equipar." : d.tipo === "consumivel" ? "Toque numa tecla de atalho para guardar ali." : `${nomeDoItem(id)} selecionado.`;
+        const dica = mouse ? null : slotDoTipo(d.tipo) ? "Toque num espaço de equipamento para equipar." : d.tipo === "consumivel" ? "Toque numa tecla de atalho para guardar ali." : `${nomeDoItem(id)} selecionado.`;
         return selecionar({ origem: "item", id }, dica);
       }
       if (eq) {
         const slot = eq.dataset.equipSlot;
         if (selecao && selecao.origem === "item") return equipar(selecao.id, slot);
         if (selecao && selecao.origem === "equip" && selecao.slot === slot) return selecionar(null);
-        if (eq.classList.contains("cheio")) return selecionar({ origem: "equip", slot }, "Toque na mochila para guardar o equipamento.");
+        if (eq.classList.contains("cheio")) return selecionar({ origem: "equip", slot }, mouse ? null : "Toque na mochila para guardar o equipamento.");
         return;
       }
       if (hk) {
@@ -1019,12 +1397,6 @@
       if (zona && selecao && selecao.origem === "equip") return desequipar(selecao.slot);
       // Trocar de aba/folha mantém a seleção (tocar-para-equipar entre painéis).
       if (selecao && !t.closest(".modal, #dicaItem, [data-folha], [data-aba], #folhaFechar, #folhaAlca, .painel-cab")) selecionar(null);
-    });
-    doc.addEventListener("dblclick", (e) => {
-      const it = e.target.closest("[data-item]");
-      const eq = e.target.closest(".equip.cheio");
-      if (it) { selecao = null; usarItem(it.dataset.item); }
-      else if (eq) desequipar(eq.dataset.equipSlot);
     });
     doc.addEventListener("contextmenu", (e) => {
       const hk = e.target.closest("[data-atalho]");
@@ -1177,10 +1549,7 @@
     atualizarBatalha(p);
     if (alvoDesenhado && typeof inimigos !== "undefined" && inimigos[alvoDesenhado]) atualizarVidaAlvo(inimigos[alvoDesenhado]);
     if (dlg.id && dlg.npc && Math.max(Math.abs(p.x - dlg.npc.x), Math.abs(p.y - dlg.npc.y)) > 2) fecharDialogo();
-    if (modalAberto?.id === "modalOracao") {
-      const b = $("#oracaoFe");
-      if (b) definirBarra(b, p.fe || 0, typeof FE_MAXIMA !== "undefined" ? FE_MAXIMA : 100, `${p.fe}/${typeof FE_MAXIMA !== "undefined" ? FE_MAXIMA : 100}`);
-    }
+    if (modalAberto?.id === "modalOracao" && estadoOracao(p).ass !== assinaturaOracao) desenharOracao();
   }
 
   // ------------------------------------------------------------------
@@ -1241,14 +1610,14 @@
         }
         const orar = e.target.closest("[data-orar]");
         if (orar) {
-          if (orar.getAttribute("aria-disabled") === "true") { mensagem(orar.title || "Ainda não disponível.", "sistema"); return; }
+          // Decide pelo estado atual (a lógica valida fé e nível e explica a
+          // recusa), não pelo aria-disabled desenhado alguns segundos antes.
           const r = executar({ tipo: "orar", acao: orar.dataset.orar });
           if (r && r.ok) fecharModal(); else desenharOracao();
           return;
         }
         if (e.target.closest("[data-alternar-toque]")) {
-          document.body.classList.toggle("toque-forcado");
-          document.body.classList.remove("toque-desligado");
+          alternarControlesDeToque();
           abrirAjuda();
           return;
         }
@@ -1306,8 +1675,9 @@
     ligarItens();
     ligarToque();
     observarMochila();
+    observarFolha();
     const re = () => { montar(); medirRodape(); };
-    for (const q of ["(min-width: 1280px)", "(max-width: 760px)"]) {
+    for (const q of ["(min-width: 1280px)", "(max-width: 760px)", TELA_BAIXA]) {
       const mq = matchMedia(q);
       (mq.addEventListener ? mq.addEventListener("change", re) : mq.addListener(re));
     }
@@ -1322,6 +1692,7 @@
     atualizar,
     mensagem,
     dialogo,
+    avancarDialogo,
     abrirLoja,
     abrirViagem,
     abrirOracao,

@@ -2,22 +2,55 @@ JORNADA — RPG BÍBLICO
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
-2. Mantenha index.html, storage.js, logica.js, expansao.js e game.js juntos na mesma pasta.
+2. Mantenha juntos na mesma pasta: index.html, storage.js, logica.js, expansao.js, sprites.js,
+   game.js e interface.js (carregados nesta ordem pelo index.html). Não há build nem dependências:
+   o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
    para a versão 6, sem perder itens, moedas, nível ou progresso. O jogo grava no máximo 1 vez por
    segundo e grava na hora ao fechar, ocultar ou trocar de aba.
 
-Controles
+Controles — teclado e mouse
 - WASD ou setas: andar. Q / E / Z / C: diagonais.
-- F: conversar com o NPC ao lado (as 8 casas vizinhas contam, inclusive diagonais).
-- Clique num inimigo: seleciona e ativa o autoataque a cada 2 segundos (usa o arco se ele estiver
-  equipado, houver flechas e o alvo estiver alinhado no alcance).
-- Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s.
-- H: poção de vida. 1–6: atalhos (arraste um consumível para o atalho).
+- F: ação ao lado — conversar com o NPC, embarcar/desembarcar no cais ou seguir a rota do portal
+  (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo.
+- Clique num inimigo (no mundo ou na lista Batalha): seleciona e ativa o autoataque a cada 2 segundos
+  (usa o arco se ele estiver equipado, houver flechas e o alvo estiver alinhado no alcance).
+- Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s. O anel em
+  volta do alvo mostra o tempo até o próximo autoataque (2 s).
+- H: poção de vida. 1–6: atalhos. Botão direito num atalho o esvazia.
 - P: pescar (no barco, ao lado de um ponto de pesca).
-- F1: Oração (depois de aprendê-la). M: mostrar/ocultar o minimapa. I: mostrar/ocultar as bolsas.
-- Arraste itens entre a mochila e os espaços de equipamento. Espada e arco não são usados juntos.
+- F1: Oração (depois de aprendê-la). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
+  bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
+- Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
+  de volta para a mochila para guardar. Duplo clique equipa armas e usa poções. Também funciona
+  clicar/tocar no item e depois no destino. Espada e arco ocupam as mãos: equipar um guarda o outro.
+
+Controles — toque (celular e tablet)
+- Aparecem sozinhos em telas de toque (ou pelo botão "Mostrar controles de toque" na ajuda).
+- Direcional à esquerda (8 direções, segure para continuar andando).
+- À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
+  (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo.
+- Barra inferior: Mochila, Equipamento, Batalha, Missão e Registro abrem em folhas recolhíveis.
+  Toque num item e depois no espaço de equipamento ou no atalho; toque longo mostra a descrição.
+
+Interface e visual
+- Toda a arte (personagens, itens, ícones, cenário) é pixel art original gerada em código por
+  sprites.js; não há imagens externas nem emojis. Os ícones da mochila, bolsa, equipamento, atalhos,
+  loja e lista de batalha usam os mesmos desenhos do mundo.
+- Estilo "iluminura viva": couro, pergaminho e bronze; fontes Cinzel (títulos), Alegreya Sans
+  (textos) e Pixelify Sans (números, rótulos e textos do mundo). Os dígitos 0–9 da Pixelify são
+  substituídos por dígitos em pixel 5×7 gerados pelo interface.js (a Pixelify desenha o 2 como Z e o
+  5 como S); as teclas usam Alegreya Sans negrito.
+- Painéis: Missão (texto de textoMissaoAtual), Personagem (barras de vida, fé e XP com números,
+  habilidades e estatísticas de estatisticasCombate), Equipamento, Mochila, Bolsa, Batalha (inimigos
+  da área, alvo destacado), Registro (últimas 30 mensagens com horário) e minimapa.
+- Avisos curtos aparecem no topo do mundo e também ficam no Registro. Conversas abrem um quadro de
+  diálogo com o retrato do personagem. Clique na caixa ou aperte F (perto do personagem) para
+  completar o texto; de novo, para fechar. F só volta a falar com ele depois de a caixa fechar.
+- Layouts: largo (1280 px ou mais, painéis dos dois lados), médio (painel direito com abas) e
+  celular (até 760 px, painéis em folhas pela barra inferior). Foco visível no teclado, rótulos de
+  acessibilidade nos botões e respeito a "reduzir movimento".
 
 Campanha
 Canaã → Deserto → Egito → Mar Vermelho → Monte Sinai → Galileia → Oração.
@@ -57,7 +90,7 @@ Vida, poções e veneno
 - Vida máxima = 100 + 10 por nível acima do 1º.
 - Poção de vida: recupera 25% da vida máxima (mínimo 30). Poção de fé: +40 de fé.
 - Fora de combate (8 s sem golpes), a vida regenera 2% da vida máxima a cada 3 s.
-- Veneno do escorpião: 3 de dano a cada 3 s por 15 s. Quando passa, você pode ser envenenado de novo.
+- Veneno do escorpião: 3 de dano a cada 3 s por 15 s (5 vezes, 15 de dano). Quando passa, você pode ser envenenado de novo.
 
 Habilidades
 Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
@@ -94,3 +127,6 @@ Para desenvolvedores
   com a tabela de duração das lutas.
 - Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p),
   coletaveisDaArea(areaId), Mundo.consumirAviso(id), Mundo.recargaAtaque(id); constante ALCANCE_ARCO.
+- Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
+  interface.js (window.UI: painéis, modais, atalhos, toque). Os nomes antigos continuam valendo:
+  atualizarInterface(), mostrarMensagem(), abrirLoja(), abrirViagem(), abrirOracao().
