@@ -8,7 +8,7 @@
 // espaços mostram as duas primeiras letras do nome.
 //
 // Contrato:
-//   consome  window.Jogo (game.js), Mundo/ITENS/... (logica.js, expansao.js)
+//   consome  window.Jogo (game.js), Mundo/ITENS/... (logica.js, dados/*.js)
 //   expõe    window.UI + apelidos antigos (atualizarInterface, mostrarMensagem,
 //            abrirLoja, abrirViagem, abrirOracao, alternarMinimapa)
 // =====================================================================

@@ -1,8 +1,17 @@
 JORNADA — RPG BÍBLICO
 
+Conteúdo do jogo (pasta dados/)
+- dados/itens.js: itens, preços da loja e valores de venda.
+- dados/mundo.js: áreas, regiões dos capítulos, ervas, odres, pontos de pesca e portais.
+- dados/npcs.js: personagens, posições, papéis e falas próprias.
+- dados/criaturas.js: inimigos, atributos, saque e veneno.
+- dados/capitulos.js: capítulos em ordem, objetivo, recompensa e falas.
+Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
+o teste 27 confere se todo item, área, NPC e criatura citado existe.
+
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
-2. Mantenha juntos na mesma pasta: index.html, storage.js, logica.js, expansao.js, sprites.js,
+2. Mantenha juntos na mesma pasta: index.html, storage.js, a pasta dados/, logica.js, sprites.js,
    game.js e interface.js (carregados nesta ordem pelo index.html). Não há build nem dependências:
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).

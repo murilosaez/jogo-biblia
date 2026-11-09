@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Testes da lógica de "Jornada · RPG Bíblico".
 // Uso: node tests/logica.test.js        (sem dependências)
-// Carrega storage.js, logica.js e expansao.js num vm com localStorage,
+// Carrega storage.js, dados/*.js e logica.js num vm com localStorage,
 // relógio (Date) e Math.random controlados.
 "use strict";
 
@@ -11,8 +11,11 @@ const vm = require("vm");
 const assert = require("assert");
 
 const RAIZ = path.resolve(__dirname, "..");
-const ARQUIVOS = ["storage.js", "logica.js", "expansao.js"];
+const ARQUIVOS_DADOS = ["dados/itens.js", "dados/mundo.js", "dados/npcs.js", "dados/criaturas.js", "dados/capitulos.js"];
+const ARQUIVOS = ["storage.js", ...ARQUIVOS_DADOS, "logica.js"];
 const FONTES = ARQUIVOS.map((f) => fs.readFileSync(path.join(RAIZ, f), "utf8"));
+const FONTE_LOGICA = FONTES[ARQUIVOS.indexOf("logica.js")];
+const FONTE_DADOS = ARQUIVOS_DADOS.map((f) => FONTES[ARQUIVOS.indexOf(f)]).join("\n");
 const INICIO_RELOGIO = 1_700_000_000_000;
 const ID = "jogador1";
 
@@ -908,8 +911,8 @@ teste("11. Arão do Egito tem falas próprias e não duplica a missão", () => {
 });
 
 teste("12. sem código morto: versão única, aviso pendente consumível", () => {
-  const fonteExp = FONTES[2];
-  const fonteLog = FONTES[1];
+  const fonteExp = FONTE_DADOS;
+  const fonteLog = FONTE_LOGICA;
   assert.doesNotMatch(fonteExp + fonteLog, /defesaP\b/);
   assert.doesNotMatch(fonteExp, /versao\s*=\s*5/);
   assert.doesNotMatch(fonteLog, /^\s{2}avisosPendentes\(/m, "Mundo.avisosPendentes não tem uso: a UI usa consumirAviso");
@@ -1008,10 +1011,10 @@ teste("15. estatisticasCombate e textoMissaoAtual (todas as áreas)", () => {
 });
 
 teste("16. sem monkey-patch: cada função do Mundo é definida uma vez", () => {
-  const fonteExp = FONTES[2];
-  assert.doesNotMatch(fonteExp, /Mundo\.\w+\s*=/, "expansao.js não reatribui funções do Mundo");
-  assert.doesNotMatch(fonteExp + FONTES[1], /\.bind\(Mundo\)/);
-  const fonteLog = FONTES[1];
+  const fonteExp = FONTE_DADOS;
+  assert.doesNotMatch(fonteExp, /Mundo/, "dados/ não toca no Mundo");
+  assert.doesNotMatch(fonteExp + FONTE_LOGICA, /\.bind\(Mundo\)/);
+  const fonteLog = FONTE_LOGICA;
   for (const nome of ["entrar", "executar", "atualizar"]) {
     const ocorrencias = fonteLog.match(new RegExp(`^\\s{2}${nome}\\(`, "gm")) || [];
     assert.strictEqual(ocorrencias.length, 1, `Mundo.${nome} definido ${ocorrencias.length} vezes`);
@@ -1319,6 +1322,41 @@ teste("26. com o arco nas mãos, o tiro a 1 casa vale e bate mais que o soco", (
   const auto = FONTE_GAME.match(/const podeAtirar = [^;]*;/);
   assert.ok(auto, "autoAtacar define podeAtirar");
   assert.doesNotMatch(auto[0], /dist\s*>\s*1/);
+});
+
+teste("27. dados/: conteúdo puro e todas as referências apontam para algo que existe", () => {
+  assert.doesNotMatch(FONTE_DADOS, /\bfunction\b|=>/, "dados/ não contém funções nem regras");
+  const j = carregarJogo();
+  const [ITENS, areas, npcs, inimigos, CAPITULOS, PORTAIS] = ["ITENS", "areas", "npcs", "inimigos", "CAPITULOS", "PORTAIS"].map(
+    (n) => j.g(n),
+  );
+  const item = (id, onde) => assert.ok(ITENS[id], `${onde}: item inexistente "${id}"`);
+  const area = (id, onde) => assert.ok(areas[id], `${onde}: área inexistente "${id}"`);
+  for (const [id, preco] of Object.entries(j.g("PRECOS_LOJA"))) {
+    if (id !== "flechas") item(id, "loja");
+    assert.ok(preco > 0, `preço de ${id}`);
+  }
+  for (const id of Object.keys(j.g("VALORES_VENDA"))) item(id, "venda");
+  for (const n of Object.values(npcs)) area(n.area, `npc ${n.id}`);
+  for (const e of Object.values(inimigos)) {
+    area(e.area, `criatura ${e.id}`);
+    for (const i of e.saque.itens) item(i, `saque de ${e.id}`);
+    assert.ok(e.vidaMaxima > 0 && e.xpRecompensa > 0, `atributos de ${e.id}`);
+  }
+  for (const [chave, c] of Object.entries(CAPITULOS)) {
+    assert.ok(npcs[c.npc], `capítulo ${chave}: npc ${c.npc}`);
+    assert.ok(inimigos[c.inimigo], `capítulo ${chave}: inimigo ${c.inimigo}`);
+    if (c.mestre) assert.ok(npcs[c.mestre], `capítulo ${chave}: mestre ${c.mestre}`);
+    for (const i of c.recompensa.itens) item(i, `recompensa de ${chave}`);
+    assert.ok(c.anterior === "deserto" || CAPITULOS[c.anterior], `capítulo ${chave}: anterior ${c.anterior}`);
+  }
+  for (const p of PORTAIS) {
+    area(p.area, "portal");
+    area(p.destino, "portal");
+    if (p.capitulo) assert.ok(CAPITULOS[p.capitulo], `portal: capítulo ${p.capitulo}`);
+  }
+  const ids = [...Object.keys(npcs), ...Object.keys(inimigos)];
+  assert.strictEqual(new Set(ids).size, ids.length, "ids de NPCs e criaturas são únicos");
 });
 
 // ---------------------------------------------------------------------
