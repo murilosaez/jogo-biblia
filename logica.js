@@ -194,6 +194,7 @@ const Mundo = {
       personagem.missaoErvas = {
         status: "bloqueada",
         recompensaRecebida: false,
+        progresso: 0,
       };
     }
 
@@ -224,6 +225,18 @@ const Mundo = {
     if (typeof personagem.missaoErvas.recompensaRecebida !== "boolean") {
       personagem.missaoErvas.recompensaRecebida = false;
     }
+
+    if (
+      !Number.isInteger(personagem.missaoErvas.progresso) ||
+      personagem.missaoErvas.progresso < 0
+    ) {
+      personagem.missaoErvas.progresso = 0;
+    }
+
+    personagem.missaoErvas.progresso = Math.min(
+      personagem.missaoErvas.progresso,
+      QUANTIDADE_ERVAS_MISSAO
+    );
 
     personagem.versao = VERSAO_SAVE;
 
@@ -404,6 +417,13 @@ const Mundo = {
             );
 
             if (personagem.vida === 0) {
+              const missaoEliabePreservada = {
+                ...personagem.missaoEliabe,
+              };
+              const missaoErvasPreservada = {
+                ...personagem.missaoErvas,
+              };
+
               personagem.area = "canaan";
               personagem.x = 2;
               personagem.y = 2;
@@ -420,6 +440,8 @@ const Mundo = {
                 }
               }
 
+              personagem.missaoEliabe = missaoEliabePreservada;
+              personagem.missaoErvas = missaoErvasPreservada;
               Storage.salvar(personagem);
 
               eventos.push({
@@ -570,6 +592,14 @@ const Mundo = {
         if (erva) {
           personagem.ervasColetadas.push(erva.id);
           personagem.inventario.push("erva");
+
+          if (
+            personagem.missaoErvas.status === "em_andamento" &&
+            personagem.missaoErvas.progresso < QUANTIDADE_ERVAS_MISSAO
+          ) {
+            personagem.missaoErvas.progresso++;
+          }
+
           Storage.salvar(personagem);
 
           return {
@@ -659,10 +689,15 @@ const Mundo = {
 
       if (missao2.status === "bloqueada") {
         missao2.status = "em_andamento";
+        missao2.progresso = 0;
+        // As ervas já coletadas antes da missão voltam a ficar disponíveis
+        // para que a tarefa possa ser concluída sem contar o inventário antigo.
+        personagem.ervasColetadas = [];
         Storage.salvar(personagem);
 
         return {
           ok: true,
+          missaoErvasIniciada: true,
           mensagem:
             "Eliabe: Agora preciso de 3 ervas medicinais. " +
             "Procure-as pelo caminho e volte com elas.",
@@ -670,7 +705,7 @@ const Mundo = {
       }
 
       if (missao2.status === "em_andamento") {
-        const quantidadeErvas = this.contarItem(id, "erva");
+        const quantidadeErvas = missao2.progresso;
 
         if (quantidadeErvas >= QUANTIDADE_ERVAS_MISSAO) {
           let paraRemover = QUANTIDADE_ERVAS_MISSAO;

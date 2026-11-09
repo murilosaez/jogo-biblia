@@ -207,6 +207,15 @@ class Cena extends Phaser.Scene {
     }
   }
 
+  atualizarVisualErvas() {
+    for (const partes of Object.values(this.ervasVisuais)) {
+      partes.forEach((parte) => parte.destroy());
+    }
+
+    this.ervasVisuais = {};
+    this.desenharErvas();
+  }
+
   desenharLobo() {
     const lobo = inimigos.lobo1;
     const x = lobo.x * TILE + TILE / 2;
@@ -261,7 +270,7 @@ class Cena extends Phaser.Scene {
 
     const missao1 = personagem.missaoEliabe;
     const missao2 = personagem.missaoErvas;
-    const quantidadeErvas = Mundo.contarItem(MEU_ID, "erva");
+    const quantidadeErvas = missao2.progresso || 0;
 
     if (missao1.status === "nao_iniciada") {
       return "Missão: fale com Eliabe para começar.";
@@ -358,6 +367,10 @@ class Cena extends Phaser.Scene {
 
       if (resultado.mensagem) {
         this.dialogo.setText(resultado.mensagem);
+      }
+
+      if (resultado.missaoErvasIniciada) {
+        this.atualizarVisualErvas();
       }
 
       this.atualizarStatus();
