@@ -101,7 +101,7 @@ class Cena extends Phaser.Scene {
       .text(
         16,
         531,
-        "E: conversar com Eliabe | Espaço: atacar o lobo ao lado.",
+        "Setas: andar | E: conversar | Espaço: atacar o lobo ao lado.",
         {
           fontFamily: "Arial",
           fontSize: "16px",
@@ -115,25 +115,35 @@ class Cena extends Phaser.Scene {
     this.atualizarStatus();
   }
 
+  // O lobo é um "grupo" (container) para poder andar todo junto.
   desenharLobo() {
     const lobo = inimigos.lobo1;
     const loboX = lobo.x * TILE + TILE / 2;
     const loboY = lobo.y * TILE + TILE / 2;
 
-    return [
-      this.add.circle(loboX, loboY, 12, 0xb53030),
-      this.add.circle(loboX - 4, loboY - 2, 2, 0xffffff),
-      this.add.circle(loboX + 4, loboY - 2, 2, 0xffffff),
-      this.add
-        .text(loboX, loboY - 30, lobo.nome, {
-          fontFamily: "Arial",
-          fontSize: "12px",
-          color: "#ffffff",
-          backgroundColor: "#222222",
-          padding: { x: 4, y: 2 },
-        })
-        .setOrigin(0.5),
-    ];
+    const corpo = this.add.circle(0, 0, 12, 0xb53030);
+    const olhoEsq = this.add.circle(-4, -2, 2, 0xffffff);
+    const olhoDir = this.add.circle(4, -2, 2, 0xffffff);
+
+    const nome = this.add
+      .text(0, -30, lobo.nome, {
+        fontFamily: "Arial",
+        fontSize: "12px",
+        color: "#ffffff",
+        backgroundColor: "#222222",
+        padding: { x: 4, y: 2 },
+      })
+      .setOrigin(0.5);
+
+    const grupo = this.add.container(loboX, loboY, [
+      corpo,
+      olhoEsq,
+      olhoDir,
+      nome,
+    ]);
+
+    grupo.setDepth(5);
+    return grupo;
   }
 
   agendarRespawnLobo() {
@@ -174,6 +184,54 @@ class Cena extends Phaser.Scene {
   }
 
   update() {
+    // Atualiza o mundo: lobo persegue, ataca e a vida regenera.
+    const eventos = Mundo.atualizar(MEU_ID, Date.now());
+
+    for (const evento of eventos) {
+      if (evento.tipo === "inimigoMoveu" && this.loboVisual) {
+        const lobo = inimigos[evento.id];
+
+        this.tweens.add({
+          targets: this.loboVisual,
+          x: lobo.x * TILE + TILE / 2,
+          y: lobo.y * TILE + TILE / 2,
+          duration: 250,
+        });
+      }
+
+      if (evento.tipo === "jogadorAtingido") {
+        this.dialogo.setText(evento.mensagem);
+      }
+
+      if (evento.tipo === "renasceu") {
+        const personagem = Mundo.jogadores[MEU_ID];
+        const lobo = inimigos.lobo1;
+
+        this.dialogo.setText(evento.mensagem);
+
+        this.tweens.killTweensOf(this.sprite);
+        this.movendo = false;
+
+        this.sprite.setPosition(
+          personagem.x * TILE + TILE / 2,
+          personagem.y * TILE + TILE / 2
+        );
+
+        if (this.loboVisual) {
+          this.tweens.killTweensOf(this.loboVisual);
+
+          this.loboVisual.setPosition(
+            lobo.x * TILE + TILE / 2,
+            lobo.y * TILE + TILE / 2
+          );
+        }
+      }
+    }
+
+    if (eventos.length > 0) {
+      this.atualizarStatus();
+    }
+
     // Conversa com Eliabe ao pressionar E.
     if (Phaser.Input.Keyboard.JustDown(this.teclaE)) {
       const resultado = Mundo.executar(MEU_ID, {
@@ -198,18 +256,10 @@ class Cena extends Phaser.Scene {
       }
 
       if (resultado.derrotado && this.loboVisual) {
-        this.loboVisual.forEach((parte) => parte.destroy());
+        this.tweens.killTweensOf(this.loboVisual);
+        this.loboVisual.destroy();
         this.loboVisual = null;
         this.agendarRespawnLobo();
-      }
-
-      if (resultado.renasceu) {
-        const personagem = Mundo.jogadores[MEU_ID];
-
-        this.sprite.setPosition(
-          personagem.x * TILE + TILE / 2,
-          personagem.y * TILE + TILE / 2
-        );
       }
 
       this.atualizarStatus();
