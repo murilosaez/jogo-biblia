@@ -41,20 +41,16 @@ const NOVOS_NPCS={
 };
 Object.assign(npcs,NOVOS_NPCS);
 const NOVOS_INIMIGOS={
-  soldadoEgito1:{id:"soldadoEgito1",nome:"Guarda egípcio",area:"egito",capitulo:"egito",dropItem:"insignia_egito",x:34,y:31,inicioX:34,inicioY:31,vidaMaxima:90,danoDoAtaque:18,danoContraJogador:15,defesa:8,raioPercepcao:6,xpRecompensa:80,proximoMovimento:0,proximoAtaque:0},
-  perseguidorMar1:{id:"perseguidorMar1",nome:"Perseguidor da retaguarda",area:"marVermelho",capitulo:"marVermelho",dropItem:"estandarte_egito",x:36,y:31,inicioX:36,inicioY:31,vidaMaxima:100,danoDoAtaque:20,danoContraJogador:18,defesa:8,raioPercepcao:7,xpRecompensa:100,proximoMovimento:0,proximoAtaque:0},
-  guardiaoSinai1:{id:"guardiaoSinai1",nome:"Guarda do desfiladeiro",area:"sinai",capitulo:"sinai",dropItem:"pedra_sinai",x:39,y:31,inicioX:39,inicioY:31,vidaMaxima:115,danoDoAtaque:24,danoContraJogador:20,defesa:12,raioPercepcao:7,xpRecompensa:130,proximoMovimento:0,proximoAtaque:0},
-  ameaçaGalileia1:{id:"ameaçaGalileia1",nome:"Ameaça na estrada",area:"galileia",capitulo:"galileia",dropItem:"manto_viajante",x:38,y:31,inicioX:38,inicioY:31,vidaMaxima:130,danoDoAtaque:25,danoContraJogador:22,defesa:12,raioPercepcao:7,xpRecompensa:160,proximoMovimento:0,proximoAtaque:0},
+  soldadoEgito1:{id:"soldadoEgito1",nome:"Guarda egípcio",area:"egito",x:34,y:31,inicioX:34,inicioY:31,vidaMaxima:90,danoDoAtaque:18,danoContraJogador:15,defesa:8,raioPercepcao:6,xpRecompensa:80,proximoMovimento:0,proximoAtaque:0},
+  perseguidorMar1:{id:"perseguidorMar1",nome:"Perseguidor da retaguarda",area:"marVermelho",x:36,y:31,inicioX:36,inicioY:31,vidaMaxima:100,danoDoAtaque:20,danoContraJogador:18,defesa:8,raioPercepcao:7,xpRecompensa:100,proximoMovimento:0,proximoAtaque:0},
+  guardiaoSinai1:{id:"guardiaoSinai1",nome:"Guarda do desfiladeiro",area:"sinai",x:39,y:31,inicioX:39,inicioY:31,vidaMaxima:115,danoDoAtaque:24,danoContraJogador:20,defesa:12,raioPercepcao:7,xpRecompensa:130,proximoMovimento:0,proximoAtaque:0},
+  ameaçaGalileia1:{id:"ameaçaGalileia1",nome:"Ameaça na estrada",area:"galileia",x:38,y:31,inicioX:38,inicioY:31,vidaMaxima:130,danoDoAtaque:25,danoContraJogador:22,defesa:12,raioPercepcao:7,xpRecompensa:160,proximoMovimento:0,proximoAtaque:0},
 };
 Object.assign(inimigos,NOVOS_INIMIGOS);
 inimigos.lobo1.defesa=2;inimigos.escorpiao1.defesa=5;inimigos.bandido1.danoContraJogador=25;inimigos.bandido1.defesa=12;
 for(const e of Object.values(NOVOS_INIMIGOS)) mapas[e.area][e.y][e.x]=0;
 for(const n of Object.values(NOVOS_NPCS)) mapas[n.area][n.y][n.x]=0;
 
-ITENS.insignia_egito={nome:"Insígnia egípcia",peso:0.5,tipo:"recurso"};
-ITENS.estandarte_egito={nome:"Estandarte egípcio",peso:0.5,tipo:"recurso"};
-ITENS.pedra_sinai={nome:"Pedra do Sinai",peso:1,tipo:"recurso"};
-ITENS.manto_viajante={nome:"Manto de viajante",peso:2,tipo:"recurso"};
 const PRAYER_FAITH_MAX=100;
 const PRAYER_REGEN_MS=3000;
 const PRAYER_COST={vida:20,veneno:40,area:60,milagre:100};

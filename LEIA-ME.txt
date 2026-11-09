@@ -1,38 +1,20 @@
-JORNADA — RPG BÍBLICO | PACOTE INTEGRADO
+JORNADA — RPG BÍBLICO · ATUALIZAÇÃO DE CAPÍTULOS E SISTEMAS
 
-INSTALAÇÃO
-1. Faça uma cópia de segurança da pasta atual do jogo.
-2. Extraia este pacote e substitua os cinco arquivos do jogo pelos arquivos incluídos.
-3. Mantenha os cinco arquivos juntos na mesma pasta e abra o jogo pelo mesmo método de antes.
-4. Não limpe os dados do navegador: o progresso salvo é migrado automaticamente.
+Instalação
+1. Faça uma cópia de segurança da pasta atual.
+2. Extraia o pacote e substitua os arquivos do projeto pelos arquivos incluídos.
+3. Mantenha todos juntos na mesma pasta e abra index.html por um servidor local (por exemplo, Live Server).
+4. Não apague os dados do navegador: o save existente é migrado automaticamente.
 
-JORNADA E CAPÍTULOS
-- O progresso existente de Canaã e do Deserto é preservado.
-- Depois de concluir a missão principal do Deserto, siga pela passagem roxa para o Egito.
-- A jornada continua, em sequência, pelo Mar Vermelho, Monte Sinai e Galileia.
-- Em cada região, converse com o personagem indicado, derrote a ameaça e volte para concluir o capítulo e liberar a rota seguinte.
+Conteúdo desta atualização
+- Combate baseado em arma, habilidade, defesa do inimigo e chance de crítico; espada e arco continuam exclusivos.
+- Habilidades evoluem por uso com XP e marcos até o nível 100; defesa também progride ao receber golpes.
+- Penalidade progressiva de morte aprovada: sem perda até nível 10; 10% das moedas nos níveis 11–25; a partir do 26 também há perda de XP de habilidade; no nível 51+ há chance de um item cair.
+- Quatro regiões jogáveis encadeadas depois do Deserto: Egito, Mar Vermelho, Monte Sinai e Galileia, com NPCs, inimigos, missões e rotas de retorno. O caminho só avança após concluir o capítulo anterior.
+- Jesus ensina a Oração na Galileia. F1 abre o seletor de cura (corrigido nesta atualização). A fé regenera 1 ponto a cada 3 segundos e poções de fé restauram 40.
+- Minimapa sempre visível no canto superior direito da área: posição do jogador, NPCs, inimigos, portais, trilhas, cais e pontos de pesca. Tecla M ou botão Mapa alterna a exibição.
+- Cura de vida: custo 20; remover veneno: nível 25 e custo 40; cura em área: nível 50 e custo 60; milagre: nível 100 e custo 100. Cura aliada/ressurreição ficam reservadas ao sistema de grupo, pois esta versão é solo.
+- Poções de vida permanecem no jogo. Azarias passa a vender poção de fé.
 
-ORAÇÃO E CURA
-- Na Galileia, converse com Jesus para aprender a Oração; depois pressione F1 e clique na cura desejada.
-- Curar a própria vida: 20 de Fé para recuperar 20 pontos (mais bônus ao alcançar nível 10 de Oração).
-- Remover veneno: desbloqueia no nível 25 e custa 40 de Fé.
-- Cura em área 3×3: desbloqueia no nível 50, custa 60 de Fé e, no modo solo atual, cura o jogador.
-- Milagre: desbloqueia no nível 100, custa 100 de Fé, restaura a vida e remove veneno.
-- Poções de vida continuam curando 30 pontos; poções de Fé recuperam 40. A Fé se regenera em 1 ponto a cada 3 segundos após aprender a Oração.
-- Cura de aliados e ressurreição aguardam a criação de companheiros/grupos jogáveis.
-
-PROGRESSÃO E COMBATE
-- Dano leva em conta arma, habilidade, defesa do inimigo e chance de crítico; defesa combina equipamento e habilidade.
-- Corpo a corpo, arco, defesa e Oração evoluem com o uso. As habilidades chegam ao nível 100; o XP restante até o próximo nível aparece no painel de personagem.
-- A morte preserva nível, inventário e missões. Até o nível 10 não há penalidade; do 11 ao 25 perde 10% das moedas; do 26 ao 50 perde também 5% do XP de habilidade; a partir do 51 perde 10% do XP de habilidade e há 30% de chance de um item da mochila cair.
-
-CONTROLES
-- Andar: WASD ou setas; diagonais: Q, E, Z, C.
-- Interagir/conversar: F.
-- Selecionar alvo: clique no inimigo; autoataque a cada 2 segundos.
-- Ataque corpo a corpo: Espaço; arco: R; poção de vida: H; pesca: P.
-- Poções de vida e de Fé podem ser arrastadas para a barra e usadas pelas teclas 1–6.
-- Mochila: I; tela cheia: botão na barra superior.
-
-BACKUP E COMPATIBILIDADE
-O jogo salva localmente no navegador. Guarde uma cópia da pasta atual antes de substituir os arquivos e mantenha o mesmo navegador/perfil para continuar usando o save.
+Controles principais
+WASD/setas para andar; Q/E/Z/C para diagonais; F para interagir; clique no inimigo para autoataque; Espaço/R para atacar; 1–6 para hotkeys; F1 para Oração (após aprendê-la); M para mostrar/ocultar minimapa; H para poção de vida.
