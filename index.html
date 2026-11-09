@@ -1,21 +1,703 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Jornada — RPG bíblico</title>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c1210">
+<title>Jornada · RPG Bíblico</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:dark;--edge:#59625d;--gold:#d3b775;--text:#e0dac9;--muted:#a5aaa1}*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#101312;color:var(--text);font:13px Arial,sans-serif}button{font:inherit;color:inherit;background:#353d39;border:1px solid #646d66;border-radius:3px;padding:5px 8px;cursor:pointer}button:hover{background:#4b5750;border-color:var(--gold)}
-#app{height:100dvh;min-height:480px;display:grid;grid-template-rows:34px minmax(0,1fr) 76px;background:linear-gradient(#202422,#111413)}#topbar{display:flex;align-items:center;gap:8px;padding:0 10px;background:#191d1b;border-bottom:1px solid #555d57;z-index:5}#brand{font-weight:bold;color:#e4ce91;letter-spacing:.7px;margin-right:auto}.online{color:#83bc79;font-size:11px}
-#layout{min-height:0;display:grid;grid-template-columns:minmax(190px,235px) minmax(330px,1fr) minmax(190px,235px);gap:5px;padding:5px}.column{min-height:0;display:flex;flex-direction:column;gap:5px;overflow:auto;scrollbar-color:#56605a #1c211f}.panel{background:linear-gradient(150deg,#2b312f,#1c211f);border:1px solid var(--edge);box-shadow:inset 0 1px #ffffff12,0 2px 5px #0006;border-radius:3px;overflow:hidden}.panel-title{height:23px;display:flex;align-items:center;justify-content:space-between;padding:0 7px;background:linear-gradient(#454e49,#303734);border-bottom:1px solid #626961;font-size:10px;font-weight:bold;color:#e2d6b5;letter-spacing:.3px}.panel-body{padding:6px}.subtle{font-size:10px;color:var(--muted)}#bags{flex:1;min-height:135px}#storage{min-height:180px}.bag-grid{display:grid;grid-template-columns:repeat(5,minmax(25px,1fr));gap:3px}.section-label{color:var(--gold);font-size:9px;font-weight:bold;margin:3px 0 5px;text-transform:uppercase;letter-spacing:.6px}.item-slot,.equip-slot,.hotkey-slot{position:relative;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#171a19,#38403b);border:1px solid #56605a;box-shadow:inset 1px 1px 2px #0009;user-select:none}.item-slot{aspect-ratio:1;min-width:25px;font-size:22px;cursor:grab}.item-slot .count{position:absolute;right:2px;bottom:1px;font-size:9px;color:white;text-shadow:1px 1px #000;font-weight:bold}.item-slot:hover,.equip-slot:hover,.hotkey-slot:hover{border-color:#e3c96f;filter:brightness(1.2)}.item-tooltip{font-size:10px;color:#bec1b8;margin-top:5px;min-height:13px}#world-panel{min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;background:#131714;border:1px solid #555d55;box-shadow:0 3px 12px #0009}.world-head{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;background:#252b28;border-bottom:1px solid #505850;gap:6px}.world-head strong{color:#ead49c;font-size:12px}.world-frame{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#111}.world-frame canvas{max-width:100%;max-height:100%;object-fit:contain;image-rendering:pixelated;cursor:crosshair}#message{position:absolute;z-index:2;left:50%;bottom:8px;transform:translateX(-50%);max-width:90%;padding:6px 10px;background:#101412e8;border:1px solid #6b7467;border-radius:3px;color:#f3e8c8;text-align:center;pointer-events:none}#miniMap{position:absolute;z-index:4;right:8px;top:36px;width:min(160px,32%);height:auto;aspect-ratio:4/3;border:2px solid #d3b775;background:#101714e8;image-rendering:pixelated;pointer-events:none;box-shadow:0 2px 8px #000b}.minimap-toggle{padding:3px 7px;font-size:10px;white-space:nowrap}.minimap-hidden{display:none!important}
-#stats{display:grid;grid-template-columns:1fr 1fr;gap:5px}.stat{background:#171b1a;border:1px solid #454b47;padding:5px;font-size:10px}.bar{height:7px;background:#0d100f;border:1px solid #4b514d;margin-top:3px}.bar i{display:block;height:100%;background:linear-gradient(90deg,#9b3733,#d45a4d);width:100%}.bar.mana i{background:linear-gradient(90deg,#315c9d,#5897d2)}.bar.faith i{background:linear-gradient(90deg,#583aa5,#a58af0)}#equipment-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:4px}.equip-slot{height:46px;flex-direction:column;gap:1px;border-style:inset;font-size:20px}.equip-slot small{font-size:8px;color:#c4c8bb}.equip-slot.filled{border-color:#baa15c}.#battle-list{min-height:84px;flex:1}.battle-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-bottom:1px solid #3b413e;cursor:pointer}.battle-row:hover,.battle-row.selected{background:#39433b}.battle-row .creature{font-size:17px}.battle-row .hp{margin-left:auto;color:#df867a;font-size:9px}#hotbar{display:flex;align-items:center;justify-content:center;gap:5px;padding:4px;background:#191d1b;border-top:1px solid #555e58;overflow:auto}#hotbar .hint{margin-right:8px;color:#a9b0a6;font-size:10px;white-space:nowrap}.hotkey-slot{width:58px;height:58px;flex:0 0 58px;cursor:pointer;font-size:22px}.hotkey-slot kbd{position:absolute;top:2px;left:4px;color:#e3cb83;font-size:9px}.hotkey-slot .hk-count{position:absolute;right:3px;bottom:2px;font-size:9px;color:white;text-shadow:1px 1px #000}
-#modal,#shopModal,#travelModal,#prayerModal{display:none;position:fixed;inset:0;background:#000a;z-index:20;align-items:center;justify-content:center}#modal.show,#shopModal.show,#travelModal.show,#prayerModal.show{display:flex}.dialog{width:min(470px,92vw);max-height:90vh;overflow:auto;background:#222825;border:1px solid #a4935e;box-shadow:0 8px 40px #000;padding:16px}.dialog h2{margin:0 0 10px;color:#e4ce92;font-size:16px}.dialog p{line-height:1.5}.dialog .actions{display:flex;justify-content:flex-end;gap:7px}.shop-list{display:grid;grid-template-columns:1fr auto;gap:7px;align-items:center}.shop-list button{min-width:125px}.shop-note{color:#b7b9ad;font-size:11px;margin:9px 0}
-#app:fullscreen{height:100vh;width:100vw}.hideBags #bags,.hideBags #storage{display:none}@media(max-width:760px){#layout{grid-template-columns:130px minmax(240px,1fr) 135px;gap:3px;padding:3px}.panel-title{font-size:8px}.bag-grid{grid-template-columns:repeat(4,1fr)}.equip-slot{height:41px;font-size:17px}.hotkey-slot{width:48px;height:48px;flex-basis:48px}}@media(max-width:560px){#layout{grid-template-columns:82px minmax(165px,1fr) 88px}.bag-grid{grid-template-columns:repeat(3,1fr)}.panel-body{padding:3px}.equip-slot{height:34px;font-size:15px}.equip-slot small{font-size:6px}.item-slot{font-size:17px}.#hotbar .hint{display:none}#hotbar{justify-content:flex-start}}:fullscreen #app{height:100vh}
-</style></head><body><div id="app"><header id="topbar"><span id="brand">JORNADA · RPG BÍBLICO</span><span class="online">● Salvamento local</span><span id="coinReadout" style="color:#f0d273;font-weight:bold">◉ 0 moedas</span><button id="fullscreenBtn">⛶ Tela cheia</button><button id="helpBtn">Controles</button></header>
-<main id="layout"><aside class="column"><section class="panel" id="bags"><div class="panel-title"><span>MOCHILA · Equipamento</span><span id="weightText">0 / 50 kg</span></div><div class="panel-body"><div id="inventoryGrid" class="bag-grid"></div><div id="itemTip" class="item-tooltip">Arraste um item para o espaço correspondente.</div></div></section><section class="panel" id="storage"><div class="panel-title"><span>BOLSA · Consumíveis e recursos</span><span>▣</span></div><div class="panel-body"><div class="section-label">Itens empilháveis</div><div id="storageGrid" class="bag-grid"></div><p class="subtle">Arraste poções para uma tecla da barra.</p></div></section></aside>
-<section id="world-panel"><div class="world-head"><strong id="areaName">Canaã</strong><span class="subtle" id="targetLabel">Alvo: nenhum</span><button class="minimap-toggle" id="minimapToggle" title="Mostrar/ocultar minimapa (M)">▦ Mapa</button></div><div class="world-frame" id="game-root"></div><canvas id="miniMap" width="160" height="120" aria-label="Minimapa da região"></canvas><div id="message">Carregando jornada…</div></section>
-<aside class="column"><section class="panel"><div class="panel-title"><span>PERSONAGEM</span><span>◈</span></div><div class="panel-body"><div id="stats"><div class="stat">Vida <b id="hpText">100 / 100</b><div class="bar"><i id="hpBar"></i></div></div><div class="stat">Nível <b id="levelText">1</b><div class="bar mana"><i id="xpBar"></i></div></div><div class="stat">Fé <b id="faithText">—</b><div class="bar faith"><i id="faithBar"></i></div></div></div><div class="subtle" id="combatStats" style="margin-top:6px">Dano 10 · Defesa 0 · Carga 0 / 50 kg</div></div></section>
-<section class="panel"><div class="panel-title"><span>EQUIPAMENTO</span><span>arraste para o espaço</span></div><div class="panel-body"><div id="equipment-grid"><div class="equip-slot" data-slot="arma"><span>⚔️</span><small>Arma</small></div><div class="equip-slot" data-slot="arco"><span>🏹</span><small>Arco</small></div><div class="equip-slot" data-slot="escudo"><span>🛡️</span><small>Escudo</small></div><div class="equip-slot" data-slot="armadura"><span>🥋</span><small>Armadura</small></div></div></div></section>
-<section class="panel" id="battle-list"><div class="panel-title"><span>LISTA DE BATALHA</span><span>selecione o alvo</span></div><div id="battleRows"></div></section><section class="panel"><div class="panel-title"><span>MISSÃO</span><span>✦</span></div><div class="panel-body"><div id="questText" class="subtle">Fale com Eliabe.</div></div></section></aside></main>
-<footer id="hotbar"><span class="hint">Arraste consumíveis para as teclas · clique no alvo para autoataque</span><div id="hotkeys" style="display:flex;gap:5px"></div></footer></div>
-<div id="modal"><div class="dialog"><h2>Como jogar</h2><p><b>Andar:</b> W, A, S, D ou setas. A câmera acompanha você; o minimapa mostra sua posição e pontos importantes. Use M ou o botão Mapa para ocultá-lo/mostrá-lo. Folhas e odres reaparecem após um curto intervalo. Diagonais: Q (↖), E (↗), Z (↙), C (↘).<br><b>Interagir:</b> F perto de um personagem; E fica livre para andar na diagonal. <b>Viagem rápida:</b> fale com Micael em Canaã ou Tamar no Deserto; a trilha no extremo sul permite andar entre as regiões.<br><b>Combate:</b> clique no inimigo para selecioná-lo e atacar automaticamente a cada 2 segundos. Habilidades de corpo a corpo, arco e defesa melhoram com o uso; a cada 5 usos ofensivos (10 defensivos) recebem bônus de eficiência. Espaço ataca corpo a corpo (inclusive na diagonal); R dispara uma flecha quando o alvo está em linha, coluna ou diagonal e dentro do alcance.<br><b>Equipamento:</b> arraste espada ou arco (um de cada vez), escudo ou armadura para o respectivo espaço. Arraste de volta à mochila para guardar.<br><b>Hotkeys:</b> arraste poções de vida ou de fé para os espaços 1–6 e pressione a tecla para usá-las. <b>Oração:</b> após aprender com Jesus na Galileia, pressione F1 para abrir o seletor e escolher entre curar vida, remover veneno, cura em área ou milagre, conforme o nível. I abre/fecha a mochila antiga.<br><b>Saques:</b> clique no item quando estiver ao lado ou caminhe sobre ele para coletar imediatamente. Ao morrer, não há penalidade até o nível 10; níveis 11–25 perdem 10% das moedas; 26–50 perdem também 5% do XP de habilidade; a partir do 51, perdem 10% desse XP e há 30% de chance de cair um item. Nível, missões e demais itens são preservados.<br><b>Mercador:</b> encontre Azarias no Deserto e interaja com ele para comprar provisões e equipamentos. <b>Mar e barco:</b> caminhe até o cais marcado “CAIS · MAR”; navegue com WASD ou setas e atravesse até o marcador da outra cidade. <b>Pesca:</b> aproxime-se dos peixes marcados no mar e pressione P; Azarias compra cada peixe por 6 moedas.</p><div class="actions"><button id="closeHelp">Entendi</button></div></div></div>
-<div id="travelModal"><div class="dialog"><h2>Viagem rápida · Guia de caravanas</h2><p>Escolha a cidade de destino. A viagem é gratuita; também é possível caminhar pela trilha terrestre.</p><div class="shop-list"><span>Canaã</span><button data-travel="canaan">Viajar para Canaã</button><span>Deserto</span><button data-travel="deserto">Viajar para o Deserto</button></div><div class="actions" style="margin-top:12px"><button id="closeTravel">Fechar</button></div></div></div>
-<div id="prayerModal"><div class="dialog"><h2>Oração · F1</h2><p>Escolha o propósito da Oração. A cura é uma ação do jogador; poções de vida e de fé continuam disponíveis.</p><div class="shop-list"><span>Curar minha vida · 20 de fé</span><button data-prayer="vida">Curar vida</button><span>Remover veneno · nível 25 · 40 de fé</span><button data-prayer="veneno">Remover veneno</button><span>Cura em área 3×3 · nível 50 · 60 de fé</span><button data-prayer="area">Cura em área</button><span>Milagre · nível 100 · 100 de fé</span><button data-prayer="milagre">Milagre</button></div><p class="shop-note">O jogo é solo no momento: a cura em área cura você e exibirá o efeito 3×3; cura de amigos e ressurreição ficam para quando houver aliados/companheiros jogáveis.</p><div class="actions"><button id="closePrayer">Fechar</button></div></div></div>
-<div id="shopModal"><div class="dialog"><h2>Azarias · Mercador</h2><p class="shop-note">Compre itens para sua jornada. Flechas são vendidas em lotes de 5.</p><div class="shop-list"><span>Poção de vida</span><button data-buy="pocao">Comprar · 12 moedas</button><span>Poção de fé (+40)</span><button data-buy="pocao_fe">Comprar · 18 moedas</button><span>5 flechas</span><button data-buy="flechas">Comprar · 8 moedas</button><span>Escudo de madeira</span><button data-buy="escudo_madeira">Comprar · 35 moedas</button><span>Armadura de couro</span><button data-buy="armadura_couro">Comprar · 65 moedas</button><span>Arco de madeira</span><button data-buy="arco_madeira">Comprar · 80 moedas</button></div><p class="shop-note">Azarias também compra recursos: pele de lobo (5), erva medicinal (2) e odre de água (3).</p><div class="shop-list"><span>Vender uma pele de lobo</span><button data-sell="pele_lobo">Vender · 5 moedas</button><span>Vender uma erva</span><button data-sell="erva">Vender · 2 moedas</button><span>Vender um odre</span><button data-sell="odre_agua">Vender · 3 moedas</button><span>Vender um peixe</span><button data-sell="peixe">Vender · 6 moedas</button></div><div class="actions" style="margin-top:12px"><button id="closeShop">Fechar</button></div></div></div>
-<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script><script src="storage.js"></script><script src="logica.js"></script><script src="expansao.js"></script><script src="game.js"></script></body></html>
+/* =====================================================================
+   Jornada · RPG Bíblico — interface (guia de estilo §9, "Iluminura viva")
+   Couro, pergaminho e bronze. Tokens iguais a Arte.SEMANTICA (sprites.js).
+   ===================================================================== */
+:root{ color-scheme:dark;
+ /* couro (superfícies) */ --couro-900:#1c1210;--couro-800:#2c1a12;--couro-700:#3b2418;--couro-600:#5a3624;--couro-500:#7a4a30;
+ /* pergaminho */          --perg-100:#f6ead0;--perg-200:#ead6a6;--perg-300:#d9bd84;--perg-400:#b8975e;
+ /* bronze e ouro */       --bronze-700:#5e3c1c;--bronze-600:#8a5a2b;--bronze-500:#b07a38;--bronze-400:#d29e52;--ouro-300:#f2d27a;--ouro-200:#ffe9a8;
+ /* texto */               --tinta:#2a1a14;--tinta-suave:#5a3a24;--texto:#f0dfb8;--texto-2:#d6c39a;--texto-mudo:#b9a27a;
+ /* semânticas = Arte.SEMANTICA */
+ --vida-1:#8e2a1f;--vida-2:#c2452d;--vida-3:#e2774f; --xp-1:#7a5518;--xp-2:#c8962e;--xp-3:#f2cf6a; --fe-1:#22356a;--fe-2:#3b5a9a;--fe-3:#7fa3e0;
+ --dano:#f6e6bd;--recebido:#ff7a5c;--critico:#ffd24a;--cura:#8fd16a;--moeda:#e8b94a;--veneno:#a8c84a;--bloqueio:#b9c6d6;
+ --hostil:#ef6a5e;--amigo:#f3e4c0;--missao:#f2d27a;--saida:#b98ad0;--agua:#6fd0d0;--bloqueado:#7a6a5a;
+ /* foco e véu */          --foco:#ffe9a8;--veu:#1c1210cc;
+ /* tipografia */          --f-titulo:"Cinzel",Georgia,serif;--f-texto:"Alegreya Sans",system-ui,sans-serif;--f-pixel:"Pixelify Sans",ui-monospace,monospace;
+ --fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-20:20px;--fs-26:26px;
+ /* espaço (base 4) */     --e-1:4px;--e-2:8px;--e-3:12px;--e-4:16px;--e-5:24px;
+ /* forma */               --raio:2px;--borda:2px;--slot:40px;--slot-atalho:52px;--icone:32px;--toque:44px;
+ /* sombras */             --sombra-painel:0 2px 0 #000a,0 6px 16px #0008;--relevo:inset 0 1px 0 #ffe9a833,inset 0 -1px 0 #0007;
+ /* camadas */             --z-hud:10;--z-toast:20;--z-gaveta:30;--z-modal:40;--z-toque:15;
+ /* preenchidos pelo interface.js a partir de Arte (com reserva em cor sólida): */
+ --tex-couro:none;--tex-perg:none;--moldura-bronze:none;
+ /* cor do bioma atual (interface.js troca em UI.areaMudou) */
+ --bioma:#8fa34e;
+ --rodape:64px;
+}
+*{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;overflow:hidden}
+body{background:var(--couro-900) var(--tex-couro);color:var(--texto);font:400 var(--fs-13)/1.4 var(--f-texto);-webkit-font-smoothing:antialiased;touch-action:manipulation}
+img.px,.px{image-rendering:pixelated;image-rendering:crisp-edges}
+img.g16{width:16px;height:16px;flex:0 0 16px}
+img.g24{width:24px;height:24px;flex:0 0 24px}
+img.g32{width:32px;height:32px;flex:0 0 32px}
+img:not([src]),img[src=""]{visibility:hidden}
+button{font:600 var(--fs-13)/1 var(--f-pixel);color:var(--perg-100);cursor:pointer}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--foco);outline-offset:1px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* Teclas: a Pixelify em 12 px confunde E/C/e com ε/0/s; letra das teclas em Alegreya Sans negrito. */
+kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;font:700 var(--fs-13)/1 var(--f-texto);letter-spacing:.02em;color:var(--perg-100);
+ background:linear-gradient(var(--bronze-500),var(--bronze-700));border:2px solid var(--tinta);box-shadow:var(--relevo);border-radius:var(--raio);text-shadow:1px 1px 0 #1c1210}
+
+/* ---------- botões (um design) ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 12px;border:2px solid var(--tinta);border-radius:var(--raio);
+ background:linear-gradient(var(--bronze-500),var(--bronze-700));box-shadow:var(--relevo),0 2px 0 #0008;font:600 var(--fs-14)/1 var(--f-pixel);color:var(--perg-100);text-shadow:1px 1px 0 #1c1210;white-space:nowrap}
+.btn:hover{background:linear-gradient(var(--bronze-400),var(--bronze-600))}
+.btn:active{transform:translateY(1px);box-shadow:var(--relevo)}
+.btn[disabled],.btn.desab{background:var(--bloqueado);color:#e8dcc4;cursor:not-allowed;box-shadow:none}
+.btn.primario{min-height:40px}
+.btn.secundario{background:linear-gradient(var(--couro-500),var(--couro-700));}
+.btn.secundario:hover{background:linear-gradient(#8c5838,var(--couro-600))}
+.btn-icone{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:2px solid var(--bronze-700);border-radius:var(--raio);background:linear-gradient(var(--couro-600),var(--couro-700));box-shadow:var(--relevo);color:var(--texto);font:600 var(--fs-12)/1 var(--f-pixel)}
+.btn-icone:hover{border-color:var(--bronze-400)}
+.btn-icone[aria-pressed="true"]{border-color:var(--bronze-500);background:linear-gradient(var(--couro-500),var(--couro-600))}
+
+/* ---------- moldura do app ---------- */
+#app{height:100dvh;min-height:420px;display:grid;grid-template-rows:40px minmax(0,1fr) var(--rodape);}
+#app:fullscreen{width:100vw;height:100vh}
+
+/* barra superior */
+#topo{display:flex;align-items:center;gap:10px;padding:0 12px;background:linear-gradient(var(--couro-600),var(--couro-800));border-bottom:2px solid var(--bronze-700);box-shadow:0 2px 0 #0008;z-index:5;min-width:0}
+.marca{display:flex;align-items:baseline;gap:8px;margin-right:auto;min-width:0}
+.marca-nome{font:700 var(--fs-16)/1 var(--f-titulo);color:var(--ouro-300);letter-spacing:.12em;text-shadow:1px 1px 0 #1c1210}
+.marca-sub{font:italic 400 var(--fs-13)/1 var(--f-texto);color:var(--texto-mudo);white-space:nowrap}
+.area-topo{display:none;font:700 var(--fs-14)/1 var(--f-titulo);color:var(--ouro-300);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.salvo{display:flex;align-items:center;gap:6px;font:400 var(--fs-12)/1 var(--f-pixel);color:var(--texto-2);white-space:nowrap}
+.salvo::before{content:"";width:6px;height:6px;background:var(--cura);box-shadow:0 0 0 2px #1c1210}
+.moedas{display:flex;align-items:center;gap:6px;padding:0 10px;height:28px;border:2px solid var(--bronze-700);background:#1a0f0a;box-shadow:inset 2px 2px 0 #0008;font:600 var(--fs-14)/1 var(--f-pixel);color:var(--moeda);white-space:nowrap}
+.so-celular{display:none!important}
+
+/* layout */
+#layout{min-height:0;display:grid;grid-template-columns:248px minmax(0,1fr) 272px;gap:8px;padding:8px}
+.coluna{min-height:0;display:flex;flex-direction:column;gap:8px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent;padding-right:2px}
+#deposito{display:none}
+
+/* ---------- superfícies ---------- */
+.painel{position:relative;flex:0 0 auto;border:8px solid var(--bronze-600);border-image:var(--moldura-bronze) 8 / 8px round;image-rendering:pixelated;
+ background:var(--tex-couro),linear-gradient(160deg,var(--couro-600),var(--couro-800));background-blend-mode:soft-light,normal;box-shadow:var(--sombra-painel)}
+.painel-cab{height:28px;display:flex;align-items:center;gap:8px;padding:0 8px;margin:-2px -2px 0;background:linear-gradient(var(--couro-500),var(--couro-600));border-bottom:2px solid var(--tinta);box-shadow:var(--relevo)}
+.painel-cab h2{margin:0;padding-top:2px;font:600 var(--fs-13)/1.4 var(--f-titulo);letter-spacing:.08em;color:var(--ouro-300);text-shadow:1px 1px 0 #1c1210;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.painel-cab .extra{margin-left:auto;font:400 var(--fs-12)/1 var(--f-pixel);color:var(--texto-2);white-space:nowrap}
+.painel-cab button.recolher{all:unset;display:flex;align-items:center;gap:8px;flex:1;height:100%;cursor:pointer}
+.painel-cab button.recolher:focus-visible{outline:2px solid var(--foco)}
+.painel-cab .seta{width:0;height:0;border:5px solid transparent;border-top-color:var(--texto-2);margin-top:5px;transition:transform .15s}
+.painel-cab button[aria-expanded="false"] .seta{transform:rotate(-90deg);margin-top:0}
+.painel-corpo{padding:8px}
+.nota{margin:6px 0 0;font:400 var(--fs-12)/1.35 var(--f-texto);color:var(--texto-mudo)}
+
+/* pergaminho */
+.perg{position:relative;color:var(--tinta);padding-top:6px;padding-bottom:6px;
+ background:linear-gradient(var(--perg-400),var(--perg-100) 45%,var(--perg-300)) top/100% 6px no-repeat,
+  linear-gradient(var(--perg-300),var(--perg-100) 55%,var(--perg-400)) bottom/100% 6px no-repeat,
+  var(--tex-perg),var(--perg-200);
+ background-blend-mode:normal,normal,multiply,normal;border-left:2px solid var(--perg-400);border-right:2px solid var(--perg-400);box-shadow:var(--sombra-painel)}
+.perg .painel-cab{background:none;border-bottom:1px solid #b8975e;box-shadow:none;margin:0}
+.perg .painel-cab h2{color:var(--tinta);text-shadow:none}
+.perg .painel-cab .extra{color:var(--tinta-suave)}
+.perg .painel-cab .seta{border-top-color:var(--tinta-suave)}
+
+/* ---------- missão ---------- */
+#pMissao .capitulo{margin:0 0 4px;font:700 var(--fs-14)/1.2 var(--f-titulo);color:var(--tinta)}
+#pMissao .objetivo{margin:0;font:400 var(--fs-14)/1.35 var(--f-texto);color:var(--tinta)}
+#pMissao .progresso{display:inline-block;margin-top:6px;padding:2px 6px;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--perg-100);background:var(--fe-2);border:2px solid var(--tinta)}
+#pMissao .progresso[hidden]{display:none}
+
+/* ---------- barras ---------- */
+.linha-barra{display:flex;align-items:center;gap:6px;margin-top:6px}
+.barra{position:relative;flex:1;height:14px;background:#1a0f0a;border:2px solid var(--bronze-700);box-shadow:var(--relevo)}
+.barra>i{display:block;height:100%;width:0;transition:width .25s steps(8);background:linear-gradient(var(--c3) 0 30%,var(--c2) 30% 75%,var(--c1) 75%)}
+.barra::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 9px,#0006 9px 10px);pointer-events:none}
+.barra>b{position:absolute;inset:0;display:grid;place-items:center;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--perg-100);text-shadow:1px 1px 0 #1c1210,-1px 0 0 #1c1210;z-index:1}
+.barra.vida{--c1:var(--vida-1);--c2:var(--vida-2);--c3:var(--vida-3)}
+.barra.xp{--c1:var(--xp-1);--c2:var(--xp-2);--c3:var(--xp-3)}
+.barra.fe{--c1:var(--fe-1);--c2:var(--fe-2);--c3:var(--fe-3)}
+.barra.travada>b{color:var(--texto-mudo)}
+.barra.vida.baixa{animation:pulso 1s steps(2) infinite}
+@keyframes pulso{50%{border-color:var(--vida-2);box-shadow:0 0 0 2px var(--vida-1)}}
+.estado-veneno{display:none}
+.envenenado .estado-veneno{display:inline-block}
+
+/* ---------- personagem ---------- */
+.ficha{display:flex;gap:8px;align-items:flex-start}
+.ficha-dados{flex:1;min-width:0}
+.ficha-dados .linha-barra{margin-top:4px}
+.retrato{position:relative;flex:0 0 auto;width:56px;height:52px;display:grid;place-items:end center;overflow:hidden;
+ background:radial-gradient(circle at 40% 30%,#6a4a32,#24150e);border:2px solid var(--tinta);outline:2px solid var(--bronze-500);outline-offset:-4px;box-shadow:inset 0 0 0 4px var(--bronze-700)}
+.retrato img{width:48px;height:39px}
+.selo{position:absolute;right:-2px;bottom:-2px;min-width:24px;height:22px;padding:0 3px;display:grid;place-items:center;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--ouro-300);
+ background:radial-gradient(circle at 35% 30%,var(--vida-2),var(--vida-1));border:2px solid var(--tinta);clip-path:polygon(4px 0,calc(100% - 4px) 0,100% 4px,100% calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,0 calc(100% - 4px),0 4px)}
+.ficha-nome{min-width:0;display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.ficha-nome strong{font:700 var(--fs-14)/1.1 var(--f-titulo);color:var(--ouro-300)}
+.ficha-nome span{font:400 var(--fs-12)/1.3 var(--f-pixel);color:var(--texto-2)}
+.habilidades{margin:8px 0 0;font:400 var(--fs-12)/1.4 var(--f-pixel);color:var(--texto-2)}
+.atributos{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin:6px 0 0;padding:6px 0 0;border-top:1px solid #0006;box-shadow:0 -1px 0 #ffe9a815 inset}
+.atributos div{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font:400 var(--fs-12)/1.35 var(--f-pixel)}
+.atributos dt{font:400 var(--fs-13)/1.35 var(--f-texto);color:var(--texto-mudo)}
+.atributos dd{margin:0;color:var(--texto)}
+
+/* ---------- slots ---------- */
+.grade{display:grid;grid-template-columns:repeat(5,var(--slot));gap:4px;justify-content:start}
+.slot{position:relative;width:var(--slot);height:var(--slot);display:grid;place-items:center;padding:0;border:2px solid var(--bronze-700);border-radius:0;
+ background:radial-gradient(circle at 35% 30%,#4a2e1f,#24150e);box-shadow:inset 2px 2px 0 #0008;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;color:var(--perg-100)}
+.slot img{width:32px;height:32px;pointer-events:none}
+.slot.vazio{cursor:default}
+.slot.cheio{cursor:grab}
+.slot.cheio:hover,.slot.equip:hover,.atalho:hover{border-color:var(--bronze-400)}
+.slot .qtd{position:absolute;right:2px;bottom:0;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--perg-100);text-shadow:1px 1px 0 #1c1210,-1px 0 0 #1c1210,0 -1px 0 #1c1210}
+.slot .letras{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--texto-2)}
+.slot.selecionado{outline:2px solid var(--ouro-200);outline-offset:0;animation:pisca 0.8s steps(2) infinite}
+@keyframes pisca{50%{outline-color:var(--bronze-500)}}
+.slot.alvo-soltar,.atalho.alvo-soltar,.zona-soltar.alvo-soltar{outline:2px dashed var(--ouro-300);outline-offset:-2px}
+.slot.desab{opacity:.4}
+.slot.novo{animation:entra .4s steps(4)}
+@keyframes entra{0%{filter:brightness(2)}100%{filter:none}}
+
+/* equipamento */
+#gradeEquip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px}
+.equip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:4px 0 3px;border:solid transparent;border-width:2px 0;background:#0003;cursor:pointer;color:var(--texto);text-align:center}
+.equip .slot{flex:0 0 auto;width:44px;height:44px}
+.equip.cheio .slot{border-color:var(--bronze-500)}
+.equip .slot img.silhueta{opacity:.35}
+.equip-txt{min-width:0;max-width:100%;display:flex;flex-direction:column;gap:2px}
+/* "ARMADURA" é o rótulo mais longo: sem espaçamento extra cabe na célula; a
+   reticência só aparece com a fonte de reserva (sem internet) */
+.equip-txt small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 var(--fs-11)/1 var(--f-texto);color:var(--texto-mudo);text-transform:uppercase;letter-spacing:0}
+.equip-txt em{font:400 var(--fs-11)/1 var(--f-pixel);font-style:normal;color:var(--texto-2);white-space:nowrap}
+.equip.vazio .equip-txt em{color:var(--texto-mudo)}
+.equip.selecionado{outline:2px solid var(--ouro-200);animation:pisca .8s steps(2) infinite}
+.equip.alvo-soltar{outline:2px dashed var(--ouro-300);outline-offset:-2px}
+
+/* mochila / bolsa */
+#pMochila .painel-corpo,#pBolsa .painel-corpo{padding:8px 8px 6px}
+.zona-soltar{min-height:40px}
+
+/* lista de batalha */
+#pBatalha{min-height:110px}
+/* na coluna direita, a Batalha ocupa a altura que sobra e rola por dentro:
+   a moldura de baixo aparece sempre, sem rolar a coluna */
+#colDir #pBatalha{flex:1 1 0;min-height:88px;display:flex;flex-direction:column}
+#colDir #linhasBatalha{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent}
+#linhasBatalha{display:flex;flex-direction:column}
+.linha-inimigo{display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 8px 4px 5px;border:0;border-left:3px solid transparent;border-bottom:1px solid #0005;background:none;color:var(--texto);text-align:left;width:100%;font:inherit;cursor:pointer}
+.linha-inimigo:hover{background:#ffe9a80d}
+.linha-inimigo.selecionada{border-left-color:var(--hostil);background:var(--couro-500)}
+.linha-inimigo .mini{width:32px;height:28px;display:grid;place-items:end center;flex:0 0 32px}
+.linha-inimigo .mini img{max-width:32px;max-height:28px}
+.linha-inimigo .nome{flex:1;min-width:0;display:flex;align-items:center;gap:4px;font:500 var(--fs-13)/1.1 var(--f-texto);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.linha-inimigo .vida{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.mini-barra{width:48px;height:6px;background:#1a0f0a;border:1px solid #1c1210}
+.mini-barra i{display:block;height:100%;background:var(--vida-2);box-shadow:inset 0 1px 0 var(--vida-3)}
+.linha-inimigo .vida b{font:400 var(--fs-11)/1 var(--f-pixel);color:var(--texto-2)}
+.vazio-txt{padding:10px 8px;font:italic 400 var(--fs-13)/1.3 var(--f-texto);color:var(--texto-mudo)}
+
+/* registro */
+#pRegistro{display:flex;flex-direction:column}
+#pRegistro .painel-corpo{max-height:240px;overflow-y:auto;padding:6px 8px}
+#colEsq #pRegistro{flex:1 1 auto;min-height:120px}
+#colEsq #pRegistro .painel-corpo{max-height:none;flex:1;min-height:0}
+#pRegistro[data-aberto="false"] .painel-corpo{display:none}
+#listaRegistro{list-style:none;margin:0;padding:0}
+#listaRegistro li{display:grid;grid-template-columns:16px 34px 1fr;gap:6px;align-items:start;padding:3px 0;border-bottom:1px dotted #b8975e;font:400 var(--fs-13)/1.3 var(--f-texto)}
+#listaRegistro time{font:400 var(--fs-11)/1.6 var(--f-pixel);color:var(--tinta-suave)}
+#listaRegistro .marca-tipo{width:16px;height:16px;margin-top:1px;border-left:3px solid var(--cor,var(--tinta-suave))}
+
+/* minimapa */
+#pMapa .painel-corpo{display:flex;justify-content:center;padding:6px}
+#miniMap{display:block;width:160px;height:120px;image-rendering:pixelated;background:var(--perg-300);border:2px solid var(--tinta);box-shadow:0 2px 0 #0008}
+/* rosa e coordenadas numa margem à direita do mapa, nunca por cima dele
+   (cobriam NPCs, portais e a passagem perto dos cantos); a largura mínima
+   das coordenadas evita que a margem mude de tamanho conforme a posição */
+.mapa-moldura{display:flex;align-items:stretch;line-height:0}
+.mapa-margem{display:flex;flex-direction:column;justify-content:space-between;align-items:center;gap:4px;padding:2px 0 0 4px}
+.mapa-moldura .rosa{width:22px;height:22px;padding:2px;background:var(--perg-300);border:1px solid var(--tinta)}
+.mapa-moldura .coord{min-width:52px;padding:1px 3px;font:600 var(--fs-11)/1.2 var(--f-pixel);color:var(--tinta);background:var(--perg-300);border:1px solid var(--tinta);white-space:nowrap;text-align:center}
+#pMapa{background:var(--tex-couro),linear-gradient(160deg,var(--couro-600),var(--couro-800))}
+#pMapa .painel-corpo{padding:4px}
+
+/* ---------- mundo ---------- */
+#mundo{min-width:0;min-height:0;display:flex;flex-direction:column;border:8px solid var(--bronze-600);border-image:var(--moldura-bronze) 8 / 8px round;background:var(--couro-900);box-shadow:var(--sombra-painel)}
+.mundo-cab{position:relative;height:40px;flex:0 0 40px;display:flex;align-items:center;gap:12px;padding:0 10px;background:linear-gradient(var(--couro-500),var(--couro-700));border-bottom:2px solid var(--tinta);box-shadow:var(--relevo)}
+.mundo-cab::after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:2px;background:var(--bioma);opacity:.7}
+.area-bloco{display:flex;flex-direction:column;min-width:0}
+#areaNome{font:700 var(--fs-16)/1 var(--f-titulo);color:var(--ouro-300);letter-spacing:.06em;text-shadow:1px 1px 0 #1c1210;white-space:nowrap}
+#areaSub{font:italic 400 var(--fs-12)/1.2 var(--f-texto);color:var(--texto-mudo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cab-acoes{margin-left:auto;display:flex;gap:6px}
+/* quadro de alvo */
+.quadro-alvo{display:flex;align-items:center;gap:8px;min-width:0;padding:2px 8px 2px 4px;border:2px solid transparent}
+.quadro-alvo.ativo{border-color:#4a1416;background:#1c121099}
+.quadro-alvo:not(.ativo){visibility:hidden}
+.quadro-alvo .mini{width:28px;height:24px;display:grid;place-items:end center;overflow:hidden}
+.quadro-alvo .mini img{max-width:28px;max-height:24px}
+.quadro-alvo .alvo-info{display:flex;flex-direction:column;gap:3px;min-width:0}
+.quadro-alvo strong{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--hostil);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.alvo-barra{width:80px;height:6px;background:#3a1f1c;border:1px solid #1c1210}
+.alvo-barra i{display:block;height:100%;background:var(--vida-2);box-shadow:inset 0 1px 0 var(--vida-3)}
+.alvo-recarga{width:80px;height:2px;background:#1c1210}
+.alvo-recarga i{display:block;height:100%;width:0;background:var(--ouro-200)}
+.alvo-vida{font:400 var(--fs-11)/1 var(--f-pixel);color:var(--texto-2)}
+
+.palco{position:relative;flex:1;min-height:0;overflow:hidden}
+#game-root{position:absolute!important;inset:0;width:100%;height:100%;overflow:hidden;touch-action:none;background:#1c1210}
+#game-root canvas{display:block;cursor:crosshair}
+
+/* minimapa sobre o mundo (médio/estreito) */
+/* Ele cobre um canto do mundo: não pega cliques (o canvas recebe) e fica
+   translúcido com alguém embaixo (classe "encoberto", posta pelo game.js). */
+#mapaSobre{position:absolute;top:8px;right:8px;z-index:var(--z-hud);line-height:0;pointer-events:none;transition:opacity .15s}
+#mapaSobre.encoberto{opacity:.3}
+#mapaSobre .mapa-margem{padding:4px;background:#2c1a12d9;border:2px solid var(--bronze-700);border-left:0}
+#mapaSobre:empty{display:none}
+body.mapa-oculto #mapaSobre,body.mapa-oculto #pMapa{display:none}
+
+/* avisos (toasts) */
+#avisos{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:var(--z-toast);display:flex;flex-direction:column;align-items:center;gap:6px;width:min(560px,calc(100% - 24px));pointer-events:none}
+/* largo em tela baixa: o minimapa fica sobre o mundo, no canto direito; os
+   avisos usam a faixa à esquerda dele */
+body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;max-width:560px;margin:0 auto;transform:none}
+.aviso{pointer-events:auto;display:flex;align-items:center;gap:8px;max-width:100%;padding:6px 12px 6px 8px;color:var(--tinta);font:500 var(--fs-13)/1.3 var(--f-texto);
+ background:var(--tex-perg),var(--perg-200);background-blend-mode:multiply,normal;border:2px solid var(--tinta);border-left:4px solid var(--cor,var(--tinta-suave));box-shadow:0 2px 0 #0009,0 4px 10px #0006;animation:aviso-entra .2s steps(3)}
+.aviso img{width:16px;height:16px;flex:0 0 16px}
+.aviso .rep{font:600 var(--fs-11)/1 var(--f-pixel);color:var(--tinta-suave)}
+.aviso.saindo{opacity:0;transition:opacity .3s}
+@keyframes aviso-entra{from{transform:translateY(-6px);opacity:0}}
+
+/* diálogo */
+#dialogo{position:absolute;left:12px;right:12px;bottom:12px;z-index:calc(var(--z-toque) + 1);display:none;gap:12px;align-items:flex-start;max-height:40%;overflow:auto;padding:12px 14px;cursor:pointer}
+#dialogo.aberto{display:flex}
+#dialogo .retrato{width:60px;height:56px}
+#dialogo .retrato img{width:48px;height:39px}
+.dlg-txt{min-width:0;flex:1}
+.dlg-txt h3{margin:0;font:700 var(--fs-16)/1.1 var(--f-titulo);color:var(--tinta)}
+.dlg-txt .papel{font:italic 400 var(--fs-13)/1.2 var(--f-texto);color:var(--tinta-suave)}
+.dlg-txt p{margin:6px 0 0;font:400 var(--fs-14)/1.45 var(--f-texto);color:var(--tinta);max-width:70ch}
+.dlg-dica{align-self:flex-end;font:400 var(--fs-11)/1 var(--f-pixel);color:var(--tinta-suave);white-space:nowrap}
+
+/* HUD do celular (sobre o mundo) */
+#hud{display:none}
+#missaoLinha{display:none}
+
+/* ---------- barra de atalhos ---------- */
+#rodape{display:flex;flex-direction:column;justify-content:center;background:linear-gradient(var(--couro-700),var(--couro-900));border-top:2px solid var(--bronze-700);min-width:0}
+.atalhos-faixa{display:flex;align-items:center;justify-content:center;gap:12px;padding:4px 8px;min-width:0}
+#atalhos-dica{max-width:260px;font:400 var(--fs-12)/1.3 var(--f-texto);color:var(--texto-mudo);text-align:right}
+#atalhos{display:flex;gap:6px;padding:4px;border:2px solid var(--bronze-700);background:#1a0f0a99;box-shadow:inset 2px 2px 0 #0008}
+.atalho{position:relative;width:var(--slot-atalho);height:var(--slot-atalho);display:grid;place-items:center;padding:0;border:2px solid var(--bronze-700);background:radial-gradient(circle at 35% 30%,#4a2e1f,#24150e);box-shadow:inset 2px 2px 0 #0008;cursor:pointer;overflow:hidden}
+.atalho img{width:32px;height:32px;pointer-events:none}
+.atalho .tecla-n{position:absolute;left:1px;top:1px;min-width:14px;height:14px;display:grid;place-items:center;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--perg-100);background:linear-gradient(var(--bronze-500),var(--bronze-700));border:1px solid var(--tinta)}
+.atalho .qtd{position:absolute;right:3px;bottom:1px;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--perg-100);text-shadow:1px 1px 0 #1c1210,-1px 0 0 #1c1210}
+.atalho.esgotado img{opacity:.35}
+.atalho::after{content:"";position:absolute;inset:0;background:linear-gradient(#000a 0 var(--recarga,0%),transparent var(--recarga,0%));pointer-events:none}
+.atalho.usado{animation:entra .3s steps(3)}
+#abasCel{display:none}
+
+/* ---------- abas (médio e estreito) ---------- */
+.abas{display:flex;gap:4px;padding:0 0 0 2px;flex:0 0 auto}
+/* as abas encolhem por igual e cortam o rótulo com reticências (sem as
+   fontes da web, a reserva monoespaçada é mais larga) */
+.aba{flex:1 1 auto;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 4px;height:36px;border:2px solid var(--bronze-700);border-bottom:0;background:linear-gradient(var(--couro-700),var(--couro-800));color:var(--texto-2);font:600 var(--fs-12)/1 var(--f-pixel)}
+.aba>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aba>img{flex:0 0 auto}
+.aba[aria-selected="true"]{background:linear-gradient(var(--couro-500),var(--couro-600));color:var(--ouro-300);border-color:var(--bronze-500)}
+.painel-aba{display:flex;flex-direction:column;gap:8px}
+.painel-aba[hidden]{display:none}
+
+/* ---------- dica de item ---------- */
+#dicaItem{position:fixed;z-index:calc(var(--z-modal) + 5);max-width:240px;padding:10px 10px;pointer-events:none;display:none}
+#dicaItem.visivel{display:block}
+#dicaItem h4{margin:0 0 2px;font:700 var(--fs-13)/1.2 var(--f-titulo);color:var(--tinta)}
+#dicaItem p{margin:0;font:400 var(--fs-13)/1.35 var(--f-texto);color:var(--tinta)}
+#dicaItem .acao{margin-top:4px;font:400 var(--fs-12)/1.3 var(--f-texto);color:var(--tinta-suave)}
+
+/* ---------- modais (componente único) ---------- */
+.modal{position:fixed;inset:0;z-index:var(--z-modal);display:none;align-items:center;justify-content:center;padding:16px;background:var(--veu)}
+.modal.aberto{display:flex}
+.modal-caixa{width:min(520px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column}
+.modal-cab{display:flex;align-items:center;gap:12px;padding:12px 12px 10px 16px;border-bottom:2px solid var(--bronze-500);box-shadow:0 2px 0 var(--ouro-300)}
+.modal-cab .icone-cab{width:48px;height:48px;display:grid;place-items:center;flex:0 0 48px;background:var(--couro-700);border:2px solid var(--tinta);box-shadow:inset 0 0 0 2px var(--bronze-600)}
+.modal-cab .icone-cab img{max-width:44px;max-height:44px}
+.modal-cab h2{margin:0;font:700 var(--fs-20)/1.15 var(--f-titulo);color:var(--tinta)}
+.modal-cab .sub{margin:2px 0 0;font:italic 400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+.btn-fechar{margin-left:auto;align-self:flex-start;width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;padding:0;border:2px solid var(--tinta);background:linear-gradient(var(--bronze-500),var(--bronze-700));box-shadow:var(--relevo)}
+.btn-fechar:hover{background:linear-gradient(var(--bronze-400),var(--bronze-600))}
+.modal-corpo{overflow-y:auto;padding:12px 16px 16px;font:400 var(--fs-14)/1.45 var(--f-texto);color:var(--tinta)}
+.modal-corpo p{margin:0 0 10px}
+.modal-corpo h3{margin:14px 0 6px;font:700 var(--fs-14)/1.2 var(--f-titulo);color:var(--tinta)}
+.modal-corpo h3:first-child{margin-top:0}
+.fala-modal{margin:0 0 12px;padding:6px 10px;border-left:3px solid var(--bronze-500);background:#fff3;font-style:italic}
+
+/* abas internas do modal */
+.abas-modal{display:flex;gap:4px;margin-bottom:10px;border-bottom:2px solid var(--perg-400)}
+.aba-modal{height:36px;padding:0 14px;border:2px solid var(--perg-400);border-bottom:0;background:var(--perg-300);color:var(--tinta);font:600 var(--fs-13)/1 var(--f-pixel)}
+.aba-modal[aria-selected="true"]{background:var(--perg-100);border-color:var(--bronze-600)}
+
+/* linhas da loja */
+.lista-loja{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.item-loja{display:grid;grid-template-columns:40px 1fr auto;gap:10px;align-items:center;padding:4px 6px;border:1px solid var(--perg-400);background:#fff2}
+.item-loja .icone{width:40px;height:40px;display:grid;place-items:center;background:radial-gradient(circle at 35% 30%,#4a2e1f,#24150e);border:2px solid var(--bronze-700)}
+.item-loja .icone img{width:32px;height:32px}
+.item-loja strong{display:block;font:700 var(--fs-14)/1.15 var(--f-texto)}
+.item-loja span{font:400 var(--fs-13)/1.2 var(--f-texto);color:var(--tinta-suave)}
+.item-loja .btn{min-width:84px}
+.saldo{display:flex;align-items:center;gap:6px;margin-bottom:10px;font:600 var(--fs-14)/1 var(--f-pixel)}
+
+/* viagem */
+.mapa-antigo{position:relative;width:320px;max-width:100%;margin:0 auto 10px;aspect-ratio:16/10}
+.mapa-antigo canvas{width:100%;height:100%;display:block;image-rendering:pixelated;border:2px solid var(--tinta)}
+/* o botão fica ao lado do selo (não em cima): o selo e o ponto "você está aqui" seguem visíveis */
+.destino,.destino:active{position:absolute;min-height:40px;white-space:nowrap}
+.destino.acima{transform:translate(-50%,calc(-100% - 12px))}
+.destino.abaixo{transform:translate(-50%,12px)}
+.destino:active{margin-top:1px}
+
+/* oração */
+.cartoes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cartao{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:104px;padding:10px;border:2px solid var(--bronze-600);background:linear-gradient(var(--perg-100),var(--perg-300));color:var(--tinta);text-align:left;font:inherit;box-shadow:0 2px 0 #0004}
+.cartao:hover:not([aria-disabled="true"]){border-color:var(--bronze-400);background:linear-gradient(#fff6e0,var(--perg-200))}
+.cartao strong{font:700 var(--fs-14)/1.15 var(--f-titulo)}
+.cartao span{font:400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+.cartao .custo{margin-top:auto;display:flex;align-items:center;gap:4px;font:600 var(--fs-13)/1 var(--f-pixel);color:var(--fe-1)}
+.cartao[aria-disabled="true"]{cursor:not-allowed;background:#cbb489;border-color:var(--bloqueado)}
+.cartao[aria-disabled="true"] strong{color:var(--tinta-suave)}
+.cartao .trava{display:flex;align-items:center;gap:4px;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta)}
+
+/* ajuda */
+.teclas{width:100%;border-collapse:collapse}
+.teclas td{padding:4px 6px;border-bottom:1px dotted var(--perg-400);vertical-align:middle}
+.teclas td:first-child{white-space:nowrap;width:1%}
+.teclas kbd{margin:1px 2px}
+.acoes-modal{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:12px}
+
+/* ---------- controles de toque ---------- */
+#toque{display:none}
+@media (pointer:coarse){#toque{display:block}}
+body.toque-forcado #toque{display:block}
+body.toque-desligado #toque{display:none}
+/* com a fala aberta, os controles de toque saem de cena: a caixa cobriria só
+   parte deles. Tocar na caixa avança ou fecha a fala, e ela fecha sozinha. */
+body.dialogo-aberto #toque{visibility:hidden}
+#dpad{position:absolute;left:12px;bottom:12px;z-index:var(--z-toque);display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);touch-action:none;user-select:none;-webkit-user-select:none}
+#dpad span{display:grid;place-items:center;background:#3b2418b3;border:2px solid #1c1210b3}
+#dpad span.centro{background:#3b241866;border-color:transparent}
+#dpad span.ativo{background:#7a4a30e6;border-color:var(--ouro-300)}
+#dpad img{width:24px;height:24px;pointer-events:none}
+#acoes{position:absolute;right:12px;bottom:12px;z-index:var(--z-toque);width:184px;height:176px;touch-action:none}
+.btn-toque{position:absolute;display:grid;place-items:center;padding:0;border:2px solid var(--tinta);border-radius:50%;background:radial-gradient(circle at 40% 35%,var(--couro-500),var(--couro-700));box-shadow:var(--relevo),0 2px 0 #000a;opacity:.92}
+.btn-toque:active{transform:translateY(1px);background:radial-gradient(circle at 40% 35%,var(--bronze-500),var(--couro-600))}
+.btn-toque img{width:32px;height:32px;pointer-events:none}
+.btn-toque .rot{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font:600 var(--fs-11)/1 var(--f-pixel);color:var(--perg-100);text-shadow:1px 1px 0 #1c1210,-1px 0 0 #1c1210;white-space:nowrap}
+#tAtacar{width:64px;height:64px;right:0;bottom:16px;border-color:#4a1416;background:radial-gradient(circle at 40% 35%,#a8402e,#5e1a14)}
+#tFlecha{width:52px;height:52px;right:74px;bottom:6px}
+#tPocao{width:52px;height:52px;right:62px;bottom:72px}
+#tOrar{width:52px;height:52px;right:4px;bottom:100px}
+#tInteragir{width:56px;height:56px;right:120px;bottom:62px;border-color:var(--ouro-300);background:radial-gradient(circle at 40% 35%,var(--bronze-500),var(--bronze-700))}
+.btn-toque[hidden]{display:none}
+
+/* ---------- folha inferior (celular) ---------- */
+#folha{display:none}
+
+/* ======================================================================
+   MÉDIO: 761–1279 px — mundo + coluna direita com abas
+   ====================================================================== */
+@media (max-width:1279px){
+ :root{--slot:36px}
+ #layout{grid-template-columns:minmax(0,1fr) 288px}
+ #colEsq{display:none}
+ #colDir{order:2}
+ #atalhos-dica{max-width:200px}
+ .slot img{width:32px;height:32px}
+ /* HUD de vida/fé/XP sobre o mundo (o painel Personagem fica numa aba) */
+ #hud{display:block;position:absolute;left:8px;top:8px;z-index:var(--z-hud);width:184px;padding:6px 8px;background:#2c1a12d9;border:2px solid var(--bronze-700);box-shadow:0 2px 0 #0008}
+ #hud .linha-barra{margin:0 0 4px;gap:5px}
+ #hud .linha-barra:last-of-type{margin-bottom:0}
+ #hud .barra{height:8px;border-width:1px}
+ #hud .barra>b{display:none}
+ #hud .val{min-width:52px;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--perg-100);text-align:right}
+ #hud .quadro-alvo{display:none}
+ /* avisos entre o HUD (esquerda) e o minimapa com a margem (direita) */
+ #avisos{left:200px;right:240px;width:auto;max-width:560px;margin:0 auto;transform:none}
+ #pMochila .nota,#pBolsa .nota{display:none}
+}
+/* ======================================================================
+   ESTREITO: ≤760 px — celular
+   ====================================================================== */
+@media (max-width:760px){
+ :root{--slot:44px;--slot-atalho:44px;--rodape:auto}
+ body{font-size:var(--fs-14)}
+ #app{grid-template-rows:44px minmax(0,1fr) auto}
+ #topo{gap:6px;padding:0 6px 0 4px}
+ .marca{display:none}
+ .area-topo{display:block;margin-right:auto}
+ .so-celular{display:inline-flex!important}
+ .so-largo{display:none!important}
+ .salvo{display:none}
+ .btn-icone .rotulo{display:none}
+ .btn-icone{width:var(--toque);height:var(--toque);justify-content:center;padding:0;border:0;background:none;box-shadow:none}
+ .btn-icone img{width:24px;height:24px}
+ .moedas{height:30px;padding:0 8px}
+ #layout{display:block;padding:0;position:relative}
+ #colDir,#colEsq{display:none}
+ #mundo{height:100%;border:0;box-shadow:none}
+ .mundo-cab{display:none}
+ #mapaSobre{top:auto;bottom:auto;top:52px;right:8px}
+ body:not(.mapa-visivel-cel) #mapaSobre{display:none}
+ /* HUD sobre o mundo */
+ #hud{display:block;position:absolute;left:8px;top:48px;z-index:var(--z-hud);width:172px;padding:6px 8px;background:#2c1a12d9;border:2px solid var(--bronze-700);box-shadow:0 2px 0 #0008}
+ #hud .linha-barra{margin-top:0;margin-bottom:4px;gap:5px}
+ #hud .barra{height:8px;border-width:1px}
+ #hud .barra>b{display:none}
+ #hud .val{min-width:44px;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--perg-100);text-align:right}
+ #hud .quadro-alvo{padding:2px 0 0;margin-top:2px;border:0;border-top:1px solid #0008;background:none}
+ #hud .quadro-alvo:not(.ativo){display:none}
+ #hud .quadro-alvo strong{max-width:96px}
+ #hud .alvo-barra,#hud .alvo-recarga{width:72px}
+ #missaoLinha{display:flex;position:absolute;left:0;right:0;top:0;z-index:calc(var(--z-hud) + 1);align-items:center;gap:6px;width:100%;min-height:40px;padding:4px 10px;border:0;border-bottom:2px solid var(--tinta);text-align:left;cursor:pointer;
+  color:var(--tinta);background:var(--tex-perg),var(--perg-200);background-blend-mode:multiply,normal;box-shadow:0 2px 0 #0008;font:500 var(--fs-14)/1.3 var(--f-texto)}
+ #missaoLinha .txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #missaoLinha[aria-expanded="true"] .txt{white-space:normal}
+ #missaoLinha .prog{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--perg-100);background:var(--fe-2);padding:2px 5px;border:1px solid var(--tinta)}
+ #missaoLinha .prog:empty{display:none}
+ #avisos{top:160px;left:8px;right:8px;max-width:none}
+ #avisos .aviso:nth-last-child(n+3){display:none}
+ body:not(.com-alvo) #avisos{top:124px}
+ /* minimapa do celular: 96×72 (guia §9.10); com ele aberto, os avisos descem para baixo dele */
+ #miniMap{width:96px;height:72px}
+ body.mapa-visivel-cel:not(.com-alvo) #avisos{top:136px}
+ /* folha inferior aberta: só o aviso mais novo, logo acima da borda da folha e
+    nunca acima do fim do HUD (--avisos-topo, medido em interface.js); se não
+    couber nessa faixa, fica oculto (o texto está no Registro) */
+ body.folha-aberta #palco #avisos{top:var(--avisos-topo,auto);bottom:calc(var(--altura-folha,0px) + 8px);justify-content:flex-end}
+ body.folha-aberta #avisos.sem-espaco{visibility:hidden}
+ body.folha-aberta #avisos .aviso:not(:last-child){display:none}
+ #dialogo{left:8px;right:8px;bottom:8px;max-height:46%}
+ #dialogo .retrato{width:52px;height:48px}
+ .dlg-dica{display:none}
+ /* rodapé: atalhos + abas */
+ #rodape{padding-bottom:env(safe-area-inset-bottom)}
+ .atalhos-faixa{padding:4px 6px;gap:0}
+ #atalhos-dica{display:none}
+ #atalhos{gap:4px;padding:3px;border-width:1px}
+ .atalho .tecla-n{display:none}
+ #abasCel{display:flex;height:52px;border-top:2px solid var(--tinta);background:var(--couro-800)}
+ #abasCel button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:0;border-right:1px solid #0008;background:none;color:var(--texto-2);font:600 var(--fs-11)/1 var(--f-pixel);min-height:var(--toque)}
+ #abasCel button img{width:16px;height:16px}
+ #abasCel button[aria-expanded="true"]{background:linear-gradient(var(--couro-500),var(--couro-700));color:var(--ouro-300);box-shadow:inset 0 2px 0 var(--ouro-300)}
+ /* folha inferior */
+ #folha{display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:var(--altura-rodape,104px);z-index:var(--z-gaveta);max-height:60dvh;transform:translateY(calc(100% + var(--altura-rodape,104px)));transition:transform .2s steps(5);
+  background:var(--tex-couro),var(--couro-800);border-top:2px solid var(--bronze-500);box-shadow:0 -4px 12px #000a}
+ #folha.aberta{transform:none}
+ .folha-alca{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px 4px 12px;border-bottom:2px solid var(--tinta);touch-action:none}
+ .folha-alca::before{content:"";position:absolute;left:50%;top:5px;width:40px;height:4px;margin-left:-20px;background:var(--bronze-600)}
+ .folha-alca h2{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+ .folha-alca{justify-content:flex-end;position:relative;padding:2px 4px}
+ #folhaConteudo{overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px}
+ .grade{grid-template-columns:repeat(auto-fill,var(--slot));gap:6px}
+ .btn-fechar{width:44px;height:44px}
+ .modal{padding:8px;align-items:flex-end}
+ .modal-caixa{max-height:calc(100dvh - 16px)}
+ .cartao{min-height:auto;padding:8px}
+ .item-loja .btn{min-width:76px;min-height:44px}
+ .btn{min-height:44px}
+ #dpad{bottom:10px;left:8px}
+ #acoes{right:6px;bottom:10px}
+}
+@media (max-width:760px) and (pointer:fine){ #dpad{display:none} }
+body.toque-forcado #dpad{display:grid}
+
+/* largo: oculta mochila/bolsa com a tecla I */
+@media (min-width:1280px){ body.hideBags #pMochila, body.hideBags #pBolsa{display:none} }
+
+@media (prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topo">
+    <button class="btn-icone so-celular" id="btnMenu" type="button" aria-label="Menu: ajuda e opções"><img class="px g16" data-glifo="ui_menu" alt=""></button>
+    <div class="marca"><span class="marca-nome">JORNADA</span><span class="marca-sub">RPG Bíblico</span></div>
+    <strong class="area-topo" id="areaTopo">Canaã</strong>
+    <span class="salvo" id="salvoTexto" title="O progresso é salvo neste navegador">Salvo no navegador</span>
+    <span class="moedas" id="moedas" title="Moedas"><img class="px g16" data-glifo="ui_moeda" alt=""><b id="moedasValor">0</b><span class="sr"> moedas</span></span>
+    <button class="btn-icone" id="btnMapa" type="button" aria-label="Mostrar ou ocultar o mapa (M)" aria-pressed="true"><img class="px g16" data-glifo="ui_rosa" alt=""><span class="rotulo">Mapa</span></button>
+    <button class="btn-icone so-largo" id="btnTelaCheia" type="button" aria-label="Tela cheia"><img class="px g16" data-glifo="ui_tela_cheia" alt=""><span class="rotulo">Tela cheia</span></button>
+    <button class="btn-icone so-largo" id="btnAjuda" type="button" aria-label="Controles e ajuda (?)"><img class="px g16" data-glifo="ui_ajuda" alt=""><span class="rotulo">Controles</span></button>
+  </header>
+
+  <main id="layout">
+    <aside class="coluna" id="colEsq" aria-label="Missão e bagagem"></aside>
+
+    <section id="mundo" aria-label="Mundo do jogo">
+      <div class="mundo-cab">
+        <div class="area-bloco"><strong id="areaNome">Canaã</strong><span id="areaSub"></span></div>
+        <div class="quadro-alvo" id="quadroAlvo" aria-live="polite"></div>
+        <div class="cab-acoes"></div>
+      </div>
+      <div class="palco" id="palco">
+        <div id="game-root"></div>
+        <div id="mapaSobre"></div>
+        <button id="missaoLinha" type="button" aria-expanded="false" aria-label="Missão atual (toque para expandir)"><img class="px g16" data-glifo="ui_pergaminho" alt=""><span class="txt" id="missaoLinhaTxt">Carregando…</span><span class="prog" id="missaoLinhaProg"></span></button>
+        <div id="hud" aria-label="Estado do personagem">
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_coracao" alt="Vida"><div class="barra vida" id="hudVida"><i></i><b></b></div><span class="val" id="hudVidaTxt"></span></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_candeia" alt="Fé"><div class="barra fe" id="hudFe"><i></i><b></b></div><span class="val" id="hudFeTxt"></span></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="hudXp"><i></i><b></b></div><span class="val" id="hudXpTxt"></span></div>
+          <div class="quadro-alvo" id="hudAlvo"></div>
+        </div>
+        <div id="avisos" role="status" aria-live="polite"></div>
+        <div id="dialogo" class="perg" role="dialog" aria-live="polite" aria-label="Conversa">
+          <div class="retrato"><img class="px" id="dlgRetrato" alt=""></div>
+          <div class="dlg-txt"><h3 id="dlgNome"></h3><span class="papel" id="dlgPapel"></span><p id="dlgTexto"></p></div>
+          <span class="dlg-dica">clique ou F</span>
+        </div>
+        <div id="toque" aria-label="Controles de toque">
+          <div id="dpad" role="group" aria-label="Direcional">
+            <span data-d="-1,-1"><img class="px" data-glifo="ui_dpad_seta" data-rot="-45" alt=""></span>
+            <span data-d="0,-1"><img class="px" data-glifo="ui_dpad_seta" data-rot="0" alt=""></span>
+            <span data-d="1,-1"><img class="px" data-glifo="ui_dpad_seta" data-rot="45" alt=""></span>
+            <span data-d="-1,0"><img class="px" data-glifo="ui_dpad_seta" data-rot="-90" alt=""></span>
+            <span class="centro"></span>
+            <span data-d="1,0"><img class="px" data-glifo="ui_dpad_seta" data-rot="90" alt=""></span>
+            <span data-d="-1,1"><img class="px" data-glifo="ui_dpad_seta" data-rot="-135" alt=""></span>
+            <span data-d="0,1"><img class="px" data-glifo="ui_dpad_seta" data-rot="180" alt=""></span>
+            <span data-d="1,1"><img class="px" data-glifo="ui_dpad_seta" data-rot="135" alt=""></span>
+          </div>
+          <div id="acoes">
+            <button class="btn-toque" id="tAtacar" type="button" data-acao="atacar" aria-label="Atacar"><img class="px" data-glifo="ui_atacar" alt=""></button>
+            <button class="btn-toque" id="tFlecha" type="button" data-acao="flecha" aria-label="Disparar flecha"><img class="px" data-glifo="ui_flecha" alt=""></button>
+            <button class="btn-toque" id="tPocao" type="button" data-acao="pocao" aria-label="Usar poção de vida"><img class="px" data-item="pocao" alt=""></button>
+            <button class="btn-toque" id="tOrar" type="button" data-acao="orar" aria-label="Orar" hidden><img class="px" data-glifo="ui_orar" alt=""></button>
+            <button class="btn-toque" id="tInteragir" type="button" data-acao="interagir" aria-label="Interagir" hidden><img class="px" data-glifo="ui_falar" alt=""><span class="rot"></span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="coluna" id="colDir" aria-label="Personagem e combate"></aside>
+  </main>
+
+  <footer id="rodape">
+    <div class="atalhos-faixa">
+      <p id="atalhos-dica">Arraste uma poção para uma tecla (ou toque nela e depois na tecla). Clique no inimigo para atacar.</p>
+      <div id="atalhos" role="toolbar" aria-label="Barra de atalhos (teclas 1 a 6)"></div>
+    </div>
+    <nav id="abasCel" aria-label="Painéis">
+      <button type="button" data-folha="mochila" aria-expanded="false"><img class="px" data-glifo="ui_mochila" alt="">Mochila</button>
+      <button type="button" data-folha="equip" aria-expanded="false"><img class="px" data-glifo="ui_personagem" alt="">Equip.</button>
+      <button type="button" data-folha="batalha" aria-expanded="false"><img class="px" data-glifo="ui_espadas" alt="">Batalha</button>
+      <button type="button" data-folha="missao" aria-expanded="false"><img class="px" data-glifo="ui_pergaminho" alt="">Missão</button>
+      <button type="button" data-folha="registro" aria-expanded="false"><img class="px" data-glifo="ui_registro" alt="">Registro</button>
+    </nav>
+  </footer>
+</div>
+
+<!-- folha inferior (celular) -->
+<section id="folha" aria-label="Painel" aria-hidden="true">
+  <div class="folha-alca" id="folhaAlca"><h2 id="folhaTitulo">Mochila</h2><button class="btn-fechar" type="button" id="folhaFechar" aria-label="Fechar painel"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+  <div id="folhaConteudo"></div>
+</section>
+
+<!-- Painéis: o interface.js distribui conforme a largura da tela -->
+<div id="deposito">
+  <section class="perg" id="pMissao" aria-labelledby="tMissao">
+    <div class="painel-cab"><img class="px g16" data-glifo="ui_pergaminho" alt=""><h2 id="tMissao">MISSÃO</h2></div>
+    <div class="painel-corpo"><h3 class="capitulo" id="missaoCapitulo">Canaã</h3><p class="objetivo" id="missaoObjetivo">Carregando…</p><span class="progresso" id="missaoProgresso" hidden></span></div>
+  </section>
+
+  <section class="painel" id="pMochila" aria-labelledby="tMochila">
+    <div class="painel-cab"><img class="px g16" data-glifo="ui_mochila" alt=""><h2 id="tMochila">MOCHILA</h2><span class="extra" id="pesoTexto" title="Carga">0 / 0 kg</span></div>
+    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeMochila" role="list" aria-label="Equipamentos e munição"></div><p class="nota">Armas, escudos, armaduras e flechas.</p></div>
+  </section>
+
+  <section class="painel" id="pBolsa" aria-labelledby="tBolsa">
+    <div class="painel-cab"><img class="px g16" data-glifo="ui_bolsa" alt=""><h2 id="tBolsa">BOLSA</h2><span class="extra">consumíveis</span></div>
+    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeBolsa" role="list" aria-label="Consumíveis e recursos"></div><p class="nota">Duplo clique usa a poção.</p></div>
+  </section>
+
+  <section class="perg" id="pRegistro" data-aberto="false" aria-labelledby="tRegistro">
+    <div class="painel-cab"><button class="recolher" type="button" id="btnRegistro" aria-expanded="false" aria-controls="corpoRegistro"><img class="px g16" data-glifo="ui_registro" alt=""><h2 id="tRegistro">REGISTRO</h2><span class="extra" id="registroQtd">0</span><span class="seta"></span></button></div>
+    <div class="painel-corpo" id="corpoRegistro"><ol id="listaRegistro" aria-live="off"></ol></div>
+  </section>
+
+  <section class="painel" id="pMapa" aria-labelledby="tMapa">
+    <h2 class="sr" id="tMapa">Mapa</h2>
+    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><div class="mapa-margem"><img class="px rosa" data-glifo="ui_rosa" alt=""><span class="coord" id="mapaCoord" aria-label="Posição"></span></div></div></div>
+  </section>
+
+  <section class="painel" id="pPersonagem" aria-labelledby="tPersonagem">
+    <div class="painel-cab"><img class="px g16" data-glifo="ui_personagem" alt=""><h2 id="tPersonagem">PERSONAGEM</h2><span class="extra estado-veneno" id="estadoVeneno"><img class="px g16" data-glifo="ui_gota" alt="">envenenado</span></div>
+    <div class="painel-corpo">
+      <div class="ficha">
+        <div class="retrato"><img class="px" id="retratoJogador" alt="Retrato do viajante"><span class="selo" id="seloNivel" title="Nível">1</span></div>
+        <div class="ficha-dados">
+          <div class="ficha-nome"><strong>Viajante</strong><span id="fichaNivel">Nível 1</span></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_coracao" alt="Vida"><div class="barra vida" id="barraVida" role="meter" aria-label="Vida"><i></i><b></b></div></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_candeia" alt="Fé"><div class="barra fe" id="barraFe" role="meter" aria-label="Fé"><i></i><b></b></div></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="barraXp" role="meter" aria-label="Experiência"><i></i><b></b></div></div>
+        </div>
+      </div>
+      <p class="habilidades" id="habilidades"></p>
+      <dl class="atributos" id="atributos"></dl>
+    </div>
+  </section>
+
+  <section class="painel" id="pEquip" aria-labelledby="tEquip">
+    <div class="painel-cab"><img class="px g16" data-glifo="ui_escudo_bloq" alt=""><h2 id="tEquip">EQUIPAMENTO</h2></div>
+    <div class="painel-corpo"><div id="gradeEquip"></div></div>
+  </section>
+
+  <section class="painel" id="pBatalha" aria-labelledby="tBatalha">
+    <div class="painel-cab"><img class="px g16" data-glifo="ui_espadas" alt=""><h2 id="tBatalha">BATALHA</h2><span class="extra">escolha o alvo</span></div>
+    <div id="linhasBatalha" role="list"></div>
+  </section>
+</div>
+
+<!-- dica de item -->
+<div id="dicaItem" class="perg" role="tooltip"></div>
+
+<!-- modais: um componente só -->
+<div class="modal" id="modalAjuda" aria-hidden="true">
+  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="ajudaTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_ajuda" data-escala="4" alt=""></span><div><h2 id="ajudaTitulo">Como jogar</h2><p class="sub">Controles e regras da jornada</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="ajudaCorpo"></div>
+  </div>
+</div>
+<div class="modal" id="modalLoja" aria-hidden="true">
+  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="lojaTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px" id="lojaRetrato" alt=""></span><div><h2 id="lojaTitulo">Azarias</h2><p class="sub">mercador · provisões e equipamentos</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="lojaCorpo"></div>
+  </div>
+</div>
+<div class="modal" id="modalViagem" aria-hidden="true">
+  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="viagemTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px" id="viagemRetrato" alt=""></span><div><h2 id="viagemTitulo">Viagem rápida</h2><p class="sub">guia de caravanas</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="viagemCorpo"></div>
+  </div>
+</div>
+<div class="modal" id="modalOracao" aria-hidden="true">
+  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="oracaoTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_orar" data-escala="4" alt=""></span><div><h2 id="oracaoTitulo">Oração</h2><p class="sub" id="oracaoSub">Escolha o propósito</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="oracaoCorpo"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<script src="storage.js"></script>
+<script src="logica.js"></script>
+<script src="expansao.js"></script>
+<script src="sprites.js"></script>
+<script src="game.js"></script>
+<script src="interface.js"></script>
+</body>
+</html>

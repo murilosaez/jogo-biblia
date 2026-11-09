@@ -1,20 +1,132 @@
-JORNADA — RPG BÍBLICO · ATUALIZAÇÃO DE CAPÍTULOS E SISTEMAS
+JORNADA — RPG BÍBLICO
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
-2. Extraia o pacote e substitua os arquivos do projeto pelos arquivos incluídos.
-3. Mantenha todos juntos na mesma pasta e abra index.html por um servidor local (por exemplo, Live Server).
-4. Não apague os dados do navegador: o save existente é migrado automaticamente.
+2. Mantenha juntos na mesma pasta: index.html, storage.js, logica.js, expansao.js, sprites.js,
+   game.js e interface.js (carregados nesta ordem pelo index.html). Não há build nem dependências:
+   o Phaser 3.80.1 e as fontes vêm de CDN.
+3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
+4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
+   para a versão 6, sem perder itens, moedas, nível ou progresso. O jogo grava no máximo 1 vez por
+   segundo e grava na hora ao fechar, ocultar ou trocar de aba.
 
-Conteúdo desta atualização
-- Combate baseado em arma, habilidade, defesa do inimigo e chance de crítico; espada e arco continuam exclusivos.
-- Habilidades evoluem por uso com XP e marcos até o nível 100; defesa também progride ao receber golpes.
-- Penalidade progressiva de morte aprovada: sem perda até nível 10; 10% das moedas nos níveis 11–25; a partir do 26 também há perda de XP de habilidade; no nível 51+ há chance de um item cair.
-- Quatro regiões jogáveis encadeadas depois do Deserto: Egito, Mar Vermelho, Monte Sinai e Galileia, com NPCs, inimigos, missões e rotas de retorno. O caminho só avança após concluir o capítulo anterior.
-- Jesus ensina a Oração na Galileia. F1 abre o seletor de cura (corrigido nesta atualização). A fé regenera 1 ponto a cada 3 segundos e poções de fé restauram 40.
-- Minimapa sempre visível no canto superior direito da área: posição do jogador, NPCs, inimigos, portais, trilhas, cais e pontos de pesca. Tecla M ou botão Mapa alterna a exibição.
-- Cura de vida: custo 20; remover veneno: nível 25 e custo 40; cura em área: nível 50 e custo 60; milagre: nível 100 e custo 100. Cura aliada/ressurreição ficam reservadas ao sistema de grupo, pois esta versão é solo.
-- Poções de vida permanecem no jogo. Azarias passa a vender poção de fé.
+Controles — teclado e mouse
+- WASD ou setas: andar. Q / E / Z / C: diagonais.
+- F: ação ao lado — conversar com o NPC, embarcar/desembarcar no cais ou seguir a rota do portal
+  (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo.
+- Clique num inimigo (no mundo ou na lista Batalha): seleciona e ativa o autoataque a cada 2 segundos
+  (usa o arco se ele estiver equipado, houver flechas e o alvo estiver alinhado no alcance).
+- Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s. O anel em
+  volta do alvo mostra o tempo até o próximo autoataque (2 s).
+- H: poção de vida. 1–6: atalhos. Botão direito num atalho o esvazia.
+- P: pescar (no barco, ao lado de um ponto de pesca).
+- F1: Oração (depois de aprendê-la). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
+  bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
+- Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
+  de volta para a mochila para guardar. Duplo clique equipa armas e usa poções. Também funciona
+  clicar/tocar no item e depois no destino. Espada e arco ocupam as mãos: equipar um guarda o outro.
 
-Controles principais
-WASD/setas para andar; Q/E/Z/C para diagonais; F para interagir; clique no inimigo para autoataque; Espaço/R para atacar; 1–6 para hotkeys; F1 para Oração (após aprendê-la); M para mostrar/ocultar minimapa; H para poção de vida.
+Controles — toque (celular e tablet)
+- Aparecem sozinhos em telas de toque (ou pelo botão "Mostrar controles de toque" na ajuda).
+- Direcional à esquerda (8 direções, segure para continuar andando).
+- À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
+  (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo.
+- Barra inferior: Mochila, Equipamento, Batalha, Missão e Registro abrem em folhas recolhíveis.
+  Toque num item e depois no espaço de equipamento ou no atalho; toque longo mostra a descrição.
+
+Interface e visual
+- Toda a arte (personagens, itens, ícones, cenário) é pixel art original gerada em código por
+  sprites.js; não há imagens externas nem emojis. Os ícones da mochila, bolsa, equipamento, atalhos,
+  loja e lista de batalha usam os mesmos desenhos do mundo.
+- Estilo "iluminura viva": couro, pergaminho e bronze; fontes Cinzel (títulos), Alegreya Sans
+  (textos) e Pixelify Sans (números, rótulos e textos do mundo). Os dígitos 0–9 da Pixelify são
+  substituídos por dígitos em pixel 5×7 gerados pelo interface.js (a Pixelify desenha o 2 como Z e o
+  5 como S); as teclas usam Alegreya Sans negrito.
+- Painéis: Missão (texto de textoMissaoAtual), Personagem (barras de vida, fé e XP com números,
+  habilidades e estatísticas de estatisticasCombate), Equipamento, Mochila, Bolsa, Batalha (inimigos
+  da área, alvo destacado), Registro (últimas 30 mensagens com horário) e minimapa.
+- Avisos curtos aparecem no topo do mundo e também ficam no Registro. Conversas abrem um quadro de
+  diálogo com o retrato do personagem. Clique na caixa ou aperte F (perto do personagem) para
+  completar o texto; de novo, para fechar. F só volta a falar com ele depois de a caixa fechar.
+- Layouts: largo (1280 px ou mais, painéis dos dois lados), médio (painel direito com abas) e
+  celular (até 760 px, painéis em folhas pela barra inferior). Foco visível no teclado, rótulos de
+  acessibilidade nos botões e respeito a "reduzir movimento".
+
+Campanha
+Canaã → Deserto → Egito → Mar Vermelho → Monte Sinai → Galileia → Oração.
+- Canaã: Eliabe pede que você afaste o lobo (recompensa: espada de ferro) e traga 3 ervas medicinais.
+- Deserto: Noemi pede 3 odres de água (recompensa: armadura de couro, arco e flechas), 2 amostras de
+  veneno de escorpião e a insígnia do chefe dos saqueadores.
+- Egito (Moisés): afaste o guarda egípcio — recompensa: escudo de bronze. Arão também está na vila.
+- Mar Vermelho (Arão): vença o soldado perseguidor — recompensa: espada temperada.
+- Monte Sinai (Josué): vença o guerreiro amalequita — recompensa: arco composto e flechas.
+- Galileia (Pedro): vença o salteador da estrada; depois converse com Jesus para aprender a Oração.
+Cada rota a leste só abre depois que o capítulo anterior é concluído. As missões exigem que os itens
+pedidos (ervas, odres, venenos, insígnia) estejam na mochila no momento da entrega.
+Ervas existem só em Canaã e odres só no Deserto; ambos reaparecem 18 s depois de coletados.
+
+Combate
+- Dano corpo a corpo = 6 + 3 × (nível − 1) + bônus da arma + ⌊habilidade corpo ÷ 4⌋.
+- Dano à distância  = 4 + 3 × (nível − 1) + bônus do arco + ⌊habilidade distância ÷ 4⌋.
+  O arco acerta alvos na mesma linha, coluna ou diagonal, até 6 casas, sem obstáculos no caminho.
+  Cada tiro gasta 1 flecha.
+- Defesa mitiga em proporção e nunca zera: dano final = dano × 20 ÷ (20 + defesa), mínimo 1.
+  Vale para os seus golpes (contra a defesa do inimigo) e para os golpes que você recebe.
+- Sua defesa = equipamento (escudo + armadura) + ⌊habilidade defesa ÷ 5⌋ (no máximo +20).
+- Crítico: 5% de chance com habilidade 0, subindo até 25% na habilidade 100; o golpe crítico causa
+  1,5 × o dano.
+- Corpo a corpo, conversas, compras e saques funcionam nas 8 casas vizinhas — para você e para os
+  inimigos, que também atacam na diagonal (um golpe a cada 1,2 s).
+- Inimigos derrotados reaparecem em 5 s. Saques no chão (moedas e itens) somem depois de 10 minutos,
+  exceto os itens que uma missão em andamento ainda pede.
+
+Inimigos obrigatórios (vida / defesa / dano por golpe antes da sua defesa)
+- Lobo 70 / 2 / 6 · Escorpião 130 / 4 / 9 (envenena) · Chefe dos saqueadores 190 / 6 / 10
+- Guarda egípcio 250 / 8 / 10 · Soldado perseguidor 310 / 10 / 11
+- Guerreiro amalequita 400 / 12 / 11 · Salteador da estrada 470 / 14 / 11
+Com o autoataque, cada luta da campanha leva de 11 a 35 segundos e as últimas pedem 1 ou 2 poções.
+
+Vida, poções e veneno
+- Vida máxima = 100 + 10 por nível acima do 1º.
+- Poção de vida: recupera 25% da vida máxima (mínimo 30). Poção de fé: +40 de fé.
+- Fora de combate (8 s sem golpes), a vida regenera 2% da vida máxima a cada 3 s.
+- Veneno do escorpião: 3 de dano a cada 3 s por 15 s (5 vezes, 15 de dano). Quando passa, você pode ser envenenado de novo.
+
+Habilidades
+Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
+- XP por uso: golpe corpo a corpo 2, flecha 2, golpe recebido 1 (defesa), oração 3.
+- XP para passar do nível n ao n+1 = 6 + ⌊1,5 × n⌋.
+  Exemplos: Oração 25 ≈ 200 orações; Oração 50 ≈ 710 orações; nível 100 ≈ 8.000 XP (meta de longo prazo).
+  Corpo a corpo chega ao nível 5 em cerca de 20 golpes.
+
+Oração e fé
+- Aprendida com Jesus, na Galileia, depois de concluir a missão de Pedro. A fé vai de 0 a 100 e
+  regenera 1 ponto a cada 2 s.
+- Cura de vida: custo 20 de fé, cura 20 + ⌊Oração ÷ 2⌋.
+- Remover veneno: Oração nível 25, custo 40.
+- Cura em área: Oração nível 50, custo 60, cura 30 + ⌊Oração ÷ 2⌋ (aliados quando houver grupo).
+- Milagre: Oração nível 100, custo 100 — vida cheia e veneno removido.
+
+Regra de morte (vale para morte por inimigo ou por veneno)
+Você volta a Canaã com a vida cheia; o veneno é curado e os inimigos vivos voltam ao início com a
+vida restaurada. Nível, equipamento e missões são preservados. Penalidade conforme o nível:
+- Até o nível 10: nenhuma perda.
+- Nível 11–25: perde 10% das moedas.
+- Nível 26–50: perde 10% das moedas e 5% do XP de cada habilidade (a perda nunca derruba um nível
+  de habilidade: para no início do nível atual).
+- Nível 51 ou mais: perde 10% das moedas, 10% do XP de cada habilidade (mesma regra) e tem 30% de
+  chance de deixar cair um item da mochila no local da derrota (ele fica no chão por 10 minutos).
+
+Loja de Azarias (Deserto)
+Poção de vida 12 · Poção de fé 18 · 5 flechas 8 · Escudo de madeira 35 · Armadura de couro 65 ·
+Arco de madeira 80. Ele compra pele de lobo (5), erva (2), odre (3) e peixe (6).
+Micael (Canaã) e Tamar (Deserto) fazem a viagem rápida gratuita entre as duas regiões.
+
+Para desenvolvedores
+- Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
+  com a tabela de duração das lutas.
+- Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p),
+  coletaveisDaArea(areaId), Mundo.consumirAviso(id), Mundo.recargaAtaque(id); constante ALCANCE_ARCO.
+- Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
+  interface.js (window.UI: painéis, modais, atalhos, toque). Os nomes antigos continuam valendo:
+  atualizarInterface(), mostrarMensagem(), abrirLoja(), abrirViagem(), abrirOracao().
