@@ -2,6 +2,7 @@ const TILE = 32;
 const COLS = 25;
 const ROWS = 18;
 const VERSAO_SAVE = 1;
+const VIDA_MAXIMA_JOGADOR = 100;
 
 // Mapa: 1 = obstáculo, 0 = chão
 const mapa = [];
@@ -31,8 +32,7 @@ const npcs = {
   },
 };
 
-// Configuração fixa dos inimigos.
-// A vida atual de cada inimigo é guardada no save do personagem.
+// Configuração dos inimigos
 const inimigos = {
   lobo1: {
     id: "lobo1",
@@ -41,6 +41,7 @@ const inimigos = {
     y: 5,
     vidaMaxima: 50,
     danoDoAtaque: 25,
+    danoContraJogador: 15,
   },
 };
 
@@ -56,14 +57,13 @@ const Mundo = {
         id,
         x: 2,
         y: 2,
-        vida: 100,
+        vida: VIDA_MAXIMA_JOGADOR,
         inventario: [],
         inimigosDerrotados: [],
         vidaInimigos: {},
       };
     }
 
-    // Garante compatibilidade com saves feitos antes da inclusão do combate.
     if (!Array.isArray(personagem.inimigosDerrotados)) {
       personagem.inimigosDerrotados = [];
     }
@@ -75,9 +75,26 @@ const Mundo = {
       personagem.vidaInimigos = {};
     }
 
+    if (
+      typeof personagem.vida !== "number" ||
+      !Number.isFinite(personagem.vida)
+    ) {
+      personagem.vida = VIDA_MAXIMA_JOGADOR;
+    }
+
+    personagem.vida = Math.max(
+      0,
+      Math.min(personagem.vida, VIDA_MAXIMA_JOGADOR)
+    );
+
+    if (personagem.vida <= 0) {
+      personagem.x = 2;
+      personagem.y = 2;
+      personagem.vida = VIDA_MAXIMA_JOGADOR;
+    }
+
     personagem.versao = VERSAO_SAVE;
 
-    // Inicializa a vida dos inimigos ou corrige dados inválidos do save.
     for (const inimigo of Object.values(inimigos)) {
       const vidaSalva = personagem.vidaInimigos[inimigo.id];
 
@@ -117,6 +134,28 @@ const Mundo = {
     return personagem.vidaInimigos[idInimigo];
   },
 
+  reaparecerInimigo(idJogador, idInimigo) {
+    const personagem = this.jogadores[idJogador];
+    const inimigo = inimigos[idInimigo];
+
+    if (!personagem || !inimigo) {
+      return false;
+    }
+
+    const indice = personagem.inimigosDerrotados.indexOf(idInimigo);
+
+    // Só reaparece se estiver marcado como derrotado.
+    if (indice === -1) {
+      return false;
+    }
+
+    personagem.inimigosDerrotados.splice(indice, 1);
+    personagem.vidaInimigos[idInimigo] = inimigo.vidaMaxima;
+
+    Storage.salvar(personagem);
+    return true;
+  },
+
   executar(id, comando) {
     const personagem = this.jogadores[id];
 
@@ -128,7 +167,6 @@ const Mundo = {
       const dx = Number(comando.dx);
       const dy = Number(comando.dy);
 
-      // Permite apenas um passo por comando, sem movimento diagonal.
       if (
         !Number.isInteger(dx) ||
         !Number.isInteger(dy) ||
@@ -224,10 +262,13 @@ const Mundo = {
         };
       }
 
-      const vidaAtual = personagem.vidaInimigos[inimigo.id];
+      const vidaAtualInimigo = personagem.vidaInimigos[inimigo.id];
 
-      if (vidaAtual <= 0) {
-        personagem.inimigosDerrotados.push(inimigo.id);
+      if (vidaAtualInimigo <= 0) {
+        if (!personagem.inimigosDerrotados.includes(inimigo.id)) {
+          personagem.inimigosDerrotados.push(inimigo.id);
+        }
+
         Storage.salvar(personagem);
 
         return {
@@ -237,21 +278,50 @@ const Mundo = {
         };
       }
 
-      const novaVida = Math.max(
+      const novaVidaInimigo = Math.max(
         0,
-        vidaAtual - inimigo.danoDoAtaque
+        vidaAtualInimigo - inimigo.danoDoAtaque
       );
 
-      personagem.vidaInimigos[inimigo.id] = novaVida;
+      personagem.vidaInimigos[inimigo.id] = novaVidaInimigo;
 
-      if (novaVida === 0) {
-        personagem.inimigosDerrotados.push(inimigo.id);
+      if (novaVidaInimigo === 0) {
+        if (!personagem.inimigosDerrotados.includes(inimigo.id)) {
+          personagem.inimigosDerrotados.push(inimigo.id);
+        }
+
         Storage.salvar(personagem);
 
         return {
           ok: true,
           derrotado: true,
-          mensagem: "Você derrotou o lobo!",
+          vidaJogador: personagem.vida,
+          vidaInimigo: 0,
+          mensagem: "Você derrotou o lobo! Ele reaparecerá em 5 segundos.",
+        };
+      }
+
+      // O lobo contra-ataca se sobreviver ao golpe.
+      personagem.vida = Math.max(
+        0,
+        personagem.vida - inimigo.danoContraJogador
+      );
+
+      if (personagem.vida === 0) {
+        personagem.x = 2;
+        personagem.y = 2;
+        personagem.vida = VIDA_MAXIMA_JOGADOR;
+        Storage.salvar(personagem);
+
+        return {
+          ok: true,
+          derrotado: false,
+          renasceu: true,
+          vidaJogador: personagem.vida,
+          vidaInimigo: novaVidaInimigo,
+          mensagem:
+            "O lobo contra-atacou e você foi nocauteado. " +
+            "Você voltou ao início com a vida restaurada.",
         };
       }
 
@@ -260,9 +330,13 @@ const Mundo = {
       return {
         ok: true,
         derrotado: false,
+        vidaJogador: personagem.vida,
+        vidaInimigo: novaVidaInimigo,
         mensagem:
           `Você acertou o lobo! Vida dele: ` +
-          `${novaVida}/${inimigo.vidaMaxima}.`,
+          `${novaVidaInimigo}/${inimigo.vidaMaxima}. ` +
+          `O lobo contra-atacou! Sua vida: ` +
+          `${personagem.vida}/${VIDA_MAXIMA_JOGADOR}.`,
       };
     }
 

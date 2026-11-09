@@ -1,4 +1,5 @@
 const MEU_ID = "jogador1";
+const TEMPO_RESPAWN_LOBO = 5000;
 
 class Cena extends Phaser.Scene {
   create() {
@@ -29,10 +30,11 @@ class Cena extends Phaser.Scene {
       }
     }
 
-    // Carrega o personagem salvo ou cria um novo.
     const personagem = Mundo.entrar(MEU_ID);
 
     this.movendo = false;
+    this.respawnAgendado = false;
+    this.loboVisual = null;
 
     this.sprite = this.add.rectangle(
       personagem.x * TILE + TILE / 2,
@@ -60,12 +62,34 @@ class Cena extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // Desenha o lobo, se ainda estiver vivo.
-    this.loboVisual = null;
-
+    // Desenha o lobo ou agenda o respawn caso esteja derrotado.
     if (Mundo.obterVidaInimigo(MEU_ID, "lobo1") > 0) {
       this.loboVisual = this.desenharLobo();
+    } else {
+      this.agendarRespawnLobo();
     }
+
+    // Mostra a vida do jogador e do lobo.
+    this.statusVida = this.add
+      .text(12, 10, "", {
+        fontFamily: "Arial",
+        fontSize: "16px",
+        color: "#ffffff",
+        backgroundColor: "#222222",
+        padding: { x: 6, y: 4 },
+      })
+      .setDepth(10);
+
+    this.statusLobo = this.add
+      .text(788, 10, "", {
+        fontFamily: "Arial",
+        fontSize: "16px",
+        color: "#ffffff",
+        backgroundColor: "#222222",
+        padding: { x: 6, y: 4 },
+      })
+      .setOrigin(1, 0)
+      .setDepth(10);
 
     // Caixa de instruções e mensagens.
     this.add
@@ -87,6 +111,8 @@ class Cena extends Phaser.Scene {
       )
       .setScrollFactor(0)
       .setDepth(11);
+
+    this.atualizarStatus();
   }
 
   desenharLobo() {
@@ -108,6 +134,43 @@ class Cena extends Phaser.Scene {
         })
         .setOrigin(0.5),
     ];
+  }
+
+  agendarRespawnLobo() {
+    if (this.respawnAgendado) {
+      return;
+    }
+
+    this.respawnAgendado = true;
+
+    this.time.delayedCall(TEMPO_RESPAWN_LOBO, () => {
+      this.respawnAgendado = false;
+
+      const reapareceu = Mundo.reaparecerInimigo(MEU_ID, "lobo1");
+
+      if (reapareceu) {
+        this.loboVisual = this.desenharLobo();
+        this.dialogo.setText("O lobo reapareceu!");
+        this.atualizarStatus();
+      }
+    });
+  }
+
+  atualizarStatus() {
+    const personagem = Mundo.jogadores[MEU_ID];
+    const vidaLobo = Mundo.obterVidaInimigo(MEU_ID, "lobo1");
+
+    this.statusVida.setText(
+      `Vida: ${personagem.vida}/${VIDA_MAXIMA_JOGADOR}`
+    );
+
+    if (vidaLobo > 0) {
+      this.statusLobo.setText(
+        `Lobo: ${vidaLobo}/${inimigos.lobo1.vidaMaxima}`
+      );
+    } else {
+      this.statusLobo.setText("Lobo: aguardando respawn");
+    }
   }
 
   update() {
@@ -137,7 +200,19 @@ class Cena extends Phaser.Scene {
       if (resultado.derrotado && this.loboVisual) {
         this.loboVisual.forEach((parte) => parte.destroy());
         this.loboVisual = null;
+        this.agendarRespawnLobo();
       }
+
+      if (resultado.renasceu) {
+        const personagem = Mundo.jogadores[MEU_ID];
+
+        this.sprite.setPosition(
+          personagem.x * TILE + TILE / 2,
+          personagem.y * TILE + TILE / 2
+        );
+      }
+
+      this.atualizarStatus();
     }
 
     if (this.movendo) {
