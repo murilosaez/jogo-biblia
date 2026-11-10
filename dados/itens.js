@@ -29,4 +29,4 @@ const ITENS = {
 // Loja do Azarias: preço de compra ("flechas" é um pacote de FLECHAS_POR_PACOTE).
 const PRECOS_LOJA = { pocao: 12, pocao_fe: 18, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
 const FLECHAS_POR_PACOTE = 5;
-const VALORES_VENDA = { pele_lobo: 5, erva: 2, odre_agua: 3, peixe: 6 };
+const VALORES_VENDA = { pele_lobo: 5, erva: 2, odre_agua: 3, peixe: 6, veneno_escorpiao: 4, insignia_bandido: 6  };
