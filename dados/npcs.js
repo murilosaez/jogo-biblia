@@ -3,7 +3,7 @@
 // Dados puros (sem regras). Carregado antes de logica.js pelo index.html.
 // =====================================================================
 
-// papel: "missao" (Eliabe/Noemi), "loja", "guia" e, nos capítulos, "lider" (dá a missão),
+// papel: "missao" (dá missões; ver dados/missoes.js), "loja", "guia" e, nos capítulos, "lider" (dá a missão),
 // "apoio" (só conversa) e "mestre" (ensina a Oração). falas: textos próprios do NPC.
 const DADOS_NPCS = [
   { id: "viajante1", nome: "Eliabe", area: "canaan", x: 5, y: 5, papel: "missao" },

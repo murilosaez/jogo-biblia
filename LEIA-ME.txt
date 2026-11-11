@@ -5,9 +5,15 @@ Conteúdo do jogo (pasta dados/)
 - dados/mundo.js: áreas, regiões dos capítulos, ervas, odres, pontos de pesca e portais.
 - dados/npcs.js: personagens, posições, papéis e falas próprias.
 - dados/criaturas.js: inimigos, atributos, saque e veneno.
-- dados/capitulos.js: capítulos em ordem, objetivo, recompensa e falas.
+- dados/capitulos.js: capítulos em ordem, a missão de cada um e o Mestre que ensina a Oração.
+- dados/missoes.js: todas as missões (Eliabe, Noemi e capítulos): quem dá e recebe, missão
+  anterior exigida, etapas com objetivos (derrotar, coletar, entregar, falar com alguém, chegar a
+  um local), falas, textos do painel e recompensa (XP, moedas, itens). As falas aceitam variáveis
+  como {coletados}, {total}, {naMochila} e {nivel}; a lista completa está no topo do arquivo.
+  O progresso fica no save em missoes[id] = { status, etapa, progresso } (save versão 7; saves
+  antigos são convertidos sozinhos, sem perder o que já foi feito).
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
-o teste 27 confere se todo item, área, NPC e criatura citado existe.
+o teste 27 confere se todo item, área, NPC, criatura e missão citado existe.
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.

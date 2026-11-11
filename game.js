@@ -425,31 +425,8 @@ class Cena extends Phaser.Scene {
     try {
       if (npc.papel === "loja") return "loja";
       if (npc.papel === "guia") return "guia";
-      if (npc.papel === "missao") {
-        if (npc.id === "viajante1") {
-          const m1 = p.missaoEliabe || {}, m2 = p.missaoErvas || {};
-          if (m1.status === "nao_iniciada") return "missao";
-          if (m1.status === "em_andamento") return m1.loboDerrotado ? "entregar" : "andamento";
-          if (m2.status === "bloqueada") return "missao";
-          if (m2.status === "em_andamento") return (m2.ervasMissaoColetadas?.length || 0) >= QUANTIDADE_ERVAS_MISSAO ? "entregar" : "andamento";
-          return null;
-        }
-        if (npc.id === "noemi1") {
-          const m = p.missaoDeserto || {};
-          if (m.status === "bloqueada") return "missao";
-          if (m.status !== "em_andamento") return null;
-          const prontos = m.etapa === 1 ? m.odresMissaoColetados?.length >= QUANTIDADE_ODRES_MISSAO
-            : m.etapa === 2 ? m.venenosMissaoColetados?.length >= QUANTIDADE_VENENOS_MISSAO
-            : m.insigniasMissaoColetadas?.length >= 1;
-          return prontos ? "entregar" : "andamento";
-        }
-      }
-      if (npc.papel === "lider" && typeof faseCapitulo === "function") {
-        const f = faseCapitulo(p, npc.capitulo);
-        return f === "inicio" ? "missao" : f === "retorno" ? "entregar" : f === "andamento" ? "andamento" : null;
-      }
-      if (npc.papel === "mestre" && typeof faseCapitulo === "function")
-        return !p.oracaoDesbloqueada && faseCapitulo(p, npc.capitulo) === "concluido" ? "entregar" : null;
+      // Missões, capítulos e o Mestre: regra única em logica.js (motor de missões).
+      if (typeof estadoMissaoNpc === "function") return estadoMissaoNpc(p, npc.id);
     } catch (e) {
       return null;
     }
