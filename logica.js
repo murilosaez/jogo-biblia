@@ -3,7 +3,7 @@
 //
 // Ordem de carga: storage.js → dados/*.js → logica.js → sprites.js → game.js → interface.js.
 // Este arquivo define o motor (Mundo) e as regras. Todo o CONTEÚDO (itens, áreas, NPCs,
-// criaturas, capítulos e portais) vem dos arquivos em dados/ e é registrado aqui pelas
+// criaturas, missões, capítulos e portais) vem dos arquivos em dados/ e é registrado aqui pelas
 // funções registrar*; para criar conteúdo novo, edite apenas dados/.
 // =====================================================================
 
@@ -13,7 +13,7 @@
 const TILE = 32;
 const COLS = 80;
 const ROWS = 60;
-const VERSAO_SAVE = 6;
+const VERSAO_SAVE = 7;
 
 const VIDA_BASE = 100;
 const VIDA_POR_NIVEL = 10;
@@ -46,10 +46,6 @@ const CURA_POCAO = 30; // mínimo
 const CURA_POCAO_PERCENTUAL = 0.25; // da vida máxima
 const CURA_POCAO_FE = 40;
 const QUANTIDADE_POCOES_INICIAIS = 3;
-const QUANTIDADE_ERVAS_MISSAO = 3;
-const QUANTIDADE_ODRES_MISSAO = 3;
-const QUANTIDADE_VENENOS_MISSAO = 2;
-const RECOMPENSA_MISSAO_POCOES = 2;
 const CARGA_BASE = 50;
 const CARGA_POR_NIVEL = 10;
 
@@ -376,8 +372,8 @@ for (const area of Object.values(DADOS_AREAS_CAPITULOS)) {
 // ---------------------------------------------------------------------
 // NPCs, coletáveis, pesca e inimigos base
 // ---------------------------------------------------------------------
-// papel: "missao" (Eliabe/Noemi), "loja", "guia", ou, nos capítulos,
-// "lider" (dá a missão), "apoio" (só conversa) e "mestre" (ensina a Oração).
+// papel: "missao" (dá missões de dados/missoes.js), "loja", "guia", ou, nos capítulos,
+// "lider" (dá a missão do capítulo), "apoio" (só conversa) e "mestre" (ensina a Oração).
 const npcs = {};
 
 function registrarNpc(npc) {
@@ -454,14 +450,154 @@ for (const area of Object.values(areas)) {
 }
 
 // ---------------------------------------------------------------------
+// Missões (dados/missoes.js) — motor genérico, sem missões escritas como código
+// ---------------------------------------------------------------------
+// Estado no save: p.missoes[id] = { status, etapa, progresso }.
+//   status: "nao_iniciada" | "em_andamento" | "concluida";
+//   etapa: índice da etapa atual (na missão concluída, a última);
+//   progresso: um valor por objetivo da etapa atual — lista de ids de origem ("coletar")
+//   ou contagem ("derrotar", "falar", "chegar"; "entregar" fica 0: é conferido na entrega).
+const MISSOES = {};
+const ORDEM_MISSOES = [];
+const MISSOES_POR_NPC = {};
+const STATUS_MISSAO = ["nao_iniciada", "em_andamento", "concluida"];
+
+// Aplica o modelo (MODELOS_MISSAO) e os valores padrão de cada etapa e objetivo.
+function registrarMissao(dados) {
+  const modelo = MODELOS_MISSAO[dados.modelo] || {};
+  const padraoEtapa = modelo.etapa || {};
+  const missao = {
+    ...dados,
+    anterior: dados.anterior || null,
+    falas: { ...modelo.falas, ...dados.falas },
+    painel: { ...modelo.painel, ...dados.painel },
+    etapas: dados.etapas.map((etapa) => ({
+      recompensa: { xp: 0, moedas: 0, itens: [], ...etapa.recompensa },
+      painel: { ...padraoEtapa.painel, ...etapa.painel },
+      falas: { ...padraoEtapa.falas, ...etapa.falas },
+      objetivos: etapa.objetivos.map((o) => ({
+        quantidade: 1,
+        ...(o.tipo !== "entregar" && padraoEtapa.aviso ? { aviso: padraoEtapa.aviso } : {}),
+        ...o,
+      })),
+    })),
+  };
+  MISSOES[missao.id] = missao;
+  if (!ORDEM_MISSOES.includes(missao.id)) ORDEM_MISSOES.push(missao.id);
+  for (const npcId of new Set([missao.npc, receptorMissao(missao)])) {
+    (MISSOES_POR_NPC[npcId] = MISSOES_POR_NPC[npcId] || []).push(missao);
+  }
+  return missao;
+}
+
+function receptorMissao(missao) {
+  return missao.npcEntrega || missao.npc;
+}
+
+for (const missao of DADOS_MISSOES) registrarMissao(clonarDados(missao));
+
+function estadoMissaoNovo() {
+  return { status: "nao_iniciada", etapa: 0, progresso: [] };
+}
+
+function estadoMissao(p, missaoId) {
+  return p?.missoes?.[missaoId] || estadoMissaoNovo();
+}
+
+function missaoConcluida(p, missaoId) {
+  return estadoMissao(p, missaoId).status === "concluida";
+}
+
+function etapaDaMissao(missao, estado) {
+  return missao.etapas[Math.max(0, Math.min(missao.etapas.length - 1, estado.etapa || 0))];
+}
+
+function contagemObjetivo(valor) {
+  return Array.isArray(valor) ? valor.length : Number(valor) || 0;
+}
+
+// Objetivos acompanhados durante a etapa ("entregar" só é conferido na entrega).
+function objetivosCumpridos(missao, estado) {
+  const etapa = etapaDaMissao(missao, estado);
+  return etapa.objetivos.every(
+    (o, i) => o.tipo === "entregar" || contagemObjetivo(estado.progresso?.[i]) >= o.quantidade,
+  );
+}
+
+// Fase da missão do ponto de vista do jogador: "bloqueado" (falta a anterior), "inicio",
+// "andamento", "retorno" (objetivos cumpridos, falta entregar) ou "concluido".
+function faseMissao(p, missaoId) {
+  const missao = MISSOES[missaoId];
+  if (!missao) return null;
+  if (missao.anterior && !missaoConcluida(p, missao.anterior)) return "bloqueado";
+  const estado = estadoMissao(p, missaoId);
+  if (estado.status === "nao_iniciada") return "inicio";
+  if (estado.status === "em_andamento") return objetivosCumpridos(missao, estado) ? "retorno" : "andamento";
+  return "concluido";
+}
+
+// Missão seguinte citada no painel após a conclusão.
+function proximaMissao(missao) {
+  if (missao.proxima) return MISSOES[missao.proxima] || null;
+  return ORDEM_MISSOES.map((id) => MISSOES[id]).find((m) => m.anterior === missao.id) || null;
+}
+
+function resumoRecompensa(r) {
+  const contagem = {};
+  for (const item of r.itens) contagem[item] = (contagem[item] || 0) + 1;
+  const nomes = Object.entries(contagem).map(([item, n]) => (n > 1 ? `${n}× ${nomeItem(item)}` : nomeItem(item)));
+  return [...(r.xp ? [`+${r.xp} XP`] : []), ...(r.moedas ? [`${r.moedas} moedas`] : []), ...nomes].join(", ");
+}
+
+// Variáveis das falas: {coletados}/{total} vêm do primeiro objetivo da etapa e
+// {naMochila} do primeiro objetivo "entregar".
+function variaveisMissao(p, missao, estado) {
+  const etapa = etapaDaMissao(missao, estado);
+  const indice = missao.etapas.indexOf(etapa);
+  const primeiro = etapa.objetivos[0];
+  const entrega = etapa.objetivos.find((o) => o.tipo === "entregar");
+  const progresso = indice === estado.etapa ? estado.progresso || [] : [];
+  const proxima = proximaMissao(missao);
+  return {
+    coletados: Math.min(primeiro.quantidade, contagemObjetivo(progresso[0])),
+    total: primeiro.quantidade,
+    naMochila: entrega ? p.inventario.filter((x) => x === entrega.item).length : 0,
+    nivel: p.nivel,
+    npc: npcs[receptorMissao(missao)]?.nome || "o líder",
+    etapa: indice + 1,
+    etapas: missao.etapas.length,
+    peso: pesoCarregado(p),
+    capacidade: capacidadeCarga(p),
+    recompensa: resumoRecompensa(etapa.recompensa),
+    proximaArea: proxima ? areas[npcs[proxima.npc]?.area]?.nome || "" : "",
+  };
+}
+
+function preencherTexto(texto, variaveis) {
+  return String(texto ?? "").replace(/\{(\w+)\}/g, (marca, nome) => (nome in variaveis ? String(variaveis[nome]) : marca));
+}
+
+// Missão "da vez" de uma lista: a primeira não concluída (ou a última, se todas acabaram).
+function missaoDaVez(p, lista) {
+  return lista.find((m) => !missaoConcluida(p, m.id)) || lista[lista.length - 1] || null;
+}
+
+function missoesDoNpc(npcId) {
+  return MISSOES_POR_NPC[npcId] || [];
+}
+
+// ---------------------------------------------------------------------
 // Capítulos e portais (dados/capitulos.js e dados/mundo.js)
 // ---------------------------------------------------------------------
+// Cada capítulo aponta para a sua missão; npc, inimigo e anterior vêm dela.
 const CAPITULOS = {};
 const ORDEM_CAPITULOS = [];
 const PORTAIS = [];
 
 function registrarCapitulo(chave, dados) {
-  CAPITULOS[chave] = dados;
+  const missao = MISSOES[dados.missao];
+  const alvo = missao?.etapas.flatMap((e) => e.objetivos).find((o) => o.tipo === "derrotar");
+  CAPITULOS[chave] = { ...dados, npc: missao?.npc, inimigo: alvo?.criatura || null, anterior: missao?.anterior || null };
   if (!ORDEM_CAPITULOS.includes(chave)) ORDEM_CAPITULOS.push(chave);
 }
 
@@ -481,11 +617,13 @@ function capituloDoInimigo(inimigoId) {
   return ORDEM_CAPITULOS.find((k) => CAPITULOS[k].inimigo === inimigoId) || null;
 }
 
+function capituloDaMissao(missaoId) {
+  return ORDEM_CAPITULOS.find((k) => CAPITULOS[k].missao === missaoId) || null;
+}
+
 function capituloAnteriorConcluido(p, chave) {
   const anterior = CAPITULOS[chave]?.anterior;
-  if (!anterior) return true;
-  if (anterior === "deserto") return p.missaoDeserto?.status === "concluida";
-  return p.capitulos?.[anterior]?.status === "concluida";
+  return !anterior || missaoConcluida(p, anterior);
 }
 
 // "ao Egito", "à Galileia", "a Canaã": contração da preposição "a" com o
@@ -503,113 +641,119 @@ function nomeComPreposicao(areaId) {
   return `${PREPOSICAO_AREA[areaId] || "a"} ${areas[areaId]?.nome || areaId}`;
 }
 
-// Fase do capítulo do ponto de vista do jogador.
+// Fase do capítulo do ponto de vista do jogador (a fase da sua missão).
 function faseCapitulo(p, chave) {
-  if (!capituloAnteriorConcluido(p, chave)) return "bloqueado";
-  const c = p.capitulos?.[chave];
-  if (!c || c.status === "bloqueado") return "inicio";
-  if (c.status === "em_andamento") return c.alvo ? "retorno" : "andamento";
-  return "concluido";
+  return faseMissao(p, CAPITULOS[chave]?.missao) || "bloqueado";
 }
 
 // ---------------------------------------------------------------------
-// Textos de missão (para a UI)
+// Textos de missão e balões (para a UI; funções puras)
 // ---------------------------------------------------------------------
-function textoMissaoCanaa(p) {
-  const m1 = p.missaoEliabe;
-  const m2 = p.missaoErvas;
-  if (m1.status === "nao_iniciada") return "Fale com Eliabe, na vila ao lado do ponto de partida.";
-  if (m1.status === "em_andamento") {
-    return m1.loboDerrotado
-      ? "Volte a Eliabe para receber a recompensa."
-      : "Derrote o lobo a sudeste da vila e volte a Eliabe.";
-  }
-  if (m2.status === "bloqueada") return "Fale com Eliabe para a próxima tarefa.";
-  if (m2.status === "em_andamento") {
-    const n = Math.min(QUANTIDADE_ERVAS_MISSAO, m2.ervasMissaoColetadas.length);
-    return n >= QUANTIDADE_ERVAS_MISSAO
-      ? "Leve as 3 ervas a Eliabe."
-      : `Colete ervas medicinais: ${n}/${QUANTIDADE_ERVAS_MISSAO}.`;
-  }
-  if (p.missaoDeserto.status !== "concluida") {
-    return "Tarefas de Canaã concluídas. Siga a trilha (sudeste) ou fale com Micael para ir ao Deserto.";
-  }
-  return "Tarefas de Canaã concluídas.";
-}
-
-function textoMissaoDeserto(p) {
-  const m = p.missaoDeserto;
-  if (m.status === "bloqueada") return "Encontre Noemi no acampamento a nordeste.";
-  if (m.status === "concluida") {
-    const prox = ORDEM_CAPITULOS.find((k) => CAPITULOS[k].anterior === "deserto");
-    if (prox && p.capitulos?.[prox]?.status !== "concluida") {
-      return `Capítulo concluído. Siga a rota a leste da trilha até ${CAPITULOS[prox].nome}.`;
+function textoMissaoDaArea(p, areaId) {
+  const lista = ORDEM_MISSOES.map((id) => MISSOES[id]).filter((m) => npcs[m.npc]?.area === areaId);
+  const missao = missaoDaVez(p, lista);
+  if (!missao) return null;
+  const estado = estadoMissao(p, missao.id);
+  const fase = faseMissao(p, missao.id);
+  const variaveis = variaveisMissao(p, missao, estado);
+  const etapa = etapaDaMissao(missao, estado);
+  let texto;
+  if (fase === "bloqueado") texto = missao.painel.bloqueada;
+  else if (fase === "inicio") texto = missao.painel.inicio;
+  else if (fase === "andamento") texto = etapa.painel.andamento;
+  else if (fase === "retorno") texto = etapa.painel.retorno || etapa.painel.andamento;
+  else {
+    const cap = CAPITULOS[capituloDaMissao(missao.id)];
+    if (cap?.mestre) {
+      const mestre = npcs[cap.mestre]?.nome || "o Mestre";
+      return preencherTexto(p.oracaoDesbloqueada ? cap.painelMestre.depois : cap.painelMestre.antes, { mestre });
     }
-    return "Capítulo do Deserto concluído.";
+    const proxima = proximaMissao(missao);
+    const seguir = proxima && !missaoConcluida(p, proxima.id);
+    texto = seguir ? missao.painel.concluida : missao.painel.encerrada || missao.painel.concluida;
   }
-  if (m.etapa === 1) {
-    return `Etapa 1/3 · Encontre odres de água: ${Math.min(3, m.odresMissaoColetados.length)}/${QUANTIDADE_ODRES_MISSAO}.`;
-  }
-  if (m.etapa === 2) {
-    return `Etapa 2/3 · Veneno de escorpião: ${Math.min(2, m.venenosMissaoColetados.length)}/${QUANTIDADE_VENENOS_MISSAO}.`;
-  }
-  return `Etapa 3/3 · Insígnia do chefe dos saqueadores: ${Math.min(1, m.insigniasMissaoColetadas.length)}/1.`;
-}
-
-function textoMissaoCapitulo(p, chave) {
-  const cap = CAPITULOS[chave];
-  const lider = npcs[cap.npc]?.nome || "o líder";
-  const fase = faseCapitulo(p, chave);
-  if (fase === "bloqueado") return "Conclua o capítulo anterior para avançar aqui.";
-  if (fase === "inicio") return `Fale com ${lider} para iniciar.`;
-  if (fase === "andamento") return cap.objetivo;
-  if (fase === "retorno") return `Objetivo cumprido. Volte a ${lider}.`;
-  if (cap.mestre) {
-    if (!p.oracaoDesbloqueada) return `Converse com ${npcs[cap.mestre]?.nome || "o Mestre"} para aprender a Oração.`;
-    return "Oração aprendida — F1 para orar.";
-  }
-  const indice = ORDEM_CAPITULOS.indexOf(chave);
-  const prox = ORDEM_CAPITULOS[indice + 1];
-  if (prox && p.capitulos?.[prox]?.status !== "concluida") {
-    return `Capítulo concluído. Siga a rota a leste até ${CAPITULOS[prox].nome}.`;
-  }
-  return "Capítulo concluído.";
+  return preencherTexto(texto, variaveis);
 }
 
 // Texto curto "Área · objetivo" para TODAS as áreas.
 function textoMissaoAtual(p) {
   if (!p) return "";
   const nome = areas[p.area]?.nome || p.area;
-  let texto;
-  if (p.area === "canaan") texto = textoMissaoCanaa(p);
-  else if (p.area === "deserto") texto = textoMissaoDeserto(p);
-  else if (p.area === "mar") {
+  let texto = textoMissaoDaArea(p, p.area);
+  if (!texto && p.area === "mar") {
     texto = "Pesque nos pontos marcados (P) ou navegue até um cais: Canaã a oeste, Deserto a leste.";
-  } else if (CAPITULOS[p.area]) texto = textoMissaoCapitulo(p, p.area);
-  else texto = "Explore a região.";
-  return `${nome} · ${texto}`;
+  }
+  return `${nome} · ${texto || "Explore a região."}`;
+}
+
+// Balão sobre o NPC: "missao" (!), "andamento" (…), "entregar" (?) ou null.
+function estadoMissaoNpc(p, npcId) {
+  const npc = npcs[npcId];
+  if (!p || !npc) return null;
+  if (npc.papel === "mestre") {
+    return !p.oracaoDesbloqueada && faseCapitulo(p, npc.capitulo) === "concluido" ? "entregar" : null;
+  }
+  const missao = missaoDaVez(p, missoesDoNpc(npcId));
+  if (!missao) return null;
+  const fase = faseMissao(p, missao.id);
+  if (fase === "inicio") return missao.npc === npcId ? "missao" : null;
+  if (fase === "andamento") return "andamento";
+  if (fase === "retorno") return receptorMissao(missao) === npcId ? "entregar" : "andamento";
+  return null;
 }
 
 // ---------------------------------------------------------------------
-// Estado inicial das missões
+// Estado inicial das missões e migração de saves antigos (v6 ou anterior)
 // ---------------------------------------------------------------------
-function missaoEliabeNova() {
-  return { status: "nao_iniciada", loboDerrotado: false, recompensaRecebida: false };
+function progressoVazio(missao, etapa) {
+  return missao.etapas[etapa].objetivos.map((o) => (o.tipo === "coletar" ? [] : 0));
 }
 
-function missaoErvasNova() {
-  return { status: "bloqueada", recompensaRecebida: false, ervasMissaoColetadas: [] };
+// Converte missaoEliabe, missaoErvas, missaoDeserto e capitulos para p.missoes.
+function missoesDeSaveAntigo(p) {
+  const objeto = (v) => (objetoValido(v) ? v : {});
+  const lista = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  const status = (v, mapa) => mapa[v] || "nao_iniciada";
+  const doStatus = { em_andamento: "em_andamento", concluida: "concluida" };
+  const missoes = {};
+  const eliabe = objeto(p.missaoEliabe);
+  missoes.lobo = { status: status(eliabe.status, doStatus), etapa: 0, progresso: [eliabe.loboDerrotado === true ? 1 : 0] };
+  const ervas = objeto(p.missaoErvas);
+  missoes.ervas = { status: status(ervas.status, doStatus), etapa: 0, progresso: [lista(ervas.ervasMissaoColetadas), 0] };
+  const deserto = objeto(p.missaoDeserto);
+  const statusDeserto = status(deserto.status, doStatus);
+  // Saves sem etapa: a mesma regra da v6 (em andamento → etapa 1; concluída → última).
+  const etapaAntiga = Number.isInteger(deserto.etapa) ? deserto.etapa : statusDeserto === "concluida" ? 4 : 1;
+  const etapa = Math.max(1, Math.min(3, etapaAntiga));
+  const listaEtapa = ["odresMissaoColetados", "venenosMissaoColetados", "insigniasMissaoColetadas"][etapa - 1];
+  missoes.deserto = { status: statusDeserto, etapa: etapa - 1, progresso: [lista(deserto[listaEtapa]), 0] };
+  const capitulos = objeto(p.capitulos);
+  for (const chave of Object.keys(CAPITULOS)) {
+    const c = objeto(capitulos[chave]);
+    missoes[CAPITULOS[chave].missao] = {
+      status: status(c.status, doStatus),
+      etapa: 0,
+      progresso: [c.alvo === true ? 1 : 0],
+    };
+  }
+  return missoes;
 }
 
-function missaoDesertoNova() {
-  return {
-    status: "bloqueada",
-    etapa: 0,
-    recompensaRecebida: false,
-    odresMissaoColetados: [],
-    venenosMissaoColetados: [],
-    insigniasMissaoColetadas: [],
-  };
+// Garante p.missoes[id] coerente com os dados de cada missão.
+function normalizarMissoes(p) {
+  if (!objetoValido(p.missoes)) p.missoes = {};
+  for (const missao of Object.values(MISSOES)) {
+    const e = objetoValido(p.missoes[missao.id]) ? p.missoes[missao.id] : estadoMissaoNovo();
+    if (!STATUS_MISSAO.includes(e.status)) e.status = "nao_iniciada";
+    e.etapa = Number.isInteger(e.etapa) ? Math.max(0, Math.min(missao.etapas.length - 1, e.etapa)) : 0;
+    if (e.status === "nao_iniciada") e.etapa = 0;
+    const antes = Array.isArray(e.progresso) ? e.progresso : [];
+    e.progresso = missao.etapas[e.etapa].objetivos.map((o, i) => {
+      if (o.tipo === "coletar") return Array.isArray(antes[i]) ? [...new Set(antes[i].filter((x) => typeof x === "string"))] : [];
+      return Number.isInteger(antes[i]) ? Math.max(0, Math.min(o.quantidade, antes[i])) : 0;
+    });
+    p.missoes[missao.id] = e;
+  }
 }
 
 function personagemNovo(id) {
@@ -761,35 +905,12 @@ const Mundo = {
       p.equipamentoInicialEntregue = true;
     }
 
-    // Missões de Canaã e Deserto.
-    const missoes = [
-      ["missaoEliabe", missaoEliabeNova, ["nao_iniciada", "em_andamento", "concluida"], "nao_iniciada"],
-      ["missaoErvas", missaoErvasNova, ["bloqueada", "em_andamento", "concluida"], "bloqueada"],
-      ["missaoDeserto", missaoDesertoNova, ["bloqueada", "em_andamento", "concluida"], "bloqueada"],
-    ];
-    for (const [chave, nova, permitidos, padrao] of missoes) {
-      if (!objetoValido(p[chave])) p[chave] = nova();
-      const modelo = nova();
-      for (const [campo, valor] of Object.entries(modelo)) if (!(campo in p[chave])) p[chave][campo] = valor;
-      if (!permitidos.includes(p[chave].status)) p[chave].status = padrao;
-      if (typeof p[chave].recompensaRecebida !== "boolean") p[chave].recompensaRecebida = false;
-    }
-    if (typeof p.missaoEliabe.loboDerrotado !== "boolean") p.missaoEliabe.loboDerrotado = false;
-    if (!Array.isArray(p.missaoErvas.ervasMissaoColetadas)) p.missaoErvas.ervasMissaoColetadas = [];
-    const md = p.missaoDeserto;
-    if (!Number.isInteger(md.etapa)) md.etapa = md.status === "concluida" ? 4 : md.status === "em_andamento" ? 1 : 0;
-    for (const lista of ["odresMissaoColetados", "venenosMissaoColetados", "insigniasMissaoColetadas"]) {
-      if (!Array.isArray(md[lista])) md[lista] = [];
-    }
-
-    // Capítulos da expansão.
-    if (!objetoValido(p.capitulos)) p.capitulos = {};
-    for (const chave of ORDEM_CAPITULOS) {
-      const c = objetoValido(p.capitulos[chave]) ? p.capitulos[chave] : { status: "bloqueado", alvo: false };
-      if (!["bloqueado", "em_andamento", "concluida"].includes(c.status)) c.status = "bloqueado";
-      c.alvo = c.alvo === true;
-      p.capitulos[chave] = c;
-    }
+    // Missões (motor genérico). Saves até a v6 guardavam cada missão num campo
+    // próprio (missaoEliabe, missaoErvas, missaoDeserto, capitulos): o progresso é
+    // convertido para p.missoes, inclusive no meio de uma etapa, e os campos saem do save.
+    if (!objetoValido(p.missoes)) p.missoes = missoesDeSaveAntigo(p);
+    for (const campo of ["missaoEliabe", "missaoErvas", "missaoDeserto", "capitulos"]) delete p[campo];
+    normalizarMissoes(p);
 
     // Fé, Oração e veneno.
     p.oracaoDesbloqueada = !!p.oracaoDesbloqueada;
@@ -812,7 +933,7 @@ const Mundo = {
     delete p.avisoAtualizacao;
 
     // Saves antigos que já concluíram o Deserto recebem o arco uma única vez.
-    if (md.status === "concluida" && !p.atualizacaoDistanciaEntregue) {
+    if (missaoConcluida(p, "deserto") && !p.atualizacaoDistanciaEntregue) {
       if (!p.equipamento.arco && !p.inventario.includes("arco_madeira")) this.adicionarItem(p, "arco_madeira");
       for (let i = 0; i < 8; i++) if (!this.adicionarItem(p, "flecha")) break;
       p.atualizacaoDistanciaEntregue = true;
@@ -1067,13 +1188,11 @@ const Mundo = {
     return [...itens.map(nomeItem), ...(moedas > 0 ? [`${moedas} moedas`] : [])];
   },
 
-  // Itens que uma missão em andamento ainda pede: esses saques nunca expiram.
+  // Itens que uma missão em andamento ainda pede como saque: esses saques nunca expiram.
   itensDeMissaoPendentes(p) {
-    const m = p.missaoDeserto;
-    if (m?.status !== "em_andamento") return [];
-    if (m.etapa === 2) return ["veneno_escorpiao"];
-    if (m.etapa === 3) return ["insignia_bandido"];
-    return [];
+    return this.objetivosAbertos(p)
+      .filter(({ objetivo: o }) => o.tipo === "coletar" && o.origem === "saque")
+      .map(({ objetivo: o }) => o.item);
   },
 
   // Remove saques com mais de 10 min e mantém no máximo LIMITE_SAQUES_NO_CHAO.
@@ -1122,15 +1241,7 @@ const Mundo = {
       return { ok: false, mensagem: this.mensagemMochilaCheia(p, "Libere espaço para pegar o item.") };
     }
     p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id);
-    const m = p.missaoDeserto;
-    if (m.status === "em_andamento") {
-      if (m.etapa === 2 && s.item === "veneno_escorpiao" && !m.venenosMissaoColetados.includes(s.id)) {
-        m.venenosMissaoColetados.push(s.id);
-      }
-      if (m.etapa === 3 && s.item === "insignia_bandido" && !m.insigniasMissaoColetadas.includes(s.id)) {
-        m.insigniasMissaoColetadas.push(s.id);
-      }
-    }
+    this.registrarColeta(p, s.item, s.id, "saque");
     this.salvar(p);
     return { ok: true, itemColetado: s.id, mensagem: `Você pegou: ${nomeItem(s.item)}.` };
   },
@@ -1258,22 +1369,30 @@ const Mundo = {
     const transicao = this.verificarTransicao(p);
     if (transicao) return transicao;
 
+    const aviso = this.registrarChegada(p);
     const pilha = this.coletarPilhaDeSaque(id, p);
-    if (pilha) return pilha;
+    if (pilha) return this.anexarAviso(pilha, aviso);
 
     const coleta = this.coletarRecurso(id, p);
-    if (coleta) return coleta;
+    if (coleta) return this.anexarAviso(coleta, aviso);
 
     this.salvar(p);
-    return { ok: true };
+    return this.anexarAviso({ ok: true }, aviso);
   },
 
   mudarDeArea(p, area, x, y, mensagem) {
     p.area = area;
     p.x = x;
     p.y = y;
+    const aviso = this.registrarChegada(p);
     this.salvar(p);
-    return { ok: true, areaAlterada: true, mensagem };
+    return this.anexarAviso({ ok: true, areaAlterada: true, mensagem }, aviso);
+  },
+
+  // Acrescenta o aviso de um objetivo cumprido à mensagem de um resultado.
+  anexarAviso(r, aviso) {
+    if (!aviso) return r;
+    return { ...r, mensagem: r.mensagem ? `${r.mensagem} ${aviso}` : aviso };
   },
 
   verificarTransicao(p) {
@@ -1357,18 +1476,10 @@ const Mundo = {
     }
     p[grupo.coletados].push(c.id);
     p[grupo.respawn][c.id] = Date.now() + TEMPO_RESPAWN_COLETAVEL;
-    if (p.area === "canaan") {
-      const m = p.missaoErvas;
-      if (m.status === "em_andamento" && !m.ervasMissaoColetadas.includes(c.id)) m.ervasMissaoColetadas.push(c.id);
-      this.salvar(p);
-      return { ok: true, itemColetado: c.id, mensagem: "Você coletou uma erva medicinal." };
-    }
-    const m = p.missaoDeserto;
-    if (m.status === "em_andamento" && m.etapa === 1 && !m.odresMissaoColetados.includes(c.id)) {
-      m.odresMissaoColetados.push(c.id);
-    }
+    this.registrarColeta(p, grupo.item, c.id, "mapa");
     this.salvar(p);
-    return { ok: true, itemColetado: c.id, mensagem: "Você encontrou um odre de água." };
+    const mensagem = p.area === "canaan" ? "Você coletou uma erva medicinal." : "Você encontrou um odre de água.";
+    return { ok: true, itemColetado: c.id, mensagem };
   },
 
   viajar(id, destino) {
@@ -1512,8 +1623,9 @@ const Mundo = {
     if (!npc || npc.area !== p.area) return { ok: false, mensagem: "Não há ninguém por perto para conversar." };
     if (distanciaChebyshev(p, npc) > ALCANCE_INTERACAO)
       return { ok: false, mensagem: "Chegue mais perto para conversar." };
-    if (npc.id === "viajante1") return this.interagirEliabe(id);
-    if (npc.id === "noemi1") return this.interagirNoemi(id);
+    const conversa = this.registrarConversa(p, npc);
+    if (conversa) return conversa;
+    if (this.conversaDeMissao(p, npc)) return this.interagirMissao(id, npc);
     if (npc.papel === "loja") {
       return {
         ok: true,
@@ -1532,240 +1644,172 @@ const Mundo = {
     return { ok: true, mensagem: `${npc.nome}: A paz esteja com você.` };
   },
 
-  interagirEliabe(id) {
-    const p = this.jogadores[id];
-    const m1 = p.missaoEliabe;
-    const m2 = p.missaoErvas;
-    if (m1.status === "nao_iniciada") {
-      m1.status = "em_andamento";
-      this.salvar(p);
-      return {
-        ok: true,
-        mensagem:
-          "Eliabe: Um lobo ronda a estrada a sudeste e ameaça os viajantes. Afaste-o e volte para falar comigo.",
-      };
-    }
-    if (m1.status === "em_andamento" && m1.loboDerrotado && !m1.recompensaRecebida) {
-      const recompensas = ["pocao", "pocao", "espada_ferro"];
-      if (!this.podeReceberComRemocao(p, recompensas)) {
-        return {
-          ok: true,
-          mensagem: "Eliabe: Sua mochila está cheia. Libere espaço para receber 2 poções e uma espada de ferro.",
-        };
-      }
-      for (const item of recompensas) this.adicionarItem(p, item);
-      m1.recompensaRecebida = true;
-      m1.status = "concluida";
-      const niveis = adicionarXP(p, 50);
-      this.salvar(p);
-      return {
-        ok: true,
-        mensagem: `Eliabe: Obrigado! Receba 2 poções, uma espada de ferro (+12 de dano) e 50 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}`,
-      };
-    }
-    if (m1.status === "em_andamento") {
-      return {
-        ok: true,
-        mensagem: "Eliabe: O lobo ainda ronda a estrada. Encontre-o a sudeste e volte quando conseguir.",
-      };
-    }
-    if (m2.status === "bloqueada") {
-      m2.status = "em_andamento";
-      m2.ervasMissaoColetadas = [];
-      // As plantas reaparecem para a missão, sem apagar as ervas da mochila.
-      p.ervasColetadas = [];
-      for (const planta of ervas) p.ervasRespawn[planta.id] = Date.now();
-      this.salvar(p);
-      return {
-        ok: true,
-        missaoErvasIniciada: true,
-        mensagem: "Eliabe: Há viajantes feridos na vila. Preciso de 3 ervas medicinais; colete três e volte.",
-      };
-    }
-    if (m2.status === "em_andamento") {
-      const coletadas = m2.ervasMissaoColetadas.length;
-      const naMochila = p.inventario.filter((x) => x === "erva").length;
-      if (coletadas < QUANTIDADE_ERVAS_MISSAO) {
-        return {
-          ok: true,
-          mensagem: `Eliabe: Ainda faltam ervas. Você coletou ${coletadas}/${QUANTIDADE_ERVAS_MISSAO} para esta missão.`,
-        };
-      }
-      if (naMochila < QUANTIDADE_ERVAS_MISSAO) {
-        return {
-          ok: true,
-          mensagem: `Eliabe: Preciso que você traga as ${QUANTIDADE_ERVAS_MISSAO} ervas na mochila (você tem ${naMochila}). As plantas brotam de novo em alguns segundos.`,
-        };
-      }
-      const recompensas = Array(RECOMPENSA_MISSAO_POCOES).fill("pocao");
-      if (!this.podeReceberComRemocao(p, recompensas, [["erva", QUANTIDADE_ERVAS_MISSAO]])) {
-        return { ok: true, mensagem: "Eliabe: Sua mochila está cheia. Libere espaço para receber as poções." };
-      }
-      this.removerItens(p, "erva", QUANTIDADE_ERVAS_MISSAO);
-      for (const item of recompensas) this.adicionarItem(p, item);
-      m2.recompensaRecebida = true;
-      m2.status = "concluida";
-      const niveis = adicionarXP(p, 80);
-      this.salvar(p);
-      return {
-        ok: true,
-        mensagem: `Eliabe: Que Deus o recompense! Receba 2 poções e 80 XP. Missão concluída!${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}`,
-      };
-    }
-    return { ok: true, mensagem: "Eliabe: Obrigado por ajudar os viajantes. Você concluiu as tarefas de Canaã." };
+  // ----- Motor de missões (dados/missoes.js) -----
+  // Quem dá missões conversa sobre elas; um NPC com outro papel (loja, guia) só
+  // fala da missão enquanto ela está disponível ou em andamento.
+  conversaDeMissao(p, npc) {
+    const missao = missaoDaVez(p, missoesDoNpc(npc.id));
+    if (!missao) return false;
+    if (npc.papel !== "loja" && npc.papel !== "guia") return true;
+    return ["inicio", "andamento", "retorno"].includes(faseMissao(p, missao.id));
   },
 
-  interagirNoemi(id) {
-    const p = this.jogadores[id];
-    const m = p.missaoDeserto;
-    const subiu = (niveis) => (niveis.length ? ` Nível ${p.nivel}!` : "");
-    if (m.status === "bloqueada") {
-      m.status = "em_andamento";
-      m.etapa = 1;
-      m.odresMissaoColetados = [];
-      p.odresColetados = [];
-      for (const odre of odres) p.odresRespawn[odre.id] = Date.now();
-      this.salvar(p);
-      return {
-        ok: true,
-        missaoDesertoIniciada: true,
-        mensagem: "Noemi: A caravana precisa de água. Encontre 3 odres espalhados pelo deserto e traga-os para mim.",
-      };
+  // Etapas abertas: [{ missao, estado, objetivo, indice }] das missões em andamento.
+  objetivosAbertos(p) {
+    const abertos = [];
+    for (const missaoId of ORDEM_MISSOES) {
+      const missao = MISSOES[missaoId];
+      const estado = estadoMissao(p, missaoId);
+      if (estado.status !== "em_andamento") continue;
+      etapaDaMissao(missao, estado).objetivos.forEach((objetivo, indice) => abertos.push({ missao, estado, objetivo, indice }));
     }
-    if (m.status === "em_andamento" && m.etapa === 1) {
-      const coletados = m.odresMissaoColetados.length;
-      if (coletados < QUANTIDADE_ODRES_MISSAO) {
-        return {
-          ok: true,
-          mensagem: `Noemi: Ainda faltam odres. Você encontrou ${coletados}/${QUANTIDADE_ODRES_MISSAO}.`,
-        };
-      }
-      const naMochila = p.inventario.filter((x) => x === "odre_agua").length;
-      if (naMochila < QUANTIDADE_ODRES_MISSAO) {
-        return {
-          ok: true,
-          mensagem: `Noemi: Traga os ${QUANTIDADE_ODRES_MISSAO} odres na mochila (você tem ${naMochila}).`,
-        };
-      }
-      const recompensas = ["pocao", "pocao", "armadura_couro", "arco_madeira", ...Array(8).fill("flecha")];
-      if (!this.podeReceberComRemocao(p, recompensas, [["odre_agua", QUANTIDADE_ODRES_MISSAO]])) {
-        return {
-          ok: true,
-          mensagem: "Noemi: Sua mochila está cheia. Libere espaço para receber poções, armadura, arco e flechas.",
-        };
-      }
-      this.removerItens(p, "odre_agua", QUANTIDADE_ODRES_MISSAO);
-      for (const item of recompensas) this.adicionarItem(p, item);
-      m.etapa = 2;
-      m.venenosMissaoColetados = [];
-      const niveis = adicionarXP(p, 100);
-      this.salvar(p);
-      return {
-        ok: true,
-        mensagem: `Noemi: A água salvou a caravana! Receba 2 poções, armadura de couro, arco, 8 flechas e 100 XP. Agora derrote o escorpião a noroeste e traga 2 amostras do veneno.${subiu(niveis)}`,
-      };
-    }
-    if (m.status === "em_andamento" && m.etapa === 2) {
-      const coletados = m.venenosMissaoColetados.length;
-      if (coletados < QUANTIDADE_VENENOS_MISSAO) {
-        return {
-          ok: true,
-          mensagem: `Noemi: Derrote o escorpião e pegue o veneno que ele deixa. Amostras: ${coletados}/${QUANTIDADE_VENENOS_MISSAO}.`,
-        };
-      }
-      const naMochila = p.inventario.filter((x) => x === "veneno_escorpiao").length;
-      if (naMochila < QUANTIDADE_VENENOS_MISSAO) {
-        return {
-          ok: true,
-          mensagem: `Noemi: Preciso das ${QUANTIDADE_VENENOS_MISSAO} amostras na mochila (você tem ${naMochila}). O escorpião volta em alguns segundos.`,
-        };
-      }
-      this.removerItens(p, "veneno_escorpiao", QUANTIDADE_VENENOS_MISSAO);
-      m.etapa = 3;
-      m.insigniasMissaoColetadas = [];
-      p.moedas += 25;
-      const niveis = adicionarXP(p, 100);
-      this.salvar(p);
-      return {
-        ok: true,
-        mensagem: `Noemi: Com o veneno prepararemos um antídoto. Receba 25 moedas e 100 XP. Os saqueadores ameaçam o acampamento: derrote o chefe ao sul e traga a insígnia dele. Etapa final!${subiu(niveis)}`,
-      };
-    }
-    if (m.status === "em_andamento" && m.etapa === 3) {
-      if (m.insigniasMissaoColetadas.length < 1) {
-        return {
-          ok: true,
-          mensagem: "Noemi: Encontre o chefe dos saqueadores ao sul, derrote-o e traga a insígnia que ele deixar.",
-        };
-      }
-      if (!p.inventario.includes("insignia_bandido")) {
-        return { ok: true, mensagem: "Noemi: Traga a insígnia na mochila para provar que o bando foi vencido." };
-      }
-      this.removerItens(p, "insignia_bandido", 1);
-      m.etapa = 4;
-      m.status = "concluida";
-      m.recompensaRecebida = true;
-      p.moedas += 100;
-      const niveis = adicionarXP(p, 180);
-      this.salvar(p);
-      return {
-        ok: true,
-        mensagem: `Noemi: A caravana está segura! Receba 100 moedas e 180 XP. Capítulo do Deserto concluído! A rota a leste da trilha leva ao Egito.${subiu(niveis)}`,
-      };
-    }
-    return { ok: true, mensagem: "Noemi: A caravana está segura graças a você. Que o Senhor guarde o seu caminho." };
+    return abertos;
   },
 
+  // Soma 1 ao objetivo; devolve o aviso (com variáveis) se ele acabou de ser cumprido
+  // (ou a cada vez, com repetirAviso), ou "" se não houver aviso.
+  avancarObjetivo(p, { missao, estado, objetivo, indice }) {
+    const antes = contagemObjetivo(estado.progresso[indice]);
+    if (antes < objetivo.quantidade) estado.progresso[indice] = antes + 1;
+    const cumpriuAgora = antes < objetivo.quantidade && antes + 1 >= objetivo.quantidade;
+    if (!objetivo.aviso || !(cumpriuAgora || (objetivo.repetirAviso && antes >= objetivo.quantidade - 1))) return "";
+    return preencherTexto(objetivo.aviso, variaveisMissao(p, missao, estado));
+  },
+
+  // Abate de criatura (objetivo "derrotar"). Devolve o aviso para a mensagem do combate.
+  registrarAbate(p, inimigoId) {
+    let aviso = "";
+    for (const aberto of this.objetivosAbertos(p)) {
+      if (aberto.objetivo.tipo === "derrotar" && aberto.objetivo.criatura === inimigoId) {
+        aviso = this.avancarObjetivo(p, aberto) || aviso;
+      }
+    }
+    return aviso;
+  },
+
+  // Coleta de item (objetivo "coletar"): cada coletável do mapa ou saque conta uma vez, pelo id.
+  registrarColeta(p, item, origemId, origem) {
+    for (const { objetivo: o, estado, indice } of this.objetivosAbertos(p)) {
+      if (o.tipo !== "coletar" || o.item !== item || o.origem !== origem) continue;
+      const lista = Array.isArray(estado.progresso[indice]) ? estado.progresso[indice] : [];
+      if (!lista.includes(origemId)) lista.push(origemId);
+      estado.progresso[indice] = lista;
+    }
+  },
+
+  // Chegada a um local (objetivo "chegar"): a área, ou a até "raio" casas de x, y.
+  registrarChegada(p) {
+    const avisos = [];
+    for (const aberto of this.objetivosAbertos(p)) {
+      const o = aberto.objetivo;
+      if (o.tipo !== "chegar" || o.area !== p.area) continue;
+      if (Number.isInteger(o.x) && distanciaChebyshev(p, o) > (o.raio || 0)) continue;
+      if (contagemObjetivo(aberto.estado.progresso[aberto.indice]) >= o.quantidade) continue;
+      const aviso = this.avancarObjetivo(p, aberto);
+      if (aviso) avisos.push(aviso);
+    }
+    return avisos.join(" ");
+  },
+
+  // Conversa com um NPC pedido por um objetivo "falar". Devolve a resposta (fala do
+  // objetivo, ou o cumprimento padrão, e o aviso) ou null se nenhum objetivo pedia esse NPC.
+  registrarConversa(p, npc) {
+    const abertos = this.objetivosAbertos(p).filter(
+      ({ objetivo: o, estado, indice }) =>
+        o.tipo === "falar" && o.npc === npc.id && contagemObjetivo(estado.progresso[indice]) < o.quantidade,
+    );
+    if (!abertos.length) return null;
+    const avisos = abertos.map((aberto) => this.avancarObjetivo(p, aberto)).filter(Boolean);
+    const fala = abertos.find((a) => a.objetivo.fala)?.objetivo.fala || "A paz esteja com você.";
+    this.salvar(p);
+    return this.anexarAviso({ ok: true, mensagem: `${npc.nome}: ${fala}` }, avisos.join(" "));
+  },
+
+  // Começa uma etapa: zera o progresso e faz os coletáveis pedidos reaparecerem.
+  iniciarEtapa(p, missao, estado, etapa) {
+    estado.etapa = etapa;
+    estado.progresso = progressoVazio(missao, etapa);
+    for (const o of missao.etapas[etapa].objetivos) {
+      if (o.tipo !== "coletar" || !o.reaparecer) continue;
+      for (const grupo of Object.values(COLETAVEIS_POR_AREA)) {
+        if (grupo.item !== o.item) continue;
+        // As plantas (ou odres) reaparecem para a missão, sem apagar o que está na mochila.
+        p[grupo.coletados] = [];
+        for (const c of grupo.lista) p[grupo.respawn][c.id] = Date.now();
+      }
+    }
+  },
+
+  // Conversa com quem dá ou recebe missões: inicia, comenta o andamento ou entrega.
+  interagirMissao(id, npc) {
+    const p = this.jogadores[id];
+    const missao = missaoDaVez(p, missoesDoNpc(npc.id));
+    const estado = estadoMissao(p, missao.id);
+    const fase = faseMissao(p, missao.id);
+    const etapa = etapaDaMissao(missao, estado);
+    const capitulo = capituloDaMissao(missao.id);
+    const falar = (texto) => ({
+      ok: true,
+      mensagem: `${npc.nome}: ${preencherTexto(texto, variaveisMissao(p, missao, estado))}`,
+    });
+    if (fase === "bloqueado") {
+      return falar(npc.falas?.bloqueado || missao.falas.bloqueada || "Conclua primeiro a tarefa anterior.");
+    }
+    if (fase === "concluido") return falar(missao.falas.concluida || "A paz esteja com você.");
+    if (fase === "inicio") {
+      if (npc.id !== missao.npc) return falar(npc.falas?.inicio || "A paz esteja com você.");
+      p.missoes[missao.id] = { status: "em_andamento", etapa: 0, progresso: [] };
+      this.iniciarEtapa(p, missao, p.missoes[missao.id], 0);
+      this.salvar(p);
+      return {
+        ...falar(missao.falas.inicio),
+        ...(missao.sinalAoIniciar ? { [missao.sinalAoIniciar]: true } : {}),
+        ...(capitulo ? { capituloIniciado: capitulo } : {}),
+      };
+    }
+    if (fase === "andamento" || npc.id !== receptorMissao(missao)) return falar(etapa.falas.andamento);
+    return this.entregarEtapa(p, missao, estado, etapa, falar, capitulo);
+  },
+
+  // fase "retorno": confere as entregas e a mochila, dá a recompensa e avança a etapa.
+  entregarEtapa(p, missao, estado, etapa, falar, capitulo) {
+    const entregas = etapa.objetivos.filter((o) => o.tipo === "entregar");
+    for (const o of entregas) {
+      if (p.inventario.filter((x) => x === o.item).length < o.quantidade) {
+        return falar(etapa.falas.faltamItens || etapa.falas.andamento);
+      }
+    }
+    const r = etapa.recompensa;
+    const remocoes = entregas.map((o) => [o.item, o.quantidade]);
+    if (r.itens.length && !this.podeReceberComRemocao(p, r.itens, remocoes)) return falar(etapa.falas.mochilaCheia);
+    for (const o of entregas) this.removerItens(p, o.item, o.quantidade);
+    for (const item of r.itens) this.adicionarItem(p, item);
+    p.moedas += r.moedas;
+    const niveis = adicionarXP(p, r.xp);
+    const resposta = falar(`${etapa.falas.concluir}${niveis.length ? missao.falas.subiuNivel || "" : ""}`);
+    const ultima = estado.etapa >= missao.etapas.length - 1;
+    if (ultima) estado.status = "concluida";
+    else this.iniciarEtapa(p, missao, estado, estado.etapa + 1);
+    this.salvar(p);
+    return ultima && capitulo ? { ...resposta, capituloConcluido: capitulo } : resposta;
+  },
+
+  // NPCs de capítulo sem missão própria: "apoio" (falas por fase) e "mestre" (Oração).
   interagirCapitulo(id, npc) {
     const p = this.jogadores[id];
-    const chave = npc.capitulo;
-    const cap = CAPITULOS[chave];
-    const fase = faseCapitulo(p, chave);
+    const fase = faseCapitulo(p, npc.capitulo);
     const falar = (texto) => ({ ok: true, mensagem: `${npc.nome}: ${texto}` });
     if (fase === "bloqueado")
       return falar(npc.falas?.bloqueado || "Conclua primeiro o capítulo anterior para chegar a esta etapa.");
     if (npc.papel === "mestre") return this.interagirMestre(id, npc);
-    if (npc.papel !== "lider") return falar(npc.falas?.[fase] || npc.falas?.andamento || "A paz esteja com você.");
-
-    const estado = p.capitulos[chave];
-    if (fase === "inicio") {
-      estado.status = "em_andamento";
-      estado.alvo = false;
-      this.salvar(p);
-      return { ...falar(cap.falas.inicio), capituloIniciado: chave };
-    }
-    if (fase === "andamento") return falar(cap.falas.andamento);
-    if (fase === "concluido") return falar(cap.falas.concluido);
-
-    // fase === "retorno": entrega a recompensa e conclui.
-    const r = cap.recompensa;
-    const itens = r.itens || [];
-    if (!this.podeReceberComRemocao(p, itens)) {
-      return falar(
-        `Sua mochila está cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). Libere espaço para receber a recompensa.`,
-      );
-    }
-    for (const item of itens) this.adicionarItem(p, item);
-    estado.status = "concluida";
-    p.moedas += r.moedas || 0;
-    const niveis = adicionarXP(p, r.xp || 0);
-    this.salvar(p);
-    const contagem = {};
-    for (const item of itens) contagem[item] = (contagem[item] || 0) + 1;
-    const nomes = Object.entries(contagem).map(([item, n]) => (n > 1 ? `${n}× ${nomeItem(item)}` : nomeItem(item)));
-    const partes = [`+${r.xp} XP`, `${r.moedas} moedas`, ...nomes];
-    const subiu = niveis.length ? ` Você subiu ao nível ${p.nivel}.` : "";
-    return {
-      ...falar(`${cap.falas.retorno} Recompensa: ${partes.join(", ")}.${subiu}`),
-      capituloConcluido: chave,
-    };
+    return falar(npc.falas?.[fase] || npc.falas?.andamento || "A paz esteja com você.");
   },
 
   interagirMestre(id, npc) {
     const p = this.jogadores[id];
     const chave = npc.capitulo;
     const falar = (texto) => ({ ok: true, mensagem: `${npc.nome}: ${texto}` });
-    if (p.capitulos[chave]?.status !== "concluida" && !p.oracaoDesbloqueada) return falar(npc.falas.antes);
+    if (!missaoConcluida(p, CAPITULOS[chave].missao) && !p.oracaoDesbloqueada) return falar(npc.falas.antes);
     if (!p.oracaoDesbloqueada) {
       p.oracaoDesbloqueada = true;
       p.fe = FE_MAXIMA;
@@ -1881,16 +1925,8 @@ const Mundo = {
     const agora = Date.now();
     if (!p.inimigosDerrotados.includes(e.id)) p.inimigosDerrotados.push(e.id);
     p.vidaInimigos[e.id] = 0;
-    let objetivo = "";
-    if (e.id === "lobo1" && p.missaoEliabe.status === "em_andamento") {
-      p.missaoEliabe.loboDerrotado = true;
-      objetivo = " Volte a Eliabe.";
-    }
-    const chave = capituloDoInimigo(e.id);
-    if (chave && p.capitulos[chave]?.status === "em_andamento" && !p.capitulos[chave].alvo) {
-      p.capitulos[chave].alvo = true;
-      objetivo = ` Objetivo concluído: volte a ${npcs[CAPITULOS[chave].npc]?.nome || "o líder"}.`;
-    }
+    const aviso = this.registrarAbate(p, e.id);
+    const objetivo = aviso ? ` ${aviso}` : "";
     const niveis = adicionarXP(p, e.xpRecompensa);
     const saque = this.criarSaque(p, e, agora);
     this.salvar(p);

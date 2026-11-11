@@ -11,7 +11,14 @@ const vm = require("vm");
 const assert = require("assert");
 
 const RAIZ = path.resolve(__dirname, "..");
-const ARQUIVOS_DADOS = ["dados/itens.js", "dados/mundo.js", "dados/npcs.js", "dados/criaturas.js", "dados/capitulos.js"];
+const ARQUIVOS_DADOS = [
+  "dados/itens.js",
+  "dados/mundo.js",
+  "dados/npcs.js",
+  "dados/criaturas.js",
+  "dados/capitulos.js",
+  "dados/missoes.js",
+];
 const ARQUIVOS = ["storage.js", ...ARQUIVOS_DADOS, "logica.js"];
 const FONTES = ARQUIVOS.map((f) => fs.readFileSync(path.join(RAIZ, f), "utf8"));
 const FONTE_LOGICA = FONTES[ARQUIVOS.indexOf("logica.js")];
@@ -313,7 +320,7 @@ function jogarCampanha(semente) {
   falar(j, "viajante1");
   for (const erva of j.g("coletaveisDaArea")("canaan")) assert.ok(pisarEm(j, "canaan", erva).itemColetado);
   falar(j, "viajante1");
-  assert.strictEqual(j.p.missaoErvas.status, "concluida");
+  assert.strictEqual(j.p.missoes.ervas.status, "concluida");
 
   // Deserto (pela trilha)
   atravessar(j, "canaan", j.g("areas").canaan.passagem, 1, 0);
@@ -330,12 +337,12 @@ function jogarCampanha(semente) {
     j.avancar(5000);
   }
   falar(j, "noemi1");
-  assert.strictEqual(j.p.missaoDeserto.etapa, 3);
+  assert.strictEqual(j.p.missoes.deserto.etapa, 2, "etapa 3 de 3 (índice 2)");
   esperarCurar(j);
   registrar("Deserto", "bandido1", lutar(j, "bandido1"));
   pegarSaques(j);
   falar(j, "noemi1");
-  assert.strictEqual(j.p.missaoDeserto.status, "concluida");
+  assert.strictEqual(j.p.missoes.deserto.status, "concluida");
 
   // Capítulos
   const portais = j.g("PORTAIS");
@@ -347,13 +354,14 @@ function jogarCampanha(semente) {
     assert.strictEqual(j.p.area, chave);
     const cap = CAPITULOS[chave];
     falar(j, cap.npc);
-    assert.strictEqual(j.p.capitulos[chave].status, "em_andamento");
+    assert.strictEqual(j.p.missoes[cap.missao].status, "em_andamento");
     esperarCurar(j);
     registrar(cap.nome, cap.inimigo, lutar(j, cap.inimigo));
     pegarSaques(j);
-    assert.strictEqual(j.p.capitulos[chave].alvo, true, `alvo de ${chave} deveria estar cumprido`);
+    igual(j.p.missoes[cap.missao].progresso, [1], `alvo de ${chave} deveria estar cumprido`);
+    assert.strictEqual(j.g("faseCapitulo")(j.p, chave), "retorno");
     const r = falar(j, cap.npc);
-    assert.strictEqual(j.p.capitulos[chave].status, "concluida", `${chave} não concluiu: ${r.mensagem}`);
+    assert.strictEqual(j.p.missoes[cap.missao].status, "concluida", `${chave} não concluiu: ${r.mensagem}`);
     equiparMelhor(j);
     origem = chave;
   }
@@ -375,7 +383,7 @@ const teste = (nome, fn) => testes.push({ nome, fn });
 
 teste("1. capítulos concluem e a campanha chega à Oração", () => {
   const { j } = jogarCampanha(7);
-  for (const chave of j.g("ORDEM_CAPITULOS")) assert.strictEqual(j.p.capitulos[chave].status, "concluida");
+  for (const chave of j.g("ORDEM_CAPITULOS")) assert.strictEqual(j.p.missoes[chave].status, "concluida");
   assert.strictEqual(j.p.oracaoDesbloqueada, true);
 });
 
@@ -383,14 +391,15 @@ teste("1b. derrotar o inimigo do capítulo marca o objetivo (CAPITULOS[k].inimig
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
-  p.missaoDeserto.status = "concluida";
-  p.capitulos.egito = { status: "em_andamento", alvo: false };
+  p.missoes.deserto.status = "concluida";
+  p.missoes.egito = { status: "em_andamento", etapa: 0, progresso: [0] };
   p.vidaInimigos.soldadoEgito1 = 1;
   const e = j.g("inimigos").soldadoEgito1;
   posicionarAoLado(j, "egito", e);
   const r = j.exec({ tipo: "atacar", alvoId: e.id });
   assert.ok(r.derrotado);
-  assert.strictEqual(p.capitulos.egito.alvo, true);
+  igual(p.missoes.egito.progresso, [1]);
+  assert.strictEqual(j.g("faseCapitulo")(p, "egito"), "retorno");
   assert.match(r.mensagem, /volte a Moisés/);
 });
 
@@ -608,7 +617,7 @@ teste("5. ervas só em Canaã, odres só no Deserto; helper coletaveisDaArea", (
   assert.strictEqual(j.M.coletavelDisponivel(ID, "canaan", "odre1"), false);
   // Pisar onde ficaria um odre no Egito não coleta nada.
   const p = j.p;
-  p.missaoDeserto.status = "concluida";
+  p.missoes.deserto.status = "concluida";
   const mapa = j.g("mapas").egito;
   const odre = j.g("odres").find((o) => mapa[o.y][o.x] === 0);
   assert.ok(odre);
@@ -622,7 +631,7 @@ teste("6. veneno pode ser aplicado de novo depois de expirar", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
-  p.missaoDeserto.status = "concluida";
+  p.missoes.deserto.status = "concluida";
   p.vida = 9999;
   p.nivel = 30;
   const e = j.g("inimigos").escorpiao1;
@@ -662,7 +671,7 @@ teste("7. regra de morte única, nota no evento renasceu e coerente com o nível
     if (opcoes.aleatorio) j.definirAleatorio(opcoes.aleatorio);
     // O bandido derrota o jogador e, no mesmo quadro, o escorpião (que vem antes na
     // ordem dos inimigos) se move: events[0] é "inimigoMoveu", não o "renasceu".
-    p.missaoDeserto.status = "concluida";
+    p.missoes.deserto.status = "concluida";
     p.vidaInimigos.bandido1 = 33;
     const bandido = j.g("inimigos").bandido1;
     const pos = posicionarAoLado(j, "deserto", bandido);
@@ -859,14 +868,14 @@ teste("10. missões exigem os itens na mochila", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
-  p.missaoEliabe.status = "concluida";
+  p.missoes.lobo.status = "concluida";
   falar(j, "viajante1");
   for (const erva of j.g("coletaveisDaArea")("canaan")) pisarEm(j, "canaan", erva);
-  assert.strictEqual(p.missaoErvas.ervasMissaoColetadas.length, 3);
+  assert.strictEqual(p.missoes.ervas.progresso[0].length, 3);
   j.M.removerItens(p, "erva", 3); // vendeu as ervas
   const pocoes = j.M.contarItem(ID, "pocao");
   falar(j, "viajante1");
-  assert.strictEqual(p.missaoErvas.status, "em_andamento", "sem ervas não conclui");
+  assert.strictEqual(p.missoes.ervas.status, "em_andamento", "sem ervas não conclui");
   assert.strictEqual(j.M.contarItem(ID, "pocao"), pocoes);
 
   // Odres, venenos e insígnia.
@@ -874,40 +883,40 @@ teste("10. missões exigem os itens na mochila", () => {
   for (const odre of j.g("coletaveisDaArea")("deserto")) pisarEm(j, "deserto", odre);
   j.M.removerItens(p, "odre_agua", 3);
   falar(j, "noemi1");
-  assert.strictEqual(p.missaoDeserto.etapa, 1);
+  assert.strictEqual(p.missoes.deserto.etapa, 0);
   p.inventario.push("odre_agua", "odre_agua", "odre_agua");
   falar(j, "noemi1");
-  assert.strictEqual(p.missaoDeserto.etapa, 2);
-  p.missaoDeserto.venenosMissaoColetados = ["a", "b"];
+  assert.strictEqual(p.missoes.deserto.etapa, 1);
+  p.missoes.deserto.progresso[0] = ["a", "b"];
   const moedas = p.moedas;
   falar(j, "noemi1");
-  assert.strictEqual(p.missaoDeserto.etapa, 2);
+  assert.strictEqual(p.missoes.deserto.etapa, 1);
   assert.strictEqual(p.moedas, moedas);
   p.inventario.push("veneno_escorpiao", "veneno_escorpiao");
   falar(j, "noemi1");
-  assert.strictEqual(p.missaoDeserto.etapa, 3);
-  p.missaoDeserto.insigniasMissaoColetadas = ["c"];
+  assert.strictEqual(p.missoes.deserto.etapa, 2);
+  p.missoes.deserto.progresso[0] = ["c"];
   falar(j, "noemi1");
-  assert.strictEqual(p.missaoDeserto.status, "em_andamento");
+  assert.strictEqual(p.missoes.deserto.status, "em_andamento");
   p.inventario.push("insignia_bandido");
   falar(j, "noemi1");
-  assert.strictEqual(p.missaoDeserto.status, "concluida");
+  assert.strictEqual(p.missoes.deserto.status, "concluida");
 });
 
 teste("11. Arão do Egito tem falas próprias e não duplica a missão", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
-  p.missaoDeserto.status = "concluida";
+  p.missoes.deserto.status = "concluida";
   const arao = falar(j, "aaronEgito");
-  assert.strictEqual(p.capitulos.egito.status, "bloqueado", "Arão não inicia a missão");
+  assert.strictEqual(p.missoes.egito.status, "nao_iniciada", "Arão não inicia a missão");
   const moises = falar(j, "moisesEgito");
-  assert.strictEqual(p.capitulos.egito.status, "em_andamento");
+  assert.strictEqual(p.missoes.egito.status, "em_andamento");
   assert.notStrictEqual(arao.mensagem.replace(/^[^:]+:/, ""), moises.mensagem.replace(/^[^:]+:/, ""));
   const araoDepois = falar(j, "aaronEgito");
   assert.match(araoDepois.mensagem, /^Arão:/);
   assert.notStrictEqual(araoDepois.mensagem, arao.mensagem, "fala muda conforme o capítulo");
-  assert.strictEqual(p.capitulos.egito.status, "em_andamento");
+  assert.strictEqual(p.missoes.egito.status, "em_andamento");
 });
 
 teste("12. sem código morto: versão única, aviso pendente consumível", () => {
@@ -957,8 +966,7 @@ teste("14. saques no chão expiram, exceto os de missão em andamento", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
-  p.missaoDeserto.status = "em_andamento";
-  p.missaoDeserto.etapa = 2;
+  p.missoes.deserto = { status: "em_andamento", etapa: 1, progresso: [[], 0] }; // etapa 2: venenos
   const t = j.agora;
   p.saqueNoChao.push(
     { id: "velho_moedas", area: "deserto", x: 10, y: 10, moedas: 5, criadoEm: t },
@@ -1039,10 +1047,12 @@ teste("17. migração: save v5 carrega sem perder itens, moedas e progresso", ()
   const depois = contar(p.inventario.concat(Object.values(p.equipamento).filter(Boolean)));
   for (const [item, n] of Object.entries(antes)) assert.ok((depois[item] || 0) >= n, `perdeu ${item}`);
   igual(p.equipamento, original.equipamento);
-  igual(p.missaoEliabe, original.missaoEliabe);
-  igual(p.missaoErvas, original.missaoErvas);
-  assert.strictEqual(p.missaoDeserto.status, "concluida");
-  igual(p.capitulos.egito, original.capitulos.egito);
+  igual(p.missoes.lobo, { status: "concluida", etapa: 0, progresso: [1] });
+  igual(p.missoes.ervas.status, "concluida");
+  assert.strictEqual(p.missoes.deserto.status, "concluida");
+  igual(p.missoes.egito, { status: "em_andamento", etapa: 0, progresso: [0] }, "capítulo em andamento, alvo pendente");
+  for (const k of ["marVermelho", "sinai", "galileia"]) assert.strictEqual(p.missoes[k].status, "nao_iniciada");
+  for (const campo of ["missaoEliabe", "missaoErvas", "missaoDeserto", "capitulos"]) assert.ok(!(campo in p), campo);
   assert.strictEqual(p.habilidades.corpo >= original.habilidades.corpo, true);
   assert.strictEqual(p.habilidades.defesa >= original.habilidades.defesa, true);
   assert.strictEqual(p.area, "egito");
@@ -1076,7 +1086,7 @@ teste("17. migração: save v5 carrega sem perder itens, moedas e progresso", ()
   posicionarAoLado(j2, "egito", e);
   assert.ok(j2.exec({ tipo: "atacar", alvoId: e.id }).derrotado);
   falar(j2, "moisesEgito");
-  assert.strictEqual(p2.capitulos.egito.status, "concluida");
+  assert.strictEqual(p2.missoes.egito.status, "concluida");
 });
 
 teste("18. API usada por game.js continua disponível", () => {
@@ -1178,7 +1188,7 @@ teste("19. personagem novo começa com o equipamento inicial vestido e vence o l
   assert.strictEqual(p2.inventario.filter((i) => i === "espada_madeira").length, 0);
 });
 
-teste("20. migração v6→v6 preserva a vida atual dos inimigos feridos", () => {
+teste("20. recarregar o save atual preserva a vida atual dos inimigos feridos", () => {
   const j = carregarJogo();
   j.entrar();
   j.p.vidaInimigos.lobo1 = 33;
@@ -1191,8 +1201,7 @@ teste("21. pisar na pilha de saque recolhe item e moedas juntos", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
-  p.missaoDeserto.status = "em_andamento";
-  p.missaoDeserto.etapa = 2;
+  p.missoes.deserto = { status: "em_andamento", etapa: 1, progresso: [[], 0] }; // etapa 2: venenos
   const casa = { x: 14, y: 9 };
   assert.ok(casaLivreParaJogador(j, "deserto", casa.x, casa.y));
   const t = j.agora;
@@ -1208,7 +1217,7 @@ teste("21. pisar na pilha de saque recolhe item e moedas juntos", () => {
   assert.strictEqual(p.moedas, moedas + 8);
   assert.match(r.mensagem, /Veneno de escorpião, 8 moedas/);
   assert.ok(!p.saqueNoChao.some((s) => s.x === casa.x && s.y === casa.y));
-  assert.deepStrictEqual(json(p.missaoDeserto.venenosMissaoColetados), ["s_veneno"]);
+  assert.deepStrictEqual(json(p.missoes.deserto.progresso[0]), ["s_veneno"]);
 });
 
 teste("22. mochila cheia: o passo sobre o saque vale e a mensagem chega à UI", () => {
@@ -1256,7 +1265,7 @@ teste("24. chegada a capítulo: dica só no início e preposição correta", () 
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
-  p.missaoDeserto.status = "concluida";
+  p.missoes.deserto.status = "concluida";
   const PORTAIS = j.g("PORTAIS");
   const paraEgito = PORTAIS.find((t) => t.destino === "egito");
   const passo = (portal) => {
@@ -1267,11 +1276,11 @@ teste("24. chegada a capítulo: dica só no início e preposição correta", () 
   };
   let r = passo(paraEgito);
   assert.match(r.mensagem, /^Você chegou ao Egito\. Fale com os personagens/);
-  p.capitulos.egito.status = "concluida";
+  p.missoes.egito.status = "concluida";
   r = passo(paraEgito);
   assert.strictEqual(r.mensagem, "Você chegou ao Egito.");
   const paraGalileia = PORTAIS.find((t) => t.destino === "galileia");
-  for (const k of ["marVermelho", "sinai"]) p.capitulos[k].status = "concluida";
+  for (const k of ["marVermelho", "sinai"]) p.missoes[k].status = "concluida";
   r = passo(paraGalileia);
   assert.match(r.mensagem, /^Você chegou à Galileia\. Fale/);
 });
@@ -1327,9 +1336,8 @@ teste("26. com o arco nas mãos, o tiro a 1 casa vale e bate mais que o soco", (
 teste("27. dados/: conteúdo puro e todas as referências apontam para algo que existe", () => {
   assert.doesNotMatch(FONTE_DADOS, /\bfunction\b|=>/, "dados/ não contém funções nem regras");
   const j = carregarJogo();
-  const [ITENS, areas, npcs, inimigos, CAPITULOS, PORTAIS] = ["ITENS", "areas", "npcs", "inimigos", "CAPITULOS", "PORTAIS"].map(
-    (n) => j.g(n),
-  );
+  const nomes = ["ITENS", "areas", "npcs", "inimigos", "CAPITULOS", "PORTAIS", "MISSOES"];
+  const [ITENS, areas, npcs, inimigos, CAPITULOS, PORTAIS, MISSOES] = nomes.map((n) => j.g(n));
   const item = (id, onde) => assert.ok(ITENS[id], `${onde}: item inexistente "${id}"`);
   const area = (id, onde) => assert.ok(areas[id], `${onde}: área inexistente "${id}"`);
   for (const [id, preco] of Object.entries(j.g("PRECOS_LOJA"))) {
@@ -1344,11 +1352,51 @@ teste("27. dados/: conteúdo puro e todas as referências apontam para algo que 
     assert.ok(e.vidaMaxima > 0 && e.xpRecompensa > 0, `atributos de ${e.id}`);
   }
   for (const [chave, c] of Object.entries(CAPITULOS)) {
-    assert.ok(npcs[c.npc], `capítulo ${chave}: npc ${c.npc}`);
+    assert.ok(MISSOES[c.missao], `capítulo ${chave}: missão ${c.missao}`);
+    assert.strictEqual(npcs[c.npc]?.area, chave, `capítulo ${chave}: o líder ${c.npc} fica na área do capítulo`);
     assert.ok(inimigos[c.inimigo], `capítulo ${chave}: inimigo ${c.inimigo}`);
-    if (c.mestre) assert.ok(npcs[c.mestre], `capítulo ${chave}: mestre ${c.mestre}`);
-    for (const i of c.recompensa.itens) item(i, `recompensa de ${chave}`);
-    assert.ok(c.anterior === "deserto" || CAPITULOS[c.anterior], `capítulo ${chave}: anterior ${c.anterior}`);
+    assert.ok(MISSOES[c.anterior], `capítulo ${chave}: anterior ${c.anterior}`);
+    if (c.mestre) {
+      assert.ok(npcs[c.mestre], `capítulo ${chave}: mestre ${c.mestre}`);
+      assert.ok(c.painelMestre?.antes && c.painelMestre?.depois, `capítulo ${chave}: painelMestre`);
+    }
+  }
+  // dados/missoes.js (dados crus, antes do registro).
+  const brutos = j.g("DADOS_MISSOES");
+  const modelos = j.g("MODELOS_MISSAO");
+  const vistos = [];
+  const VARIAVEIS = ["coletados", "total", "naMochila", "nivel", "npc", "etapa", "etapas", "peso", "capacidade", "recompensa", "proximaArea"];
+  const textos = (v) => (typeof v === "string" ? [v] : v && typeof v === "object" ? Object.values(v).flatMap(textos) : []);
+  for (const m of brutos) {
+    const onde = `missão ${m.id}`;
+    assert.ok(typeof m.id === "string" && !vistos.includes(m.id), `${onde}: id único`);
+    assert.ok(npcs[m.npc], `${onde}: npc ${m.npc}`);
+    if (m.npcEntrega) assert.ok(npcs[m.npcEntrega], `${onde}: npcEntrega ${m.npcEntrega}`);
+    if (m.anterior) assert.ok(vistos.includes(m.anterior), `${onde}: anterior ${m.anterior} precisa vir antes`);
+    if (m.proxima) assert.ok(brutos.some((x) => x.id === m.proxima), `${onde}: proxima ${m.proxima}`);
+    if (m.modelo) assert.ok(modelos[m.modelo], `${onde}: modelo ${m.modelo}`);
+    assert.ok(m.falas?.inicio, `${onde}: fala de início`);
+    assert.ok(Array.isArray(m.etapas) && m.etapas.length, `${onde}: etapas`);
+    m.etapas.forEach((e, n) => {
+      const o2 = `${onde}, etapa ${n + 1}`;
+      assert.ok(e.objetivos.length, `${o2}: objetivos`);
+      assert.ok(e.objetivos.some((o) => o.tipo !== "entregar"), `${o2}: ao menos um objetivo acompanhado`);
+      for (const o of e.objetivos) {
+        assert.ok(["derrotar", "coletar", "entregar", "falar", "chegar"].includes(o.tipo), `${o2}: tipo ${o.tipo}`);
+        if (o.tipo === "derrotar") assert.ok(inimigos[o.criatura], `${o2}: criatura ${o.criatura}`);
+        if (o.tipo === "coletar" || o.tipo === "entregar") item(o.item, o2);
+        if (o.tipo === "coletar") assert.ok(["mapa", "saque"].includes(o.origem), `${o2}: origem ${o.origem}`);
+        if (o.tipo === "falar") assert.ok(npcs[o.npc], `${o2}: npc ${o.npc}`);
+        if (o.tipo === "chegar") area(o.area, o2);
+        if (o.quantidade !== undefined) assert.ok(Number.isInteger(o.quantidade) && o.quantidade > 0, `${o2}: quantidade`);
+      }
+      for (const i of e.recompensa.itens) item(i, `recompensa de ${o2}`);
+      assert.ok(e.falas?.concluir && e.falas?.andamento && e.painel?.andamento, `${o2}: falas e painel`);
+    });
+    for (const t of textos([m.falas, m.painel, m.etapas])) {
+      for (const [, nome] of t.matchAll(/\{(\w+)\}/g)) assert.ok(VARIAVEIS.includes(nome), `${onde}: variável {${nome}}`);
+    }
+    vistos.push(m.id);
   }
   for (const p of PORTAIS) {
     area(p.area, "portal");
@@ -1357,6 +1405,375 @@ teste("27. dados/: conteúdo puro e todas as referências apontam para algo que 
   }
   const ids = [...Object.keys(npcs), ...Object.keys(inimigos)];
   assert.strictEqual(new Set(ids).size, ids.length, "ids de NPCs e criaturas são únicos");
+});
+
+// ---------------------------------------------------------------------
+// Motor de missões (JGB-42)
+// ---------------------------------------------------------------------
+// Missão de teste com um objetivo de cada tipo, dada por um NPC de teste em Canaã.
+function carregarComMissaoDeTeste() {
+  const j = carregarJogo();
+  j.g("registrarNpc")({ id: "anciaoTeste", nome: "Ancião", area: "canaan", x: 20, y: 8, papel: "missao" });
+  const missao = (dados) => j.g("registrarMissao")(json(dados));
+  missao({
+    id: "teste",
+    npc: "anciaoTeste",
+    falas: { inicio: "Comece por Micael.", concluida: "Tudo feito.", subiuNivel: " Agora nível {nivel}." },
+    painel: { inicio: "Fale com o Ancião.", concluida: "Teste concluído." },
+    etapas: [
+      {
+        objetivos: [{ tipo: "falar", npc: "guia_canaa", fala: "O Ancião mandou você? Diga que estou bem.", aviso: "Volte a {npc}." }],
+        recompensa: { xp: 5, moedas: 1, itens: [] },
+        painel: { andamento: "Fale com Micael." },
+        falas: { andamento: "Micael espera você.", concluir: "Bom. Etapa {etapa}/{etapas} feita." },
+      },
+      {
+        objetivos: [{ tipo: "chegar", area: "deserto", x: 66, y: 12, raio: 2, aviso: "Você achou Tamar." }],
+        recompensa: { xp: 5, moedas: 0, itens: [] },
+        painel: { andamento: "Vá até Tamar." },
+        falas: { andamento: "Procure Tamar no Deserto.", concluir: "Viu Tamar." },
+      },
+      {
+        objetivos: [{ tipo: "derrotar", criatura: "lobo1", quantidade: 2, aviso: "Dois lobos!" }],
+        recompensa: { xp: 5, moedas: 0, itens: [] },
+        painel: { andamento: "Lobos: {coletados}/{total}." },
+        falas: { andamento: "Faltam lobos: {coletados}/{total}.", concluir: "Lobos afastados." },
+      },
+      {
+        objetivos: [
+          { tipo: "coletar", item: "pele_lobo", quantidade: 2, origem: "saque" },
+          { tipo: "entregar", item: "pele_lobo", quantidade: 2 },
+        ],
+        recompensa: { xp: 7, moedas: 3, itens: ["espada_ferro", "pocao", "pocao"] },
+        painel: { andamento: "Peles: {coletados}/{total}.", retorno: "Leve as peles." },
+        falas: {
+          andamento: "Peles: {coletados}/{total}.",
+          faltamItens: "Tenho de ver {total} peles (você tem {naMochila}).",
+          mochilaCheia: "Mochila cheia ({peso}/{capacidade} kg).",
+          concluir: "Recompensa: {recompensa}.",
+        },
+      },
+    ],
+  });
+  missao({
+    id: "teste2",
+    npc: "guia_canaa",
+    anterior: "teste",
+    falas: { inicio: "Agora eu.", bloqueada: "Primeiro o Ancião." },
+    etapas: [
+      {
+        objetivos: [{ tipo: "falar", npc: "anciaoTeste" }],
+        painel: { andamento: "x" },
+        falas: { andamento: "x", concluir: "y" },
+      },
+    ],
+  });
+  j.entrar();
+  return j;
+}
+
+teste("28. motor: falar, chegar, derrotar, coletar e entregar, com variáveis e recompensa", () => {
+  const j = carregarComMissaoDeTeste();
+  const p = j.p;
+  const balao = (npcId) => j.g("estadoMissaoNpc")(p, npcId);
+  const m = () => p.missoes.teste;
+  igual(m(), { status: "nao_iniciada", etapa: 0, progresso: [0] }, "missão registrada entra no save");
+  assert.strictEqual(balao("anciaoTeste"), "missao");
+  assert.strictEqual(balao("guia_canaa"), null, "guia: a missão dele está bloqueada");
+  assert.ok(falar(j, "guia_canaa").abrirViagem, "com a missão bloqueada, o guia faz o seu papel");
+  assert.strictEqual(falar(j, "anciaoTeste").mensagem, "Ancião: Comece por Micael.");
+  assert.strictEqual(m().status, "em_andamento");
+  assert.strictEqual(balao("anciaoTeste"), "andamento");
+  assert.strictEqual(falar(j, "anciaoTeste").mensagem, "Ancião: Micael espera você.");
+  // falar
+  const r1 = falar(j, "guia_canaa");
+  assert.strictEqual(r1.mensagem, "Micael, guia de caravanas: O Ancião mandou você? Diga que estou bem. Volte a Ancião.");
+  assert.ok(!r1.abrirViagem, "a conversa do objetivo substitui a do guia uma vez");
+  assert.ok(falar(j, "guia_canaa").abrirViagem, "depois, o guia volta ao normal");
+  assert.strictEqual(balao("anciaoTeste"), "entregar");
+  const xp = p.xp;
+  assert.strictEqual(falar(j, "anciaoTeste").mensagem, "Ancião: Bom. Etapa 1/4 feita.");
+  assert.strictEqual(p.xp, xp + 5);
+  igual(m(), { status: "em_andamento", etapa: 1, progresso: [0] });
+  // chegar: entrar no Deserto pela trilha (longe de Tamar) não basta; a viagem rápida chega ao lado dela.
+  const trilha = atravessar(j, "canaan", j.g("areas").canaan.passagem, 1, 0);
+  assert.doesNotMatch(trilha.mensagem, /Tamar/);
+  igual(m().progresso, [0]);
+  atravessar(j, "deserto", j.g("areas").deserto.passagem, -1, 0);
+  falar(j, "guia_canaa");
+  const v = j.exec({ tipo: "viajar", areaDestino: "deserto" });
+  assert.match(v.mensagem, /Viagem rápida para Deserto\..* Você achou Tamar\.$/);
+  igual(m().progresso, [1]);
+  falar(j, "anciaoTeste");
+  assert.strictEqual(m().etapa, 2);
+  // derrotar (quantidade 2): o aviso sai só quando o objetivo é cumprido.
+  const golpe = () => {
+    if (j.M.obterVidaInimigo(ID, "lobo1") <= 0) j.M.reaparecerInimigo(ID, "lobo1");
+    p.vidaInimigos.lobo1 = 1;
+    posicionarAoLado(j, "canaan", j.g("inimigos").lobo1);
+    j.avancar(1000);
+    return j.exec({ tipo: "atacar", alvoId: "lobo1" });
+  };
+  assert.doesNotMatch(golpe().mensagem, /Dois lobos/);
+  p.area = "canaan";
+  // O painel mostra a primeira missão não concluída da área (Eliabe vem antes do Ancião).
+  assert.match(j.g("textoMissaoAtual")(p), /Eliabe/);
+  for (const id of ["lobo", "ervas"]) p.missoes[id].status = "concluida";
+  assert.match(j.g("textoMissaoAtual")(p), /^Canaã · Lobos: 1\/2\.$/);
+  assert.match(golpe().mensagem, /\+40 XP\. Dois lobos! Saque no chão/);
+  assert.doesNotMatch(golpe().mensagem, /Dois lobos/, "sem repetirAviso, não repete");
+  igual(m().progresso, [2]);
+  falar(j, "anciaoTeste");
+  igual(m(), { status: "em_andamento", etapa: 3, progresso: [[], 0] });
+  // coletar (saque, por id) e entregar.
+  igual(json(j.M.itensDeMissaoPendentes(p)), ["pele_lobo"], "peles da etapa não expiram");
+  p.saqueNoChao = p.saqueNoChao.filter((s) => s.item !== "pele_lobo");
+  const t = j.agora;
+  p.saqueNoChao.push({ id: "pele_a", area: "canaan", x: 21, y: 12, item: "pele_lobo", criadoEm: t });
+  pegarSaques(j);
+  assert.strictEqual(falar(j, "anciaoTeste").mensagem, "Ancião: Peles: 1/2.");
+  j.M.registrarColeta(p, "pele_lobo", "pele_a", "saque");
+  j.M.registrarColeta(p, "pele_lobo", "pele_b", "mapa");
+  igual(m().progresso[0], ["pele_a"], "mesmo id não conta duas vezes e a origem precisa bater");
+  p.saqueNoChao.push({ id: "pele_b", area: "canaan", x: 21, y: 12, item: "pele_lobo", criadoEm: t });
+  pegarSaques(j);
+  assert.strictEqual(balao("anciaoTeste"), "entregar");
+  assert.match(j.g("textoMissaoAtual")(p), /Leve as peles\.$/);
+  j.M.removerItens(p, "pele_lobo", 99);
+  p.inventario.push("pele_lobo");
+  assert.strictEqual(falar(j, "anciaoTeste").mensagem, "Ancião: Tenho de ver 2 peles (você tem 1).");
+  p.inventario.push("pele_lobo");
+  // recompensa bloqueada pela mochila cheia (as peles entregues já contam como espaço livre).
+  const peso = j.g("pesoCarregado");
+  const cap = j.g("capacidadeCarga");
+  while (peso(p) + 12 - 4 <= cap(p)) p.inventario.push("pocao"); // espada 10 + 2 poções − 2 peles
+  const antes = json(p.inventario);
+  const cheia = falar(j, "anciaoTeste");
+  assert.strictEqual(cheia.mensagem, `Ancião: Mochila cheia (${peso(p)}/${cap(p)} kg).`);
+  igual(p.inventario, antes, "nada muda com a mochila cheia");
+  assert.strictEqual(m().status, "em_andamento");
+  j.M.removerItens(p, "pocao", 3);
+  p.xp = j.g("limiarNivel")(p.nivel) - 1;
+  const moedas = p.moedas;
+  const nivel = p.nivel;
+  const fim = falar(j, "anciaoTeste");
+  assert.strictEqual(fim.mensagem, `Ancião: Recompensa: +7 XP, 3 moedas, Espada de ferro, 2× Poção de vida. Agora nível ${nivel + 1}.`);
+  assert.strictEqual(p.moedas, moedas + 3);
+  assert.strictEqual(j.M.contarItem(ID, "pele_lobo"), 0, "a entrega remove os itens");
+  assert.ok(p.inventario.includes("espada_ferro"));
+  assert.strictEqual(m().status, "concluida");
+  assert.strictEqual(falar(j, "anciaoTeste").mensagem, "Ancião: Tudo feito.");
+  assert.strictEqual(balao("anciaoTeste"), null);
+  // Pré-requisito cumprido: a missão do guia fica disponível.
+  assert.strictEqual(balao("guia_canaa"), "missao");
+  assert.strictEqual(falar(j, "guia_canaa").mensagem, "Micael, guia de caravanas: Agora eu.");
+});
+
+teste("29. motor: substituição de variáveis e pré-requisitos", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const preencher = j.g("preencherTexto");
+  assert.strictEqual(preencher("{a} e {b}, {c}", { a: 1, b: "x" }), "1 e x, {c}", "variável desconhecida fica como está");
+  const M = j.g("MISSOES");
+  const vars = j.g("variaveisMissao")(p, M.ervas, { status: "em_andamento", etapa: 0, progresso: [["erva1", "erva2"], 0] });
+  p.inventario.push("erva");
+  igual(
+    { ...vars, peso: 0, capacidade: 0 },
+    { coletados: 2, total: 3, naMochila: 0, nivel: 1, npc: "Eliabe", etapa: 1, etapas: 1, peso: 0, capacidade: 0, recompensa: "+80 XP, 2× Poção de vida", proximaArea: "Deserto" },
+  );
+  assert.strictEqual(j.g("variaveisMissao")(p, M.ervas, p.missoes.ervas).naMochila, 1);
+  assert.strictEqual(j.g("variaveisMissao")(p, M.deserto, p.missoes.deserto).proximaArea, "Egito");
+  // Pré-requisitos: ervas depende do lobo; cada capítulo, do anterior.
+  const fase = j.g("faseMissao");
+  assert.strictEqual(fase(p, "ervas"), "bloqueado");
+  assert.strictEqual(fase(p, "deserto"), "inicio", "Noemi não depende de Canaã");
+  for (const k of j.g("ORDEM_CAPITULOS")) assert.strictEqual(j.g("faseCapitulo")(p, k), "bloqueado");
+  p.missoes.deserto.status = "concluida";
+  assert.strictEqual(j.g("faseCapitulo")(p, "egito"), "inicio");
+  assert.strictEqual(j.g("capituloAnteriorConcluido")(p, "marVermelho"), false);
+  assert.strictEqual(falar(j, "araoMar").mensagem, "Arão: Conclua primeiro o capítulo anterior para chegar a esta etapa.");
+  assert.strictEqual(p.missoes.marVermelho.status, "nao_iniciada");
+  p.missoes.egito.status = "concluida";
+  assert.strictEqual(j.g("faseCapitulo")(p, "marVermelho"), "inicio");
+  assert.strictEqual(j.g("capituloDoInimigo")("perseguidorMar1"), "marVermelho");
+  assert.strictEqual(j.g("capituloDoInimigo")("lobo1"), null);
+});
+
+// Save v6 (formato antigo) a partir de um personagem novo, com os campos de missão dados.
+function saveV6(campos) {
+  const j = carregarJogo();
+  j.entrar();
+  j.g("Storage").flush();
+  const s = JSON.parse(j.store.save_jogador1);
+  delete s.missoes;
+  const cap = (status = "bloqueado", alvo = false) => ({ status, alvo });
+  Object.assign(
+    s,
+    {
+      versao: 6,
+      missaoEliabe: { status: "concluida", loboDerrotado: true, recompensaRecebida: true },
+      missaoErvas: { status: "concluida", recompensaRecebida: true, ervasMissaoColetadas: ["erva1", "erva2", "erva3"] },
+      missaoDeserto: {
+        status: "bloqueada",
+        etapa: 0,
+        recompensaRecebida: false,
+        odresMissaoColetados: [],
+        venenosMissaoColetados: [],
+        insigniasMissaoColetadas: [],
+      },
+      capitulos: { egito: cap(), marVermelho: cap(), sinai: cap(), galileia: cap() },
+    },
+    campos(s),
+  );
+  return carregarJogo({ store: { save_jogador1: JSON.stringify(s) }, inicio: INICIO_RELOGIO + 60_000 });
+}
+
+teste("30. migração v6 → v7 no meio das etapas, sem perder progresso", () => {
+  // Lobo derrotado, recompensa ainda não entregue.
+  let j = saveV6(() => ({
+    missaoEliabe: { status: "em_andamento", loboDerrotado: true, recompensaRecebida: false },
+    missaoErvas: { status: "bloqueada", recompensaRecebida: false, ervasMissaoColetadas: [] },
+  }));
+  let p = j.entrar();
+  assert.strictEqual(p.versao, 7);
+  igual(p.missoes.lobo, { status: "em_andamento", etapa: 0, progresso: [1] });
+  igual(p.missoes.ervas, { status: "nao_iniciada", etapa: 0, progresso: [[], 0] });
+  for (const campo of ["missaoEliabe", "missaoErvas", "missaoDeserto", "capitulos"]) assert.ok(!(campo in p), campo);
+  assert.strictEqual(j.g("estadoMissaoNpc")(p, "viajante1"), "entregar");
+  assert.match(falar(j, "viajante1").mensagem, /^Eliabe: Obrigado! Receba 2 poções, uma espada de ferro/);
+
+  // Ervas: 2 de 3 coletadas; a terceira completa a missão.
+  j = saveV6((s) => ({
+    missaoErvas: { status: "em_andamento", recompensaRecebida: false, ervasMissaoColetadas: ["erva1", "erva3"] },
+    ervasColetadas: ["erva1", "erva3"],
+    inventario: [...s.inventario, "erva", "erva"],
+  }));
+  p = j.entrar();
+  igual(p.missoes.ervas.progresso, [["erva1", "erva3"], 0]);
+  p.area = "canaan";
+  assert.match(j.g("textoMissaoAtual")(p), /Colete ervas medicinais: 2\/3\./);
+  assert.ok(pisarEm(j, "canaan", j.g("ervas")[1]).itemColetado);
+  assert.match(falar(j, "viajante1").mensagem, /Que Deus o recompense!/);
+  assert.strictEqual(p.missoes.ervas.status, "concluida");
+
+  // Odres: 2/3, etapa 1 do Deserto.
+  j = saveV6((s) => ({
+    missaoDeserto: { status: "em_andamento", etapa: 1, recompensaRecebida: false, odresMissaoColetados: ["odre1", "odre2"] },
+    odresColetados: ["odre1", "odre2"],
+    inventario: [...s.inventario, "odre_agua", "odre_agua"],
+  }));
+  p = j.entrar();
+  igual(p.missoes.deserto, { status: "em_andamento", etapa: 0, progresso: [["odre1", "odre2"], 0] });
+  assert.strictEqual(falar(j, "noemi1").mensagem, "Noemi: Ainda faltam odres. Você encontrou 2/3.");
+  pisarEm(j, "deserto", j.g("odres")[2]);
+  assert.match(falar(j, "noemi1").mensagem, /^Noemi: A água salvou a caravana!/);
+  assert.strictEqual(p.missoes.deserto.etapa, 1);
+
+  // Venenos: 1/2, com um saque de veneno antigo no chão (continua protegido).
+  j = saveV6((s) => ({
+    missaoDeserto: { status: "em_andamento", etapa: 2, venenosMissaoColetados: ["saque_x"], odresMissaoColetados: ["odre1"] },
+    inventario: [...s.inventario, "veneno_escorpiao"],
+    saqueNoChao: [{ id: "v_antigo", area: "deserto", x: 14, y: 9, item: "veneno_escorpiao", criadoEm: INICIO_RELOGIO - 3_600_000 }],
+  }));
+  p = j.entrar();
+  igual(p.missoes.deserto, { status: "em_andamento", etapa: 1, progresso: [["saque_x"], 0] });
+  assert.ok(p.saqueNoChao.some((s) => s.id === "v_antigo"), "saque da etapa não expira na carga");
+  p.area = "deserto";
+  pegarSaques(j);
+  igual(p.missoes.deserto.progresso, [["saque_x", "v_antigo"], 0]);
+  assert.match(falar(j, "noemi1").mensagem, /^Noemi: Com o veneno prepararemos um antídoto/);
+
+  // Insígnia já pega (etapa 3) e capítulo com alvo cumprido.
+  j = saveV6((s) => ({
+    missaoDeserto: { status: "em_andamento", etapa: 3, insigniasMissaoColetadas: ["c"] },
+    inventario: [...s.inventario, "insignia_bandido"],
+  }));
+  p = j.entrar();
+  igual(p.missoes.deserto.progresso, [["c"], 0]);
+  assert.strictEqual(j.g("estadoMissaoNpc")(p, "noemi1"), "entregar");
+  assert.match(falar(j, "noemi1").mensagem, /Capítulo do Deserto concluído!/);
+
+  j = saveV6(() => ({
+    missaoDeserto: { status: "concluida", etapa: 4 },
+    atualizacaoDistanciaEntregue: true,
+    capitulos: {
+      egito: { status: "concluida", alvo: true },
+      marVermelho: { status: "em_andamento", alvo: true },
+      sinai: { status: "bloqueado", alvo: false },
+    },
+  }));
+  p = j.entrar();
+  igual(p.missoes.marVermelho, { status: "em_andamento", etapa: 0, progresso: [1] });
+  igual(p.missoes.galileia, { status: "nao_iniciada", etapa: 0, progresso: [0] }, "capítulo ausente no save");
+  assert.strictEqual(j.g("faseCapitulo")(p, "marVermelho"), "retorno");
+  const r = falar(j, "araoMar");
+  assert.strictEqual(r.capituloConcluido, "marVermelho", r.mensagem);
+
+  // Campos corrompidos não quebram a carga.
+  j = saveV6(() => ({ missaoEliabe: "x", missaoErvas: { status: "estranho" }, capitulos: { egito: { alvo: "sim" }, sinai: null } }));
+  p = j.entrar();
+  assert.strictEqual(p.missoes.lobo.status, "nao_iniciada");
+  assert.strictEqual(p.missoes.ervas.status, "nao_iniciada");
+  igual(p.missoes.egito, { status: "nao_iniciada", etapa: 0, progresso: [0] });
+
+  // Recarregar o save v7 não muda nada.
+  j.g("Storage").flush();
+  const j2 = carregarJogo({ store: j.store, inicio: INICIO_RELOGIO + 120_000 });
+  igual(j2.entrar().missoes, p.missoes);
+});
+
+teste("31. balões vêm de estadoMissaoNpc e nenhuma missão está escrita como código", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const balao = (id) => j.g("estadoMissaoNpc")(p, id);
+  igual(
+    ["viajante1", "noemi1", "moisesEgito", "aaronEgito", "jesusGalileia", "mercador1"].map(balao),
+    ["missao", "missao", null, null, null, null],
+  );
+  falar(j, "viajante1");
+  assert.strictEqual(balao("viajante1"), "andamento");
+  p.missoes.deserto.status = "concluida";
+  for (const k of ["egito", "marVermelho", "sinai", "galileia"]) p.missoes[k].status = "concluida";
+  assert.strictEqual(balao("jesusGalileia"), "entregar", "o Mestre espera para ensinar a Oração");
+  p.oracaoDesbloqueada = true;
+  assert.strictEqual(balao("jesusGalileia"), null);
+  // game.js usa a função pura e ninguém lê os campos antigos.
+  const FONTE_UI = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  assert.match(FONTE_GAME, /estadoBalao\(npc, p\) \{[\s\S]{0,400}estadoMissaoNpc\(p, npc\.id\)/);
+  for (const fonte of [FONTE_GAME, FONTE_UI]) {
+    assert.doesNotMatch(fonte, /\b(missaoEliabe|missaoErvas|missaoDeserto)\b|\.capitulos\b|QUANTIDADE_(ERVAS|ODRES|VENENOS)/);
+  }
+  assert.doesNotMatch(FONTE_LOGICA, /interagirEliabe|interagirNoemi|"viajante1"|"noemi1"|"lobo1"|"veneno_escorpiao"/);
+});
+
+teste("32. LEIA-ME: versão do save e funções da interface batem com o código", () => {
+  const j = carregarJogo();
+  const leia = fs.readFileSync(path.join(RAIZ, "LEIA-ME.txt"), "utf8").replace(/\s+/g, " ");
+  // Toda versão de save citada (conteúdo e instalação) é a VERSAO_SAVE atual.
+  const versao = j.g("VERSAO_SAVE");
+  const citadas = [...leia.matchAll(/(?:save|migrado automaticamente para a) versão (\d+)/g)].map((m) => Number(m[1]));
+  assert.ok(citadas.length >= 2, "o LEIA-ME cita a versão do save no conteúdo e na instalação");
+  for (const v of citadas) assert.strictEqual(v, versao, `LEIA-ME cita a versão ${v} do save`);
+  // Toda função listada para a interface existe, com os parâmetros escritos.
+  const trecho = leia.match(/Funções para a interface \(sem DOM\): (.*?); constante/)[1];
+  const listadas = [...trecho.matchAll(/([\w.]+)\(([^)]*)\)/g)].map((m) => ({
+    nome: m[1],
+    params: m[2].split(",").filter((s) => s.trim()).length,
+  }));
+  for (const { nome, params } of listadas) {
+    const [dono, metodo] = nome.includes(".") ? nome.split(".") : [null, nome];
+    const fn = dono ? j.g(dono)[metodo] : j.g(metodo);
+    assert.strictEqual(typeof fn, "function", nome);
+    assert.strictEqual(fn.length, params, `parâmetros de ${nome}`);
+  }
+  // game.js depende de estadoMissaoNpc para os balões: ela está na lista.
+  assert.match(FONTE_GAME, /estadoMissaoNpc\(p, npc\.id\)/);
+  assert.ok(
+    listadas.some((f) => f.nome === "estadoMissaoNpc" && f.params === 2),
+    "estadoMissaoNpc(p, npcId) listada entre as funções para a interface",
+  );
 });
 
 // ---------------------------------------------------------------------
