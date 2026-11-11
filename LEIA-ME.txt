@@ -22,7 +22,7 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 6, sem perder itens, moedas, nível ou progresso. O jogo grava no máximo 1 vez por
+   para a versão 7, sem perder itens, moedas, nível ou progresso. O jogo grava no máximo 1 vez por
    segundo e grava na hora ao fechar, ocultar ou trocar de aba.
 
 Controles — teclado e mouse
@@ -141,6 +141,7 @@ Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
   com a tabela de duração das lutas.
 - Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p),
+  estadoMissaoNpc(p, npcId) (balão sobre o NPC: "missao", "andamento", "entregar" ou null),
   coletaveisDaArea(areaId), Mundo.consumirAviso(id), Mundo.recargaAtaque(id); constante ALCANCE_ARCO.
 - Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
   interface.js (window.UI: painéis, modais, atalhos, toque). Os nomes antigos continuam valendo:

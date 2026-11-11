@@ -1748,6 +1748,34 @@ teste("31. balões vêm de estadoMissaoNpc e nenhuma missão está escrita como 
   assert.doesNotMatch(FONTE_LOGICA, /interagirEliabe|interagirNoemi|"viajante1"|"noemi1"|"lobo1"|"veneno_escorpiao"/);
 });
 
+teste("32. LEIA-ME: versão do save e funções da interface batem com o código", () => {
+  const j = carregarJogo();
+  const leia = fs.readFileSync(path.join(RAIZ, "LEIA-ME.txt"), "utf8").replace(/\s+/g, " ");
+  // Toda versão de save citada (conteúdo e instalação) é a VERSAO_SAVE atual.
+  const versao = j.g("VERSAO_SAVE");
+  const citadas = [...leia.matchAll(/(?:save|migrado automaticamente para a) versão (\d+)/g)].map((m) => Number(m[1]));
+  assert.ok(citadas.length >= 2, "o LEIA-ME cita a versão do save no conteúdo e na instalação");
+  for (const v of citadas) assert.strictEqual(v, versao, `LEIA-ME cita a versão ${v} do save`);
+  // Toda função listada para a interface existe, com os parâmetros escritos.
+  const trecho = leia.match(/Funções para a interface \(sem DOM\): (.*?); constante/)[1];
+  const listadas = [...trecho.matchAll(/([\w.]+)\(([^)]*)\)/g)].map((m) => ({
+    nome: m[1],
+    params: m[2].split(",").filter((s) => s.trim()).length,
+  }));
+  for (const { nome, params } of listadas) {
+    const [dono, metodo] = nome.includes(".") ? nome.split(".") : [null, nome];
+    const fn = dono ? j.g(dono)[metodo] : j.g(metodo);
+    assert.strictEqual(typeof fn, "function", nome);
+    assert.strictEqual(fn.length, params, `parâmetros de ${nome}`);
+  }
+  // game.js depende de estadoMissaoNpc para os balões: ela está na lista.
+  assert.match(FONTE_GAME, /estadoMissaoNpc\(p, npc\.id\)/);
+  assert.ok(
+    listadas.some((f) => f.nome === "estadoMissaoNpc" && f.params === 2),
+    "estadoMissaoNpc(p, npcId) listada entre as funções para a interface",
+  );
+});
+
 // ---------------------------------------------------------------------
 // Execução
 // ---------------------------------------------------------------------
