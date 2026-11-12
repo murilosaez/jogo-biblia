@@ -166,12 +166,14 @@ Inimigos obrigatórios (vida / defesa / dano por golpe antes da sua defesa)
 - Guerreiro amalequita 400 / 12 / 11 · Salteador da estrada 470 / 14 / 11
 Com o autoataque, cada luta da campanha leva de 11 a 35 segundos e as últimas pedem 1 ou 2 poções.
 
-Criaturas (31 espécies e 6 raros nomeados; cada uma com sprite próprio)
+Criaturas (33 espécies e 6 raros nomeados; cada uma com sprite próprio)
 - Canaã: lobo, chacal (matilha), javali (investida), urso (elite, fúria), leão (elite, investida, sangramento).
 - Deserto: escorpião (veneno), chefe dos saqueadores (chefe), víbora (veneno), hiena (matilha e fuga),
-  abutre (rápido, foge), enxame de gafanhotos (ataque muito rápido), arqueiro do bando (à distância).
+  abutre (rápido, foge), enxame de gafanhotos (ataque muito rápido), arqueiro do bando (à distância),
+  curandeiro do bando (cura as aliadas, junto dos arqueiros).
 - Egito: guarda egípcio, crocodilo do Nilo (elite, investida, atordoa), naja (veneno), feiticeiro da corte
-  (feitiço à distância, atordoa), rã da praga, arqueiro egípcio (à distância).
+  (feitiço à distância, atordoa), rã da praga, arqueiro egípcio (à distância), sacerdote de Faraó (cura as
+  aliadas, junto dos arqueiros egípcios).
 - Mar Vermelho: soldado perseguidor, caranguejo das rochas (defesa alta), pirata da costa (sangramento),
   auriga de Faraó (elite, investida).
 - Monte Sinai: guerreiro amalequita, cabra selvagem (investida e fuga), águia (rápida, foge), fundibulário
@@ -179,11 +181,19 @@ Criaturas (31 espécies e 6 raros nomeados; cada uma com sprite próprio)
 - Galileia: salteador da estrada, enxame de vespas (veneno, ataque muito rápido), corvo (foge), mercenário
   (elite, fúria, sangramento).
 - Tiers: normal, elite (nome prateado, mais forte e com saque melhor), chefe e raro nomeado.
-- Comportamentos: matilha (ao ver você ou ser atingida, chama as da mesma espécie a até 12 casas, que
-  passam a enxergar 8 casas mais longe por 10 s); fuga (com 25% da vida, foge por 4 s, uma vez, e volta);
-  à distância (flecha, pedra ou feitiço de até 5 casas com o caminho livre; colada em você, recua); investida
-  (entre 2 e 4 casas, avisa com "!" por 0,9 s e avança em linha reta batendo 1,6×; saia da linha e ela erra;
-  recarga de 7 s); fúria (com 30% da vida, bate 1,4× mais forte e 25% mais rápido).
+- Comportamentos (parâmetros em COMPORTAMENTOS, dados/criaturas.js):
+  matilha — ao ver você ou ser atingida, chama as da mesma espécie a até 12 casas (passam a enxergar 8 casas
+    mais longe por 10 s) e cerca: cada uma vai para uma casa diferente em volta de você, preferindo os lados
+    ainda vazios, e dá a volta em quem estiver no caminho;
+  fuga — com 25% da vida, foge por 4 s (uma vez) e volta com 15% da vida recuperada; a de matilha (hiena)
+    volta com reforço: as da espécie a até 22 casas vêm atrás de você de onde estiverem;
+  à distância — flecha, pedra ou feitiço de até 5 casas com o caminho livre; mantém distância: mais perto que
+    3 casas, recua entre um disparo e outro;
+  curandeiro — a cada 4 s cura 20% da vida da criatura mais ferida (menor fração de vida, abaixo de 75%) a
+    até 6 casas; aparece primeiro na lista de Batalha, com a marca CURA: é a prioridade de alvo;
+  investida — entre 2 e 4 casas, marca no chão (em vermelho) a linha até onde você está e, 1 s depois, avança
+    por ela batendo 1,6×; saia da área marcada e ela erra; recarga de 7 s;
+  fúria — com 30% da vida, bate 1,4× mais forte e 25% mais rápido.
 - Status: veneno; sangramento (3 de dano a cada 2 s por 8 s, 30% de chance por golpe); atordoamento
   (1,2 s sem andar nem atacar, 15–30% de chance; depois, 4 s de imunidade). Poções valem atordoado.
   A Oração "Remover veneno" também estanca o sangramento, e o Milagre remove os dois.
@@ -287,7 +297,10 @@ Para desenvolvedores
 - Criaturas: Mundo.fichaInimigo(id, inimigoId) (nome com modificadores, tier, campeão, família,
   comportamentos e status), Mundo.vidaMaximaInimigo(id, inimigoId) e Mundo.nomeInimigo(id, inimigoId).
   O laço de tempo (Mundo.atualizar) devolve também furia, fuga, investidaPreparo, investidaErrou,
-  sangramento, atordoado, explosao, nomeadoApareceu e nomeadoSumiu. O teste 51 simula a luta contra cada
+  sangramento, atordoado, explosao, nomeadoApareceu, nomeadoSumiu, retorno (fim da fuga, com reforcos) e
+  cura (id do curandeiro, alvo, cura); investidaPreparo traz as casas marcadas. O teste 55 simula cada
+  comportamento (cerco, fuga com reforço, distância dos disparos, curandeiro e ordem de abate, desvio da
+  investida e fúria). O teste 51 simula a luta contra cada
   criatura no perfil de chegada da região (no nível dela) e aprova duração, poções e XP por minuto.
 - Caçadas: comandos { tipo: "aceitarTarefa", tarefaId }, { tipo: "guardarTarefa", tarefaId } e
   { tipo: "trocarPontos", ofertaId } de Mundo.executar. Falar com um atalaia devolve abrirMural (mural

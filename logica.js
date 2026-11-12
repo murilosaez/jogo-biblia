@@ -803,10 +803,15 @@ function registrarInimigo(dados) {
 function zerarComportamento(e) {
   e.furioso = false;
   e.fugiu = false;
+  e.voltou = false;
   e.fugindoAte = 0;
   e.preparoAte = 0;
+  e.investidaCasas = null;
   e.proximaInvestida = 0;
   e.alertaAte = 0;
+  e.chamadoAte = 0;
+  e.slotMatilha = null;
+  e.proximaCura = 0;
 }
 
 // ---------------------------------------------------------------------
@@ -877,6 +882,16 @@ function nomeInimigo(p, e) {
   const g = e.genero === "f" ? 1 : 0;
   const nomes = mods.map((k) => MODIFICADORES_CAMPEAO[k].nome[g]);
   return `${e.nome} ${nomes.length > 1 ? `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}` : nomes[0]}`;
+}
+
+// Casas da linha reta de a até b (sem a, com b): o caminho da investida, marcado no chão.
+function casasDaLinha(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const passos = Math.max(Math.abs(dx), Math.abs(dy));
+  const casas = [];
+  for (let i = 1; i <= passos; i++) casas.push({ x: a.x + Math.round((dx * i) / passos), y: a.y + Math.round((dy * i) / passos) });
+  return casas;
 }
 
 // Janela de aparição do raro nomeado: aparece a cada aCadaHoras, por duracaoMinutos, a partir de
@@ -1884,6 +1899,7 @@ const Mundo = {
       titulo: e.titulo || null,
       familia: FAMILIAS_CRIATURAS[e.familia]?.nome || "",
       comportamentos: e.comportamentos.map((c) => COMPORTAMENTOS[c].nome),
+      curandeiro: e.comportamentos.includes("curandeiro"),
       status: e.efeito ? STATUS_CRIATURAS[e.efeito.tipo].nome : null,
       nivel: e.nivel,
       furioso: !!e.furioso,
@@ -2982,7 +2998,7 @@ const Mundo = {
 
     const golpe = calcularGolpe(p, tipo, at.defesa);
     // Atingida, a criatura de matilha chama as outras (mesmo de longe, com a flecha).
-    if (e.comportamentos.includes("matilha")) this.alertarMatilha(e, agora);
+    if (e.comportamentos.includes("matilha")) this.alertarMatilha(p, e, agora);
     const chaveHabilidade = distancia ? "distancia" : "corpo";
     const subiu = ganharHabilidade(p, chaveHabilidade, XP_HABILIDADE_POR_USO[chaveHabilidade]);
     p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - golpe.dano);
@@ -3143,19 +3159,53 @@ const Mundo = {
       }
       return null;
     }
+    // Fim da fuga: volta um pouco curada e, se for de matilha, com reforço.
+    if (e.fugiu && !e.voltou && e.fugindoAte) {
+      const cfg = COMPORTAMENTOS.fuga;
+      e.voltou = true;
+      e.fugindoAte = 0;
+      p.vidaInimigos[e.id] = Math.min(at.vidaMaxima, p.vidaInimigos[e.id] + Math.round(at.vidaMaxima * cfg.curaAoVoltar));
+      const reforcos = tem("matilha") ? this.alertarMatilha(p, e, agora, { raio: cfg.raioReforco, chamar: true }) : 0;
+      eventos.push({
+        tipo: "retorno",
+        id: e.id,
+        reforcos,
+        mensagem: reforcos ? `${nome} volta com reforço (${reforcos})!` : `${nome} volta à luta!`,
+      });
+    }
+
+    // Curandeiro: cura a aliada mais ferida por perto (prioridade: menor fração de vida).
+    if (tem("curandeiro") && agora >= (e.proximaCura || 0)) {
+      const cura = this.curarAliada(p, e, agora);
+      if (cura) {
+        eventos.push(cura);
+        return null;
+      }
+    }
 
     // Investida: o preparo terminou — avança em linha reta e bate, ou erra se você saiu da linha.
+    // A linha ficou marcada no chão no preparo; quem estiver numa casa dela é atingido.
     if (e.preparoAte) {
       if (agora < e.preparoAte) return null;
       const cfg = COMPORTAMENTOS.investida;
+      const casas = e.investidaCasas || [];
       e.preparoAte = 0;
+      e.investidaCasas = null;
       e.proximaInvestida = agora + cfg.recarga;
       let passos = 0;
-      if (distancia <= cfg.alcanceMax + 1 && this.linhaReta(e, p, cfg.alcanceMax + 1.5)) {
-        while (distanciaChebyshev(p, e) > ALCANCE_CORPO && passos < cfg.alcanceMax + 1 && this.passoInimigo(e, p.x, p.y, p)) passos++;
+      let acertou = false;
+      for (const c of casas) {
+        if (p.area === e.area && p.x === c.x && p.y === c.y) {
+          acertou = true;
+          break;
+        }
+        if (!this.casaLivre(c.x, c.y, p)) break;
+        e.x = c.x;
+        e.y = c.y;
+        passos++;
       }
       if (passos) eventos.push({ tipo: "inimigoMoveu", id: e.id, investida: true });
-      if (distanciaChebyshev(p, e) > ALCANCE_CORPO) {
+      if (!acertou || distanciaChebyshev(p, e) > ALCANCE_CORPO) {
         eventos.push({ tipo: "investidaErrou", id: e.id, mensagem: `${nome} avançou e errou!` });
         e.proximoAtaque = agora + 600;
         return null;
@@ -3164,8 +3214,9 @@ const Mundo = {
     }
 
     const alerta = e.alertaAte > agora;
-    const percepcao = e.raioPercepcao + (alerta ? COMPORTAMENTOS.matilha.alcanceExtra : 0);
-    if (tem("matilha") && distancia <= e.raioPercepcao && !alerta) this.alertarMatilha(e, agora);
+    // Chamada como reforço: vem de onde estiver.
+    const percepcao = e.chamadoAte > agora ? Infinity : e.raioPercepcao + (alerta ? COMPORTAMENTOS.matilha.alcanceExtra : 0);
+    if (tem("matilha") && distancia <= e.raioPercepcao && !alerta) this.alertarMatilha(p, e, agora);
 
     if (tem("distancia")) {
       const cfg = COMPORTAMENTOS.distancia;
@@ -3190,7 +3241,14 @@ const Mundo = {
       const pronta = agora >= (e.proximaInvestida || 0);
       if (pronta && distancia >= cfg.alcanceMin && distancia <= cfg.alcanceMax && this.linhaReta(e, p, cfg.alcanceMax + 0.5)) {
         e.preparoAte = agora + cfg.preparo;
-        eventos.push({ tipo: "investidaPreparo", id: e.id, ate: e.preparoAte, mensagem: `${nome} prepara uma investida!` });
+        e.investidaCasas = casasDaLinha(e, p);
+        eventos.push({
+          tipo: "investidaPreparo",
+          id: e.id,
+          ate: e.preparoAte,
+          casas: e.investidaCasas.map((c) => ({ ...c })),
+          mensagem: `${nome} prepara uma investida! Saia da área marcada.`,
+        });
         return null;
       }
     }
@@ -3199,9 +3257,20 @@ const Mundo = {
     e.proximoMovimento = agora + at.intervaloMovimento;
     let alvoX = e.inicioX;
     let alvoY = e.inicioY;
+    e.slotMatilha = null;
     if (distancia <= percepcao) {
       alvoX = p.x;
       alvoY = p.y;
+      // Matilha cerca: cada uma mira uma casa diferente em volta do jogador.
+      const slot = tem("matilha") ? this.slotDeCerco(p, e) : null;
+      if (slot) {
+        e.slotMatilha = slot;
+        if (this.passoContornando(e, slot, p)) {
+          e.proximoAtaque = Math.max(e.proximoAtaque, agora + 600);
+          eventos.push({ tipo: "inimigoMoveu", id: e.id });
+        }
+        return null;
+      }
     } else if (e.x === e.inicioX && e.y === e.inicioY) return null;
     if (this.passoInimigo(e, alvoX, alvoY, p)) {
       e.proximoAtaque = Math.max(e.proximoAtaque, agora + 600);
@@ -3258,12 +3327,94 @@ const Mundo = {
   },
 
   // Chama as criaturas da mesma espécie por perto (comportamento matilha).
-  alertarMatilha(e, agora) {
+  // Com chamar (retorno da fuga), as chamadas vêm atrás do jogador de onde estiverem. Devolve quantas
+  // outras foram chamadas (vivas).
+  alertarMatilha(p, e, agora, { raio = COMPORTAMENTOS.matilha.raioAlerta, chamar = false } = {}) {
     const cfg = COMPORTAMENTOS.matilha;
+    let n = 0;
     for (const outro of Object.values(inimigos)) {
       if (outro.area !== e.area || outro.especie !== e.especie) continue;
-      if (Math.max(Math.abs(outro.x - e.x), Math.abs(outro.y - e.y)) <= cfg.raioAlerta) outro.alertaAte = agora + cfg.duracao;
+      if (Math.max(Math.abs(outro.x - e.x), Math.abs(outro.y - e.y)) > raio) continue;
+      outro.alertaAte = agora + cfg.duracao;
+      if (chamar) outro.chamadoAte = agora + cfg.duracao * 2;
+      if (outro !== e && this.inimigoVivo(p, outro.id)) n++;
     }
+    return n;
+  },
+
+  // Casa em volta do jogador para a criatura de matilha: livre e ainda não escolhida por outra do bando;
+  // entre essas, a que equilibra perto dela e longe (em ângulo) das casas já tomadas, para fechar o cerco
+  // pelos lados vazios. Já ao lado do jogador, fica onde está.
+  slotDeCerco(p, e) {
+    if (distanciaChebyshev(p, e) <= ALCANCE_CORPO) return null;
+    const tomadas = new Set();
+    for (const outro of Object.values(inimigos)) {
+      if (outro === e || outro.area !== e.area || outro.especie !== e.especie || !this.inimigoVivo(p, outro.id)) continue;
+      if (distanciaChebyshev(p, outro) <= ALCANCE_CORPO) tomadas.add(`${outro.x},${outro.y}`);
+      else if (outro.slotMatilha) tomadas.add(`${outro.slotMatilha.x},${outro.slotMatilha.y}`);
+    }
+    const angulos = [...tomadas].map((k) => {
+      const [x, y] = k.split(",").map(Number);
+      return Math.atan2(y - p.y, x - p.x);
+    });
+    let melhor = null;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const x = p.x + dx;
+        const y = p.y + dy;
+        if (tomadas.has(`${x},${y}`) || !this.casaLivre(x, y, p)) continue;
+        const a = Math.atan2(dy, dx);
+        const separacao = angulos.length ? Math.min(...angulos.map((b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))))) / (Math.PI / 4) : 0;
+        const d = Math.max(Math.abs(e.x - x), Math.abs(e.y - y)) + Math.hypot(e.x - x, e.y - y) / 100 - 1.5 * separacao;
+        if (!melhor || d < melhor.d) melhor = { x, y, d };
+      }
+    return melhor ? { x: melhor.x, y: melhor.y } : null;
+  },
+
+  // Curandeiro: cura a criatura viva mais ferida (menor fração de vida) a até alcance casas, se estiver
+  // abaixo de vidaLimite. Devolve o evento, ou null se ninguém precisar.
+  curarAliada(p, e, agora) {
+    const cfg = COMPORTAMENTOS.curandeiro;
+    let alvo = null;
+    for (const outro of Object.values(inimigos)) {
+      if (outro.area !== e.area || !this.inimigoVivo(p, outro.id)) continue;
+      if (Math.max(Math.abs(outro.x - e.x), Math.abs(outro.y - e.y)) > cfg.alcance) continue;
+      const max = atributosInimigo(p, outro).vidaMaxima;
+      const fracao = p.vidaInimigos[outro.id] / max;
+      if (fracao >= cfg.vidaLimite) continue;
+      if (!alvo || fracao < alvo.fracao) alvo = { e: outro, max, fracao };
+    }
+    if (!alvo) return null;
+    e.proximaCura = agora + cfg.intervalo;
+    const antes = p.vidaInimigos[alvo.e.id];
+    p.vidaInimigos[alvo.e.id] = Math.min(alvo.max, antes + Math.max(1, Math.round(alvo.max * cfg.curaPercentual)));
+    const cura = p.vidaInimigos[alvo.e.id] - antes;
+    const quem = alvo.e === e ? "a si mesmo" : nomeInimigo(p, alvo.e).toLowerCase();
+    return { tipo: "cura", id: e.id, alvo: alvo.e.id, cura, mensagem: `${nomeInimigo(p, e)} curou ${quem} (+${cura}).` };
+  },
+
+  // Contorna quem está no caminho: um passo para a casa vizinha livre que mais se aproxima do alvo (ou
+  // anda de lado, sem se afastar mais que meia casa e sem voltar à casa de onde veio). Usado pela
+  // matilha para dar a volta no jogador.
+  passoContornando(e, alvo, p) {
+    const atual = Math.hypot(alvo.x - e.x, alvo.y - e.y);
+    let melhor = null;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = e.x + dx;
+        const ny = e.y + dy;
+        const d = Math.hypot(alvo.x - nx, alvo.y - ny);
+        if (d > atual + 0.5 || (e.casaAnterior && e.casaAnterior.x === nx && e.casaAnterior.y === ny)) continue;
+        if (!this.casaLivre(nx, ny, p)) continue;
+        if (!melhor || d < melhor.d) melhor = { nx, ny, d };
+      }
+    if (!melhor) return false;
+    e.casaAnterior = { x: e.x, y: e.y };
+    e.x = melhor.nx;
+    e.y = melhor.ny;
+    return true;
   },
 
   // Um passo que aumenta a distância até o jogador (fuga e recuo de quem ataca de longe).

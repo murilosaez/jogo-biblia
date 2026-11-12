@@ -615,6 +615,10 @@
   }
   function marcasDaCriatura(f) {
     if (!f) return "";
+    const cura = f.curandeiro ? '<span class="marca-tier cura" title="Curandeiro: cura as outras criaturas. Prioridade de alvo!">CURA</span>' : "";
+    return marcaTier(f) + cura;
+  }
+  function marcaTier(f) {
     if (f.campeao) return '<span class="marca-tier campeao" title="Campeão">CAMPEÃO</span>';
     if (f.nomeado) return '<span class="marca-tier raro" title="Raro nomeado">RARO</span>';
     if (f.tier === "elite") return '<span class="marca-tier elite" title="Elite">ELITE</span>';
@@ -629,7 +633,8 @@
 
   function atualizarBatalha(p) {
     const alvo = alvoAtual();
-    const vivos = inimigosVivos(p);
+    // Prioridade de alvo: curandeiros primeiro na lista, depois a ordem de sempre.
+    const vivos = inimigosVivos(p).sort((a, b) => (ficha(b.id)?.curandeiro ? 1 : 0) - (ficha(a.id)?.curandeiro ? 1 : 0));
     const cacadas = cacadasAtivas(p).map((t) => [t.id, t.progresso, t.estado]);
     const ass = JSON.stringify([alvo, vivos.map((e) => [e.id, Mundo.obterVidaInimigo(ID, e.id), ficha(e.id)?.nome]), cacadas]);
     if (ass === assinaturaBatalha) return;
@@ -1437,8 +1442,9 @@
         atalaia e troque os pontos de tarefa por melhorias.</p>
       <p>Saques: cada criatura tem a sua tabela, com itens comuns e drops raros (1%) e muito raros (0,1%). A cor e o brilho no chão
         mostram a raridade (comum, incomum, raro, épico, relíquia); equipamentos raros ou melhores trazem atributos aleatórios.</p>
-      <p>Criaturas: cada região tem feras, pragas e inimigos com comportamentos próprios — matilha, fuga, ataque à distância,
-        investida (o "!" avisa: saia da linha) e fúria — e alguns causam veneno, sangramento ou atordoamento. Às vezes uma
+      <p>Criaturas: cada região tem feras, pragas e inimigos com comportamentos próprios — matilhas que cercam, fuga com
+        reforço, arqueiros que mantêm distância, curandeiros (marca CURA: derrube-os primeiro), investida (o chão fica
+        vermelho na linha dela: saia da área marcada) e fúria — e alguns causam veneno, sangramento ou atordoamento. Às vezes uma
         criatura renasce campeã (nome dourado, 1 ou 2 modificadores, saque reforçado), e cada região tem um raro nomeado que
         aparece algumas vezes por dia, com anúncio no Registro.</p>
       <p>Viagem rápida: fale com Micael em Canaã ou Tamar no Deserto. A trilha no extremo sul liga as regiões a pé. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. Azarias, no Deserto, vende provisões e compra recursos. No mar, pesque nos pontos com ondulação.</p>

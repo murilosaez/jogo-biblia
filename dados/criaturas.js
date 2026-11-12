@@ -50,18 +50,25 @@ const TIERS_CRIATURAS = {
 // Comportamentos (campo comportamento: um nome ou uma lista). Sem comportamento: "padrao".
 //   padrao: persegue quem entra no raio de percepção e ataca ao lado (8 casas vizinhas).
 //   matilha: ao ver você, chama as da mesma espécie a até raioAlerta casas; alertadas, enxergam
-//     alcanceExtra casas mais longe por duracao ms.
-//   fuga: com vidaLimite da vida ou menos, foge por duracao ms (uma vez por vida) e depois volta.
-//   distancia: ataca de até alcance casas, com o caminho reto livre; colado em você, recua um passo.
-//   investida: entre alcanceMin e alcanceMax casas, prepara (preparo ms, com aviso na tela) e avança
-//     em linha reta até você, com multiplicador de dano; se você sair da linha, erra. Recarga em ms.
+//     alcanceExtra casas mais longe por duracao ms. Para cercar, cada uma vai para uma casa diferente em
+//     volta de você (a livre mais perto dela que nenhuma outra do bando escolheu).
+//   fuga: com vidaLimite da vida ou menos, foge por duracao ms (uma vez por vida) e depois volta com
+//     curaAoVoltar da vida; se for de matilha, volta com reforço: as da espécie a até raioReforco casas
+//     vêm atrás de você, de onde estiverem.
+//   distancia: ataca de até alcance casas, com o caminho reto livre; mais perto que distanciaMinima,
+//     recua entre um disparo e outro (mantém distância).
+//   curandeiro: a cada intervalo ms cura curaPercentual da vida máxima da aliada (qualquer criatura) mais
+//     ferida, em fração da vida, a até alcance casas e abaixo de vidaLimite. Mate-o primeiro.
+//   investida: entre alcanceMin e alcanceMax casas, marca no chão a linha até onde você está e, depois de
+//     preparo ms, avança por ela com multiplicador de dano; se você sair da área marcada, erra. Recarga.
 //   furia: com vidaLimite da vida ou menos, bate dano× mais forte e intervalo× mais rápido.
 const COMPORTAMENTOS = {
   padrao: { nome: "Persegue e ataca" },
   matilha: { nome: "Caça em matilha", raioAlerta: 12, alcanceExtra: 8, duracao: 10000 },
-  fuga: { nome: "Foge ferida", vidaLimite: 0.25, duracao: 4000 },
-  distancia: { nome: "Ataca à distância", alcance: 5, distanciaMinima: 2 },
-  investida: { nome: "Investida", alcanceMin: 2, alcanceMax: 4, preparo: 900, recarga: 7000, multiplicador: 1.6 },
+  fuga: { nome: "Foge ferida", vidaLimite: 0.25, duracao: 4000, curaAoVoltar: 0.15, raioReforco: 22 },
+  distancia: { nome: "Ataca à distância", alcance: 5, distanciaMinima: 3 },
+  curandeiro: { nome: "Cura as aliadas", alcance: 6, curaPercentual: 0.2, intervalo: 4000, vidaLimite: 0.75 },
+  investida: { nome: "Investida", alcanceMin: 2, alcanceMax: 4, preparo: 1000, recarga: 7000, multiplicador: 1.6 },
   furia: { nome: "Fúria", vidaLimite: 0.3, dano: 1.4, intervalo: 0.75 },
 };
 
@@ -1021,6 +1028,69 @@ const DADOS_CRIATURAS = [
         { item: "espada_temperada", chance: 0.05 },
         { item: "couraca_escamas", chance: "raro", raridadeMinima: "raro" },
         { item: "pedra_onix", chance: "muito_raro" },
+      ],
+    },
+  },
+  // ===== Curandeiros (JGB-8): curam as aliadas feridas; ficam perto de outros grupos =====
+  {
+    id: "curandeiroBando1",
+    nome: "Curandeiro do bando",
+    aparencia: "curandeiro_bando",
+    especie: "curandeiro_bando",
+    familia: "saqueadores",
+    tier: "normal",
+    area: "deserto",
+    x: 144,
+    y: 84,
+    vidaMaxima: 120,
+    danoContraJogador: 6,
+    defesa: 3,
+    raioPercepcao: 7,
+    nivel: 6,
+    grupo: { quantidade: 2, raio: 8 },
+    comportamento: ["curandeiro", "distancia"],
+    alcance: 5,
+    projetil: "pedra",
+    xpRecompensa: 70,
+    saque: {
+      moedas: 10,
+      itens: [
+        { item: "erva", chance: "comum" },
+        { item: "pocao", chance: 0.12 },
+        { item: "tunica_pano", chance: 0.03 },
+        { item: "armadura_couro", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_esmeralda", chance: "muito_raro" },
+      ],
+    },
+  },
+  {
+    id: "sacerdoteFarao1",
+    nome: "Sacerdote de Faraó",
+    aparencia: "sacerdote",
+    especie: "sacerdote",
+    familia: "magos",
+    tier: "normal",
+    area: "egito",
+    x: 144,
+    y: 20,
+    vidaMaxima: 160,
+    danoContraJogador: 8,
+    defesa: 5,
+    raioPercepcao: 7,
+    nivel: 7,
+    grupo: { quantidade: 2, raio: 8 },
+    comportamento: ["curandeiro", "distancia"],
+    alcance: 5,
+    projetil: "magia",
+    xpRecompensa: 100,
+    saque: {
+      moedas: 18,
+      itens: [
+        { item: "amuleto_faianca", chance: "comum" },
+        { item: "pocao_fe", chance: 0.12 },
+        { item: "escudo_bronze", chance: 0.03 },
+        { item: "arco_composto", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_carbunculo", chance: "muito_raro" },
       ],
     },
   },
