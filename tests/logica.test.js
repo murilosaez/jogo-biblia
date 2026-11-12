@@ -4999,17 +4999,22 @@ teste("63d. Pastor: o cão segue e morde (com XP do abate), a ovelha atrai as cr
 });
 
 // Simula uma luta com a vocação (rotação simples: cura abaixo de 50%, buffs, depois as habilidades de dano/controle
-// prontas e o golpe básico a cada 2 s) ou sem vocação (só o golpe básico). Devolve { vitoria, duracao, pocoes }.
-function lutaComVocacao(inimigoId, vocacao, { semente = 7, nivelExtra = 0 } = {}) {
+// prontas e o golpe básico a cada 2 s) ou sem vocação (só o golpe básico). Devolve { vitoria, duracao, pocoes,
+// danoRecebido }. ramo (JGB-46): índice do ramo de talentos em que o build se concentra (ver montarBuild).
+function lutaComVocacao(inimigoId, vocacao, { semente = 7, nivelExtra = 0, ramo = null, nivel: nivelFixo = null, escala = null } = {}) {
   const j = carregarJogo({ semente });
   j.entrar();
   concluirMissoes(j);
   const e = j.g("inimigos")[inimigoId];
   const perfil = PERFIS_CHEGADA[e.area];
+  // Elite reforçada (JGB-46): o conteúdo vai até o nível 12; para medir os ápices (nível 23+), a criatura ganha
+  // vida, dano e defesa de uma elite futura.
+  if (escala) Object.assign(e, { vidaMaxima: Math.round(e.vidaMaxima * escala.vida), danoContraJogador: Math.round(e.danoContraJogador * escala.dano), defesa: (e.defesa || 0) + escala.defesa });
   for (const outro of Object.values(j.g("inimigos"))) if (outro !== e && outro.area === e.area) { outro.inicioX = outro.x = -50; outro.inicioY = outro.y = -50; }
   const p = j.p;
-  const nivel = Math.max(perfil.nivel, e.nivel, 8) + nivelExtra;
+  const nivel = nivelFixo ?? Math.max(perfil.nivel, e.nivel, 8) + nivelExtra;
   if (vocacao) comVocacao(j, vocacao, nivel);
+  if (vocacao && ramo !== null) montarBuild(j, vocacao, ramo);
   else Object.assign(p, { nivel, xp: j.g("limiarNivel")(nivel - 1) });
   p.equipamento = { arma: perfil.arma, arco: vocacao === "fundibulario" ? "funda" : null, escudo: perfil.escudo, armadura: perfil.armadura };
   if (vocacao === "fundibulario") p.equipamento.arma = null;
@@ -5027,9 +5032,15 @@ function lutaComVocacao(inimigoId, vocacao, { semente = 7, nivelExtra = 0 } = {}
   const inicio = j.agora;
   let proximoBasico = j.agora;
   let pocoes = 0;
+  let danoRecebido = 0;
+  let vidaAntes = p.vida;
+  let vidaMinima = 1;
+  const fim = (vitoria) => ({ vitoria, duracao: (j.agora - inicio) / 1000, pocoes, danoRecebido, vidaMinima });
   while (j.agora - inicio < 180_000) {
-    for (const ev of j.atualizar()) if (ev.tipo === "renasceu") return { vitoria: false, duracao: (j.agora - inicio) / 1000, pocoes };
-    if (j.M.obterVidaInimigo(ID, e.id) <= 0) return { vitoria: true, duracao: (j.agora - inicio) / 1000, pocoes };
+    for (const ev of j.atualizar()) if (ev.tipo === "renasceu") return fim(false);
+    danoRecebido += Math.max(0, vidaAntes - p.vida);
+    vidaMinima = Math.min(vidaMinima, p.vida / j.g("vidaMaxima")(p));
+    if (j.M.obterVidaInimigo(ID, e.id) <= 0) return fim(true);
     const vidaMax = j.g("vidaMaxima")(p);
     if (p.vida < vidaMax * 0.3 && p.inventario.includes("pocao")) { j.exec({ tipo: "usarPocao" }); pocoes++; }
     if (distanciaJ(p, e) > 1 && !["fundibulario", "profeta", "levita"].includes(vocacao)) posicionarAoLado(j, e.area, e);
@@ -5048,9 +5059,23 @@ function lutaComVocacao(inimigoId, vocacao, { semente = 7, nivelExtra = 0 } = {}
       if (r.ok || !r.emRecarga) proximoBasico = j.agora + 2000;
       if (!r.ok && /Chegue ao lado|Nenhum inimigo/.test(r.mensagem)) posicionarAoLado(j, e.area, e);
     }
+    vidaAntes = p.vida;
     j.avancar(100);
   }
-  return { vitoria: false, duracao: 180, pocoes };
+  return { vitoria: false, duracao: 180, pocoes, danoRecebido, vidaMinima };
+}
+
+// Build focado num ramo (JGB-46): gasta os pontos do nível pelo comando, fileira por fileira, primeiro no ramo
+// escolhido (até o ápice) e o que sobrar nas fileiras de cima dos outros ramos. Devolve os pontos gastos.
+function montarBuild(j, vocacao, indiceRamo) {
+  const ramos = j.g("TALENTOS")[vocacao];
+  const ordem = [ramos[indiceRamo], ...ramos.filter((_, i) => i !== indiceRamo)];
+  let gastos = 0;
+  for (const ramo of ordem) {
+    const talentos = [...ramo.talentos].sort((a, b) => a.tier - b.tier);
+    for (const t of talentos) while (j.exec({ tipo: "aprenderTalento", talento: t.id }).ok) gastos++;
+  }
+  return gastos;
 }
 
 teste("63e. simulação de cada vocação: vence as elites de cada região, mais rápido ou com menos poções que sem vocação, sem banalizar", () => {
@@ -5323,12 +5348,12 @@ teste("64d. efeitos dos talentos no combate: dano, crítico, defesa, redução, 
   assert.strictEqual(g("barraHabilidades")(p, j.agora)[0].recarga, Math.round(6000 * 0.91), "a barra mostra a recarga com talento");
   p.talentos = { gu_disciplina: 3, gu_capitao_de_mil: 3, gu_espada_de_gideao: 1, gu_escudo_treinado: 3 };
   assert.strictEqual(g("recargaHabilidade")(p, "escudo_erguido"), Math.round(15000 * 0.6), "teto de 40%");
-  // Redução e defesa: Firmeza 3/3 (6% a menos) e Torre de Davi (+8%, +3 de defesa, +10% de vida).
+  // Redução e defesa: Firmeza 3/3 (9% a menos) e Torre de Davi (+10%, +3 de defesa, +10% de vida).
   p.talentos = { gu_firmeza: 3 };
-  igual(j.M.absorverDano(p, 100, j.agora).dano, 94);
+  igual(j.M.absorverDano(p, 100, j.agora).dano, 91);
   const vidaSem = (() => { const t = p.talentos; p.talentos = {}; const v = g("vidaMaxima")(p); p.talentos = t; return v; })();
   p.talentos = { gu_firmeza: 3, gu_torre_de_davi: 1 };
-  igual(j.M.absorverDano(p, 100, j.agora).dano, 86);
+  igual(j.M.absorverDano(p, 100, j.agora).dano, 81);
   assert.ok(g("vidaMaxima")(p) > vidaSem, "ápice dá vida");
 
   // Levita: Mãos que curam 3/3 (+12% em todas as curas) e Bênção ampla 3/3 (+30% na Bênção sacerdotal).
@@ -5350,14 +5375,80 @@ teste("64d. efeitos dos talentos no combate: dano, crítico, defesa, redução, 
   assert.ok(usar(j, "incenso").ok);
   igual(p.buffs.incenso.fatorCura, 1.3);
 
-  // Pastor: Faro 3/3 (+12% no dano dos aliados) e Presas (+36% na Mordida).
+  // Pastor: Faro 3/3 (+18% no dano dos aliados) e Presas (+36% na Mordida).
   comVocacao(j, "pastor", 40);
   p.talentos = { pa_faro: 3, pa_presas: 3 };
-  igual(Math.round(g("passivosDe")(p).aliados * 1000), Math.round(1.2 * 1.12 * 1000));
+  igual(Math.round(g("passivosDe")(p).aliados * 1000), Math.round(1.2 * 1.18 * 1000));
   igual(Math.round(g("fatorTalentoHabilidade")(p, "mordida", "dano") * 100), 136);
   // Talentos de outra vocação que sobraram não valem.
   p.talentos = { gu_firmeza: 3 };
   igual(g("passivosDe")(p).reducao, 0);
+});
+
+teste("64e. equilíbrio dos talentos (JGB-46): todo build focado vence e ajuda, nenhum ramo perde em tudo, os defensivos protegem", () => {
+  const alvos = ["urso1", "leao1", "crocodilo1", "auriga1", "leopardo1", "mercenario1"];
+  const vocacoes = ["guerreiro", "fundibulario", "levita", "profeta", "pastor"];
+  // Ramo defensivo de cada vocação: deve ser o que recebe menos dano por segundo.
+  const DEFENSIVOS = { guerreiro: "baluarte", fundibulario: "ligeireza", levita: "guarda", profeta: "deserto", pastor: "aprisco" };
+  // O conteúdo vai até o nível 12 e um ramo só chega ao ápice no 23: os ápices são medidos no nível 25 contra as
+  // mesmas elites reforçadas (4× vida, 3,5× dano, +15 de defesa), uma estimativa das elites futuras.
+  const REFORCO = { vida: 4, dano: 3.5, defesa: 15 };
+  const regimes = [
+    { id: "chegada", nome: "nível de chegada (1 a 4 pontos)", opts: {} },
+    { id: "apice", nome: "nível 25 (ramo até o ápice), elites reforçadas", opts: { nivel: 25, escala: REFORCO } },
+  ];
+  const soma = (rs) => {
+    const t = { tempo: 0, pocoes: 0, dano: 0, derrotas: 0, vidaMin: 0 };
+    for (const r of rs) {
+      Object.assign(t, { tempo: t.tempo + r.duracao, pocoes: t.pocoes + r.pocoes, dano: t.dano + r.danoRecebido });
+      Object.assign(t, { derrotas: t.derrotas + (r.vitoria ? 0 : 1), vidaMin: t.vidaMin + r.vidaMinima / rs.length });
+    }
+    return { ...t, danoS: t.dano / t.tempo };
+  };
+  const linha = (v, nome, r) =>
+    `    ${v.padEnd(14)}${nome.padEnd(18)}${r.tempo.toFixed(1).padStart(7)} s ${String(r.pocoes).padStart(3)} poções ` +
+    `${r.danoS.toFixed(1).padStart(5)} dano/s  vida mín. ${String(Math.round(r.vidaMin * 100)).padStart(3)}%  ${r.derrotas} derrotas`;
+  const linhas = [];
+  const res = {};
+  const ramosDe = (v) => carregarJogo().g("TALENTOS")[v];
+  for (const regime of regimes) {
+    linhas.push(`    ${regime.nome}:`);
+    res[regime.id] = {};
+    for (const v of vocacoes) {
+      const sem = soma(alvos.map((a) => lutaComVocacao(a, v, regime.opts)));
+      const ramos = ramosDe(v).map((ramo, i) => ({ id: ramo.id, nome: ramo.nome, ...soma(alvos.map((a) => lutaComVocacao(a, v, { ...regime.opts, ramo: i }))) }));
+      res[regime.id][v] = { sem, ramos };
+      linhas.push(linha(v, "sem talentos", sem), ...ramos.map((r) => linha("", r.nome, r)));
+    }
+  }
+  console.log(`\n    Builds de talentos contra as elites (tempo total, poções, dano recebido por segundo, vida mínima média):\n${linhas.join("\n")}`);
+
+  for (const v of vocacoes) {
+    // Chegada: os primeiros pontos nunca atrapalham.
+    const c = res.chegada[v];
+    for (const r of c.ramos) {
+      assert.ok(r.derrotas === 0 && r.tempo <= c.sem.tempo * 1.03 && r.pocoes <= c.sem.pocoes + 1, `${v}/${r.id} na chegada: ${r.tempo.toFixed(1)} s, ${r.pocoes} poções`);
+    }
+    // Ápice: cada build vence o que a vocação sem talentos vence e ajuda no seu foco, sem banalizar.
+    const { sem, ramos } = res.apice[v];
+    for (const r of ramos) {
+      assert.ok(r.derrotas <= sem.derrotas, `${v}/${r.id}: mais derrotas que sem talentos`);
+      const ajuda = r.tempo <= sem.tempo * 0.9 || r.danoS <= sem.danoS * 0.85 || r.vidaMin >= sem.vidaMin + 0.1;
+      assert.ok(ajuda, `${v}/${r.id}: não ajuda (${r.tempo.toFixed(1)} s, ${r.danoS.toFixed(1)} dano/s, vida mín. ${Math.round(r.vidaMin * 100)}%)`);
+      assert.ok(r.tempo >= sem.tempo * 0.45, `${v}/${r.id}: banaliza as lutas (${r.tempo.toFixed(1)} s contra ${sem.tempo.toFixed(1)} s)`);
+    }
+    // Nenhum ramo perde em tudo para outro da mesma vocação (tempo, dano por segundo, vida mínima e poções).
+    for (const a of ramos) {
+      for (const b of ramos) {
+        if (a === b) continue;
+        const domina = a.tempo < b.tempo * 0.97 && a.danoS <= b.danoS && a.vidaMin >= b.vidaMin && a.pocoes <= b.pocoes;
+        assert.ok(!domina, `${v}: ${a.nome} é melhor que ${b.nome} em tudo`);
+      }
+    }
+    // O ramo defensivo é o que recebe menos dano por segundo.
+    const maisSeguro = [...ramos].sort((a, b) => a.danoS - b.danoS)[0];
+    assert.strictEqual(maisSeguro.id, DEFENSIVOS[v], `${v}: o ramo mais seguro é ${maisSeguro.nome}`);
+  }
 });
 
 // ---------------------------------------------------------------------
