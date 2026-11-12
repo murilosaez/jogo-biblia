@@ -20,7 +20,7 @@ Metas: 1º nível < 2 min; recompensa a cada 30–60 s; item/habilidade nova a c
 
 ## Progressão
 - Nível 1→200 (curva suave até 30 ≈ 15 h).
-- **Vocações** (nível 8; especialização no 50): Guerreiro/Valente de Davi (tanque), Fundibulário/Benjamita (funda e arco), Levita (cura), Profeta (controle/magia), Pastor (invocador com cão e ovelhas).
+- **Vocações** (nível 8; especialização no 50): Guerreiro/Valente de Davi (tanque), Fundibulário/Benjamita (funda e arco), Levita (cura), Profeta (controle/magia), Pastor (invocador com cão e ovelhas). Feito (JGB-20): `dados/vocacoes.js` com 7 habilidades por vocação (recarga, combinações com os status do JGB-16) e 2 especializações com a 8ª habilidade; barra nas teclas 1–8 (itens em Shift + 1–6); troca com Jetro em Canaã (1ª grátis); cão e ovelhas do Pastor como aliados no mapa; simulação por vocação (teste 63e).
 - Árvore de talentos (3 ramos por vocação).
 - **Frutos do Espírito**: 9 medidores de virtude que sobem por comportamento (curar outros → amor; ajudar novatos → bondade; caçar sem morrer → paciência; não acumular maná → domínio próprio). Dão passivos e títulos; todos no máximo desbloqueiam fim de jogo.
 - **Armadura de Deus (Efésios 6)**: conjunto lendário de 6 peças, cada uma de uma masmorra/raid, bônus em 2/4/6 peças.

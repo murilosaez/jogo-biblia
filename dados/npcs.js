@@ -11,6 +11,18 @@
 const DADOS_NPCS = [
   { id: "viajante1", nome: "Eliabe", area: "canaan", x: 22, y: 18, papel: "missao" },
   { id: "guia_canaa", nome: "Micael, guia de caravanas", area: "canaan", x: 13, y: 17, papel: "guia" },
+  // Mestre de vocações (JGB-20): troca de vocação (papel "vocacao"; a 1ª escolha vale em qualquer lugar).
+  // revisao-teologica: pendente (Jetro aconselhou Moisés a repartir o trabalho entre o povo, Êx 18)
+  {
+    id: "mestre_vocacoes",
+    nome: "Jetro, mestre de vocações",
+    area: "canaan",
+    x: 27,
+    y: 26,
+    papel: "vocacao",
+    aparencia: "anciao",
+    falas: { saudacao: "Não é bom que um só carregue tudo: cada um tem a sua parte no caminho." },
+  },
   { id: "noemi1", nome: "Noemi", area: "deserto", x: 136, y: 14, papel: "missao" },
   { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 142, y: 19, papel: "loja" },
   { id: "guia_deserto", nome: "Tamar, guia de caravanas", area: "deserto", x: 128, y: 20, papel: "guia" },

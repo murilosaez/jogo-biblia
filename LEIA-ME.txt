@@ -31,11 +31,16 @@ Conteúdo do jogo (pasta dados/)
   tipo e espera), regras (limite de caçadas ativas e bônus da 1ª entrega), falas dos atalaias e a
   troca de pontos de tarefa. Os ids das caçadas são permanentes (ficam no save): para tirar uma
   caçada do mural, use oculta: true.
-O progresso fica no save (save versão 12): missoes[id] = { status, etapa, progresso },
+- dados/vocacoes.js: regras das vocações (REGRAS_VOCACAO: nível de escolha e de especialização, trocas,
+  recarga global, dano mágico, cão e ovelhas do Pastor), as habilidades (HABILIDADES_VOCACAO: nível,
+  recarga, alcance e efeitos — dano, status, combinação, cura, buff, movimento, invocação) e as 5
+  vocações (VOCACOES: passivo, 7 habilidades em ordem de barra e 2 especializações).
+O progresso fica no save (save versão 13): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
 mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte } e status[tipo] =
-{ ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+{ ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
+vocacao = { id, especializacao, trocas } e recargas[habilidade] (quando ela fica pronta). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -49,7 +54,8 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 12, sem perder itens, moedas, nível ou progresso. A versão 12 junta os status num motor só
+   para a versão 13, sem perder itens, moedas, nível ou progresso. A versão 13 traz as vocações (quem já
+   passou do nível 8 recebe um aviso para escolher a sua). A versão 12 juntou os status num motor só
    (o veneno ou sangramento que ainda estiver valendo continua; o atordoamento não sobrevive). A versão 11 trouxe o maná diário (o jarro
    começa vazio) e o descanso do Sábado (a ausência conta a partir da primeira carga). A versão 10 trouxe o
    bestiário, que começou do zero (os saves antigos não contavam abates por espécie). Na versão 9 os mapas dobraram de
@@ -71,7 +77,10 @@ Controles — teclado e mouse
   perseguição; o alvo continua escolhido.
 - Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s. O anel em
   volta do alvo mostra o tempo até o próximo autoataque (2 s).
-- H: poção de vida. 1–6: atalhos. Botão direito num atalho o esvazia.
+- H: poção de vida. 1–6: atalhos (com vocação, Shift + 1–6). Botão direito num atalho o esvazia.
+- 1–8 (com vocação): habilidades da barra, usadas no alvo escolhido (ou na criatura mais perto ao
+  alcance). V: janela Vocação (escolher no nível 8, especialização no 50, habilidades de cada vocação;
+  também pelo botão Vocação, no topo, que acende quando há escolha a fazer).
 - P: pescar (no barco, ao lado de um ponto de pesca).
 - T: suas caçadas (consulta em qualquer lugar; aceitar e trocar só ao lado de um atalaia). O saldo
   de pontos de tarefa, no topo, e as caçadas do painel Missão também abrem a consulta.
@@ -291,7 +300,7 @@ Mercadores (um em cada cidade)
 Hadassa (Canaã), Azarias (Deserto), Senefer (Egito), Quenaz (Mar Vermelho), Mesulão (Monte Sinai) e
 Eliaquim (Galileia). Todos vendem poção de vida 12 · poção de fé 18 · 5 flechas 8; os equipamentos
 variam: escudo de madeira 35 (todos menos o do Egito), armadura de couro 65 e arco de madeira 80 (todos
-menos a de Canaã). Todos compram pele de lobo (5), erva (2), odre (3), peixe (6), veneno de escorpião (4),
+menos a de Canaã); Hadassa (Canaã) vende também a funda (60). Todos compram pele de lobo (5), erva (2), odre (3), peixe (6), veneno de escorpião (4),
 insígnia do bando (6), presa de lobo (10), ferrão de escorpião (12), linho egípcio (8), ponta de lança (9),
 bracelete de cobre (16) e as pedras do peitoral (150 a 200).
 
@@ -348,6 +357,28 @@ para sempre; a morte não tira nada. As espécies aparecem por família, como si
   Soldados de Faraó, Amalequitas, Aves de rapina, Pragas, Répteis do Nilo, Magos de Faraó e Criaturas do mar.
   A lista de Batalha mostra "Amuleto +5%" na ficha de quem já está coberto.
 
+Vocações e habilidades
+Tecla V ou o botão Vocação, no topo. No nível 8, escolha uma das 5 vocações (em qualquer lugar). Cada uma
+tem um passivo e 7 habilidades, que abrem do nível 8 ao 25 e ficam na barra (teclas 1 a 8; no toque,
+toque na barra). No nível 50, escolha uma das 2 especializações: um passivo a mais e a 8ª habilidade.
+    Guerreiro (Valente de Davi) .... tanque, corpo a corpo; +15% de vida e +2 de defesa
+    Fundibulário (Benjamita) ....... à distância com a funda (não gasta flechas); +10% de dano e +5% de crítico
+    Levita ......................... cura, escudo e purificação; +20% nas curas
+    Profeta ........................ controle (medo, atordoamento, empurrão) e dano mágico; +10% de magia
+    Pastor ......................... cão pastor que segue e morde o seu alvo e ovelhas que atraem as criaturas
+- Recarga: cada habilidade tem a sua (4 a 60 s) e toda ação (golpe, flecha ou habilidade) espera 0,8 s
+  depois da anterior. Atordoado, nada; com medo, só as que não atacam (curas e buffs).
+- Combinações: as habilidades aplicam e aproveitam os status (JGB-16) — atordoe e bata (crítico), Pedra
+  certeira dobra em quem está atordoado, Juízo faz 250% em quem está com medo ou atordoado (e tira o
+  status), Praga mais um sangramento infeccionam.
+- Dano mágico (Levita e Profeta): 5 + 3 por nível acima do 1º, e passa por só metade da defesa. A
+  distância precisa da funda ou do arco nas mãos (o arco gasta uma flecha por golpe).
+- Pastor: o cão dura 60 s (e vem correndo se você se afastar); morde o seu alvo, ou a criatura mais perto
+  que esteja lutando com você, e o XP do abate é seu. A ovelha fica parada por 12 s, com 30% da sua vida:
+  as criaturas a até 4 casas dela a atacam em vez de você. Trocar de área ou morrer dispensa os aliados.
+- Trocar de vocação só com Jetro, o mestre de vocações, na vila de Canaã: a primeira troca é grátis, as
+  outras custam 150 moedas. Trocar recomeça a especialização e as recargas.
+
 Maná diário e descanso do Sábado
 Tecla N ou o botão Maná, no topo. Nada aqui exige entrar todo dia: perder um dia não tira nada.
 - Maná (Êxodo 16): o dia do maná vai de um amanhecer (6 h, hora do seu computador) ao seguinte; é a janela de
@@ -387,11 +418,19 @@ Para desenvolvedores
   atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
-  estadoDescanso(p, agora), visaoStatus(alvo, agora), infoItem(id) (item com raridade,
+  estadoDescanso(p, agora), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
+  Mundo.aliados(id), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
   som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
   são puras; o teste 49 simula 60 mil abates por criatura e confere a frequência de cada linha da tabela.
+- Vocações: comandos { tipo: "escolherVocacao", vocacao }, { tipo: "escolherEspecializacao", especializacao }
+  e { tipo: "usarHabilidade", habilidade, alvoId } de Mundo.executar. usarHabilidade devolve alvos
+  ([{ inimigoId, dano, critico, combinacoes, status, repelido, derrotado }]), mortes (cada abate, com os
+  campos de um ataque que derrota), cura, buff, movimento ({ x, y } do salto) e aliados (os invocados).
+  O laço de tempo devolve também aliadoAtacou, iscaAtingida, aliadoPartiu e curaBuff. Os testes 63 a 63e
+  conferem os dados, a escolha e a troca, cada efeito, o Pastor e simulam cada vocação contra as elites
+  de cada região (comparando com o jogador sem vocação).
 - Status: aplicarStatus(alvo, { tipo, ...ajustes }, agora), statusAtivo(alvo, tipo, agora),
   passoDosStatus(alvo, agora) e combinacoesNoGolpe(alvo, agora) são puras e valem para o jogador e para
   qualquer criatura; Mundo.aplicarStatusNaCriatura(id, inimigoId, ef) aplica numa criatura viva. Os testes

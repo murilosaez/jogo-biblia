@@ -20,6 +20,7 @@ const ARQUIVOS_DADOS = [
   "dados/capitulos.js",
   "dados/missoes.js",
   "dados/tarefas.js",
+  "dados/vocacoes.js",
 ];
 const ARQUIVOS = ["storage.js", ...ARQUIVOS_DADOS, "logica.js"];
 const FONTES = ARQUIVOS.map((f) => fs.readFileSync(path.join(RAIZ, f), "utf8"));
@@ -4708,6 +4709,381 @@ teste("62c. combinações (JGB-16): atordoado leva crítico, medo leva +25%, ven
   j.M.reaparecerInimigo(ID, e.id);
   igual(e.status, {});
   assert.ok(!j.M.aplicarStatusNaCriatura(ID, "naoExiste", { tipo: "medo" }).ok);
+});
+
+// ---------------------------------------------------------------------
+// Vocações e habilidades (JGB-20)
+// ---------------------------------------------------------------------
+const FONTE_SPRITES = fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8");
+
+// Jogador no nível n, com a vocação (e a especialização) escolhidas direto no save.
+function comVocacao(j, vocacao, nivel = 25, especializacao = null) {
+  const p = j.p;
+  p.nivel = nivel;
+  p.xp = j.g("limiarNivel")(nivel - 1);
+  p.vocacao = { id: vocacao, especializacao, trocas: 0, avisada: true, avisadaEspecializacao: true };
+  p.recargas = {};
+  p.buffs = {};
+  p.vida = j.g("vidaMaxima")(p);
+  return p;
+}
+const usar = (j, habilidade, alvoId) => j.exec({ tipo: "usarHabilidade", habilidade, alvoId });
+
+teste("63. vocações (JGB-20): 5 vocações, 7 habilidades cada, 2 especializações, dados coerentes e ícones", () => {
+  const j = carregarJogo();
+  const VOC = j.g("VOCACOES");
+  const HAB = j.g("HABILIDADES_VOCACAO");
+  const R = j.g("REGRAS_VOCACAO");
+  const STATUS = j.g("STATUS_CRIATURAS");
+  igual(Object.keys(VOC), ["guerreiro", "fundibulario", "levita", "profeta", "pastor"]);
+  const usadas = new Set();
+  for (const [id, v] of Object.entries(VOC)) {
+    assert.ok(v.nome && v.titulo && v.papel && v.descricao && v.textoPassivo, `${id}: textos`);
+    assert.strictEqual(v.habilidades.length, 7, `${id}: 7 habilidades`);
+    const niveis = v.habilidades.map((h) => HAB[h]?.nivel);
+    assert.ok(niveis.every((n, i) => n >= R.nivelEscolha && (i === 0 || n >= niveis[i - 1])), `${id}: níveis em ordem a partir do ${R.nivelEscolha}`);
+    assert.ok(niveis.filter((n) => n === R.nivelEscolha).length >= 2, `${id}: 2+ habilidades já na escolha`);
+    const esps = Object.values(v.especializacoes);
+    assert.strictEqual(esps.length, 2, `${id}: 2 especializações`);
+    for (const e of esps) assert.ok(HAB[e.habilidade] && HAB[e.habilidade].nivel === R.nivelEspecializacao && e.textoPassivo, `${id}: especialização ${e.nome}`);
+    assert.ok(v.habilidades.length + 1 <= R.barra, "cabe na barra");
+    if (v.arma) assert.ok(j.g("ITENS")[v.arma], `${id}: arma ${v.arma}`);
+    for (const h of [...v.habilidades, ...esps.map((e) => e.habilidade)]) {
+      assert.ok(!usadas.has(h) || h === undefined, `${h} em uma vocação só`);
+      usadas.add(h);
+    }
+  }
+  for (const [id, h] of Object.entries(HAB)) {
+    assert.ok(usadas.has(id), `${id} pertence a uma vocação`);
+    assert.ok(h.nome && h.descricao && h.recarga >= 4000 && ["inimigo", "si"].includes(h.alvo), `${id}: campos`);
+    assert.ok(h.dano || h.cura || h.buff || h.invocar || h.cao || h.movimento || h.status || h.purificar, `${id}: algum efeito`);
+    if (h.alvo === "inimigo") assert.ok(h.alcance >= 1, `${id}: alcance`);
+    if (h.dano) assert.ok(["corpo", "distancia", "magia"].includes(h.dano.tipo) && h.dano.mult > 0, `${id}: dano`);
+    if (h.status) assert.ok(STATUS[h.status.tipo], `${id}: status`);
+    if (h.bonus) for (const t of [].concat(h.bonus.status)) assert.ok(STATUS[t], `${id}: bônus ${t}`);
+    if (h.invocar) assert.ok(R.aliados[h.invocar.tipo], `${id}: aliado`);
+    assert.ok(new RegExp(`glifo\\("hb_${h.icone}"`).test(FONTE_SPRITES), `${id}: ícone hb_${h.icone} em sprites.js`);
+  }
+  // 6 a 8 habilidades por vocação (7 + a da especialização) e cada uma com combinação ou controle.
+  for (const v of Object.values(VOC)) {
+    const todas = v.habilidades.map((h) => HAB[h]);
+    assert.ok(todas.some((h) => h.status || h.bonus || h.cao?.status), `${v.nome}: aplica ou aproveita status`);
+    assert.ok(todas.some((h) => h.dano || h.cao), `${v.nome}: causa dano`);
+  }
+  // O mestre de vocações fica numa casa livre da vila de Canaã.
+  const mestre = Object.values(j.g("npcs")).find((n) => n.papel === "vocacao");
+  assert.ok(mestre && mestre.area === "canaan" && j.g("mapas").canaan[mestre.y][mestre.x] === 0, "mestre de vocações em casa livre");
+  // A funda: arma à distância sem munição, vendida em Canaã.
+  const funda = j.g("ITENS").funda;
+  assert.ok(funda.tipo === "arma_distancia" && funda.semMunicao && j.g("LOJAS").mercador_canaa.includes("funda"));
+});
+
+teste("63b. vocação: escolha no nível 8, troca só com o mestre (1ª grátis, depois paga), especialização no 50 e save", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const g = (n) => j.g(n);
+  p.nivel = 7;
+  let r = j.exec({ tipo: "escolherVocacao", vocacao: "guerreiro" });
+  assert.ok(!r.ok && /nível 8/.test(r.mensagem), "antes do 8 não escolhe");
+  assert.ok(!j.exec({ tipo: "usarHabilidade", habilidade: "golpe_firme" }).ok, "sem vocação, sem habilidade");
+  // Ao chegar ao 8, um aviso (uma vez).
+  p.nivel = 8;
+  p.avisosPendentes = [];
+  j.M.salvar(p);
+  j.M.salvar(p);
+  assert.strictEqual(p.avisosPendentes.filter((a) => a.id === "vocacao").length, 1, "aviso de escolha");
+  // 1ª escolha em qualquer lugar: o Fundibulário ganha a funda.
+  r = j.exec({ tipo: "escolherVocacao", vocacao: "fundibulario" });
+  assert.ok(r.ok && p.vocacao.id === "fundibulario" && p.inventario.includes("funda"), r.mensagem);
+  assert.ok(!j.exec({ tipo: "escolherVocacao", vocacao: "fundibulario" }).ok, "já é");
+  // Trocar exige o mestre; a 1ª troca é grátis, a 2ª custa precoTroca.
+  r = j.exec({ tipo: "escolherVocacao", vocacao: "guerreiro" });
+  assert.ok(!r.ok && /Jetro/.test(r.mensagem), "troca longe do mestre");
+  const mestre = Object.values(g("npcs")).find((n) => n.papel === "vocacao");
+  posicionarAoLado(j, mestre.area, mestre);
+  const conversa = j.exec({ tipo: "interagir", alvoId: mestre.id });
+  assert.ok(conversa.ok && conversa.abrirVocacao === mestre.id, "falar com o mestre abre a vocação");
+  const vidaAntes = g("vidaMaxima")(p);
+  p.moedas = 100;
+  r = j.exec({ tipo: "escolherVocacao", vocacao: "guerreiro" });
+  assert.ok(r.ok && p.moedas === 100 && p.vocacao.trocas === 1, `1ª troca grátis: ${r.mensagem}`);
+  assert.strictEqual(g("vidaMaxima")(p), vidaAntes + Math.round(vidaAntes * 0.15), "guerreiro: +15% de vida");
+  const preco = g("REGRAS_VOCACAO").precoTroca;
+  r = j.exec({ tipo: "escolherVocacao", vocacao: "levita" });
+  assert.ok(!r.ok && new RegExp(String(preco)).test(r.mensagem) && p.vocacao.id === "guerreiro", "sem moedas, sem troca");
+  p.moedas = preco + 5;
+  r = j.exec({ tipo: "escolherVocacao", vocacao: "levita" });
+  assert.ok(r.ok && p.moedas === 5 && r.moedasGastas === preco, "2ª troca paga");
+  // Especialização no 50, uma vez; aparece como 8ª habilidade.
+  assert.ok(!j.exec({ tipo: "escolherEspecializacao", especializacao: "cantor" }).ok, "antes do 50");
+  p.nivel = 50;
+  assert.ok(!j.exec({ tipo: "escolherEspecializacao", especializacao: "valente" }).ok, "de outra vocação, não");
+  r = j.exec({ tipo: "escolherEspecializacao", especializacao: "cantor" });
+  assert.ok(r.ok && p.vocacao.especializacao === "cantor", r.mensagem);
+  const barra = g("barraHabilidades")(p, j.agora);
+  igual([barra.length, barra[7].id, barra.every((b) => b.aberta)], [8, "salmo", true]);
+  assert.ok(!j.exec({ tipo: "escolherEspecializacao", especializacao: "sumo_sacerdote" }).ok, "só uma");
+  // Trocar de vocação zera a especialização.
+  p.moedas = preco;
+  assert.ok(j.exec({ tipo: "escolherVocacao", vocacao: "profeta" }).ok);
+  assert.strictEqual(p.vocacao.especializacao, null);
+  // Save: recarrega igual; vocação inválida ou recarga no futuro distante são normalizadas.
+  p.recargas.palavra_de_fogo = j.agora + 999_999;
+  g("Storage").flush();
+  const q = carregarJogo({ store: j.store, inicio: j.agora }).entrar();
+  igual([q.vocacao.id, q.vocacao.trocas, q.recargas.palavra_de_fogo <= j.agora + 5000], ["profeta", 3, true]);
+  const k = carregarJogo();
+  k.entrar();
+  k.p.vocacao = { id: "constructor", especializacao: "toString", trocas: -2 };
+  k.g("Storage").flush();
+  const q2 = carregarJogo({ store: k.store }).entrar();
+  igual(q2.vocacao.id, null);
+  igual(q2.vocacao.trocas, 0);
+});
+
+teste("63c. habilidades: recarga própria e global, alcance, funda sem flechas, combinações, área, movimento e buffs", () => {
+  const { j, p, e } = cenaComportamento("urso1");
+  const g = (n) => j.g(n);
+  comVocacao(j, "fundibulario", 25);
+  p.equipamento.arma = null;
+  p.equipamento.arco = "funda";
+  p.vidaInimigos[e.id] = 10_000;
+  aDistancia(j, e, 4);
+  j.definirAleatorio(() => 0.99); // sem crítico pela sorte
+  // Pedra certeira: dano à distância sem gastar flecha; recarga própria e global.
+  const flechas = p.inventario.filter((i) => i === "flecha").length;
+  let r = usar(j, "pedra_certeira", e.id);
+  assert.ok(r.ok && r.alvos[0].dano > 0, r.mensagem);
+  const normal = r.alvos[0].dano;
+  assert.strictEqual(p.inventario.filter((i) => i === "flecha").length, flechas, "a funda não gasta flecha");
+  r = usar(j, "pedra_na_testa", e.id);
+  assert.ok(!r.ok && r.emRecarga, "recarga global");
+  j.avancar(800);
+  r = usar(j, "pedra_certeira", e.id);
+  assert.ok(!r.ok && r.emRecarga && /pronta em/.test(r.mensagem), "recarga própria");
+  // Pedra na testa atordoa; a Pedra certeira dobra em quem está atordoado (e o golpe no atordoado é crítico).
+  r = usar(j, "pedra_na_testa", e.id);
+  assert.ok(r.ok && r.alvos[0].status === "atordoamento");
+  j.avancar(800);
+  p.recargas.pedra_certeira = 0;
+  r = usar(j, "pedra_certeira", e.id);
+  assert.ok(r.alvos[0].critico && r.alvos[0].combinacoes.includes("Pedra certeira") && r.alvos[0].dano > normal * 2.5, `combinação: ${r.mensagem}`);
+  // Alcance: longe demais, recusa sem gastar a recarga.
+  j.avancar(10_000);
+  aDistancia(j, e, 8);
+  r = usar(j, "pedra_afiada", e.id);
+  assert.ok(!r.ok && !p.recargas.pedra_afiada, "fora do alcance");
+  // Arco gasta flechas.
+  p.equipamento.arco = "arco_madeira";
+  aDistancia(j, e, 4);
+  p.inventario.push("flecha", "flecha");
+  const antes = p.inventario.filter((i) => i === "flecha").length;
+  r = usar(j, "mao_esquerda", e.id);
+  assert.ok(r.ok && p.inventario.filter((i) => i === "flecha").length === antes - 2, "duas pedras = duas flechas no arco");
+  // Recuo ágil: salta para longe da criatura mais próxima.
+  j.avancar(1000);
+  posicionarAoLado(j, e.area, e);
+  r = usar(j, "recuo_agil");
+  assert.ok(r.ok && distanciaJ(p, e) >= 3, `recuo: ${r.mensagem}`);
+
+  // Guerreiro: investida leva ao lado do alvo; Escudo erguido soma defesa; área pega todos em volta.
+  comVocacao(j, "guerreiro", 25);
+  p.equipamento.arma = "espada_ferro";
+  aDistancia(j, e, 4);
+  j.avancar(1000);
+  r = usar(j, "investida_do_valente", e.id);
+  assert.ok(r.ok && distanciaJ(p, e) === 1 && r.movimento, `investida: ${r.mensagem}`);
+  j.avancar(1000);
+  const def = g("defesaTotal")(p);
+  assert.ok(usar(j, "escudo_erguido").ok);
+  assert.strictEqual(g("defesaTotal")(p), def + 8, "escudo erguido");
+  j.avancar(6001);
+  j.atualizar();
+  assert.strictEqual(g("defesaTotal")(p), def, "o buff acaba");
+  j.avancar(1000);
+  e.imune = {};
+  r = usar(j, "grito_de_guerra");
+  assert.ok(r.ok && r.alvos.some((l) => l.inimigoId === e.id && l.status === "medo"), "grito assusta em área");
+  // Com medo, o jogador não usa habilidade ofensiva, mas usa buff.
+  j.avancar(1000);
+  g("aplicarStatus")(p, { tipo: "medo" }, j.agora);
+  assert.ok(usar(j, "golpe_firme", e.id).medo, "medo bloqueia ataque");
+
+  // Levita: escudo absorve, incenso regenera, purificação tira status.
+  comVocacao(j, "levita", 25);
+  p.vida = 50;
+  assert.ok(usar(j, "purificacao").ok);
+  igual(g("statusAtivos")(p, j.agora), [], "purificação");
+  j.avancar(1000);
+  assert.ok(usar(j, "escudo_da_fe").ok);
+  const escudo = Math.round(g("vidaMaxima")(p) * 0.3);
+  assert.strictEqual(p.buffs.escudo_da_fe.pontos, escudo);
+  igual(j.M.absorverDano(p, escudo + 7, j.agora), { dano: 7, absorvido: escudo });
+  j.avancar(1000);
+  p.vida = 50;
+  assert.ok(usar(j, "incenso").ok);
+  let curou = 0;
+  for (let t = 0; t < 8000; t += 250) { j.avancar(250); for (const ev of j.atualizar()) if (ev.tipo === "curaBuff") curou += ev.cura; }
+  assert.ok(curou > 0 && p.vida > 50, "incenso regenera");
+
+  // Profeta: Juízo consome medo/atordoamento para 250%; Mar aberto empurra.
+  comVocacao(j, "profeta", 25);
+  aDistancia(j, e, 3);
+  Object.assign(e, { status: {}, imune: {} });
+  r = usar(j, "palavra_de_fogo", e.id);
+  assert.ok(r.ok);
+  j.avancar(1000);
+  r = usar(j, "repreensao", e.id);
+  assert.ok(r.ok && r.alvos[0].status === "medo");
+  j.avancar(1000);
+  r = usar(j, "juizo", e.id);
+  assert.ok(r.alvos[0].combinacoes.includes("Juízo") && !g("statusAtivo")(e, "medo", j.agora), `juízo consome: ${r.mensagem}`);
+  j.avancar(1000);
+  Object.assign(e, { status: {}, imune: {} });
+  posicionarAoLado(j, e.area, e);
+  r = usar(j, "mar_aberto");
+  assert.ok(r.ok && distanciaJ(p, e) > 1, `mar aberto empurra: ${r.mensagem}`);
+});
+
+teste("63d. Pastor: o cão segue e morde (com XP do abate), a ovelha atrai as criaturas e cai, tudo some ao trocar de área", () => {
+  const { j, p, e } = cenaComportamento("lobo1");
+  comVocacao(j, "pastor", 25);
+  p.equipamento.arma = "espada_ferro";
+  aDistancia(j, e, 3);
+  let r = usar(j, "chamar_o_cao");
+  assert.ok(r.ok && r.aliados.length === 1 && r.aliados[0].tipo === "cao", r.mensagem);
+  const cao = j.M.aliados(ID)[0];
+  // Morde o seu alvo: depois do seu golpe, o cão vai até a criatura e morde.
+  j.avancar(1000);
+  p.vidaInimigos[e.id] = 10_000;
+  r = usar(j, "mordida", e.id);
+  assert.ok(r.ok && r.alvos.some((l) => l.aliadoId === cao.id && l.dano > 0 && l.status === "sangramento"), `mordida: ${r.mensagem}`);
+  assert.ok(distanciaJ(cao, e) <= 1, "o cão foi até o alvo");
+  // Sozinho, ele morde de novo e pode derrotar (o XP é seu).
+  p.vidaInimigos[e.id] = 3;
+  e.status = {};
+  const xp = p.xp;
+  let morte = null;
+  for (let t = 0; t < 4000 && !morte; t += 100) { j.avancar(100); morte = j.atualizar().find((x) => x.tipo === "inimigoDerrotado"); }
+  assert.ok(morte && morte.aliadoId === cao.id && p.xp > xp, "o cão derrota e o XP vem");
+  // Longe, o cão segue você.
+  Object.assign(p, j.g("areas").canaan.inicio);
+  for (let t = 0; t < 15_000; t += 100) { j.avancar(100); j.atualizar(); }
+  assert.ok(j.M.aliados(ID).length === 1 && distanciaJ(cao, p) <= 3, "segue você (e vem correndo se ficar longe)");
+
+  // Ovelha: as criaturas a até 4 casas dela a atacam em vez de você.
+  const { j: k, p: q, e: urso } = cenaComportamento("urso1");
+  comVocacao(k, "pastor", 25);
+  posicionarAoLado(k, urso.area, urso);
+  r = k.exec({ tipo: "usarHabilidade", habilidade: "ovelha_isca" });
+  assert.ok(r.ok && r.aliados[0].tipo === "ovelha", r.mensagem);
+  const ovelha = k.M.aliados(ID)[0];
+  const vidaJogador = q.vida;
+  let atingida = 0;
+  let caiu = false;
+  for (let t = 0; t < 12_000 && !caiu; t += 100) {
+    k.avancar(100);
+    for (const ev of k.atualizar()) {
+      if (ev.tipo === "iscaAtingida") atingida++;
+      if (ev.tipo === "aliadoPartiu" && ev.aliadoId === ovelha.id) caiu = true;
+      assert.ok(!(ev.tipo === "jogadorAtingido" && ev.inimigoId === urso.id) || atingida === 0 || caiu, "com a ovelha de pé, o urso não bate em você");
+    }
+  }
+  assert.ok(atingida > 0 && caiu, "a ovelha apanha e cai (ou some no tempo)");
+  assert.ok(q.vida >= vidaJogador - 30, "você foi poupado enquanto ela durou");
+  // Trocar de área dispensa os aliados.
+  k.exec({ tipo: "usarHabilidade", habilidade: "chamar_o_cao" });
+  k.M.entrar(ID);
+  igual(k.M.aliados(ID), []);
+});
+
+// Simula uma luta com a vocação (rotação simples: cura abaixo de 50%, buffs, depois as habilidades de dano/controle
+// prontas e o golpe básico a cada 2 s) ou sem vocação (só o golpe básico). Devolve { vitoria, duracao, pocoes }.
+function lutaComVocacao(inimigoId, vocacao, { semente = 7, nivelExtra = 0 } = {}) {
+  const j = carregarJogo({ semente });
+  j.entrar();
+  concluirMissoes(j);
+  const e = j.g("inimigos")[inimigoId];
+  const perfil = PERFIS_CHEGADA[e.area];
+  for (const outro of Object.values(j.g("inimigos"))) if (outro !== e && outro.area === e.area) { outro.inicioX = outro.x = -50; outro.inicioY = outro.y = -50; }
+  const p = j.p;
+  const nivel = Math.max(perfil.nivel, e.nivel, 8) + nivelExtra;
+  if (vocacao) comVocacao(j, vocacao, nivel);
+  else Object.assign(p, { nivel, xp: j.g("limiarNivel")(nivel - 1) });
+  p.equipamento = { arma: perfil.arma, arco: vocacao === "fundibulario" ? "funda" : null, escudo: perfil.escudo, armadura: perfil.armadura };
+  if (vocacao === "fundibulario") p.equipamento.arma = null;
+  p.habilidades = { corpo: perfil.corpo, distancia: perfil.corpo, defesa: perfil.defesa, oracao: 0 };
+  p.vida = j.g("vidaMaxima")(p);
+  p.inventario = Array(6).fill("pocao");
+  p.campeoes = {};
+  if (j.M.obterVidaInimigo(ID, e.id) <= 0) j.M.reaparecerInimigo(ID, e.id);
+  p.campeoes = {};
+  p.vidaInimigos[e.id] = e.vidaMaxima;
+  Object.assign(e, { x: e.inicioX, y: e.inicioY, status: {}, imune: {} });
+  posicionarAoLado(j, e.area, e);
+  const HAB = j.g("HABILIDADES_VOCACAO");
+  const ids = vocacao ? j.g("idsHabilidades")(p).filter((h) => HAB[h].nivel <= p.nivel) : [];
+  const inicio = j.agora;
+  let proximoBasico = j.agora;
+  let pocoes = 0;
+  while (j.agora - inicio < 180_000) {
+    for (const ev of j.atualizar()) if (ev.tipo === "renasceu") return { vitoria: false, duracao: (j.agora - inicio) / 1000, pocoes };
+    if (j.M.obterVidaInimigo(ID, e.id) <= 0) return { vitoria: true, duracao: (j.agora - inicio) / 1000, pocoes };
+    const vidaMax = j.g("vidaMaxima")(p);
+    if (p.vida < vidaMax * 0.3 && p.inventario.includes("pocao")) { j.exec({ tipo: "usarPocao" }); pocoes++; }
+    if (distanciaJ(p, e) > 1 && !["fundibulario", "profeta", "levita"].includes(vocacao)) posicionarAoLado(j, e.area, e);
+    let agiu = false;
+    const ordem = [...ids].sort((a, b) => (HAB[b].cura && p.vida < vidaMax * 0.5 ? 1 : 0) - (HAB[a].cura && p.vida < vidaMax * 0.5 ? 1 : 0));
+    for (const h of ordem) {
+      const d = HAB[h];
+      if (d.cura && !d.dano && p.vida > vidaMax * 0.6) continue;
+      if (d.movimento?.recuo) continue;
+      const r = usar(j, h, d.alvo === "inimigo" ? e.id : undefined);
+      if (r.ok) { agiu = true; break; }
+      if (r.emRecarga && !/pronta em/.test(r.mensagem)) break;
+    }
+    if (!agiu && j.agora >= proximoBasico) {
+      const r = j.exec({ tipo: vocacao === "fundibulario" ? "atacarDistancia" : "atacar", alvoId: e.id });
+      if (r.ok || !r.emRecarga) proximoBasico = j.agora + 2000;
+      if (!r.ok && /Chegue ao lado|Nenhum inimigo/.test(r.mensagem)) posicionarAoLado(j, e.area, e);
+    }
+    j.avancar(100);
+  }
+  return { vitoria: false, duracao: 180, pocoes };
+}
+
+teste("63e. simulação de cada vocação: vence as elites de cada região, mais rápido ou com menos poções que sem vocação, sem banalizar", () => {
+  const alvos = ["urso1", "leao1", "crocodilo1", "auriga1", "leopardo1", "mercenario1"];
+  const vocacoes = ["guerreiro", "fundibulario", "levita", "profeta", "pastor"];
+  const linhas = [];
+  const base = {};
+  for (const a of alvos) base[a] = lutaComVocacao(a, null);
+  const resumo = {};
+  for (const v of vocacoes) {
+    let tempo = 0;
+    let pocoes = 0;
+    for (const a of alvos) {
+      const r = lutaComVocacao(a, v);
+      assert.ok(r.vitoria, `${v} contra ${a}: derrota`);
+      tempo += r.duracao;
+      pocoes += r.pocoes;
+      linhas.push(`    ${v.padEnd(14)}${a.padEnd(13)}${String(r.duracao.toFixed(1)).padStart(6)} s ${String(r.pocoes).padStart(3)}  (sem vocação: ${base[a].duracao.toFixed(1)} s, ${base[a].pocoes})`);
+    }
+    resumo[v] = { tempo, pocoes };
+  }
+  const tempoBase = alvos.reduce((t, a) => t + base[a].duracao, 0);
+  const pocoesBase = alvos.reduce((t, a) => t + base[a].pocoes, 0);
+  console.log(`\n    Simulação das vocações (nível de chegada da região, mín. 8; tempo e poções):\n${linhas.join("\n")}`);
+  console.log(`    Total sem vocação: ${tempoBase.toFixed(1)} s, ${pocoesBase} poções\n` + vocacoes.map((v) => `    ${v.padEnd(14)}${resumo[v].tempo.toFixed(1)} s, ${resumo[v].pocoes} poções`).join("\n"));
+  for (const v of vocacoes) {
+    const { tempo, pocoes } = resumo[v];
+    assert.ok(tempo <= tempoBase || pocoes < pocoesBase, `${v}: nem mais rápida nem mais segura que sem vocação`);
+    assert.ok(tempo <= tempoBase * 1.25, `${v}: lenta demais (${tempo.toFixed(1)} s contra ${tempoBase.toFixed(1)} s)`);
+    assert.ok(tempo >= tempoBase * 0.35, `${v}: banaliza as lutas (${tempo.toFixed(1)} s contra ${tempoBase.toFixed(1)} s)`);
+  }
+  // Com todas as habilidades (nível 25), cada vocação usa as 7 numa luta longa sem erro.
+  for (const v of vocacoes) assert.ok(lutaComVocacao("mercenario1", v, { nivelExtra: 14 }).vitoria, `${v} no nível 25`);
 });
 
 // ---------------------------------------------------------------------

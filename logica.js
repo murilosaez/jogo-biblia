@@ -14,7 +14,7 @@
 const TILE = 32;
 const COLS = DADOS_TAMANHO_MAPA.colunas; // dados/mapas.js
 const ROWS = DADOS_TAMANHO_MAPA.linhas;
-const VERSAO_SAVE = 12;
+const VERSAO_SAVE = 13;
 const ESCALA_MAPAS_V8 = 2; // os mapas passaram de 80×60 (save v8) para 160×120 (save v9)
 
 const VIDA_BASE = 100;
@@ -352,7 +352,8 @@ function criticoEquipamento(p) {
 // ---------------------------------------------------------------------
 // Vida máxima = base + 10 por nível acima do 1º + atributo de vida do equipamento.
 function vidaMaxima(personagem) {
-  return VIDA_BASE + Math.max(0, (personagem.nivel || 1) - 1) * VIDA_POR_NIVEL + atributoEquipado(personagem, "vida");
+  const base = VIDA_BASE + Math.max(0, (personagem.nivel || 1) - 1) * VIDA_POR_NIVEL + atributoEquipado(personagem, "vida");
+  return base + Math.round(base * passivosDe(personagem).vida); // vocação (JGB-20)
 }
 
 // XP total necessário para sair do nível informado.
@@ -442,7 +443,7 @@ function bonusHabilidade(p, chave) {
 // Fórmulas de combate (puras)
 // ---------------------------------------------------------------------
 function defesaTotal(p) {
-  return defesaEquipamento(p) + bonusHabilidade(p, "defesa");
+  return defesaEquipamento(p) + bonusHabilidade(p, "defesa") + passivosDe(p).defesa + somaBuffs(p, "defesa");
 }
 
 function danoBruto(p, tipo) {
@@ -455,7 +456,8 @@ function danoBruto(p, tipo) {
 // Chance de crítico em % (5% com habilidade 0 até 25% com habilidade 100), mais o crítico do equipamento.
 function chanceCritico(p, tipo) {
   const n = nivelHabilidade(p, tipo === "distancia" ? "distancia" : "corpo");
-  return CRITICO_MINIMO + ((CRITICO_MAXIMO - CRITICO_MINIMO) * n) / HABILIDADE_MAXIMA + criticoEquipamento(p);
+  const vocacao = passivosDe(p).critico[tipo === "distancia" ? "distancia" : "corpo"] + somaBuffs(p, "critico");
+  return CRITICO_MINIMO + ((CRITICO_MAXIMO - CRITICO_MINIMO) * n) / HABILIDADE_MAXIMA + criticoEquipamento(p) + vocacao;
 }
 
 function mitigarDano(dano, defesa) {
@@ -958,6 +960,147 @@ function normalizarStatus(p, agora) {
   delete p.status.medo;
   for (const campo of ["atordoadoAte", "imuneAtordoamentoAte"]) delete p[campo];
   p.imune = {};
+}
+
+// ---------------------------------------------------------------------
+// Vocações, habilidades e especializações (JGB-20)
+// ---------------------------------------------------------------------
+// VOCACOES, HABILIDADES_VOCACAO e REGRAS_VOCACAO vêm de dados/vocacoes.js. Save: p.vocacao = { id,
+// especializacao, trocas, avisada }, p.recargas[habilidade] = quando fica pronta e p.buffs[habilidade] =
+// { ate, ...efeitos } (curtos: não sobrevivem a recarregar). O cão e as ovelhas ficam em Mundo.estado[id].aliados.
+const ORDEM_VOCACOES = Object.keys(VOCACOES);
+
+function vocacaoDe(p) {
+  return registroDe(VOCACOES, p?.vocacao?.id) || null;
+}
+
+function especializacaoDe(p) {
+  const v = vocacaoDe(p);
+  return v ? registroDe(v.especializacoes, p.vocacao.especializacao) || null : null;
+}
+
+// Passivos da vocação e da especialização, somados: { vida, defesa, dano: { corpo, distancia, magia },
+// critico: { corpo, distancia }, cura, aliados }.
+function passivosDe(p) {
+  const r = { vida: 0, defesa: 0, dano: { corpo: 1, distancia: 1, magia: 1 }, critico: { corpo: 0, distancia: 0 }, cura: 1, aliados: 1 };
+  for (const fonte of [vocacaoDe(p)?.passivo, especializacaoDe(p)?.passivo]) {
+    if (!fonte) continue;
+    r.vida += fonte.vida || 0;
+    r.defesa += fonte.defesa || 0;
+    for (const k of Object.keys(r.dano)) r.dano[k] *= fonte.dano?.[k] || 1;
+    for (const k of Object.keys(r.critico)) r.critico[k] += fonte.critico?.[k] || 0;
+    r.cura *= fonte.cura || 1;
+    r.aliados *= fonte.aliados || 1;
+  }
+  return r;
+}
+
+// Buffs ativos agora (p.buffs[habilidade] = { ate, defesa, dano, critico, reducao, escudo, regen, aliados }).
+function buffsAtivos(p, agora = Date.now()) {
+  if (!objetoValido(p?.buffs)) return [];
+  return Object.values(p.buffs).filter((b) => objetoValido(b) && b.ate > agora);
+}
+
+// Soma (defesa, critico, reducao) ou produto (dano, aliados) de um campo dos buffs ativos.
+function somaBuffs(p, campo, agora = Date.now()) {
+  const produto = campo === "dano" || campo === "aliados";
+  let r = produto ? 1 : 0;
+  for (const b of buffsAtivos(p, agora)) {
+    if (!(b[campo] > 0)) continue;
+    r = produto ? r * b[campo] : r + b[campo];
+  }
+  return campo === "reducao" ? Math.min(0.8, r) : r;
+}
+
+// Multiplicador de dano do jogador num tipo ("corpo", "distancia", "magia"): passivos × buffs.
+function fatorDano(p, tipo, agora = Date.now()) {
+  return (passivosDe(p).dano[tipo] || 1) * somaBuffs(p, "dano", agora);
+}
+
+// Ids das habilidades do jogador, na ordem da barra (as 7 da vocação e a da especialização).
+function idsHabilidades(p) {
+  const v = vocacaoDe(p);
+  if (!v) return [];
+  const esp = especializacaoDe(p);
+  return esp ? [...v.habilidades, esp.habilidade] : [...v.habilidades];
+}
+
+// Barra de habilidades para a interface (pura): [{ id, nome, icone, descricao, nivel, aberta, recarga,
+// restanteMs, tecla }].
+function barraHabilidades(p, agora) {
+  return idsHabilidades(p).map((id, i) => {
+    const h = HABILIDADES_VOCACAO[id];
+    return {
+      id,
+      nome: h.nome,
+      icone: h.icone,
+      descricao: h.descricao,
+      nivel: h.nivel,
+      aberta: (p.nivel || 1) >= h.nivel,
+      recarga: h.recarga,
+      restanteMs: Math.max(0, (p.recargas?.[id] || 0) - agora),
+      tecla: i + 1,
+    };
+  });
+}
+
+// Preço da próxima troca de vocação (0 enquanto houver trocas grátis).
+function precoTrocaVocacao(p) {
+  return (p?.vocacao?.trocas || 0) < REGRAS_VOCACAO.trocasGratis ? 0 : REGRAS_VOCACAO.precoTroca;
+}
+
+// Tudo o que a janela Vocação mostra (pura).
+function visaoVocacao(p) {
+  const v = vocacaoDe(p);
+  const nivel = p.nivel || 1;
+  return {
+    atual: v ? p.vocacao.id : null,
+    especializacao: especializacaoDe(p) ? p.vocacao.especializacao : null,
+    podeEscolher: nivel >= REGRAS_VOCACAO.nivelEscolha,
+    podeEspecializar: !!v && !especializacaoDe(p) && nivel >= REGRAS_VOCACAO.nivelEspecializacao,
+    nivelEscolha: REGRAS_VOCACAO.nivelEscolha,
+    nivelEspecializacao: REGRAS_VOCACAO.nivelEspecializacao,
+    precoTroca: precoTrocaVocacao(p),
+    trocasGratis: Math.max(0, REGRAS_VOCACAO.trocasGratis - (p.vocacao?.trocas || 0)),
+    vocacoes: ORDEM_VOCACOES.map((id) => {
+      const d = VOCACOES[id];
+      return {
+        id,
+        nome: d.nome,
+        titulo: d.titulo,
+        papel: d.papel,
+        descricao: d.descricao,
+        textoPassivo: d.textoPassivo,
+        habilidades: d.habilidades.map((h) => ({ id: h, nome: HABILIDADES_VOCACAO[h].nome, nivel: HABILIDADES_VOCACAO[h].nivel, descricao: HABILIDADES_VOCACAO[h].descricao, icone: HABILIDADES_VOCACAO[h].icone })),
+        especializacoes: Object.entries(d.especializacoes).map(([eid, e]) => ({
+          id: eid,
+          nome: e.nome,
+          textoPassivo: e.textoPassivo,
+          habilidade: { id: e.habilidade, nome: HABILIDADES_VOCACAO[e.habilidade].nome, descricao: HABILIDADES_VOCACAO[e.habilidade].descricao },
+        })),
+      };
+    }),
+  };
+}
+
+function normalizarVocacao(p, agora) {
+  const v = objetoValido(p.vocacao) ? p.vocacao : {};
+  p.vocacao = {
+    id: registroDe(VOCACOES, v.id) ? v.id : null,
+    especializacao: null,
+    trocas: Number.isInteger(v.trocas) && v.trocas >= 0 ? v.trocas : 0,
+    avisada: v.avisada === true,
+    avisadaEspecializacao: v.avisadaEspecializacao === true,
+  };
+  if (p.vocacao.id && registroDe(VOCACOES[p.vocacao.id].especializacoes, v.especializacao)) p.vocacao.especializacao = v.especializacao;
+  const recargas = objetoValido(p.recargas) ? p.recargas : {};
+  p.recargas = {};
+  for (const id of idsHabilidades(p)) {
+    const t = recargas[id];
+    // Relógio adiantado: nenhuma recarga passa da duração dela a partir de agora.
+    if (Number.isFinite(t) && t > agora) p.recargas[id] = Math.min(t, agora + HABILIDADES_VOCACAO[id].recarga);
+  }
+  p.buffs = {};
 }
 
 // ---------------------------------------------------------------------
@@ -2184,6 +2327,7 @@ const Mundo = {
   salvar(p) {
     const descanso = creditarDescanso(p, Date.now());
     if (descanso > 0) this.avisarDescanso(p, descanso);
+    this.avisarVocacao(p);
     p.versao = VERSAO_SAVE;
     Storage.salvar(p);
   },
@@ -2323,6 +2467,8 @@ const Mundo = {
     p.fe = Number.isFinite(p.fe) ? Math.max(0, Math.min(FE_MAXIMA, Math.floor(p.fe))) : FE_MAXIMA;
     // Status (save v12): veneno, sangramento, atordoamento e medo num motor só (p.status e p.imune).
     normalizarStatus(p, agora);
+    // Vocação (save v13): saves anteriores começam sem vocação (escolha no nível de escolha).
+    normalizarVocacao(p, agora);
     delete p.proximaRegenFe;
 
     // Avisos pendentes para a UI (exibidos uma vez via Mundo.consumirAviso).
@@ -2373,6 +2519,15 @@ const Mundo = {
       );
     }
 
+    if (!novo && versaoAnterior < 13 && p.nivel >= REGRAS_VOCACAO.nivelEscolha) {
+      p.vocacao.avisada = true;
+      this.adicionarAviso(
+        p,
+        "atualizacao_13",
+        "Novidade: as vocações! Escolha a sua (tecla V): Guerreiro, Fundibulário, Levita, Profeta ou Pastor. " +
+          "Cada uma tem 7 habilidades na barra (teclas 1 a 8); os atalhos de itens passam para Shift + 1 a 6.",
+      );
+    }
     if (!novo && versaoAnterior < 11) {
       this.adicionarAviso(
         p,
@@ -2913,6 +3068,12 @@ const Mundo = {
         return this.trocarPontos(id, comando.ofertaId);
       case "zerarAnalisador":
         return this.zerarAnalisador(id);
+      case "escolherVocacao":
+        return this.escolherVocacao(id, comando.vocacao);
+      case "escolherEspecializacao":
+        return this.escolherEspecializacao(id, comando.especializacao);
+      case "usarHabilidade":
+        return this.usarHabilidade(id, comando.habilidade, comando.alvoId);
       case "colherMana":
         return this.colherMana(id);
       case "comerMana":
@@ -3325,6 +3486,18 @@ const Mundo = {
       };
     }
     if (npc.papel === "ambiente") return this.interagirMorador(id, npc);
+    if (npc.papel === "vocacao") {
+      const v = vocacaoDe(p);
+      const preco = precoTrocaVocacao(p);
+      const fala = !v
+        ? p.nivel >= REGRAS_VOCACAO.nivelEscolha
+          ? "Chegou a hora de escolher o seu caminho. Cada um serve ao povo de um jeito."
+          : `Volte no nível ${REGRAS_VOCACAO.nivelEscolha}: então escolherá a sua vocação.`
+        : preco
+          ? `Quer trocar de vocação? Custa ${preco} moedas, e a especialização recomeça.`
+          : "A primeira troca de vocação é por minha conta. Escolha com calma.";
+      return { ok: true, abrirVocacao: npc.id, mensagem: `${npc.nome.split(",")[0]}: ${npc.falas?.saudacao ? `${npc.falas.saudacao} ` : ""}${fala}` };
+    }
     if (npc.capitulo) return this.interagirCapitulo(id, npc);
     return { ok: true, mensagem: `${npc.nome}: A paz esteja com você.` };
   },
@@ -3751,8 +3924,8 @@ const Mundo = {
     const agora = Date.now();
     const distancia = tipo === "distancia";
     if (distancia) {
-      if (!p.equipamento.arco) return { ok: false, mensagem: "Equipe um arco antes de atacar à distância." };
-      if (!p.inventario.includes("flecha")) return { ok: false, mensagem: "Você não tem flechas." };
+      if (!p.equipamento.arco) return { ok: false, mensagem: "Equipe um arco ou a funda antes de atacar à distância." };
+      if (!infoItem(p.equipamento.arco)?.semMunicao && !p.inventario.includes("flecha")) return { ok: false, mensagem: "Você não tem flechas." };
     }
     if (this.atordoado(p, agora)) return { ok: false, atordoado: true, mensagem: "Você está atordoado e não consegue atacar." };
     if (statusAtivo(p, "medo", agora)) return { ok: false, medo: true, mensagem: "Você está com medo e não consegue atacar: recue, beba a poção ou espere passar." };
@@ -3773,7 +3946,7 @@ const Mundo = {
     estado.proximoAtaqueJogador = agora + RECARGA_ATAQUE;
     estado.ultimoCombate = agora;
     const analisador = this.iniciarAnalisador(id, agora);
-    if (distancia) {
+    if (distancia && !infoItem(p.equipamento.arco)?.semMunicao) {
       this.removerItens(p, "flecha", 1);
       analisador.gastos += custoFlecha();
     }
@@ -3781,7 +3954,8 @@ const Mundo = {
     const bonus = bonusAmuleto(p, e);
     // Combinações: criatura atordoada leva crítico garantido; com medo, leva mais dano.
     const combo = combinacoesNoGolpe(e, agora);
-    const golpe = calcularGolpe(p, tipo, at.defesa, combo.critico ? -1 : Math.random(), (1 + bonus) * combo.multiplicador);
+    const golpe = calcularGolpe(p, tipo, at.defesa, combo.critico ? -1 : Math.random(), (1 + bonus) * combo.multiplicador * fatorDano(p, tipo, agora));
+    estado.alvoAliados = e.id; // o cão do Pastor morde o seu alvo
     // Atingida, a criatura de matilha chama as outras (mesmo de longe, com a flecha).
     if (e.comportamentos.includes("matilha")) this.alertarMatilha(p, e, agora);
     const chaveHabilidade = distancia ? "distancia" : "corpo";
@@ -3822,7 +3996,8 @@ const Mundo = {
       };
     }
     this.salvar(p);
-    const acao = distancia ? `Sua flecha atingiu ${e.nome.toLowerCase()}` : `Você acertou ${e.nome.toLowerCase()}`;
+    const projetil = infoItem(p.equipamento.arco || "")?.semMunicao ? "pedra" : "flecha";
+    const acao = distancia ? `Sua ${projetil} atingiu ${e.nome.toLowerCase()}` : `Você acertou ${e.nome.toLowerCase()}`;
     return {
       ...base,
       derrotado: false,
@@ -3963,6 +4138,9 @@ const Mundo = {
       }
       return null;
     }
+    // Ovelha do Pastor por perto (JGB-20): a criatura vai atrás dela em vez de você.
+    const isca = this.iscaDaCriatura(id, e);
+    if (isca) return this.atacarIsca(id, p, e, at, isca, agora, eventos);
     const vida = p.vidaInimigos[e.id];
 
     if (tem("furia") && !e.furioso && vida <= at.vidaMaxima * COMPORTAMENTOS.furia.vidaLimite) {
@@ -4111,7 +4289,8 @@ const Mundo = {
     const combo = combinacoesNoGolpe(p, agora);
     const fatorCombo = combo.multiplicador * (combo.critico ? MULTIPLICADOR_CRITICO : 1);
     const bruto = Math.round(at.dano * (furia ? furia.dano : 1) * multiplicador * fatorCombo);
-    const dano = mitigarDano(bruto, defesaTotal(p));
+    // Buffs de vocação: redução de dano e escudo (JGB-20).
+    const { dano, absorvido } = this.absorverDano(p, mitigarDano(bruto, defesaTotal(p)), agora);
     p.vida = Math.max(0, p.vida - dano);
     const subiu = ganharHabilidade(p, "defesa", XP_HABILIDADE_POR_USO.defesa);
     const nome = nomeInimigo(p, e);
@@ -4131,7 +4310,8 @@ const Mundo = {
       roubo: at.rouboVida ? true : undefined,
       critico: combo.critico || undefined,
       combinacoes: combo.nomes.length ? combo.nomes : undefined,
-      defesaBloqueada: Math.max(0, bruto - dano),
+      defesaBloqueada: Math.max(0, bruto - dano - absorvido),
+      absorvido: absorvido || undefined,
       mensagem:
         `${combo.critico ? "CRÍTICO! " : ""}${nome} ${verbo} você por ${dano} de dano${combo.nomes.length ? ` (${combo.nomes.join(", ")})` : ""}! ` +
         `Vida: ${p.vida}/${vidaMaxima(p)}.${subiu ? ` Defesa: nível ${p.habilidades.defesa}.` : ""}`,
@@ -4353,7 +4533,515 @@ const Mundo = {
     return null;
   },
 
-  // ----- Morte (regra única) -----  // ----- Morte (regra única) -----
+  // ----- Vocações e habilidades (JGB-20) -----
+  // Escolhe a vocação (no nível de escolha, em qualquer lugar) ou troca de vocação (só ao lado do mestre de
+  // vocações; as primeiras trocas são grátis). Trocar zera a especialização, as recargas e dispensa os aliados.
+  escolherVocacao(id, vocacaoId) {
+    const p = this.jogadores[id];
+    const v = registroDe(VOCACOES, vocacaoId);
+    if (!v) return { ok: false, mensagem: "Vocação desconhecida." };
+    if (p.nivel < REGRAS_VOCACAO.nivelEscolha) {
+      return { ok: false, mensagem: `A vocação se escolhe no nível ${REGRAS_VOCACAO.nivelEscolha} (você está no ${p.nivel}).` };
+    }
+    const atual = vocacaoDe(p);
+    if (atual && p.vocacao.id === vocacaoId) return { ok: false, mensagem: `Você já é ${v.nome}.` };
+    let preco = 0;
+    if (atual) {
+      if (!this.npcProximo(p, (n) => n.papel === "vocacao")) {
+        return { ok: false, mensagem: "Para trocar de vocação, fale com Jetro, o mestre de vocações, na vila de Canaã." };
+      }
+      preco = precoTrocaVocacao(p);
+      if (p.moedas < preco) return { ok: false, mensagem: `A troca custa ${preco} moedas e você tem ${p.moedas}.` };
+      p.moedas -= preco;
+      p.vocacao.trocas += 1;
+    }
+    p.vocacao.id = vocacaoId;
+    p.vocacao.especializacao = null;
+    p.recargas = {};
+    p.buffs = {};
+    if (this.estado[id]) this.estado[id].aliados = [];
+    let arma = "";
+    if (v.arma && !p.inventario.includes(v.arma) && !Object.values(p.equipamento).includes(v.arma)) {
+      arma = this.adicionarItem(p, v.arma) ? ` Você recebeu: ${nomeItem(v.arma)} (equipe no espaço Arco).` : ` Libere espaço na mochila: a ${nomeItem(v.arma).toLowerCase()} está com o mercador de Canaã.`;
+    }
+    this.ajustarVidaAoEquipamento(p);
+    this.salvar(p);
+    const custo = atual ? (preco ? ` A troca custou ${preco} moedas.` : " A troca foi grátis.") : "";
+    return {
+      ok: true,
+      vocacao: vocacaoId,
+      moedasGastas: preco,
+      mensagem: `Você agora é ${v.nome} (${v.titulo})! As habilidades ficam na barra, teclas 1 a ${REGRAS_VOCACAO.barra}; os atalhos de itens passam para Shift + 1 a 6.${arma}${custo}`,
+    };
+  },
+
+  escolherEspecializacao(id, especializacaoId) {
+    const p = this.jogadores[id];
+    const v = vocacaoDe(p);
+    if (!v) return { ok: false, mensagem: "Escolha uma vocação antes." };
+    const esp = registroDe(v.especializacoes, especializacaoId);
+    if (!esp) return { ok: false, mensagem: "Especialização desconhecida." };
+    if (especializacaoDe(p)) return { ok: false, mensagem: "Você já tem uma especialização. Para mudar, troque de vocação com o mestre." };
+    if (p.nivel < REGRAS_VOCACAO.nivelEspecializacao) {
+      return { ok: false, mensagem: `A especialização se escolhe no nível ${REGRAS_VOCACAO.nivelEspecializacao} (você está no ${p.nivel}).` };
+    }
+    p.vocacao.especializacao = especializacaoId;
+    this.ajustarVidaAoEquipamento(p);
+    this.salvar(p);
+    const h = HABILIDADES_VOCACAO[esp.habilidade];
+    return { ok: true, especializacao: especializacaoId, mensagem: `Especialização: ${esp.nome}! ${esp.textoPassivo} Nova habilidade na tecla ${idsHabilidades(p).length}: ${h.nome}.` };
+  },
+
+  // Avisos de vocação: ao chegar ao nível de escolha (e ao da especialização), uma vez.
+  avisarVocacao(p) {
+    if (!objetoValido(p.vocacao)) return;
+    if (!p.vocacao.id && !p.vocacao.avisada && p.nivel >= REGRAS_VOCACAO.nivelEscolha) {
+      p.vocacao.avisada = true;
+      this.adicionarAviso(p, "vocacao", `Nível ${REGRAS_VOCACAO.nivelEscolha}: escolha a sua vocação (tecla V ou botão Vocação). Guerreiro, Fundibulário, Levita, Profeta ou Pastor.`);
+    }
+    if (vocacaoDe(p) && !especializacaoDe(p) && !p.vocacao.avisadaEspecializacao && p.nivel >= REGRAS_VOCACAO.nivelEspecializacao) {
+      p.vocacao.avisadaEspecializacao = true;
+      this.adicionarAviso(p, "especializacao", `Nível ${REGRAS_VOCACAO.nivelEspecializacao}: escolha a especialização da sua vocação (tecla V).`);
+    }
+  },
+
+  // Casa onde o jogador pode parar sem disparar nada: livre, sem criatura, sem portal, trilha ou cais.
+  casaParaSaltar(p, x, y) {
+    if (!this.casaLivre(x, y, p, true) || !this.casaParaFicar(p.area, x, y)) return false;
+    const a = areas[p.area];
+    const especiais = [a.cais, a.passagem, ...Object.values(a.portos || {}).map((o) => o.cais)].filter(Boolean);
+    if (especiais.some((c) => c.x === x && c.y === y)) return false;
+    return !PORTAIS.some((pt) => pt.area === p.area && pt.x === x && pt.y === y);
+  },
+
+  // Criaturas vivas da área a até "raio" casas (Chebyshev) do centro.
+  criaturasEmVolta(p, centro, raio) {
+    return Object.values(inimigos).filter((e) => e.area === p.area && this.inimigoVivo(p, e.id) && distanciaChebyshev(centro, e) <= raio);
+  },
+
+  // Alvo de uma habilidade com alvo "inimigo": o escolhido (ou o mais perto) a até alcance casas; a distância e
+  // a magia pedem o caminho livre.
+  alvoDaHabilidade(p, h, alvoId) {
+    const alcance = h.alcance || 1;
+    const valido = (e) => e && e.area === p.area && this.inimigoVivo(p, e.id) && distanciaChebyshev(p, e) <= alcance && (alcance <= 1 || this.linhaDeTiroLivre(p, e));
+    if (alvoId) {
+      const e = registroDe(inimigos, alvoId);
+      if (valido(e)) return { inimigo: e };
+      return { erro: alcance <= 1 ? "Chegue ao lado do alvo." : `O alvo precisa estar a até ${alcance} casas, com o caminho livre.` };
+    }
+    const perto = Object.values(inimigos)
+      .filter(valido)
+      .sort((a, b) => distanciaChebyshev(p, a) - distanciaChebyshev(p, b));
+    return perto.length ? { inimigo: perto[0] } : { erro: alcance <= 1 ? "Nenhuma criatura ao seu lado." : `Nenhuma criatura a até ${alcance} casas com o caminho livre.` };
+  },
+
+  // Dano de uma habilidade numa criatura: { dano, critico, combinacoes }. Consome o status do bônus, se pedir.
+  danoDeHabilidade(p, h, e, agora) {
+    const at = atributosInimigo(p, e);
+    const tipo = h.dano.tipo;
+    const magia = REGRAS_VOCACAO.magia;
+    const base = tipo === "magia" ? magia.base + magia.porNivel * Math.max(0, (p.nivel || 1) - 1) : danoBruto(p, tipo);
+    const combo = combinacoesNoGolpe(e, agora);
+    let mult = h.dano.mult * fatorDano(p, tipo, agora) * (1 + bonusAmuleto(p, e)) * combo.multiplicador;
+    const nomes = [...combo.nomes];
+    if (h.bonus) {
+      const status = [].concat(h.bonus.status).filter((t) => statusAtivo(e, t, agora));
+      if (status.length) {
+        mult *= h.bonus.mult;
+        nomes.push(h.nome);
+        if (h.bonus.consome) for (const t of status) curarStatus(e, t);
+      }
+    }
+    const critico = combo.critico || Math.random() < chanceCritico(p, tipo === "corpo" ? "corpo" : "distancia") / 100;
+    const bruto = Math.round(base * mult * (critico ? MULTIPLICADOR_CRITICO : 1));
+    const defesa = tipo === "magia" ? at.defesa * magia.fatorDefesa : at.defesa;
+    return { dano: mitigarDano(bruto, defesa), critico, combinacoes: nomes };
+  },
+
+  // Usa uma habilidade da barra. Devolve { ok, habilidade, alvos: [{ inimigoId, dano, critico, status,
+  // derrotado }], cura, buff, movimento: { x, y }, aliados, mortes: [resultado de cada abate], mensagem }.
+  usarHabilidade(id, habilidadeId, alvoId) {
+    const p = this.jogadores[id];
+    const estado = this.estado[id];
+    const agora = Date.now();
+    if (!vocacaoDe(p)) {
+      return { ok: false, mensagem: `Escolha uma vocação no nível ${REGRAS_VOCACAO.nivelEscolha} para ter habilidades (tecla V).` };
+    }
+    const h = registroDe(HABILIDADES_VOCACAO, habilidadeId);
+    if (!h || !idsHabilidades(p).includes(habilidadeId)) return { ok: false, mensagem: "Essa habilidade não é da sua vocação." };
+    if (p.nivel < h.nivel) return { ok: false, mensagem: `${h.nome} abre no nível ${h.nivel}.` };
+    const ofensiva = !!(h.dano || h.cao || (h.status && h.alvo === "inimigo"));
+    if (this.atordoado(p, agora) && h.movimento !== undefined) return { ok: false, atordoado: true, mensagem: "Você está atordoado." };
+    if (this.atordoado(p, agora) && ofensiva) return { ok: false, atordoado: true, mensagem: "Você está atordoado e não consegue atacar." };
+    if (ofensiva && statusAtivo(p, "medo", agora)) return { ok: false, medo: true, mensagem: "Você está com medo e não consegue atacar." };
+    const pronta = p.recargas[habilidadeId] || 0;
+    if (agora < pronta) {
+      return { ok: false, emRecarga: true, recargaRestante: pronta - agora, mensagem: `${h.nome}: pronta em ${(Math.ceil((pronta - agora) / 100) / 10).toFixed(1).replace(".", ",")} s.` };
+    }
+    if (agora < estado.proximoAtaqueJogador) {
+      const restante = estado.proximoAtaqueJogador - agora;
+      return { ok: false, emRecarga: true, recargaRestante: restante, mensagem: `Recuperando o fôlego: próxima ação em ${(restante / 1000).toFixed(1).replace(".", ",")} s.` };
+    }
+    // Requisitos antes de gastar a recarga.
+    let alvo = null;
+    if (h.alvo === "inimigo") {
+      const r = this.alvoDaHabilidade(p, h, alvoId);
+      if (r.erro) return { ok: false, mensagem: r.erro };
+      alvo = r.inimigo;
+      if (h.movimento === "investida" && distanciaChebyshev(p, alvo) > 1 && !this.linhaReta(p, alvo, (h.alcance || 1) + 0.5)) {
+        return { ok: false, mensagem: "O caminho até o alvo não está livre para a investida." };
+      }
+    }
+    const golpes = h.dano?.golpes || 1;
+    let gastaFlecha = false;
+    if (h.dano?.tipo === "distancia") {
+      const arma = p.equipamento.arco;
+      if (!arma) return { ok: false, mensagem: "Equipe a funda ou o arco no espaço Arco para usar esta habilidade." };
+      gastaFlecha = !infoItem(arma)?.semMunicao;
+      if (gastaFlecha && this.contarItem(id, "flecha") < golpes) return { ok: false, mensagem: "Você não tem flechas para esta habilidade (a funda não precisa delas)." };
+    }
+    const caes = (estado.aliados || []).filter((a) => a.tipo === "cao" && a.area === p.area);
+    if (h.cao && !caes.length) return { ok: false, mensagem: "Chame o cão primeiro." };
+    let ameaca = null;
+    if (h.movimento?.recuo) {
+      ameaca = Object.values(inimigos)
+        .filter((e) => e.area === p.area && this.inimigoVivo(p, e.id) && distanciaChebyshev(p, e) <= 8)
+        .sort((a, b) => distanciaChebyshev(p, a) - distanciaChebyshev(p, b))[0];
+      if (!ameaca) return { ok: false, mensagem: "Nenhuma criatura por perto para recuar dela." };
+    }
+
+    p.recargas[habilidadeId] = agora + h.recarga;
+    estado.proximoAtaqueJogador = agora + REGRAS_VOCACAO.recargaGlobal;
+    const resultado = { ok: true, habilidade: habilidadeId, nome: h.nome, alvos: [], mortes: [], cura: 0, aliados: [] };
+    const textos = [];
+    if (ofensiva) {
+      estado.ultimoCombate = agora;
+      const a = this.iniciarAnalisador(id, agora);
+      if (gastaFlecha) {
+        this.removerItens(p, "flecha", golpes);
+        a.gastos += custoFlecha() * golpes;
+      }
+    }
+    if (alvo) estado.alvoAliados = alvo.id;
+
+    // Movimento antes do golpe: investida (até o lado do alvo).
+    if (h.movimento === "investida" && alvo && distanciaChebyshev(p, alvo) > 1) {
+      const casas = [];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) casas.push({ x: alvo.x + dx, y: alvo.y + dy });
+      const destino = casas.filter((c) => this.casaParaSaltar(p, c.x, c.y)).sort((a, b) => distanciaChebyshev(p, a) - distanciaChebyshev(p, b))[0];
+      if (destino) {
+        Object.assign(p, destino);
+        resultado.movimento = { ...destino };
+      }
+    }
+
+    // Dano (e status) nos alvos.
+    if (h.dano) {
+      const centro = alvo || p;
+      const alvos = h.dano.area ? this.criaturasEmVolta(p, centro, h.dano.area) : [alvo];
+      for (const e of alvos) {
+        let total = 0;
+        let critico = false;
+        let combinacoes = [];
+        for (let g = 0; g < golpes && this.inimigoVivo(p, e.id); g++) {
+          const r = this.danoDeHabilidade(p, h, e, agora);
+          p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - r.dano);
+          total += r.dano;
+          critico = critico || r.critico;
+          combinacoes = [...new Set([...combinacoes, ...r.combinacoes])];
+        }
+        if (e.comportamentos.includes("matilha")) this.alertarMatilha(p, e, agora);
+        const linha = { inimigoId: e.id, dano: total, critico, combinacoes };
+        if (p.vidaInimigos[e.id] === 0) {
+          linha.derrotado = true;
+          resultado.mortes.push({ inimigoId: e.id, ...this.derrotarInimigo(p, e) });
+        } else {
+          if (h.status) {
+            const st = aplicarStatus(e, h.status, agora);
+            if (st) linha.status = h.status.tipo;
+          }
+          if (h.movimento?.repelir) {
+            let n = 0;
+            for (let i = 0; i < h.movimento.repelir; i++) if (this.passoParaLonge(e, p)) n++;
+            if (n) linha.repelido = n;
+          }
+        }
+        resultado.alvos.push(linha);
+      }
+      if (h.dano.tipo !== "magia") ganharHabilidade(p, h.dano.tipo, XP_HABILIDADE_POR_USO[h.dano.tipo]);
+      if (!alvos.length) textos.push("nenhuma criatura ao alcance");
+    } else if (h.status && alvo) {
+      const st = aplicarStatus(alvo, h.status, agora);
+      resultado.alvos.push({ inimigoId: alvo.id, dano: 0, status: st ? h.status.tipo : null });
+    }
+
+    // Ordem ao cão: o mais perto morde o alvo agora.
+    if (h.cao && alvo && this.inimigoVivo(p, alvo.id)) {
+      const cao = caes.sort((a, b) => distanciaChebyshev(a, alvo) - distanciaChebyshev(b, alvo))[0];
+      const casa = this.casaAoLadoPara(p, cao, alvo);
+      if (casa) Object.assign(cao, casa);
+      const linha = this.mordidaDoCao(p, cao, alvo, h.cao.mult, agora);
+      if (h.cao.status && !linha.derrotado) {
+        const st = aplicarStatus(alvo, h.cao.status, agora);
+        if (st) linha.status = h.cao.status.tipo;
+      }
+      if (linha.morte) resultado.mortes.push({ inimigoId: alvo.id, ...linha.morte });
+      delete linha.morte;
+      resultado.alvos.push(linha);
+    }
+
+    // Cura, purificação e buff (em você).
+    const passivos = passivosDe(p);
+    if (h.cura) {
+      const vidaMax = vidaMaxima(p);
+      const antes = p.vida;
+      p.vida = Math.min(vidaMax, p.vida + Math.round(vidaMax * h.cura.vida * passivos.cura));
+      resultado.cura = p.vida - antes;
+      if (h.cura.aliados) {
+        for (const o of (estado.aliados || []).filter((x) => x.vidaMax)) o.vida = Math.min(o.vidaMax, o.vida + Math.round(o.vidaMax * h.cura.vida * passivos.cura));
+      }
+    }
+    if (h.purificar) {
+      const tinha = statusAtivos(p, agora);
+      for (const t of TIPOS_STATUS) curarStatus(p, t);
+      if (tinha.length) textos.push(`sem ${tinha.map((t) => STATUS_CRIATURAS[t].nome.toLowerCase()).join(", ")}`);
+    }
+    if (h.buff) {
+      const b = { ...h.buff, ate: agora + h.buff.duracao };
+      if (h.buff.escudo) b.pontos = Math.round(vidaMaxima(p) * h.buff.escudo);
+      if (h.buff.regen) b.proximaRegen = agora + h.buff.regen.intervalo;
+      p.buffs[habilidadeId] = b;
+      resultado.buff = { id: habilidadeId, ate: b.ate };
+    }
+
+    // Recuo: salta para longe da criatura mais próxima.
+    if (h.movimento?.recuo && ameaca) {
+      let passos = 0;
+      for (let i = 0; i < h.movimento.recuo; i++) {
+        const atual = distanciaChebyshev(p, ameaca);
+        const opcoes = [];
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const c = { x: p.x + dx, y: p.y + dy };
+            if ((dx || dy) && distanciaChebyshev(c, ameaca) > atual && this.casaParaSaltar(p, c.x, c.y)) opcoes.push(c);
+          }
+        if (!opcoes.length) break;
+        opcoes.sort((a, b) => Math.hypot(b.x - ameaca.x, b.y - ameaca.y) - Math.hypot(a.x - ameaca.x, a.y - ameaca.y));
+        Object.assign(p, opcoes[0]);
+        passos++;
+      }
+      resultado.movimento = { x: p.x, y: p.y };
+      textos.push(passos ? `recuou ${passos} ${passos === 1 ? "casa" : "casas"}` : "sem espaço para recuar");
+    }
+
+    // Invocações (cão e ovelhas).
+    if (h.invocar) resultado.aliados = this.invocarAliados(id, p, h.invocar, agora);
+
+    this.salvar(p);
+    const partes = [];
+    for (const l of resultado.alvos) {
+      const nome = nomeInimigo(p, registroDe(inimigos, l.inimigoId)).toLowerCase();
+      const extra = [l.critico ? "crítico" : "", ...(l.combinacoes || []), l.status ? STATUS_CRIATURAS[l.status].nome.toLowerCase() : ""].filter(Boolean);
+      partes.push(`${l.dano ? `${l.dano} em ${nome}` : nome}${extra.length ? ` (${extra.join(", ")})` : ""}${l.derrotado ? ", derrotado" : ""}`);
+    }
+    if (resultado.cura) partes.push(`+${resultado.cura} de vida`);
+    if (resultado.buff) partes.push(`por ${Math.round(h.buff.duracao / 1000)} s`);
+    if (resultado.aliados.length) partes.push(resultado.aliados.map((a) => a.nome).join(", "));
+    partes.push(...textos);
+    const mortes = resultado.mortes.map((m) => ` ${m.mensagem}`).join("");
+    resultado.mensagem = `${h.nome}${partes.length ? `: ${partes.join("; ")}` : ""}.${mortes}`;
+    return resultado;
+  },
+
+  // ----- Aliados do Pastor: cão e ovelhas (JGB-20) -----
+  aliados(id) {
+    return this.estado[id]?.aliados || [];
+  },
+
+  invocarAliados(id, p, inv, agora) {
+    const estado = this.estado[id];
+    if (!Array.isArray(estado.aliados)) estado.aliados = [];
+    const cfg = REGRAS_VOCACAO.aliados[inv.tipo];
+    const doTipo = estado.aliados.filter((a) => a.tipo === inv.tipo && a.area === p.area);
+    const novos = [];
+    // O cão que já está aí só renova o tempo; chegam os que faltam para a quantidade.
+    if (inv.tipo === "cao") for (const a of doTipo) a.ate = agora + cfg.duracao;
+    const faltam = inv.tipo === "cao" ? Math.max(0, inv.quantidade - doTipo.length) : inv.quantidade;
+    const ocupadas = new Set(estado.aliados.map((a) => `${a.x},${a.y}`));
+    for (let n = 0; n < faltam; n++) {
+      let casa = null;
+      for (let r = 1; r <= 3 && !casa; r++)
+        for (let dy = -r; dy <= r && !casa; dy++)
+          for (let dx = -r; dx <= r && !casa; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            const c = { x: p.x + dx, y: p.y + dy };
+            if (!ocupadas.has(`${c.x},${c.y}`) && this.casaParaSaltar(p, c.x, c.y)) casa = c;
+          }
+      if (!casa) break;
+      ocupadas.add(`${casa.x},${casa.y}`);
+      estado.contadorAliados = (estado.contadorAliados || 0) + 1;
+      const a = { id: `${inv.tipo}_${estado.contadorAliados}`, tipo: inv.tipo, nome: cfg.nome, area: p.area, ...casa, ate: agora + cfg.duracao, proximoAtaque: agora + 500, proximoMovimento: agora };
+      if (inv.tipo === "ovelha") a.vida = a.vidaMax = Math.max(1, Math.round(vidaMaxima(p) * cfg.vidaPercentual));
+      estado.aliados.push(a);
+      novos.push({ ...a });
+    }
+    return novos;
+  },
+
+  // Casa livre (sem aliado) a até 3 casas do centro, a mais perto (ou null).
+  casaPertoDe(p, centro, aliados = []) {
+    for (let r = 1; r <= 3; r++)
+      for (let dy = -r; dy <= r; dy++)
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const c = { x: centro.x + dx, y: centro.y + dy };
+          if (!aliados.some((o) => o.x === c.x && o.y === c.y) && this.casaParaSaltar(p, c.x, c.y)) return c;
+        }
+    return null;
+  },
+
+  // Casa livre ao lado do alvo, a mais perto do aliado (ou null).
+  casaAoLadoPara(p, aliado, alvo) {
+    if (distanciaChebyshev(aliado, alvo) <= 1) return null;
+    const casas = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) casas.push({ x: alvo.x + dx, y: alvo.y + dy });
+    return casas.filter((c) => this.casaLivre(c.x, c.y, p)).sort((a, b) => distanciaChebyshev(aliado, a) - distanciaChebyshev(aliado, b))[0] || null;
+  },
+
+  // Mordida do cão: { inimigoId, dano, aliadoId, derrotado, morte }.
+  mordidaDoCao(p, cao, e, mult, agora) {
+    const cfg = REGRAS_VOCACAO.aliados.cao;
+    const at = atributosInimigo(p, e);
+    const base = cfg.danoBase + cfg.danoPorNivel * Math.max(0, (p.nivel || 1) - 1);
+    const combo = combinacoesNoGolpe(e, agora);
+    const bruto = Math.round(base * mult * passivosDe(p).aliados * somaBuffs(p, "aliados", agora) * combo.multiplicador * (combo.critico ? MULTIPLICADOR_CRITICO : 1));
+    const dano = mitigarDano(bruto, at.defesa);
+    p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - dano);
+    cao.proximoAtaque = agora + cfg.intervaloAtaque;
+    const linha = { inimigoId: e.id, aliadoId: cao.id, dano, critico: combo.critico || undefined };
+    if (p.vidaInimigos[e.id] === 0) {
+      linha.derrotado = true;
+      linha.morte = this.derrotarInimigo(p, e);
+    }
+    return linha;
+  },
+
+  // Um passo dos aliados: somem no fim do tempo (ou fora da área); o cão segue você e morde.
+  atualizarAliados(id, p, estado, agora, eventos) {
+    if (!estado.aliados?.length) return;
+    const cfg = REGRAS_VOCACAO.aliados.cao;
+    for (const a of [...estado.aliados]) {
+      if (a.area !== p.area || agora >= a.ate || (a.vidaMax && a.vida <= 0)) {
+        estado.aliados = estado.aliados.filter((x) => x !== a);
+        eventos.push({ tipo: "aliadoPartiu", aliadoId: a.id, aliado: a.tipo, motivo: a.vidaMax && a.vida <= 0 ? "caiu" : "tempo" });
+        continue;
+      }
+      if (a.tipo !== "cao") continue;
+      // Alvo: o seu (o último que você atacou), ou a criatura mais perto lutando com você.
+      let alvo = registroDe(inimigos, estado.alvoAliados);
+      if (!alvo || alvo.area !== p.area || !this.inimigoVivo(p, alvo.id) || distanciaChebyshev(a, alvo) > cfg.alcanceBusca * 2) {
+        alvo = Object.values(inimigos)
+          .filter((e) => e.area === p.area && this.inimigoVivo(p, e.id) && distanciaChebyshev(p, e) <= Math.min(cfg.alcanceBusca, e.raioPercepcao))
+          .sort((x, y) => distanciaChebyshev(a, x) - distanciaChebyshev(a, y))[0];
+      }
+      if (alvo && distanciaChebyshev(a, alvo) <= 1) {
+        if (agora < a.proximoAtaque) continue;
+        const linha = this.mordidaDoCao(p, a, alvo, 1, agora);
+        if (linha.morte) {
+          eventos.push({ tipo: "inimigoDerrotado", ...linha.morte, inimigoId: alvo.id, aliadoId: a.id, derrotado: true, mensagem: `O cão venceu: ${linha.morte.mensagem}` });
+          if (estado.alvoAliados === alvo.id) estado.alvoAliados = null;
+        } else eventos.push({ tipo: "aliadoAtacou", aliadoId: a.id, inimigoId: alvo.id, dano: linha.dano });
+        continue;
+      }
+      if (agora < a.proximoMovimento) continue;
+      a.proximoMovimento = agora + cfg.intervaloMovimento;
+      // Ficou longe (você correu, viajou pela trilha ou ele empacou): vem correndo e aparece ao seu lado.
+      if (distanciaChebyshev(a, p) > 8) {
+        const casa = this.casaPertoDe(p, p, estado.aliados);
+        if (casa) Object.assign(a, casa);
+        continue;
+      }
+      const destino = alvo || (distanciaChebyshev(a, p) > 2 ? p : null);
+      if (!destino) continue;
+      let melhor = null;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const c = { x: a.x + dx, y: a.y + dy };
+          if (!(dx || dy) || !this.casaLivre(c.x, c.y, p) || estado.aliados.some((o) => o !== a && o.x === c.x && o.y === c.y)) continue;
+          const d = distanciaChebyshev(c, destino) + Math.hypot(c.x - destino.x, c.y - destino.y) / 100;
+          if (!melhor || d < melhor.d) melhor = { ...c, d };
+        }
+      if (melhor && melhor.d < distanciaChebyshev(a, destino) + Math.hypot(a.x - destino.x, a.y - destino.y) / 100) {
+        a.x = melhor.x;
+        a.y = melhor.y;
+      }
+    }
+  },
+
+  // Ovelha que atrai esta criatura (a mais perto a até raioIsca casas), ou null.
+  iscaDaCriatura(id, e) {
+    const raio = REGRAS_VOCACAO.aliados.ovelha.raioIsca;
+    const ovelhas = (this.estado[id]?.aliados || []).filter((a) => a.tipo === "ovelha" && a.area === e.area && a.vida > 0 && distanciaChebyshev(a, e) <= raio);
+    return ovelhas.sort((a, b) => distanciaChebyshev(a, e) - distanciaChebyshev(b, e))[0] || null;
+  },
+
+  // A criatura vai até a ovelha e a ataca (de perto, ou de longe quem ataca à distância).
+  atacarIsca(id, p, e, at, ovelha, agora, eventos) {
+    const distancia = distanciaChebyshev(e, ovelha);
+    const alcance = e.comportamentos.includes("distancia") ? e.alcance || COMPORTAMENTOS.distancia.alcance : ALCANCE_CORPO;
+    const alcanca = distancia <= ALCANCE_CORPO || (alcance > ALCANCE_CORPO && this.linhaReta(e, ovelha, alcance + 0.5));
+    if (alcanca) {
+      if (agora < e.proximoAtaque) return null;
+      e.proximoAtaque = agora + at.intervaloAtaque;
+      const dano = mitigarDano(at.dano, REGRAS_VOCACAO.aliados.ovelha.defesa);
+      ovelha.vida = Math.max(0, ovelha.vida - dano);
+      eventos.push({ tipo: "iscaAtingida", aliadoId: ovelha.id, inimigoId: e.id, dano, vida: ovelha.vida, distancia: distancia > ALCANCE_CORPO });
+      return null;
+    }
+    if (agora < e.proximoMovimento) return null;
+    e.proximoMovimento = agora + at.intervaloMovimento;
+    if (this.passoInimigo(e, ovelha.x, ovelha.y, p)) eventos.push({ tipo: "inimigoMoveu", id: e.id });
+    return null;
+  },
+
+  // Buffs com regeneração (Incenso): cura a cada intervalo. E os buffs vencidos saem.
+  atualizarBuffs(p, agora, eventos) {
+    if (!objetoValido(p.buffs)) return;
+    let mudou = false;
+    for (const [k, b] of Object.entries(p.buffs)) {
+      if (!objetoValido(b) || agora >= b.ate) {
+        delete p.buffs[k];
+        mudou = true;
+        continue;
+      }
+      if (b.regen && agora >= b.proximaRegen) {
+        b.proximaRegen += b.regen.intervalo;
+        const vidaMax = vidaMaxima(p);
+        const antes = p.vida;
+        p.vida = Math.min(vidaMax, p.vida + Math.max(1, Math.round(vidaMax * b.regen.vida * passivosDe(p).cura)));
+        if (p.vida > antes) eventos.push({ tipo: "curaBuff", cura: p.vida - antes, habilidade: k });
+        mudou = true;
+      }
+    }
+    if (mudou) this.salvar(p);
+  },
+
+  // Dano que chega ao jogador depois da redução e do escudo dos buffs: { dano, absorvido }.
+  absorverDano(p, dano, agora) {
+    const reducao = somaBuffs(p, "reducao", agora);
+    let restante = reducao ? Math.max(1, Math.round(dano * (1 - reducao))) : dano;
+    let absorvido = 0;
+    for (const b of buffsAtivos(p, agora)) {
+      if (!(b.pontos > 0) || !restante) continue;
+      const parte = Math.min(b.pontos, restante);
+      b.pontos -= parte;
+      restante -= parte;
+      absorvido += parte;
+    }
+    return { dano: restante, absorvido };
+  },
+
+  // ----- Morte (regra única) -----
   aplicarMorte(id, causa, agora = Date.now()) {
     const p = this.jogadores[id];
     const estado = this.estado[id];
@@ -4396,6 +5084,8 @@ const Mundo = {
     }
     p.status = {};
     p.imune = {};
+    p.buffs = {};
+    if (estado) estado.aliados = [];
     p.area = "canaan";
     p.x = areas.canaan.inicio.x;
     p.y = areas.canaan.inicio.y;
@@ -4524,6 +5214,8 @@ const Mundo = {
     }
 
     this.atualizarNomeados(p, agora, eventos);
+    this.atualizarAliados(id, p, estado, agora, eventos);
+    this.atualizarBuffs(p, agora, eventos);
 
     const estragou = this.estragarMana(p, agora);
     if (estragou) eventos.push({ tipo: "manaEstragou", quantidade: estragou, mensagem: this.textoManaEstragou(p, estragou, agora) });
