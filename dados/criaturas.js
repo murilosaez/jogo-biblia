@@ -4,8 +4,10 @@
 // =====================================================================
 
 // Campos: id, nome, aparencia (sprite), especie, familia, area, x, y, vidaMaxima, danoContraJogador
-// (antes da defesa), defesa, raioPercepcao, xpRecompensa, saque { itens, moedas } e veneno ("padrao" ou
+// (antes da defesa), defesa, raioPercepcao, nivel, xpRecompensa, saque { itens, moedas } e veneno ("padrao" ou
 // { duracao, dano, intervalo }).
+// nivel: nível da criatura (nível em que o jogador costuma chegar à região). Quem está mais de 5 níveis
+// acima rende menos XP (ver xpDoAbate em logica.js).
 // especie: grupo das instâncias da mesma criatura (escorpiao1, escorpiao2… = "escorpiao"); familia: chave de
 // FAMILIAS_CRIATURAS. As caçadas (dados/tarefas.js) e, no futuro, o bestiário contam por espécie ou família.
 
@@ -32,6 +34,7 @@ const DADOS_CRIATURAS = [
     danoContraJogador: 6,
     defesa: 2,
     raioPercepcao: 6,
+    nivel: 3,
     xpRecompensa: 40,
     saque: { itens: ["pele_lobo"], moedas: 4 },
   },
@@ -48,6 +51,7 @@ const DADOS_CRIATURAS = [
     danoContraJogador: 9,
     defesa: 4,
     raioPercepcao: 5,
+    nivel: 5,
     xpRecompensa: 60,
     saque: { itens: ["veneno_escorpiao"], moedas: 8 },
     veneno: "padrao",
@@ -65,6 +69,7 @@ const DADOS_CRIATURAS = [
     danoContraJogador: 10,
     defesa: 6,
     raioPercepcao: 6,
+    nivel: 6,
     xpRecompensa: 100,
     saque: { itens: ["insignia_bandido"], moedas: 15 },
   },
@@ -81,6 +86,7 @@ const DADOS_CRIATURAS = [
     danoContraJogador: 10,
     defesa: 8,
     raioPercepcao: 6,
+    nivel: 6,
     xpRecompensa: 100,
     saque: { itens: [], moedas: 18 },
   },
@@ -97,6 +103,7 @@ const DADOS_CRIATURAS = [
     danoContraJogador: 11,
     defesa: 10,
     raioPercepcao: 7,
+    nivel: 7,
     xpRecompensa: 130,
     saque: { itens: [], moedas: 22 },
   },
@@ -113,6 +120,7 @@ const DADOS_CRIATURAS = [
     danoContraJogador: 11,
     defesa: 12,
     raioPercepcao: 7,
+    nivel: 8,
     xpRecompensa: 160,
     saque: { itens: [], moedas: 26 },
   },
@@ -130,6 +138,7 @@ const DADOS_CRIATURAS = [
     danoContraJogador: 11,
     defesa: 14,
     raioPercepcao: 7,
+    nivel: 9,
     xpRecompensa: 190,
     saque: { itens: [], moedas: 30 },
   },

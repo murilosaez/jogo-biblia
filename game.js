@@ -816,7 +816,7 @@ class Cena extends Phaser.Scene {
       this.agendarRespawn(id);
       this.alvoId = null;
       const e = inimigos[id];
-      if (e) this.time.delayedCall(200, () => this.numero(centroX(e.x), baseY(e.y) - 40, `+${e.xpRecompensa} XP`, "xp"));
+      if (e) this.time.delayedCall(200, () => this.numero(centroX(e.x), baseY(e.y) - 40, `+${r.xpGanho ?? e.xpRecompensa} XP`, "xp"));
       // Caçadas que avançaram com este abate: "27/40" depois do "+XP" (até 3, uma por vez). Nascem abaixo
       // do "+XP", que já subiu, e sobem no mesmo ritmo: os dois números nunca se cobrem.
       if (e) (r.tarefas || []).slice(0, 3).forEach((t, i) => {

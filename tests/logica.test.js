@@ -2230,7 +2230,8 @@ teste("36. caçadas: entrega em qualquer atalaia, espera contada da entrega e a 
     niveis: [],
   });
   assert.strictEqual(p.moedas, moedas + 80);
-  assert.strictEqual(p.xp, limiar(19) + 60 + 360);
+  // O abate do escorpião (nível 5) rende XP reduzido no nível 20 (ver teste 41); a entrega rende os 360 cheios.
+  assert.strictEqual(p.xp, limiar(19) + j.g("xpDoAbate")(p, j.g("inimigos").escorpiao1) + 360);
   assert.deepStrictEqual([p.pontosTarefa, p.pontosTarefaTotal], [15, 15]);
   igual(p.tarefas.deserto_ferroes, { ativa: false, progresso: 0, meta: 40, concluidas: 1, disponivelEm: j.agora + 20 * HORA, aceitaEm });
   assert.strictEqual(j.g("estadoMissaoNpc")(p, "atalaia_egito"), "missao", "o ? some depois da entrega");
@@ -2253,7 +2254,8 @@ teste("36. caçadas: entrega em qualquer atalaia, espera contada da entrega e a 
   assert.ok(aceitarCacada(j, "deserto_rotas").ok);
   p.tarefas.deserto_rotas.progresso = 149;
   abater(j, "escorpiao1");
-  p.xp = limiar(p.nivel) - 1; // 1800 XP depois do limiar: 3 níveis de 650 XP
+  p.nivel = 10;
+  p.xp = limiar(10) - 1; // +1800 XP: níveis 11, 12 e 13 (o 13→14 pede 950 XP a mais)
   const nivel = p.nivel;
   const grande = falar(j, "atalaia_deserto");
   igual(grande.niveis, [nivel + 1, nivel + 2, nivel + 3]);
@@ -2676,6 +2678,36 @@ teste("40. a interface só lê o estado das caçadas: código sem escrita nele e
     if (o.item) assert.match(FONTE_ARTE, new RegExp(`item\\("${o.item}"`), `falta o ícone de ${o.item}`);
     else assert.match(FONTE_ARTE, new RegExp(`glifo\\("${o.icone}"`), `falta o glifo ${o.icone}`);
   }
+});
+
+teste("41. XP: curva cresce depois do nível 10 e criatura muito mais fraca rende menos", () => {
+  const j = carregarJogo();
+  const limiar = j.g("limiarNivel");
+  // Tabela até o 10; depois, cada nível custa 150 XP a mais que o anterior.
+  assert.strictEqual(limiar(10), 3250);
+  const custos = [11, 12, 13, 14].map((n) => limiar(n) - limiar(n - 1));
+  assert.deepStrictEqual(custos, [650, 800, 950, 1100]);
+  for (let n = 11; n < 100; n++) assert.ok(limiar(n + 1) - limiar(n) > limiar(n) - limiar(n - 1), `custo cresce no ${n}`);
+  // Farmar não dispara: 150 guardas egípcios a partir do nível 6 não passam do nível 20.
+  j.entrar();
+  const p = j.p;
+  Object.assign(p, { nivel: 6, xp: limiar(5) });
+  const guarda = j.g("inimigos").soldadoEgito1;
+  for (let i = 0; i < 150; i++) j.g("adicionarXP")(p, j.g("xpDoAbate")(p, guarda));
+  assert.ok(p.nivel <= 20, `150 guardas levaram ao nível ${p.nivel}`);
+  // Redução: até 5 níveis acima, XP cheio; depois, -15% por nível, mínimo de 10%.
+  const xp = j.g("xpDoAbate");
+  const lobo = j.g("inimigos").lobo1; // nível 3, 40 XP
+  const com = (nivel) => xp({ nivel }, lobo);
+  assert.deepStrictEqual([com(1), com(8), com(9), com(10), com(14), com(30)], [40, 40, 34, 28, 4, 4]);
+  assert.strictEqual(xp({ nivel: 50 }, { xpRecompensa: 40 }), 40, "criatura sem nível rende sempre o XP cheio");
+  for (const e of Object.values(j.g("inimigos"))) assert.ok(Number.isInteger(e.nivel) && e.nivel > 0, `${e.id} tem nível`);
+  // A mensagem e o retorno do abate mostram o XP realmente ganho.
+  p.nivel = 20;
+  p.vida = 9999;
+  const r = abater(j, "lobo1");
+  assert.strictEqual(r.xpGanho, 4);
+  assert.match(r.mensagem, /\+4 XP \(criatura fraca para o seu nível\)/);
 });
 
 // ---------------------------------------------------------------------
