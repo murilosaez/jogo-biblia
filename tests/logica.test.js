@@ -1185,6 +1185,48 @@ teste("18. API usada por game.js continua disponível", () => {
   j.p.x = ponto.x + 1;
   j.p.y = ponto.y;
   assert.ok(j.exec({ tipo: "pescar" }).ok);
+  // Ids que vêm de fora só valem como chaves próprias das tabelas. "constructor", "toString" e
+  // "__proto__" são recusados sem mudar nada (antes: saldo, moedas ou fé em NaN, função na mochila).
+  const k = carregarJogo();
+  k.entrar();
+  concluirMissoes(k);
+  Object.assign(k.p, { pontosTarefa: 200, pontosTarefaTotal: 200, moedas: 500, oracaoDesbloqueada: true, fe: 50 });
+  const comandos = [
+    ["comprar", "item"],
+    ["vender", "item"],
+    ["interagir", "alvoId"],
+    ["atacar", "alvoId"],
+    ["atacarDistancia", "alvoId"],
+    ["coletarSaque", "saqueId"],
+    ["viajar", "areaDestino"],
+    ["orar", "acao"],
+    ["alternarEquipamento", "slot"],
+    ["aceitarTarefa", "tarefaId"],
+    ["guardarTarefa", "tarefaId"],
+    ["trocarPontos", "ofertaId"],
+  ];
+  for (const npcId of ["mercador1", "atalaia_deserto", "guia_deserto"]) {
+    const npc = k.g("npcs")[npcId];
+    posicionarAoLado(k, npc.area, npc);
+    for (const chave of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const antes = json(k.p);
+      for (const [tipo, campo] of comandos) {
+        assert.strictEqual(k.exec({ tipo, [campo]: chave }).ok, false, `${tipo} com ${campo} "${chave}"`);
+      }
+      assert.strictEqual(k.M.equiparItem(ID, chave, "arma").ok, false);
+      assert.strictEqual(k.M.equiparItem(ID, "espada_ferro", chave).ok, false);
+      assert.strictEqual(k.M.desequiparItem(ID, chave).ok, false);
+      assert.strictEqual(k.M.atribuirHotkey(ID, 0, chave).ok, false);
+      igual(k.p, antes, `"${chave}" não muda o save (ao lado de ${npcId})`);
+    }
+  }
+  assert.strictEqual(k.exec({ tipo: "trocarPontos", ofertaId: "constructor" }).mensagem, "Essa troca não existe.");
+  posicionarAoLado(k, "deserto", k.g("npcs").mercador1);
+  assert.strictEqual(k.exec({ tipo: "comprar", item: "constructor" }).mensagem, "Esse item não está à venda.");
+  k.g("Storage").flush();
+  const recarregado = carregarJogo({ store: k.store });
+  recarregado.entrar();
+  assert.deepStrictEqual([recarregado.p.pontosTarefa, recarregado.p.moedas, recarregado.p.fe], [200, 500, 50]);
 });
 
 teste("19. personagem novo começa com o equipamento inicial vestido e vence o lobo sem ajustes", () => {
@@ -2087,7 +2129,13 @@ teste("35. caçadas: aceitar, guardar, limite de 3, visões e balões dos atalai
   assert.ok(aceitarCacada(j, "deserto_rotas").ok, "a vaga foi liberada");
   posicionarAoLado(j, "canaan", npcs.atalaia_canaa);
   assert.strictEqual(aceitar("deserto_ferroes").mensagem, "Fale com o atalaia (Deserto) para aceitar esta caçada.");
-  assert.ok(guardarCacada(j, "deserto_rotas").ok);
+  // Guardar sem progresso não promete um "retomar": a caçada só volta a ficar disponível no mural.
+  igual(guardarCacada(j, "deserto_rotas"), {
+    ok: true,
+    tarefaId: "deserto_rotas",
+    mensagem: "Caçada devolvida ao mural: As rotas das caravanas. Para aceitar de novo, fale com o atalaia (Deserto).",
+  });
+  assert.strictEqual(estadoCacada(j, "deserto_rotas"), "disponivel");
   j.avancar(1000);
   const retomada = aceitarCacada(j, "deserto_ferroes");
   igual(retomada, { ok: true, tarefaId: "deserto_ferroes", retomada: true, mensagem: "Caçada retomada: Ferrões no caminho (27/40)." });
@@ -2293,11 +2341,30 @@ teste("37. troca de pontos: recusas sem mudar nada, itens, alforjes e estados da
   const estados = () => j.g("ofertasDeTroca")(p).map((o) => [o.id, o.estado]);
   igual(estados(), [["alforje_couro", "comprada"], ["escudo_ferro", "semPontos"], ["alforje_viagem", "comprada"], ["couraca_escamas", "bloqueada"]]);
   const [alforje, escudo, , couraca] = j.g("ofertasDeTroca")(p);
-  igual(escudo, { id: "escudo_ferro", nome: "Escudo de ferro", icone: null, item: "escudo_ferro", quantidade: 1, efeito: "Defesa 7", preco: 150, estado: "semPontos", motivo: "", falta: 40 });
+  igual(escudo, {
+    id: "escudo_ferro",
+    nome: "Escudo de ferro",
+    icone: null,
+    item: "escudo_ferro",
+    quantidade: 1,
+    efeito: "Defesa 7",
+    preco: 150,
+    estado: "semPontos",
+    motivo: "",
+    falta: 40,
+    possui: 1,
+  });
   assert.deepStrictEqual([alforje.icone, alforje.item, alforje.efeito], ["ui_alforje", null, "+10 kg de carga, para sempre"]);
   assert.strictEqual(couraca.motivo, "concluir a missão “A batalha de Refidim”");
   p.pontosTarefa = 150;
   igual(estados()[1], ["escudo_ferro", "disponivel"]);
+  // possui: unidades do item na mochila e equipadas (a interface confirma antes de trocar outro).
+  const possui = () => j.g("ofertasDeTroca")(p).map((o) => o.possui);
+  igual(possui(), [0, 1, 0, 0]);
+  assert.ok(j.M.equiparItem(ID, "escudo_ferro", "escudo").ok);
+  igual(possui(), [0, 1, 0, 0], "o escudo equipado conta");
+  p.inventario.push("escudo_ferro");
+  igual(possui(), [0, 2, 0, 0]);
 });
 
 teste("38. migração para a v8: saves v5, v6 e v7 ganham caçadas vazias; v8 recarrega igual; corrompido é normalizado", () => {
@@ -2382,6 +2449,7 @@ teste("38. migração para a v8: saves v5, v6 e v7 ganham caçadas vazias; v8 re
     deserto_ferroes: { ativa: true, progresso: 999, meta: 40, concluidas: 2, disponivelEm: 5, aceitaEm: 20 },
     deserto_bando: "x",
     cacada_antiga: { ativa: true, progresso: 3, meta: 9 },
+    constructor: { ativa: true, progresso: 3, meta: 9 },
   };
   Object.assign(corrompido, { pontosTarefa: "muitos", pontosTarefaTotal: 2, trocas: { alforje_couro: 1, lixo: "a", outra: 2.5 } });
   j = carregarJogo({ store: { save_jogador1: JSON.stringify(corrompido) }, inicio: agora });
@@ -2391,6 +2459,8 @@ teste("38. migração para a v8: saves v5, v6 e v7 ganham caçadas vazias; v8 re
   igual(p.tarefas.deserto_ferroes, { ativa: true, progresso: 40, meta: 40, concluidas: 2, disponivelEm: 5, aceitaEm: 20 });
   assert.ok(!("deserto_bando" in p.tarefas), "entrada inválida de caçada conhecida é removida");
   igual(p.tarefas.cacada_antiga, { ativa: true, progresso: 3, meta: 9 }, "caçada que saiu dos dados fica intocada");
+  igual(p.tarefas.constructor, { ativa: true, progresso: 3, meta: 9 }, "id herdado de Object.prototype não é caçada");
+  assert.strictEqual(j.g("visaoTarefa")(p, "constructor"), null, "a lista \"Voltam ao mural\" percorre as chaves do save");
   assert.deepStrictEqual([p.pontosTarefa, p.pontosTarefaTotal], [0, 2]);
   igual(p.trocas, { alforje_couro: 1 });
   // A caçada desconhecida não ocupa vaga: com 2 ativas conhecidas, a 3ª é aceita.
@@ -2485,7 +2555,37 @@ teste("39. ritmo das caçadas: rondas de 5–30 min, grandes de 30–90, recompe
   }
 });
 
-teste("40. a interface usa o contrato das caçadas e nunca altera o estado delas", () => {
+// Usos de p.tarefas, p.trocas, p.pontosTarefa e p.pontosTarefaTotal num código de interface que não
+// são leitura com valor padrão ("p.pontosTarefa || 0", "Object.keys(p.tarefas || {})"). Atribuição,
+// delete, Object.assign, alias (p.tarefas[id] guardado numa variável), desestruturação e acesso por
+// string entram na lista. Comentários de linha inteira e de bloco são ignorados.
+const CAMPOS_CACADA = "tarefas|trocas|pontosTarefa|pontosTarefaTotal";
+function usosQueNaoSaoLeitura(fonte) {
+  const codigo = fonte.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const problemas = [];
+  const trecho = (i) => codigo.slice(Math.max(0, i - 30), i + 50).replace(/\s+/g, " ");
+  for (const m of codigo.matchAll(new RegExp(`\\??\\.(${CAMPOS_CACADA})\\b(?!\\s*\\|\\|)`, "g"))) problemas.push(trecho(m.index));
+  const outros = [
+    new RegExp(`\\[\\s*["'\`](${CAMPOS_CACADA})["'\`]\\s*\\]`, "g"),
+    new RegExp(`\\{[^{}]*\\b(${CAMPOS_CACADA})\\b[^{}]*\\}\\s*=(?!=)`, "g"),
+    new RegExp(`Object\\.(assign|defineProperty|defineProperties|setPrototypeOf)\\([^)]*\\b(${CAMPOS_CACADA})\\b`, "g"),
+    new RegExp(`\\bdelete\\b[^;]*\\b(${CAMPOS_CACADA})\\b`, "g"),
+  ];
+  for (const re of outros) for (const m of codigo.matchAll(re)) problemas.push(trecho(m.index));
+  return [...new Set(problemas)];
+}
+
+// Fotografia de p que distingue o que JSON.stringify esconde: undefined, NaN, Infinity e funções.
+function fotografia(v) {
+  return JSON.stringify(v, (_, x) => {
+    if (x === undefined) return "<undefined>";
+    if (typeof x === "function") return "<função>";
+    if (typeof x === "number" && !Number.isFinite(x)) return `<${x}>`;
+    return x;
+  });
+}
+
+teste("40. a interface só lê o estado das caçadas: código sem escrita nele e funções puras que não mudam p", () => {
   const FONTE_UI = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
   const FONTE_ARTE = fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8");
   const HTML = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
@@ -2498,9 +2598,67 @@ teste("40. a interface usa o contrato das caçadas e nunca altera o estado delas
     assert.ok(FONTE_UI.includes(fn), `interface.js usa ${fn})`);
   }
   // A interface só lê p.tarefas, p.pontosTarefa e p.trocas: toda mudança passa por executar().
-  for (const fonte of [FONTE_UI, FONTE_GAME]) {
-    assert.doesNotMatch(fonte, /\.(tarefas|pontosTarefa|pontosTarefaTotal|trocas)\b(\[[^\]]*\]|\.\w+)*\s*(=(?!=)|\+=|-=|\+\+|--)/);
+  // O verificador pega cada forma de escrita (amostras abaixo) e deixa passar as leituras com padrão.
+  const escritas = [
+    "p.pontosTarefa = 300;",
+    "p.tarefas[id].progresso = 5;",
+    "p.pontosTarefa += 10;",
+    "delete p.tarefas[id];",
+    "Object.assign(p.trocas, { alforje_couro: 1 });",
+    "const s = p.tarefas[t.id]; s.ativa = true;",
+    'p["pontosTarefa"] = 300;',
+    "const { tarefas } = p; tarefas.x = {};",
+    "p.trocas?.alforje_couro;",
+  ];
+  for (const amostra of escritas) assert.ok(usosQueNaoSaoLeitura(amostra).length, `o verificador deixou passar: ${amostra}`);
+  const leituras = "const n = p.pontosTarefa || 0;\n  // p.tarefas[id] = 1\nconst ids = Object.keys(p.tarefas || {}); /* p.trocas = {} */";
+  igual(usosQueNaoSaoLeitura(leituras), [], "leituras com valor padrão e comentários passam");
+  for (const [nome, fonte] of [["interface.js", FONTE_UI], ["game.js", FONTE_GAME]]) {
+    igual(usosQueNaoSaoLeitura(fonte), [], `${nome} só lê o estado das caçadas (com "|| padrão") e muda tudo por executar()`);
   }
+  // Em tempo de execução: as funções puras que a interface chama não mudam p em nada, em todos os
+  // estados (ativa, cumprida, guardada, espera, bloqueada), com caçada antiga e chave herdada no save.
+  const jr = carregarJogo();
+  jr.entrar();
+  const pr = jr.p;
+  pr.missoes.lobo.status = "concluida";
+  pr.missoes.ervas.status = "concluida";
+  pr.missoes.deserto.status = "concluida";
+  assert.ok(aceitarCacada(jr, "canaa_lobos").ok);
+  assert.ok(aceitarCacada(jr, "deserto_ferroes").ok);
+  assert.ok(aceitarCacada(jr, "deserto_rotas").ok);
+  pr.tarefas.deserto_ferroes.progresso = 40;
+  pr.tarefas.deserto_rotas.progresso = 12;
+  assert.ok(guardarCacada(jr, "deserto_rotas").ok);
+  pr.tarefas.deserto_bando = { ativa: false, progresso: 0, meta: 15, concluidas: 1, disponivelEm: jr.agora + HORA, aceitaEm: 1 };
+  pr.tarefas.cacada_antiga = { ativa: true, progresso: 3, meta: 9 };
+  Object.defineProperty(pr.tarefas, "constructor", { value: { ativa: true, progresso: 1, meta: 2 }, enumerable: true, writable: true });
+  Object.assign(pr, { pontosTarefa: 170, pontosTarefaTotal: 230, trocas: { alforje_couro: 1 } });
+  pr.inventario.push("escudo_ferro");
+  const g = (nome) => jr.g(nome);
+  const ids = [...g("ORDEM_TAREFAS"), "cacada_antiga", "constructor", "nada"];
+  const antes = fotografia(pr);
+  for (const id of ids) {
+    g("visaoTarefa")(pr, id);
+    g("estadoTarefa")(pr, id);
+  }
+  for (const npcId of Object.keys(g("npcs"))) {
+    g("tarefasDoMural")(pr, npcId);
+    g("estadoMissaoNpc")(pr, npcId);
+  }
+  for (const inimigoId of [...Object.keys(g("inimigos")), "constructor"]) g("tarefasDoInimigo")(pr, inimigoId);
+  g("tarefasDoJogador")(pr);
+  g("ofertasDeTroca")(pr);
+  g("textoMissaoAtual")(pr);
+  g("estatisticasCombate")(pr);
+  g("capacidadeCarga")(pr);
+  g("pesoCarregado")(pr);
+  assert.strictEqual(fotografia(pr), antes, "as funções puras da interface não mudam p");
+  igual(g("tarefasDoMural")(pr, "atalaia_deserto").map((v) => [v.id, v.estado]), [
+    ["deserto_ferroes", "cumprida"],
+    ["deserto_bando", "espera"],
+    ["deserto_rotas", "guardada"],
+  ]);
   // index.html carrega dados/tarefas.js antes de logica.js e tem o modal e a lista do painel Missão.
   const scripts = [...HTML.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
   const iTarefas = scripts.indexOf("dados/tarefas.js");

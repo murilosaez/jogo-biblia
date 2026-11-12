@@ -53,7 +53,8 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 
 /* ---------- botões (um design) ---------- */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 12px;border:2px solid var(--tinta);border-radius:var(--raio);
- background:linear-gradient(var(--bronze-500),var(--bronze-700));box-shadow:var(--relevo),0 2px 0 #0008;font:600 var(--fs-14)/1 var(--f-pixel);color:var(--perg-100);text-shadow:1px 1px 0 #1c1210;white-space:nowrap}
+ background:linear-gradient(var(--bronze-500),var(--bronze-700));box-shadow:var(--relevo),0 2px 0 #0008;font:600 var(--fs-14)/1 var(--f-pixel);color:var(--perg-100);text-shadow:1px 1px 0 #1c1210;white-space:nowrap;
+ user-select:none;-webkit-user-select:none}
 .btn:hover{background:linear-gradient(var(--bronze-400),var(--bronze-600))}
 .btn:active{transform:translateY(1px);box-shadow:var(--relevo)}
 .btn[disabled],.btn.desab{background:var(--bloqueado);color:#e8dcc4;cursor:not-allowed;box-shadow:none}
@@ -160,6 +161,7 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 .atributos div{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font:400 var(--fs-12)/1.35 var(--f-pixel)}
 .atributos dt{font:400 var(--fs-13)/1.35 var(--f-texto);color:var(--texto-mudo)}
 .atributos dd{margin:0;color:var(--texto)}
+.atributos div.largo{grid-column:1/-1}
 
 /* ---------- slots ---------- */
 .grade{display:grid;grid-template-columns:repeat(5,var(--slot));gap:4px;justify-content:start}
@@ -209,7 +211,10 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 .linha-inimigo.selecionada{border-left-color:var(--hostil);background:var(--couro-500)}
 .linha-inimigo .mini{width:32px;height:28px;display:grid;place-items:end center;flex:0 0 32px}
 .linha-inimigo .mini img{max-width:32px;max-height:28px}
-.linha-inimigo .nome{flex:1;min-width:0;display:flex;align-items:center;gap:4px;font:500 var(--fs-13)/1.1 var(--f-texto);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.linha-inimigo .nome{flex:1;min-width:0;display:flex;align-items:center;gap:4px;font:500 var(--fs-13)/1.1 var(--f-texto);white-space:nowrap;overflow:hidden}
+/* só o texto abrevia (…); estrela de chefe, gota e glifo de caçada ficam sempre inteiros */
+.linha-inimigo .nome-txt{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.linha-inimigo .nome>img,.linha-inimigo .marca-cacada{flex:none}
 .linha-inimigo .vida{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
 .mini-barra{width:48px;height:6px;background:#1a0f0a;border:1px solid #1c1210}
 .mini-barra i{display:block;height:100%;background:var(--vida-2);box-shadow:inset 0 1px 0 var(--vida-3)}
@@ -389,6 +394,8 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja .motivo{display:block;font-style:italic}
 .retorno{margin:0 0 10px;padding:4px 10px;border-left:3px solid var(--fe-2);background:#fff3;font:500 var(--fs-13)/1.35 var(--f-texto);color:var(--tinta)}
 .retorno.erro{border-left-color:var(--vida-2)}
+.item-loja .confirma-troca{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px 8px;padding:6px 0 2px;border-top:1px dotted var(--perg-400)}
+.confirma-troca p{flex:1 1 220px;margin:0;font:500 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta)}
 .modal .nota img{vertical-align:-3px}
 .voltam{list-style:none;margin:0;padding:0}
 .voltam li{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:3px 0;border-bottom:1px dotted var(--perg-400);font:400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
@@ -553,6 +560,7 @@ body.dialogo-aberto #toque{visibility:hidden}
  .item-loja .btn{min-width:76px;min-height:44px}
  .item-loja.cacada{grid-template-columns:40px minmax(0,1fr)}
  .cacada-acao{grid-column:1/-1;max-width:none}
+ .confirma-troca p{flex-basis:100%}
  .abas-modal{flex-wrap:wrap}
  .btn{min-height:44px}
  #dpad{bottom:10px;left:8px}

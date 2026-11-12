@@ -441,9 +441,9 @@
       ["Crítico", `${s.critico}%`],
       ["Flechas", s.flechas],
       ["Carga", `${peso}/${cap}`],
-      ["Pontos de tarefa", p.pontosTarefa || 0],
+      ["Pontos de tarefa", p.pontosTarefa || 0, "largo"], // nas duas colunas: numa só, quebrava em 2 linhas
     ];
-    const html = linhas.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
+    const html = linhas.map(([k, v, cls]) => `<div${cls ? ` class="${cls}"` : ""}><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
     const dl = $("#atributos");
     if (dl.innerHTML !== html) dl.innerHTML = html;
   }
@@ -536,7 +536,9 @@
     // A seleção não entra na assinatura: marcá-la só troca a classe
     // .selecionado (marcarSelecao), sem recriar os botões. Recriá-los entre
     // os dois cliques impedia o navegador de reconhecer o duplo clique.
-    const ass = JSON.stringify([p.inventario, p.equipamento, p.hotkeys]);
+    // A capacidade entra: um alforje da troca muda o "x / 170 kg" sem mexer na mochila.
+    const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
+    const ass = JSON.stringify([p.inventario, p.equipamento, p.hotkeys, cap]);
     if (!forcar && ass === assinaturaItens) return;
     assinaturaItens = ass;
     const g = contar(p.inventario);
@@ -551,7 +553,6 @@
     $("#gradeMochila").innerHTML = encher(mochila, 15);
     $("#gradeBolsa").innerHTML = encher(bolsa, 15);
     const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
-    const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
     $("#pesoTexto").textContent = `${Number(peso).toFixed(1)} / ${cap} kg`;
 
     // Equipamento
@@ -618,7 +619,7 @@
         const rotulo = `${curto}, vida ${vida} de ${e.vidaMaxima}${ehChefe(e.id) ? ", chefe" : ""}${conta.length ? `, conta para ${conta.map((t) => t.nome).join(" e ")}` : ""}`;
         return `<button type="button" role="listitem" class="linha-inimigo${alvo === e.id ? " selecionada" : ""}" data-alvo="${esc(e.id)}" aria-pressed="${alvo === e.id}" aria-label="${esc(rotulo)}">
           <span class="mini">${mini ? `<img class="px" src="${mini}" alt="">` : ""}</span>
-          <span class="nome">${esc(curto)}${marcas}</span>
+          <span class="nome"><span class="nome-txt">${esc(curto)}</span>${marcas}</span>
           <span class="vida"><span class="mini-barra"><i style="width:${pct}%"></i></span><b>${vida}/${e.vidaMaxima}</b></span></button>`;
       }).join("");
     }
@@ -974,7 +975,8 @@
   // A entrega acontece ao falar com o atalaia (antes de o mural abrir); a fala dele vem no topo.
   // retornoMural: resposta da última ação feita no mural (os avisos ficam atrás do véu do modal;
   // sem isto, "Libere espaço para receber…" passaria despercebido).
-  let muralNpc = null, abaMural = "cacadas", falaMural = "", htmlMural = "", retornoMural = null;
+  // confirmaTroca: oferta repetível cujo item o jogador já tem, esperando "Trocar de novo" ou "Cancelar".
+  let muralNpc = null, abaMural = "cacadas", falaMural = "", htmlMural = "", retornoMural = null, confirmaTroca = null;
   function abrirMural(npcId) {
     const p = jogador();
     if (!p || !temCacadas()) return;
@@ -999,31 +1001,83 @@
     if (url) img.src = url; else img.removeAttribute("src");
     abaMural = "cacadas";
     retornoMural = null;
+    confirmaTroca = null;
     desenharMural(true);
     abrirModal("modalMural");
   }
 
   // Redesenha só quando o HTML muda (atualizar() roda a cada passo de inimigo; o tique, a cada
   // minuto da espera). Recriar os botões entre o mousedown e o mouseup perderia o clique.
-  function desenharMural(forcar) {
+  // focar: seletor que recebe o foco depois de uma ação (o retorno, ou um botão da confirmação).
+  const ATRIBUTOS_BOTAO_MURAL = ["data-aceitar-tarefa", "data-guardar-tarefa", "data-trocar", "data-confirmar-troca", "data-cancelar-troca", "data-aba-mural"];
+  function desenharMural(forcar, focar) {
     const p = jogador();
     const corpo = $("#muralCorpo");
     if (!p || !corpo || !temCacadas()) return;
     const html = montarMural(p);
     if (!forcar && html === htmlMural) return;
     htmlMural = html;
-    // O foco volta para o mesmo cartão (Aceitar vira Guardar) ou para a aba; a rolagem fica.
+    // Sem ação, o foco volta para onde estava: o mesmo botão; se ele sumiu, o mesmo cartão, a aba ou
+    // o retorno. "Trocar de novo" nunca recebe o foco por tabela. A rolagem fica.
     const ativo = document.activeElement;
-    const foco = ativo && corpo.contains(ativo) ? ativo.closest("[data-tarefa], [data-oferta], [data-aba-mural]") : null;
+    const foco = ativo && corpo.contains(ativo) ? ativo.closest("[data-tarefa], [data-oferta], [data-aba-mural], [data-retorno]") : null;
+    const attr = foco ? ATRIBUTOS_BOTAO_MURAL.find((a) => ativo.hasAttribute(a)) : null;
+    const mesmo = attr ? `[${attr}="${ativo.getAttribute(attr)}"]` : null;
     const d = foco?.dataset || {};
-    const seletor = d.tarefa ? `[data-tarefa="${d.tarefa}"]` : d.oferta ? `[data-oferta="${d.oferta}"]` : d.abaMural ? `[data-aba-mural="${d.abaMural}"]` : null;
+    const seletor = focar || (d.tarefa ? `[data-tarefa="${d.tarefa}"]` : d.oferta ? `[data-oferta="${d.oferta}"]`
+      : d.abaMural ? `[data-aba-mural="${d.abaMural}"]` : foco ? "[data-retorno]" : null);
     const rolagem = corpo.scrollTop;
     corpo.innerHTML = html;
     corpo.scrollTop = rolagem;
+    const mesmoBotao = !focar && mesmo ? $(mesmo, corpo) : null;
+    if (mesmoBotao && !mesmoBotao.disabled) {
+      mesmoBotao.focus({ preventScroll: true });
+      return;
+    }
     if (!seletor) return;
     const alvo = $(seletor, corpo);
-    const botao = alvo?.matches("button") ? alvo : alvo?.querySelector("button:not([disabled])");
+    if (alvo?.matches("[data-retorno]")) {
+      alvo.focus({ preventScroll: true });
+      // Depois de uma ação, a resposta (no topo) precisa ficar à vista, mesmo com a lista rolada.
+      const acima = alvo.getBoundingClientRect().top - corpo.getBoundingClientRect().top - 8;
+      if (focar && acima < 0) corpo.scrollTop += acima;
+      return;
+    }
+    const botao = alvo?.matches("button") ? alvo : alvo?.querySelector("button:not([disabled]):not([data-confirmar-troca])");
     (botao && !botao.disabled ? botao : $(`[data-aba-mural="${abaMural}"]`, corpo))?.focus({ preventScroll: true });
+  }
+
+  // Ações do mural (aceitar, retomar, guardar, trocar). Um comando logo depois de outro é ignorado: o
+  // 2º clique de um duplo clique (e.detail > 1) e qualquer ação a menos de 500 ms da anterior (Enter
+  // repetido, toque duplo). Sem isto, Aceitar virava Guardar no mesmo lugar e a troca repetível saía
+  // duas vezes. Depois do comando o foco vai para o retorno, nunca para o botão que nasce no lugar.
+  let ultimaAcaoMural = -Infinity;
+  function acaoMural(e, botao) {
+    const agora = performance.now();
+    if (e.detail > 1 || agora - ultimaAcaoMural < 500) return;
+    ultimaAcaoMural = agora;
+    const d = botao.dataset;
+    if (d.cancelarTroca) {
+      confirmaTroca = null;
+      desenharMural(true, `[data-trocar="${d.cancelarTroca}"]`);
+      return;
+    }
+    // Item repetível que o jogador já tem (na mochila ou equipado): pergunta antes de trocar outro.
+    const oferta = d.trocar ? ofertasDeTroca(jogador()).find((o) => o.id === d.trocar) : null;
+    if (oferta?.possui > 0) {
+      confirmaTroca = oferta.id;
+      desenharMural(true, "[data-cancelar-troca]");
+      return;
+    }
+    let comando = null;
+    if (d.aceitarTarefa) comando = { tipo: "aceitarTarefa", tarefaId: d.aceitarTarefa };
+    else if (d.guardarTarefa) comando = { tipo: "guardarTarefa", tarefaId: d.guardarTarefa };
+    else if (d.trocar || d.confirmarTroca) comando = { tipo: "trocarPontos", ofertaId: d.trocar || d.confirmarTroca };
+    if (!comando) return;
+    confirmaTroca = null;
+    const r = executar(comando);
+    retornoMural = r?.mensagem ? { ok: !!r.ok, mensagem: r.mensagem } : null;
+    desenharMural(true, "[data-retorno]");
   }
 
   function montarMural(p) {
@@ -1032,7 +1086,7 @@
     const abas = [["cacadas", "ui_cacada", "Caçadas"], ["troca", "ui_selo", "Troca de pontos"]];
     const painel = abaMural === "troca" ? montarTroca(p) : montarCacadas(p, acompanhando < limite);
     const r = retornoMural;
-    const retorno = r ? `<p class="retorno${r.ok ? "" : " erro"}" role="status">${esc(r.mensagem)}</p>` : "";
+    const retorno = r ? `<p class="retorno${r.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(r.mensagem)}</p>` : "";
     return `${falaMural ? `<p class="fala-modal">${esc(falaMural)}</p>` : ""}${retorno}
       <div class="saldo">${imgGlifo("ui_selo", "px g16")}<span>${textoPts(p.pontosTarefa || 0)} · acompanhando ${acompanhando} de ${limite}</span></div>
       <div class="abas-modal" role="tablist" aria-label="Mural">${abas.map(([k, g, rot]) => `<button type="button" class="aba-modal" role="tab"
@@ -1112,15 +1166,24 @@
     const aqui = muralNpc !== null;
     const linhas = ofertasDeTroca(p).map((o) => {
       const icone = o.item ? htmlItem(o.item) : imgGlifo(o.icone || "ui_alforje", "px g32", o.nome);
+      const confirmando = aqui && o.estado === "disponivel" && confirmaTroca === o.id;
       let rot = `${o.preco} ${selo}`, attrs = "", estado = "";
       if (o.estado === "comprada") { rot = "Já é seu"; attrs = "disabled"; estado = "já é seu"; }
       else if (o.estado === "bloqueada") { rot = `${imgGlifo("ui_cadeado")}Bloqueada`; attrs = "disabled"; estado = `requer ${o.motivo}`; }
       else if (o.estado === "semPontos") { rot = `faltam ${o.falta}`; attrs = `disabled title="Faltam ${o.falta} pontos de tarefa"`; estado = `faltam ${o.falta}`; }
       else if (!aqui) { attrs = 'disabled title="Fale com um atalaia"'; estado = "fale com um atalaia"; }
+      else if (confirmando) { attrs = "disabled"; estado = "confirme abaixo"; }
       const rotulo = `Trocar ${o.preco} pontos de tarefa por ${o.nome}${estado ? `; ${estado}` : ""}`;
+      // A confirmação nasce abaixo da linha e o foco vai para "Cancelar", à direita: no celular o modal
+      // cresce para cima, e um 2º toque no mesmo ponto cai em "Cancelar", não em "Trocar de novo".
+      const confirmacao = confirmando
+        ? `<div class="confirma-troca" role="group" aria-label="Confirmar troca"><p>Você já tem ${esc(o.nome)}. Trocar de novo por ${o.preco} pontos?</p>
+          <button type="button" class="btn primario" data-confirmar-troca="${esc(o.id)}">Trocar de novo</button>
+          <button type="button" class="btn secundario" data-cancelar-troca="${esc(o.id)}">Cancelar</button></div>`
+        : "";
       return `<li class="item-loja" data-oferta="${esc(o.id)}"><span class="icone">${icone}</span>
         <span><strong>${esc(o.nome)}</strong><span>${esc(o.efeito)} · ${o.preco} pontos</span>${o.estado === "bloqueada" ? `<span class="motivo">Requer: ${esc(o.motivo)}.</span>` : ""}</span>
-        <button type="button" class="btn primario" data-trocar="${esc(o.id)}" ${attrs} aria-label="${esc(rotulo)}">${rot}</button></li>`;
+        <button type="button" class="btn primario" data-trocar="${esc(o.id)}" ${attrs} aria-label="${esc(rotulo)}">${rot}</button>${confirmacao}</li>`;
     }).join("");
     const consulta = aqui ? "" : '<p class="nota">Para trocar, fale com um atalaia de mural aberto. Aqui você vê os preços e o que falta.</p>';
     return `${consulta}<ul class="lista-loja">${linhas}</ul>
@@ -1765,6 +1828,9 @@
     if (modalAberto && (modalAberto.id === "modalLoja" || modalAberto.id === "modalViagem")) fecharModal(false);
     // O mural de um atalaia também; a consulta (T) pode continuar aberta.
     if (modalAberto?.id === "modalMural" && muralNpc !== null) fecharModal(false);
+    // A cena nova (área, morte, viagem) liga o teclado e a captura de Espaço e setas de novo; com um
+    // modal ainda aberto, desliga outra vez (sem isto, Espaço não ativa o botão focado do modal).
+    if (modalAberto) teclado(false);
     alvoDesenhado = undefined;
     assinaturaBatalha = "";
     atualizar();
@@ -1841,21 +1907,16 @@
         if (abaM) {
           abaMural = abaM.dataset.abaMural;
           retornoMural = null;
+          confirmaTroca = null;
           desenharMural(true);
           $(`#muralCorpo [data-aba-mural=${abaMural}]`)?.focus();
           return;
         }
-        const acaoMural = (comando) => {
-          const r = executar(comando);
-          retornoMural = r?.mensagem ? { ok: !!r.ok, mensagem: r.mensagem } : null;
-          desenharMural(true);
-        };
-        const aceitar = e.target.closest("[data-aceitar-tarefa]");
-        if (aceitar && !aceitar.disabled) return acaoMural({ tipo: "aceitarTarefa", tarefaId: aceitar.dataset.aceitarTarefa });
-        const guardar = e.target.closest("[data-guardar-tarefa]");
-        if (guardar && !guardar.disabled) return acaoMural({ tipo: "guardarTarefa", tarefaId: guardar.dataset.guardarTarefa });
-        const trocar = e.target.closest("[data-trocar]");
-        if (trocar && !trocar.disabled) return acaoMural({ tipo: "trocarPontos", ofertaId: trocar.dataset.trocar });
+        const noMural = e.target.closest("[data-aceitar-tarefa], [data-guardar-tarefa], [data-trocar], [data-confirmar-troca], [data-cancelar-troca]");
+        if (noMural) {
+          if (!noMural.disabled) acaoMural(e, noMural);
+          return;
+        }
         const viajar = e.target.closest("[data-viajar]");
         if (viajar && !viajar.disabled) {
           fecharModal(false);

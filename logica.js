@@ -90,6 +90,13 @@ const REGRAS_MORTE = [
 // PRECOS_LOJA, FLECHAS_POR_PACOTE e VALORES_VENDA vêm de dados/itens.js.
 const SLOTS_EQUIPAMENTO = { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
 
+// Registro de uma tabela (ITENS, PRECOS_LOJA, TAREFAS...) pelo id que vem de fora (comando ou save).
+// Só chaves próprias: "constructor", "toString" ou "__proto__" achariam o que vem de Object.prototype
+// e virariam NaN no saldo, nas moedas ou na fé.
+function registroDe(tabela, id) {
+  return typeof id === "string" && Object.hasOwn(tabela, id) ? tabela[id] : undefined;
+}
+
 function nomeItem(id) {
   return ITENS[id]?.nome || id;
 }
@@ -736,7 +743,7 @@ function requisitoDaTarefa(p, t) {
 }
 
 function estadoTarefa(p, tarefaId) {
-  const t = TAREFAS[tarefaId];
+  const t = registroDe(TAREFAS, tarefaId);
   if (!t) return null;
   const s = p?.tarefas?.[tarefaId];
   if (s?.ativa) return s.progresso >= s.meta ? "cumprida" : "ativa";
@@ -765,7 +772,7 @@ function textoEspera(ms) {
 
 // Tudo o que a interface mostra de uma caçada (funções puras; a interface nunca altera p.tarefas).
 function visaoTarefa(p, tarefaId) {
-  const t = TAREFAS[tarefaId];
+  const t = registroDe(TAREFAS, tarefaId);
   if (!t) return null;
   const s = p?.tarefas?.[tarefaId];
   const estado = estadoTarefa(p, tarefaId);
@@ -815,7 +822,7 @@ function tarefasDoJogador(p) {
 
 // Caçadas ativas (não cumpridas) para as quais o abate deste inimigo conta (glifo da lista Batalha).
 function tarefasDoInimigo(p, inimigoId) {
-  const e = inimigos[inimigoId];
+  const e = registroDe(inimigos, inimigoId);
   if (!e) return [];
   return ORDEM_TAREFAS.filter((id) => estadoTarefa(p, id) === "ativa" && casaAlvo(TAREFAS[id].alvo, e))
     .map((id) => visaoTarefa(p, id));
@@ -829,7 +836,14 @@ function efeitoOferta(oferta) {
   return "";
 }
 
-// Ofertas da troca de pontos, na ordem dos dados.
+// Unidades de um item que o jogador tem (mochila e equipamento).
+function unidadesDoItem(p, item) {
+  const naMochila = (p?.inventario || []).filter((x) => x === item).length;
+  return naMochila + Object.values(p?.equipamento || {}).filter((x) => x === item).length;
+}
+
+// Ofertas da troca de pontos, na ordem dos dados. possui: unidades do item da oferta que o jogador
+// já tem (a interface pede confirmação antes de trocar outro; 0 nas melhorias).
 function ofertasDeTroca(p) {
   const saldo = p?.pontosTarefa || 0;
   return ORDEM_OFERTAS.map((id) => {
@@ -850,6 +864,7 @@ function ofertasDeTroca(p) {
       estado,
       motivo: estado === "bloqueada" ? motivo : "",
       falta: estado === "semPontos" ? o.preco - saldo : 0,
+      possui: o.item ? unidadesDoItem(p, o.item) : 0,
     };
   });
 }
@@ -870,7 +885,7 @@ function bonusCarga(p) {
 function normalizarTarefas(p, agora) {
   if (!objetoValido(p.tarefas)) p.tarefas = {};
   for (const [id, s] of Object.entries(p.tarefas)) {
-    const t = TAREFAS[id];
+    const t = registroDe(TAREFAS, id);
     if (!t) continue;
     if (!objetoValido(s)) {
       delete p.tarefas[id];
@@ -1355,8 +1370,8 @@ const Mundo = {
 
   equiparItem(id, itemId, slot) {
     const p = this.jogadores[id];
-    const tipo = SLOTS_EQUIPAMENTO[slot];
-    if (!p || !tipo || ITENS[itemId]?.tipo !== tipo)
+    const tipo = registroDe(SLOTS_EQUIPAMENTO, slot);
+    if (!p || !tipo || registroDe(ITENS, itemId)?.tipo !== tipo)
       return { ok: false, mensagem: "Esse item não serve neste espaço." };
     const indice = p.inventario.indexOf(itemId);
     if (indice < 0) return { ok: false, mensagem: "O item não está na mochila." };
@@ -1377,7 +1392,7 @@ const Mundo = {
 
   desequiparItem(id, slot) {
     const p = this.jogadores[id];
-    const item = p?.equipamento?.[slot];
+    const item = registroDe(SLOTS_EQUIPAMENTO, slot) ? p?.equipamento?.[slot] : null;
     if (!item) return { ok: false };
     p.inventario.push(item);
     p.equipamento[slot] = null;
@@ -1388,7 +1403,7 @@ const Mundo = {
   atribuirHotkey(id, indice, item) {
     const p = this.jogadores[id];
     if (!p || indice < 0 || indice > 5) return { ok: false };
-    if (item && (ITENS[item]?.tipo !== "consumivel" || !p.inventario.includes(item))) {
+    if (item && (registroDe(ITENS, item)?.tipo !== "consumivel" || !p.inventario.includes(item))) {
       return { ok: false, mensagem: "A hotkey aceita consumíveis que estejam na mochila." };
     }
     p.hotkeys[indice] = item || null;
@@ -1398,7 +1413,7 @@ const Mundo = {
 
   alternarEquipamento(id, slot) {
     const p = this.jogadores[id];
-    const tipo = SLOTS_EQUIPAMENTO[slot];
+    const tipo = registroDe(SLOTS_EQUIPAMENTO, slot);
     if (!tipo) return { ok: false, mensagem: "Espaço de equipamento inválido." };
     const atual = p.equipamento[slot];
     const valor = (item) => ITENS[item].bonus || ITENS[item].defesa || 0;
@@ -1556,7 +1571,7 @@ const Mundo = {
   comprarItem(id, item) {
     const p = this.jogadores[id];
     if (!p || !this.mercadorProximo(p)) return { ok: false, mensagem: "Aproxime-se do mercador para comprar." };
-    const preco = PRECOS_LOJA[item];
+    const preco = registroDe(PRECOS_LOJA, item);
     if (!preco) return { ok: false, mensagem: "Esse item não está à venda." };
     const lista = item === "flechas" ? Array(FLECHAS_POR_PACOTE).fill("flecha") : [item];
     if (p.moedas < preco) return { ok: false, mensagem: `Você precisa de ${preco} moedas.` };
@@ -1570,7 +1585,7 @@ const Mundo = {
 
   venderItem(id, item) {
     const p = this.jogadores[id];
-    const valor = VALORES_VENDA[item];
+    const valor = registroDe(VALORES_VENDA, item);
     if (!p || !this.mercadorProximo(p)) return { ok: false, mensagem: "Aproxime-se do mercador para vender." };
     const i = p.inventario.indexOf(item);
     if (!valor || i < 0) return { ok: false, mensagem: "O mercador não compra esse item ou você não o tem." };
@@ -1835,7 +1850,7 @@ const Mundo = {
           "Ainda não há grupo ou companheiros. A cura de aliados será habilitada quando o sistema de grupo existir.",
       };
     }
-    const custo = CUSTO_ORACAO[acao];
+    const custo = registroDe(CUSTO_ORACAO, acao);
     if (custo === undefined) return { ok: false, mensagem: "Escolha uma forma de Oração." };
     const nivel = nivelHabilidade(p, "oracao");
     if (nivel < NIVEL_ORACAO[acao]) {
@@ -1889,7 +1904,7 @@ const Mundo = {
   // ----- Conversas -----
   interagir(id, alvoId) {
     const p = this.jogadores[id];
-    const npc = alvoId ? npcs[alvoId] : this.npcProximo(p);
+    const npc = alvoId ? registroDe(npcs, alvoId) : this.npcProximo(p);
     if (!npc || npc.area !== p.area) return { ok: false, mensagem: "Não há ninguém por perto para conversar." };
     if (distanciaChebyshev(p, npc) > ALCANCE_INTERACAO)
       return { ok: false, mensagem: "Chegue mais perto para conversar." };
@@ -2152,7 +2167,7 @@ const Mundo = {
   // Em toda recusa nada muda no save; a ordem das checagens é a do contrato com a interface.
   aceitarTarefa(id, tarefaId) {
     const p = this.jogadores[id];
-    const t = TAREFAS[tarefaId];
+    const t = registroDe(TAREFAS, tarefaId);
     if (!t) return { ok: false, mensagem: "Caçada desconhecida." };
     const nomeArea = areas[npcs[t.mural]?.area]?.nome || "";
     if (!this.npcProximo(p, (n) => n.id === t.mural)) {
@@ -2189,7 +2204,7 @@ const Mundo = {
   // Guarda uma caçada ativa (de qualquer lugar): sai das ativas, mantém o progresso e libera a vaga.
   guardarTarefa(id, tarefaId) {
     const p = this.jogadores[id];
-    const t = TAREFAS[tarefaId];
+    const t = registroDe(TAREFAS, tarefaId);
     if (!t) return { ok: false, mensagem: "Caçada desconhecida." };
     const estado = estadoTarefa(p, tarefaId);
     if (estado === "cumprida") return { ok: false, mensagem: "Esta caçada já foi cumprida: entregue-a a qualquer atalaia." };
@@ -2198,17 +2213,17 @@ const Mundo = {
     s.ativa = false;
     this.salvar(p);
     const nomeArea = areas[npcs[t.mural]?.area]?.nome || "";
-    return {
-      ok: true,
-      tarefaId,
-      mensagem: `Caçada guardada com ${s.progresso}/${s.meta}. Para retomar, fale com o atalaia (${nomeArea}).`,
-    };
+    // Sem progresso não há o que retomar: a caçada só volta a ficar disponível no mural.
+    const mensagem = s.progresso > 0
+      ? `Caçada guardada com ${s.progresso}/${s.meta}. Para retomar, fale com o atalaia (${nomeArea}).`
+      : `Caçada devolvida ao mural: ${t.nome}. Para aceitar de novo, fale com o atalaia (${nomeArea}).`;
+    return { ok: true, tarefaId, mensagem };
   },
 
   // Troca de pontos de tarefa (ao lado de um atalaia com o mural aberto). Pontos nunca viram moedas.
   trocarPontos(id, ofertaId) {
     const p = this.jogadores[id];
-    const o = OFERTAS_TROCA[ofertaId];
+    const o = registroDe(OFERTAS_TROCA, ofertaId);
     if (!o) return { ok: false, mensagem: "Essa troca não existe." };
     if (!this.muralProximo(p)) return { ok: false, mensagem: "Aproxime-se de um atalaia para trocar pontos." };
     const nome = nomeOferta(o);
@@ -2253,7 +2268,7 @@ const Mundo = {
   // ----- Combate do jogador -----
   alvoCorpo(p, alvoId) {
     if (alvoId) {
-      const e = inimigos[alvoId];
+      const e = registroDe(inimigos, alvoId);
       if (!e || e.area !== p.area) return { erro: "Não há inimigos por perto." };
       if (!this.inimigoVivo(p, e.id)) return { erro: "Esse inimigo já foi derrotado." };
       if (distanciaChebyshev(p, e) > ALCANCE_CORPO)

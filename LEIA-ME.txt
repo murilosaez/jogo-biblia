@@ -175,7 +175,8 @@ quando a missão principal da região é concluída.
     Alforje de viagem (+10 kg de carga; requer o Alforje de couro) ... 180 pontos
     Couraça de escamas (defesa 8; requer a missão do Monte Sinai) .... 300 pontos
   Os pontos não expiram nem se perdem na morte; pontos e moedas nunca se convertem, e o Azarias não
-  compra itens da troca.
+  compra itens da troca. Trocar de novo um item que você já tem (na mochila ou equipado) pede
+  confirmação, e um duplo clique no mural vale como um clique só.
 
 Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
