@@ -1,7 +1,6 @@
 // =====================================================================
 // dados/vocacoes.js — vocações, habilidades e especializações (JGB-20)
 // Dados puros (sem regras). Carregado antes de logica.js pelo index.html.
-// revisao-teologica: pendente (nomes, textos e referências bíblicas)
 // =====================================================================
 
 // Regras gerais.

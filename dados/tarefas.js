@@ -2,7 +2,6 @@
 // dados/tarefas.js — caçadas (tarefas de caça) dos atalaias e troca de pontos de tarefa
 // Dados puros (sem regras). Carregado depois de dados/missoes.js e antes de logica.js.
 // =====================================================================
-// revisao-teologica: pendente (nomes, descrições e falas das caçadas)
 
 // limiteAtivas: caçadas acompanhadas ao mesmo tempo; bonusPrimeiraVez: pontos extras na 1ª entrega (0.5 = +50%).
 const REGRAS_TAREFAS = { limiteAtivas: 3, bonusPrimeiraVez: 0.5 };

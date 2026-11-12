@@ -103,4 +103,4 @@ Retenção D1 40% / D7 20% / D30 8%; sessão 25–40 min; 1º nível < 2 min; 1�
 2. **Plataforma principal:** navegador no PC → teclado e mouse são prioridade; o toque fica como secundário.
 3. **Escala do multiplayer:** dezenas de jogadores no início → um único servidor Node + WebSocket, sem sharding; instâncias só para masmorras.
 4. **Monetização:** começar com cosméticos e compra única; **RMT (comércio com dinheiro real) no futuro**. Antes de liberar RMT, desenhar a economia para não virar pay-to-win: itens de poder só obtidos jogando, RMT restrito a cosméticos/moeda premium trocável, e proteção contra bots e farm.
-5. **Revisor teológico:** sim — toda fala, missão e representação de personagem bíblico passa por revisão antes de publicar. Marcar textos novos com `// revisao-teologica: pendente` até aprovação.
+5. **Revisor teológico:** dispensado — os textos não levam marcação de revisão pendente.
