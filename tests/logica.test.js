@@ -319,7 +319,7 @@ function jogarCampanha(semente) {
   equiparMelhor(j);
   assert.strictEqual(j.p.equipamento.arma, "espada_ferro");
   falar(j, "viajante1");
-  for (const erva of j.g("coletaveisDaArea")("canaan")) assert.ok(pisarEm(j, "canaan", erva).itemColetado);
+  for (const erva of j.g("coletaveisDaArea")("canaan").slice(0, 3)) assert.ok(pisarEm(j, "canaan", erva).itemColetado);
   falar(j, "viajante1");
   assert.strictEqual(j.p.missoes.ervas.status, "concluida");
 
@@ -327,7 +327,7 @@ function jogarCampanha(semente) {
   atravessar(j, "canaan", j.g("areas").canaan.passagem, 1, 0);
   assert.strictEqual(j.p.area, "deserto");
   falar(j, "noemi1");
-  for (const odre of j.g("coletaveisDaArea")("deserto")) assert.ok(pisarEm(j, "deserto", odre).itemColetado);
+  for (const odre of j.g("coletaveisDaArea")("deserto").slice(0, 3)) assert.ok(pisarEm(j, "deserto", odre).itemColetado);
   falar(j, "noemi1");
   equiparMelhor(j);
   assert.strictEqual(j.p.equipamento.armadura, "armadura_couro");
@@ -602,11 +602,11 @@ teste("5. ervas só em Canaã, odres só no Deserto; helper coletaveisDaArea", (
   const coletaveis = j.g("coletaveisDaArea");
   igual(
     coletaveis("canaan").map((c) => c.item),
-    ["erva", "erva", "erva"],
+    Array(6).fill("erva"),
   );
   igual(
     coletaveis("deserto").map((c) => c.item),
-    ["odre_agua", "odre_agua", "odre_agua"],
+    Array(6).fill("odre_agua"),
   );
   for (const c of coletaveis("deserto")) {
     assert.ok(c.id && Number.isInteger(c.x) && Number.isInteger(c.y) && c.textura, "formato {id,x,y,item,textura}");
@@ -871,7 +871,7 @@ teste("10. missões exigem os itens na mochila", () => {
   const p = j.p;
   p.missoes.lobo.status = "concluida";
   falar(j, "viajante1");
-  for (const erva of j.g("coletaveisDaArea")("canaan")) pisarEm(j, "canaan", erva);
+  for (const erva of j.g("coletaveisDaArea")("canaan").slice(0, 3)) pisarEm(j, "canaan", erva);
   assert.strictEqual(p.missoes.ervas.progresso[0].length, 3);
   j.M.removerItens(p, "erva", 3); // vendeu as ervas
   const pocoes = j.M.contarItem(ID, "pocao");
@@ -881,7 +881,7 @@ teste("10. missões exigem os itens na mochila", () => {
 
   // Odres, venenos e insígnia.
   falar(j, "noemi1");
-  for (const odre of j.g("coletaveisDaArea")("deserto")) pisarEm(j, "deserto", odre);
+  for (const odre of j.g("coletaveisDaArea")("deserto").slice(0, 3)) pisarEm(j, "deserto", odre);
   j.M.removerItens(p, "odre_agua", 3);
   falar(j, "noemi1");
   assert.strictEqual(p.missoes.deserto.etapa, 0);
@@ -2016,7 +2016,7 @@ teste("34. caçadas: cada abate conta para todas as ativas que casam (golpe, fle
   const r1 = abater(j, "escorpiao1");
   igual(r1.tarefas, [
     { id: "deserto_ferroes", nome: "Ferrões no caminho", curto: "Escorpiões", progresso: 1, meta: 40, cumpridaAgora: false },
-    { id: "deserto_rotas", nome: "As rotas das caravanas", curto: "Escorpiões", progresso: 1, meta: 150, cumpridaAgora: false },
+    { id: "deserto_rotas", nome: "As rotas das caravanas", curto: "Escorpiões", progresso: 1, meta: 180, cumpridaAgora: false },
   ]);
   assert.doesNotMatch(r1.mensagem, /Caçada/);
   assert.strictEqual(progressoCacada(j, "deserto_bando"), 0);
@@ -2252,7 +2252,7 @@ teste("36. caçadas: entrega em qualquer atalaia, espera contada da entrega e a 
   assert.strictEqual(p.tarefas.deserto_ferroes.concluidas, 2);
   // 5 e 6. Grande caçada: 164 h de espera; subir de nível na entrega aparece na fala.
   assert.ok(aceitarCacada(j, "deserto_rotas").ok);
-  p.tarefas.deserto_rotas.progresso = 149;
+  p.tarefas.deserto_rotas.progresso = p.tarefas.deserto_rotas.meta - 1;
   abater(j, "escorpiao1");
   p.nivel = 10;
   p.xp = limiar(10) - 1; // +1800 XP: níveis 11, 12 e 13 (o 13→14 pede 950 XP a mais)
@@ -2708,6 +2708,58 @@ teste("41. XP: curva cresce depois do nível 10 e criatura muito mais fraca rend
   const r = abater(j, "lobo1");
   assert.strictEqual(r.xpGanho, 4);
   assert.match(r.mensagem, /\+4 XP \(criatura fraca para o seu nível\)/);
+});
+
+teste("42. grupos de criaturas, renascimento e coleta em lugar aleatório, flecha em qualquer direção", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const inimigos = j.g("inimigos");
+  // Grupos: cópias <id>_N com base no original, espalhadas e sem uma puxar a outra.
+  const lobos = Object.values(inimigos).filter((e) => e.especie === inimigos.lobo1.especie);
+  assert.ok(lobos.length >= 4, `${lobos.length} lobos em Canaã`);
+  for (const e of lobos.filter((e) => e.id !== "lobo1")) assert.strictEqual(e.base, "lobo1");
+  for (const a of lobos)
+    for (const b of lobos)
+      if (a !== b) assert.ok(Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) > a.raioPercepcao, `${a.id} perto de ${b.id}`);
+  // Uma cópia conta para a missão do lobo (objetivo "lobo1").
+  falar(j, "viajante1");
+  abater(j, "lobo1_2");
+  assert.strictEqual(j.g("estadoMissaoNpc")(p, "viajante1"), "entregar");
+  // Renasce num ponto aleatório do grupo (posição muda em algum dos renascimentos).
+  const copia = inimigos.lobo1_3;
+  const posicoes = new Set();
+  for (let i = 0; i < 6; i++) {
+    p.inimigosDerrotados.push(copia.id);
+    j.M.reaparecerInimigo(ID, copia.id);
+    posicoes.add(`${copia.x},${copia.y}`);
+    assert.strictEqual(j.g("mapas").canaan[copia.y][copia.x], 0);
+    assert.deepStrictEqual([copia.inicioX, copia.inicioY], [copia.x, copia.y]);
+  }
+  assert.ok(posicoes.size > 1, "renasce em lugares diferentes");
+  // Erva coletada brota noutro lugar livre.
+  const erva = j.g("ervas")[0];
+  const antes = `${erva.x},${erva.y}`;
+  pisarEm(j, "canaan", { ...erva });
+  assert.notStrictEqual(`${erva.x},${erva.y}`, antes);
+  assert.strictEqual(j.g("mapas").canaan[erva.y][erva.x], 0);
+  // Flecha: acerta fora da linha/coluna/diagonal, respeita o alcance circular e os obstáculos.
+  const tiro = (dx, dy, bloquear) => {
+    const mapa = j.g("mapas").canaan;
+    const alvo = { x: 30 + dx, y: 30 + dy };
+    const fonte = { x: 30, y: 30, area: "canaan" };
+    const guardado = [];
+    for (let y = 26; y <= 36; y++) for (let x = 24; x <= 36; x++) { guardado.push([x, y, mapa[y][x]]); mapa[y][x] = 0; }
+    if (bloquear) mapa[bloquear[1]][bloquear[0]] = 1;
+    const ok = j.M.linhaDeTiroLivre(fonte, alvo);
+    for (const [x, y, v] of guardado) mapa[y][x] = v;
+    return ok;
+  };
+  assert.ok(tiro(3, 1), "alvo em ângulo qualquer");
+  assert.ok(tiro(-2, 5), "alvo em ângulo qualquer (outro quadrante)");
+  assert.ok(tiro(6, 0) && tiro(4, 4), "alcance de 6 casas em círculo");
+  assert.ok(!tiro(5, 5), "fora do círculo de 6 casas");
+  assert.ok(!tiro(4, 2, [32, 31]), "obstáculo no caminho bloqueia");
 });
 
 // ---------------------------------------------------------------------

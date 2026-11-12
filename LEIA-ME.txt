@@ -38,7 +38,7 @@ Controles — teclado e mouse
   (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo; ao lado
   de um atalaia ele mostra "F · Caçadas" e abre o mural (o clique no atalaia faz o mesmo).
 - Clique num inimigo (no mundo ou na lista Batalha): seleciona e ativa o autoataque a cada 2 segundos
-  (usa o arco se ele estiver equipado, houver flechas e o alvo estiver alinhado no alcance).
+  (usa o arco se ele estiver equipado, houver flechas e o alvo estiver no alcance com o caminho livre).
 - Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s. O anel em
   volta do alvo mostra o tempo até o próximo autoataque (2 s).
 - H: poção de vida. 1–6: atalhos. Botão direito num atalho o esvazia.
@@ -98,7 +98,7 @@ Ervas existem só em Canaã e odres só no Deserto; ambos reaparecem 18 s depois
 Combate
 - Dano corpo a corpo = 6 + 3 × (nível − 1) + bônus da arma + ⌊habilidade corpo ÷ 4⌋.
 - Dano à distância  = 4 + 3 × (nível − 1) + bônus do arco + ⌊habilidade distância ÷ 4⌋.
-  O arco acerta alvos na mesma linha, coluna ou diagonal, até 6 casas, sem obstáculos no caminho.
+  O arco acerta alvos em qualquer direção, até 6 casas, sem obstáculos no caminho reto da flecha.
   Cada tiro gasta 1 flecha.
 - Defesa mitiga em proporção e nunca zera: dano final = dano × 20 ÷ (20 + defesa), mínimo 1.
   Vale para os seus golpes (contra a defesa do inimigo) e para os golpes que você recebe.

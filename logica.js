@@ -40,7 +40,7 @@ const RECARGA_ATAQUE = 800; // recarga do jogador (corpo e distância compartilh
 const INTERVALO_AUTO_ATAQUE = 2000; // autoataque ao clicar num inimigo
 const ALCANCE_CORPO = 1; // Chebyshev: as 8 casas vizinhas
 const ALCANCE_INTERACAO = 1; // conversar, comprar, pegar saque
-const ALCANCE_ARCO = 6; // em linha reta, coluna ou diagonal, sem obstáculos
+const ALCANCE_ARCO = 6; // em qualquer direção (círculo de 6 casas), sem obstáculos no caminho da flecha
 
 const TEMPO_RESPAWN_INIMIGO = 5000;
 const TEMPO_RESPAWN_COLETAVEL = 18000;
@@ -445,12 +445,60 @@ function registrarInimigo(dados) {
   };
   if (e.veneno === "padrao") e.veneno = { ...VENENO_PADRAO };
   inimigos[e.id] = e;
-  abrirClareira(e.area, e.x, e.y, 1);
+  if (!dados.id.includes("_")) abrirClareira(e.area, e.x, e.y, 1);
   return e;
 }
 
-// Todas as criaturas vêm de dados/criaturas.js.
-for (const criatura of DADOS_CRIATURAS) registrarInimigo(clonarDados(criatura));
+// Casa livre aleatória a até `raio` casas de (cx, cy): chão livre, longe dos NPCs e da entrada da área
+// (`folga` casas) e sem outra criatura, coletável, portal ou cais em cima. null se não achar.
+function sortearCasaLivre(areaId, cx, cy, raio, folga, espacoInimigos = 0) {
+  const mapa = mapas[areaId];
+  const area = areas[areaId];
+  const ocupadas = new Set();
+  for (const e of Object.values(inimigos)) if (e.area === areaId) ocupadas.add(`${e.x},${e.y}`);
+  for (const c of COLETAVEIS_POR_AREA[areaId]?.lista || []) ocupadas.add(`${c.x},${c.y}`);
+  for (const pt of [area.passagem, area.chegada, area.cais, area.chegadaViagem]) if (pt) ocupadas.add(`${pt.x},${pt.y}`);
+  for (const pt of DADOS_PORTAIS) if (pt.area === areaId) ocupadas.add(`${pt.x},${pt.y}`);
+  const longe = (pt) => !pt || Math.max(Math.abs(pt.x - x), Math.abs(pt.y - y)) > folga;
+  let x;
+  let y;
+  for (let tentativa = 0; tentativa < 80; tentativa++) {
+    x = cx + Math.round((Math.random() * 2 - 1) * raio);
+    y = cy + Math.round((Math.random() * 2 - 1) * raio);
+    if (!dentroDoMapa(x, y) || mapa[y][x] !== 0 || ocupadas.has(`${x},${y}`)) continue;
+    if (!longe(area.inicio) || !Object.values(npcs).every((n) => n.area !== areaId || longe(n))) continue;
+    // Espaço entre criaturas: atacar uma não puxa as vizinhas.
+    const perto = (e) => e.area === areaId && Math.max(Math.abs(e.inicioX - x), Math.abs(e.inicioY - y)) <= espacoInimigos;
+    if (espacoInimigos && Object.values(inimigos).some(perto)) continue;
+    return { x, y };
+  }
+  return null;
+}
+
+// Põe a criatura num ponto aleatório do seu grupo (nasce e renasce ali; é também o ponto para onde volta).
+// Devolve false se não houver casa livre (a criatura fica onde estava).
+function sortearPosicaoInimigo(e) {
+  if (!e.grupo) return false;
+  const espaco = e.raioPercepcao + 1;
+  const casa = sortearCasaLivre(e.area, e.centroX, e.centroY, e.grupo.raio, e.raioPercepcao + 2, espaco);
+  if (!casa) return false;
+  e.x = e.inicioX = casa.x;
+  e.y = e.inicioY = casa.y;
+  return true;
+}
+
+// Todas as criaturas vêm de dados/criaturas.js. Com "grupo", nascem cópias <id>_2, <id>_3... (base: id)
+// espalhadas em volta do ponto original.
+for (const criatura of DADOS_CRIATURAS) {
+  const original = registrarInimigo(clonarDados(criatura));
+  original.centroX = original.x;
+  original.centroY = original.y;
+  for (let i = 2; i <= (criatura.grupo?.quantidade || 1); i++) {
+    const copia = registrarInimigo({ ...clonarDados(criatura), id: `${criatura.id}_${i}` });
+    Object.assign(copia, { base: criatura.id, centroX: original.x, centroY: original.y, inicioX: -99, inicioY: -99 });
+    if (!sortearPosicaoInimigo(copia)) delete inimigos[copia.id]; // sem espaço: menos uma cópia
+  }
+}
 
 // Trilhas terrestres contínuas e acessos aos cais.
 for (let x = 2; x <= 77; x++) {
@@ -649,7 +697,8 @@ for (const capitulo of DADOS_CAPITULOS) {
 for (const portal of DADOS_PORTAIS) registrarPortal(clonarDados(portal));
 
 function capituloDoInimigo(inimigoId) {
-  return ORDEM_CAPITULOS.find((k) => CAPITULOS[k].inimigo === inimigoId) || null;
+  const base = inimigos[inimigoId]?.base;
+  return ORDEM_CAPITULOS.find((k) => CAPITULOS[k].inimigo === inimigoId || CAPITULOS[k].inimigo === base) || null;
 }
 
 function capituloDaMissao(missaoId) {
@@ -725,7 +774,7 @@ for (const o of DADOS_TROCA_PONTOS) registrarOfertaTroca(clonarDados(o));
 // O abate conta se a criatura estiver na lista OU for de uma das espécies OU famílias (e da área, se houver).
 function casaAlvo(alvo, e) {
   const lista = (chave) => alvo[chave] || [];
-  const casa = lista("criaturas").includes(e.id) || lista("especies").includes(e.especie) || lista("familias").includes(e.familia);
+  const casa = lista("criaturas").includes(e.id) || lista("criaturas").includes(e.base) || lista("especies").includes(e.especie) || lista("familias").includes(e.familia);
   return casa && (!alvo.area || e.area === alvo.area);
 }
 
@@ -1779,6 +1828,9 @@ const Mundo = {
     }
     p[grupo.coletados].push(c.id);
     p[grupo.respawn][c.id] = Date.now() + TEMPO_RESPAWN_COLETAVEL;
+    // Brota de novo noutro lugar da área (o progresso de missão conta pelo id, não pela posição).
+    const novaCasa = sortearCasaLivre(p.area, COLS >> 1, ROWS >> 1, Math.max(COLS, ROWS) >> 1, 3);
+    if (novaCasa) Object.assign(c, novaCasa);
     this.registrarColeta(p, grupo.item, c.id, "mapa");
     this.salvar(p);
     const mensagem = p.area === "canaan" ? "Você coletou uma erva medicinal." : "Você encontrou um odre de água.";
@@ -1984,7 +2036,8 @@ const Mundo = {
   registrarAbate(p, inimigoId) {
     let aviso = "";
     for (const aberto of this.objetivosAbertos(p)) {
-      if (aberto.objetivo.tipo === "derrotar" && aberto.objetivo.criatura === inimigoId) {
+      const criatura = aberto.objetivo.criatura;
+      if (aberto.objetivo.tipo === "derrotar" && (criatura === inimigoId || criatura === inimigos[inimigoId]?.base)) {
         aviso = this.avancarObjetivo(p, aberto) || aviso;
       }
     }
@@ -1996,7 +2049,8 @@ const Mundo = {
     for (const { objetivo: o, estado, indice } of this.objetivosAbertos(p)) {
       if (o.tipo !== "coletar" || o.item !== item || o.origem !== origem) continue;
       const lista = Array.isArray(estado.progresso[indice]) ? estado.progresso[indice] : [];
-      if (!lista.includes(origemId)) lista.push(origemId);
+      // Conta cada origem uma vez e para na meta (há mais pontos de coleta no mapa do que a missão pede).
+      if (!lista.includes(origemId) && lista.length < (o.quantidade || 1)) lista.push(origemId);
       estado.progresso[indice] = lista;
     }
   },
@@ -2300,14 +2354,16 @@ const Mundo = {
   },
 
   linhaDeTiroLivre(p, e) {
-    const dx = Math.abs(e.x - p.x);
-    const dy = Math.abs(e.y - p.y);
-    const distancia = Math.max(dx, dy);
-    if ((dx !== 0 && dy !== 0 && dx !== dy) || distancia < 1 || distancia > ALCANCE_ARCO) return false;
-    const passoX = Math.sign(e.x - p.x);
-    const passoY = Math.sign(e.y - p.y);
-    for (let i = 1; i < distancia; i++) {
-      if (mapas[p.area][p.y + passoY * i][p.x + passoX * i] !== 0) return false;
+    // Qualquer direção: alvo dentro do círculo de ALCANCE_ARCO casas e nenhuma casa bloqueada no
+    // caminho reto da flecha (linha de Bresenham entre os dois, sem contar as pontas).
+    const dx = e.x - p.x;
+    const dy = e.y - p.y;
+    if ((dx === 0 && dy === 0) || Math.hypot(dx, dy) > ALCANCE_ARCO + 0.5) return false;
+    const passos = Math.max(Math.abs(dx), Math.abs(dy));
+    for (let i = 1; i < passos; i++) {
+      const x = p.x + Math.round((dx * i) / passos);
+      const y = p.y + Math.round((dy * i) / passos);
+      if (mapas[p.area][y][x] !== 0) return false;
     }
     return true;
   },
@@ -2316,10 +2372,10 @@ const Mundo = {
     const candidatos = Object.values(inimigos)
       .filter((e) => (!alvoId || e.id === alvoId) && e.area === p.area && this.inimigoVivo(p, e.id))
       .filter((e) => this.linhaDeTiroLivre(p, e))
-      .sort((a, b) => distanciaChebyshev(p, a) - distanciaChebyshev(p, b));
+      .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
     if (candidatos.length) return { inimigo: candidatos[0] };
     return {
-      erro: `Nenhum inimigo alinhado e desimpedido até ${ALCANCE_ARCO} casas. Posicione-se na mesma linha, coluna ou diagonal.`,
+      erro: `Nenhum inimigo a até ${ALCANCE_ARCO} casas com o caminho livre para a flecha.`,
     };
   },
 
@@ -2424,6 +2480,7 @@ const Mundo = {
     p.vidaInimigos[inimigoId] = e.vidaMaxima;
     e.x = e.inicioX;
     e.y = e.inicioY;
+    sortearPosicaoInimigo(e);
     e.proximoMovimento = 0;
     e.proximoAtaque = 0;
     this.salvar(p);
