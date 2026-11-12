@@ -4,21 +4,23 @@
 // =====================================================================
 
 // papel: "missao" (dá missões; ver dados/missoes.js), "loja", "guia", "mural" (atalaia: mural de caçadas da
-// região, ver dados/tarefas.js; requer: { missao } = missão que abre o mural) e, nos capítulos, "lider" (dá a
-// missão), "apoio" (só conversa) e "mestre" (ensina a Oração). falas: textos próprios do NPC.
+// região, ver dados/tarefas.js; requer: { missao } = missão que abre o mural), "ambiente" (morador da vila: só
+// conversa; falas.linhas são ditas uma de cada vez, em rodízio; aparencia: o visual em sprites.js) e, nos
+// capítulos, "lider" (dá a missão), "apoio" (só conversa) e "mestre" (ensina a Oração). falas: textos próprios.
+// Quem atende numa tenda ou banca fica logo à frente dela (dados/mapas.js, estruturas com npc).
 const DADOS_NPCS = [
-  { id: "viajante1", nome: "Eliabe", area: "canaan", x: 5, y: 5, papel: "missao" },
-  { id: "guia_canaa", nome: "Micael, guia de caravanas", area: "canaan", x: 9, y: 5, papel: "guia" },
-  { id: "noemi1", nome: "Noemi", area: "deserto", x: 68, y: 8, papel: "missao" },
-  { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 72, y: 10, papel: "loja" },
-  { id: "guia_deserto", nome: "Tamar, guia de caravanas", area: "deserto", x: 66, y: 12, papel: "guia" },
-  { id: "moisesEgito", nome: "Moisés", area: "egito", x: 9, y: 52, capitulo: "egito", papel: "lider" },
+  { id: "viajante1", nome: "Eliabe", area: "canaan", x: 22, y: 18, papel: "missao" },
+  { id: "guia_canaa", nome: "Micael, guia de caravanas", area: "canaan", x: 13, y: 17, papel: "guia" },
+  { id: "noemi1", nome: "Noemi", area: "deserto", x: 136, y: 14, papel: "missao" },
+  { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 142, y: 19, papel: "loja" },
+  { id: "guia_deserto", nome: "Tamar, guia de caravanas", area: "deserto", x: 128, y: 20, papel: "guia" },
+  { id: "moisesEgito", nome: "Moisés", area: "egito", x: 20, y: 96, capitulo: "egito", papel: "lider" },
   {
     id: "aaronEgito",
     nome: "Arão",
     area: "egito",
-    x: 13,
-    y: 52,
+    x: 26,
+    y: 95,
     capitulo: "egito",
     papel: "apoio",
     falas: {
@@ -32,14 +34,14 @@ const DADOS_NPCS = [
         "Prepare as sandálias e o cajado: partiremos às pressas, como o Senhor ordenou. Nos veremos à beira do mar.",
     },
   },
-  { id: "araoMar", nome: "Arão", area: "marVermelho", x: 9, y: 52, capitulo: "marVermelho", papel: "lider" },
-  { id: "josueSinai", nome: "Josué", area: "sinai", x: 9, y: 52, capitulo: "sinai", papel: "lider" },
+  { id: "araoMar", nome: "Arão", area: "marVermelho", x: 18, y: 97, capitulo: "marVermelho", papel: "lider" },
+  { id: "josueSinai", nome: "Josué", area: "sinai", x: 19, y: 97, capitulo: "sinai", papel: "lider" },
   {
     id: "pedroGalileia",
     nome: "Pedro",
     area: "galileia",
-    x: 9,
-    y: 52,
+    x: 42,
+    y: 19,
     capitulo: "galileia",
     papel: "lider",
   },
@@ -47,8 +49,8 @@ const DADOS_NPCS = [
     id: "jesusGalileia",
     nome: "Jesus",
     area: "galileia",
-    x: 14,
-    y: 51,
+    x: 25,
+    y: 30,
     capitulo: "galileia",
     papel: "mestre",
     falas: {
@@ -61,34 +63,230 @@ const DADOS_NPCS = [
     },
   },
   // Atalaias: mural de caçadas de cada região (dados/tarefas.js). Mesmo visual em todas as regiões.
-  { id: "atalaia_canaa", nome: "Atalaia, vigia de Canaã", area: "canaan", x: 7, y: 8, papel: "mural", requer: { missao: "ervas" } },
+  { id: "atalaia_canaa", nome: "Atalaia, vigia de Canaã", area: "canaan", x: 35, y: 17, papel: "mural", requer: { missao: "ervas" } },
   {
     id: "atalaia_deserto",
     nome: "Atalaia, vigia do Deserto",
     area: "deserto",
-    x: 69,
-    y: 12,
+    x: 139,
+    y: 24,
     papel: "mural",
     requer: { missao: "deserto" },
   },
-  { id: "atalaia_egito", nome: "Atalaia, vigia do Egito", area: "egito", x: 8, y: 55, papel: "mural", requer: { missao: "egito" } },
+  { id: "atalaia_egito", nome: "Atalaia, vigia do Egito", area: "egito", x: 32, y: 99, papel: "mural", requer: { missao: "egito" } },
   {
     id: "atalaia_mar",
     nome: "Atalaia, vigia do Mar Vermelho",
     area: "marVermelho",
-    x: 7,
-    y: 55,
+    x: 30,
+    y: 97,
     papel: "mural",
     requer: { missao: "marVermelho" },
   },
-  { id: "atalaia_sinai", nome: "Atalaia, vigia do Sinai", area: "sinai", x: 7, y: 55, papel: "mural", requer: { missao: "sinai" } },
+  { id: "atalaia_sinai", nome: "Atalaia, vigia do Sinai", area: "sinai", x: 30, y: 97, papel: "mural", requer: { missao: "sinai" } },
   {
     id: "atalaia_galileia",
     nome: "Atalaia, vigia da Galileia",
     area: "galileia",
-    x: 8,
-    y: 55,
+    x: 14,
+    y: 40,
     papel: "mural",
     requer: { missao: "galileia" },
+  },
+  // Moradores das vilas (ambientação): só conversam.
+  {
+    id: "zila_canaa",
+    nome: "Zila, aguadeira",
+    area: "canaan",
+    x: 19,
+    y: 25,
+    papel: "ambiente",
+    aparencia: "aguadeira",
+    falas: {
+      linhas: [
+        "O poço da vila é fundo e a água é fresca. Beba antes de seguir viagem.",
+        "Dizem que os lobos descem das colinas a leste quando o sol se põe. Ande pela estrada.",
+      ],
+    },
+  },
+  {
+    id: "abiel_canaa",
+    nome: "Abiel, pastor",
+    area: "canaan",
+    x: 33,
+    y: 24,
+    papel: "ambiente",
+    aparencia: "pastor",
+    falas: {
+      linhas: [
+        "Perdi duas ovelhas para os lobos esta semana. Se for às colinas a leste, vá preparado.",
+        "As oliveiras do nordeste são antigas; meu avô já colhia azeitonas ali.",
+      ],
+    },
+  },
+  {
+    id: "ada_canaa",
+    nome: "Ada, anciã da vila",
+    area: "canaan",
+    x: 14,
+    y: 30,
+    papel: "ambiente",
+    aparencia: "ancia",
+    falas: {
+      linhas: [
+        "As bancas vazias da praça esperam um ferreiro e um curandeiro. Quem sabe um dia.",
+        "A estrada do sul leva à trilha do Deserto. É longa, mas segura de dia.",
+      ],
+    },
+  },
+  {
+    id: "itai_deserto",
+    nome: "Itai, cameleiro",
+    area: "deserto",
+    x: 123,
+    y: 14,
+    papel: "ambiente",
+    aparencia: "cameleiro",
+    falas: {
+      linhas: [
+        "Os camelos descansam junto ao oásis. Daqui partem as caravanas para o Egito.",
+        "Os escorpiões gostam das pedras a noroeste. Pise com cuidado.",
+      ],
+    },
+  },
+  {
+    id: "keila_deserto",
+    nome: "Keila, tecelã",
+    area: "deserto",
+    x: 123,
+    y: 23,
+    papel: "ambiente",
+    aparencia: "tecela",
+    falas: {
+      linhas: [
+        "Estas tendas são de pelo de cabra: seguram o calor do dia e o frio da noite.",
+        "Azarias vende de tudo, mas pechinchar com ele é perder tempo.",
+      ],
+    },
+  },
+  {
+    id: "uziel_egito",
+    nome: "Uziel, oleiro",
+    area: "egito",
+    x: 14,
+    y: 99,
+    papel: "ambiente",
+    aparencia: "oleiro",
+    falas: {
+      linhas: [
+        "Fazemos tijolos de sol a sol para Faraó. O barro do Nilo não tem fim.",
+        "Os guardas vigiam a estrada do meio. Ninguém passa sem ser visto.",
+      ],
+    },
+  },
+  {
+    id: "sela_egito",
+    nome: "Selá, aguadeira",
+    area: "egito",
+    x: 18,
+    y: 102,
+    papel: "ambiente",
+    aparencia: "aguadeira",
+    falas: {
+      linhas: [
+        "A água do poço de Gósen é nossa; a do rio, os egípcios guardam.",
+        "Moisés e Arão falaram com Faraó. Esperamos e oramos.",
+      ],
+    },
+  },
+  {
+    id: "naama_mar",
+    nome: "Naama, mãe hebreia",
+    area: "marVermelho",
+    x: 13,
+    y: 99,
+    papel: "ambiente",
+    aparencia: "mae",
+    falas: {
+      linhas: [
+        "Saímos às pressas, com a massa ainda sem fermento. As crianças estão cansadas.",
+        "O mar à frente, o exército atrás. Ainda assim, ninguém aqui quer voltar.",
+      ],
+    },
+  },
+  {
+    id: "zuar_mar",
+    nome: "Zuar, ancião",
+    area: "marVermelho",
+    x: 25,
+    y: 101,
+    papel: "ambiente",
+    aparencia: "anciao",
+    falas: {
+      linhas: [
+        "Vi a coluna de nuvem durante o dia. Ela vai à nossa frente.",
+        "Os soldados de Faraó rondam a estrada do meio. Fique perto do acampamento.",
+      ],
+    },
+  },
+  {
+    id: "gadi_sinai",
+    nome: "Gadi, sentinela",
+    area: "sinai",
+    x: 25,
+    y: 93,
+    papel: "ambiente",
+    aparencia: "sentinela",
+    falas: {
+      linhas: [
+        "Do alto daquelas pedras vigiamos o vale. Os amalequitas vêm pelo leste.",
+        "Josué escolheu homens para a batalha. Precisamos de todo braço forte.",
+      ],
+    },
+  },
+  {
+    id: "tirza_sinai",
+    nome: "Tirza, pastora",
+    area: "sinai",
+    x: 13,
+    y: 100,
+    papel: "ambiente",
+    aparencia: "pastora",
+    falas: {
+      linhas: [
+        "Há pouca pastagem entre estas rochas, mas as cabras se arranjam.",
+        "O monte a nordeste vive coberto de nuvens. Ninguém sobe lá sem ser chamado.",
+      ],
+    },
+  },
+  {
+    id: "joel_galileia",
+    nome: "Joel, pescador",
+    area: "galileia",
+    x: 32,
+    y: 28,
+    papel: "ambiente",
+    aparencia: "pescador",
+    falas: {
+      linhas: [
+        "Peixe do lago, salgado ontem à noite. Hoje a pesca foi fraca: passamos a noite sem pegar nada.",
+        "Os barcos ficam na praia, ao norte da vila. Cuidado com as redes estendidas.",
+      ],
+    },
+  },
+  {
+    id: "noa_galileia",
+    nome: "Noa, vizinha",
+    area: "galileia",
+    x: 30,
+    y: 38,
+    papel: "ambiente",
+    aparencia: "vizinha",
+    falas: {
+      linhas: [
+        "Muita gente tem vindo a Cafarnaum para ouvir o Mestre.",
+        "A estrada do meio anda perigosa: salteadores atacam quem viaja sozinho.",
+      ],
+    },
   },
 ];

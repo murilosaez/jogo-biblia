@@ -12,6 +12,8 @@ const MEU_ID = "jogador1";
 // ---------------------------------------------------------------------
 const TAM = 32; // tile em px de mundo
 const MOLDURA = 4; // tiles de cenário fora do mapa
+const BLOCO = 16; // lado (em casas) dos blocos de cenário ligados e desligados conforme a câmera
+const MINIMAPA_JANELA = { colunas: 80, linhas: 60 }; // casas mostradas no minimapa, em volta do jogador
 const FONTE_PIXEL = '"Pixelify Sans", ui-monospace, monospace';
 const FONTE_TITULO = '"Cinzel", Georgia, serif';
 const FONTE_TEXTO = '"Alegreya Sans", system-ui, sans-serif';
@@ -63,7 +65,10 @@ class Cena extends Phaser.Scene {
     this.respawns = new Set();
     this.entidades = {}; // id → {tipo, dados, sprite, sombra, rotulo, balao, ...}
     this.spritesItens = {};
-    this.copas = [];
+    this.copas = new Map(); // "x,y" → copa ou telhado que fica translúcido com o jogador logo atrás
+    this.copasTranslucidas = [];
+    this.blocos = new Map(); // "bx,by" → imagens do cenário daquele bloco (culling)
+    this.blocosVisiveis = "";
     this.animados = [];
     this.marcadores = [];
     this.proximaAtualizacaoColetaveis = 0;
@@ -77,7 +82,8 @@ class Cena extends Phaser.Scene {
     this.criarTecladoEPonteiro();
     this.criarChao();
     this.criarObstaculos();
-    this.criarDecoracaoHubs();
+    this.criarEstruturas();
+    this.criarDecoracao();
     this.criarMarcadores();
     this.desenharColetaveis();
     if (this.areaAtual === "mar") this.desenharPontosPesca();
@@ -174,16 +180,40 @@ class Cena extends Phaser.Scene {
     for (const p of PORTAIS) if (p.area === this.areaAtual) marca(p.x, p.y, 1);
     const a = areas[this.areaAtual];
     for (const k of ["passagem", "cais", "caisCanaa", "caisDeserto"]) if (a?.[k]) marca(a[k].x, a[k].y, 1);
-    for (const h of this.bio.hubs) marca(h.x, h.y, 1);
+    for (const d of DADOS_MAPAS[this.areaAtual]?.decoracoes || []) marca(d.x, d.y, 1);
     return (x, y) => set.has(`${x},${y}`);
+  }
+
+  // ===== blocos de cenário: só os blocos perto da câmera ficam visíveis
+  noBloco(img, x, y) {
+    const chave = `${Math.floor(x / BLOCO)},${Math.floor(y / BLOCO)}`;
+    if (!this.blocos.has(chave)) this.blocos.set(chave, []);
+    this.blocos.get(chave).push(img);
+    img.setVisible(false);
+    return img;
+  }
+  atualizarBlocos() {
+    const v = this.cameras.main.worldView, lado = BLOCO * TAM;
+    // uma linha de blocos de folga: copas altas e telhados passam do próprio bloco
+    const bx0 = Math.floor(v.x / lado) - 1, by0 = Math.floor(v.y / lado) - 1;
+    const bx1 = Math.floor((v.x + v.width) / lado) + 1, by1 = Math.floor((v.y + v.height) / lado) + 1;
+    const assinatura = `${bx0},${by0},${bx1},${by1}`;
+    if (assinatura === this.blocosVisiveis) return;
+    this.blocosVisiveis = assinatura;
+    for (const [chave, imgs] of this.blocos) {
+      const [bx, by] = chave.split(",").map(Number);
+      const ver = bx >= bx0 && bx <= bx1 && by >= by0 && by <= by1;
+      if (imgs.length && imgs[0].visible === ver) continue;
+      for (const img of imgs) img.setVisible(ver);
+    }
   }
 
   // ===== obstáculos: um Image por casa bloqueada do interior (y-sort)
   criarObstaculos() {
-    const mapa = mapas[this.areaAtual];
+    const mapa = mapas[this.areaAtual], piso = pisos[this.areaAtual];
     for (let y = 1; y < ROWS - 1; y++)
       for (let x = 1; x < COLS - 1; x++) {
-        if (!mapa[y][x]) continue;
+        if (!mapa[y][x] || piso[y][x] === PISO.AGUA || piso[y][x] === PISO.ESTRUTURA) continue;
         const tipo = Arte.tipoObstaculo(this.areaAtual, x, y);
         if (!tipo || !this.textures.exists(tipo.chave)) continue;
         const def = PIXEL_PATTERNS[tipo.chave];
@@ -193,21 +223,34 @@ class Cena extends Phaser.Scene {
           .setOrigin(0.5, 1)
           .setDepth(PROF.entidade + y * TAM + TAM - 2);
         if (!def.obstaculo) img.y = y * TAM + TAM; // fogueira etc.
-        if (tipo.alto) this.copas.push({ img, x, y });
+        if (tipo.alto) this.copas.set(`${x},${y}`, img);
         if (tipo.animado) this.animados.push({ img, quadros: tipo.animado, fps: 6 });
+        this.noBloco(img, x, y);
       }
   }
 
-  criarDecoracaoHubs() {
+  // ===== estruturas: casas, tendas, bancas e poços (dados/mapas.js), uma imagem por estrutura
+  criarEstruturas() {
+    for (const e of estruturasPorArea[this.areaAtual] || []) {
+      const chave = `es_${e.tipo}`;
+      if (!this.textures.exists(chave)) continue;
+      const base = (e.y + e.altura) * TAM;
+      const quadro = Math.min(e.variante || 0, PIXEL_PATTERNS[chave].quadros - 1);
+      const img = this.add.image((e.x + e.largura / 2) * TAM, base + Arte.PX, chave, quadro)
+        .setOrigin(0.5, 1).setDepth(PROF.entidade + base - 2);
+      this.noBloco(img, e.x + (e.largura >> 1), e.y + e.altura - 1);
+      // como as copas: o telhado fica translúcido com o jogador logo atrás (ao norte) da estrutura
+      for (let x = e.x; x < e.x + e.largura; x++) this.copas.set(`${x},${e.y}`, img);
+    }
+  }
+
+  criarDecoracao() {
     const plano = (chave, x, y) => {
       if (mapas[this.areaAtual][y]?.[x] !== 0 || !this.textures.exists(chave)) return;
       this.add.image(centroX(x), y * TAM + TAM / 2, chave).setDepth(PROF.deco);
     };
     const a = this.areaAtual;
-    if (a === "canaan") plano("dc_fogo_apagado", 7, 7);
-    if (a === "deserto") plano("dc_tapete", 73, 11);
-    if (a === "egito") plano("dc_esteira", 11, 53);
-    if (a === "galileia") plano("dc_rede", 11, 53);
+    for (const d of DADOS_MAPAS[a]?.decoracoes || []) plano(d.chave, d.x, d.y);
     // Jesus: luz quente e sutil no chão (sem auréola, nada sobre o corpo).
     const jesus = npcs.jesusGalileia;
     if (jesus && jesus.area === a) {
@@ -1114,7 +1157,8 @@ class Cena extends Phaser.Scene {
     else if (ej.acaoAte > time) j.setFrame(4);
     else if (ej.andandoAte > time) j.setFrame(2 + (Math.floor(time / 125) % 2));
     else j.setFrame(reduz ? 0 : Math.floor(time / 600) % 2);
-    j.setDepth(PROF.entidade + j.y + 1);
+    // setDepth sempre reordena a cena inteira (milhares de obstáculos): só quando a profundidade muda
+    if (j.depth !== PROF.entidade + j.y + 1) j.setDepth(PROF.entidade + j.y + 1);
     this.sombraJogador.setPosition(j.x + 3, j.y - 1);
 
     // entidades
@@ -1126,7 +1170,7 @@ class Cena extends Phaser.Scene {
       else q = reduz ? 0 : Math.floor((time + ent.fase) / 600) % 2;
       if (ent.dados.id === "jesusGalileia" && q === 4 && ent.acaoAte - time > 400) q = 0;
       s.setFrame(q);
-      s.setDepth(PROF.entidade + s.y);
+      if (s.depth !== PROF.entidade + s.y) s.setDepth(PROF.entidade + s.y);
       ent.sombra.setPosition(s.x + 3, s.y - 1);
       if (ent.tipo === "npc" && ent.acaoAte < time && this.p.x !== ent.dados.x && cheb(this.p, ent.dados) <= 3) s.setFlipX(this.p.x < ent.dados.x);
       if (ent.balao && ent.balao.visible) this.posicionarBalao(ent, reduz ? 0 : Math.floor(time / 500) % 2 ? -2 : 0);
@@ -1136,12 +1180,15 @@ class Cena extends Phaser.Scene {
     for (const a of this.animados) if (a.img.active) a.img.setFrame(Math.floor((time / 1000) * a.fps) % a.quadros);
     if (this.pesca) for (const { s } of this.pesca) s.setFrame(s.getData("esgotado") ? 3 : Math.floor(time / 530) % 3);
 
-    // copas ficam translúcidas quando o jogador está logo acima/ao lado
-    for (const c of this.copas) {
-      const perto = this.p.y >= c.y - 1 && this.p.y <= c.y - 1 && Math.abs(this.p.x - c.x) <= 1;
-      c.img.setAlpha(perto ? 0.55 : 1);
+    // copas ficam translúcidas quando o jogador está logo acima/ao lado (só as 3 casas abaixo dele)
+    for (const img of this.copasTranslucidas) img.setAlpha(1);
+    this.copasTranslucidas.length = 0;
+    for (let dx = -1; dx <= 1; dx++) {
+      const img = this.copas.get(`${this.p.x + dx},${this.p.y + 1}`);
+      if (img) { img.setAlpha(0.55); this.copasTranslucidas.push(img); }
     }
 
+    this.atualizarBlocos();
     this.desenharAlvoEBarras(time);
     if (time >= this.proximosRotulos) {
       this.proximosRotulos = time + 100;
@@ -1325,41 +1372,52 @@ class Cena extends Phaser.Scene {
     }
     caixa.classList.toggle("encoberto", coberto);
   }
+  // O minimapa mostra uma janela de MINIMAPA_JANELA casas em volta do jogador (o mapa inteiro é
+  // pintado uma vez num canvas maior e recortado a cada desenho).
   desenharMinimapa() {
     const canvas = document.querySelector("#miniMap"), ctx = canvas?.getContext("2d");
     if (!ctx || !this.p) return;
-    const W = canvas.width, H = canvas.height, sx = W / COLS, sy = H / ROWS;
+    const W = canvas.width, H = canvas.height;
+    const jc = Math.min(COLS, MINIMAPA_JANELA.colunas), jl = Math.min(ROWS, MINIMAPA_JANELA.linhas);
+    const sx = W / jc, sy = H / jl;
     if (!this.minimapaEstatico) {
       const cores = Arte.minimapaCores(this.areaAtual);
       const c = document.createElement("canvas");
-      c.width = W; c.height = H;
-      const g = c.getContext("2d"), m = mapas[this.areaAtual], ts = this.tileset;
+      c.width = Math.ceil(COLS * sx); c.height = Math.ceil(ROWS * sy);
+      const g = c.getContext("2d"), m = mapas[this.areaAtual], piso = pisos[this.areaAtual], ts = this.tileset;
       const noMar = this.areaAtual === "mar";
-      g.fillStyle = cores.fundo; g.fillRect(0, 0, W, H);
+      g.fillStyle = cores.fundo; g.fillRect(0, 0, c.width, c.height);
       for (let y = 0; y < ROWS; y++)
         for (let x = 0; x < COLS; x++) {
           const borda = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
           const idx = ts.indice(x, y);
           // No mar toda casa usa um índice de água (o "chão" já é água);
-          // ali valem borda, ilhas/rochedos e a rota da linha 30.
+          // ali valem borda, ilhas/rochedos e a rota.
           const agua = !noMar && idx >= Arte.ID_TILE.COSTA && idx < Arte.ID_TILE.BORDA;
           let cor = cores.chao;
           if (agua) cor = cores.agua;
           else if (borda) cor = cores.borda;
+          else if (piso[y][x] === PISO.ESTRUTURA) cor = cores.estrutura;
           else if (m[y][x]) cor = cores.obstaculo;
-          else if (noMar ? y === 30 : ts.ehCaminho(x, y)) cor = cores.caminho;
+          else if (ts.ehCaminho(x, y)) cor = cores.caminho;
           g.fillStyle = cor;
           g.fillRect(Math.floor(x * sx), Math.floor(y * sy), Math.ceil(sx), Math.ceil(sy));
         }
       this.minimapaEstatico = c;
     }
+    // janela centrada no jogador, presa às bordas do mapa
+    const ox = Math.max(0, Math.min(COLS - jc, this.p.x - (jc >> 1)));
+    const oy = Math.max(0, Math.min(ROWS - jl, this.p.y - (jl >> 1)));
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.minimapaEstatico, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(this.minimapaEstatico, Math.round(ox * sx), Math.round(oy * sy), W, H, 0, 0, W, H);
     const ponto = (x, y, cor, t = 2) => {
+      const px = (x - ox + 0.5) * sx, py = (y - oy + 0.5) * sy;
+      if (px < -t || py < -t || px > W + t || py > H + t) return;
       ctx.fillStyle = "#2a1a14";
-      ctx.fillRect(Math.round((x + 0.5) * sx - t / 2) - 1, Math.round((y + 0.5) * sy - t / 2) - 1, t + 2, t + 2);
+      ctx.fillRect(Math.round(px - t / 2) - 1, Math.round(py - t / 2) - 1, t + 2, t + 2);
       ctx.fillStyle = cor;
-      ctx.fillRect(Math.round((x + 0.5) * sx - t / 2), Math.round((y + 0.5) * sy - t / 2), t, t);
+      ctx.fillRect(Math.round(px - t / 2), Math.round(py - t / 2), t, t);
     };
     const a = areas[this.areaAtual];
     for (const t of PORTAIS) if (t.area === this.areaAtual) ponto(t.x, t.y, "#b98ad0", 3);
@@ -1372,15 +1430,17 @@ class Cena extends Phaser.Scene {
     for (const ent of Object.values(this.entidades)) {
       const d = ent.tipo === "inimigo" ? inimigos[ent.id] : ent.dados;
       if (ent.tipo === "npc") {
-        // "!"/"?" em destaque; o atalaia com o mural em uso fica na cor das caçadas (pergaminho).
+        // "!"/"?" em destaque; o atalaia com o mural em uso fica na cor das caçadas (pergaminho);
+        // moradores (só conversa) em tom discreto.
         const destaque = ent.estadoBalao === "missao" || ent.estadoBalao === "entregar";
-        ponto(d.x, d.y, destaque ? "#f2d27a" : ent.estadoBalao === "mural" ? "#e6cf9c" : "#e8b94a", destaque ? 4 : 3);
+        const cor = destaque ? "#f2d27a" : ent.estadoBalao === "mural" ? "#e6cf9c" : d.papel === "ambiente" ? "#cfae74" : "#e8b94a";
+        ponto(d.x, d.y, cor, destaque ? 4 : d.papel === "ambiente" ? 2 : 3);
       } else ponto(d.x, d.y, "#ef6a5e", 3);
     }
     const v = this.cameras.main.worldView;
     ctx.strokeStyle = "#2a1a14cc";
     ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round(v.x * sx / TAM) + 0.5, Math.round(v.y * sy / TAM) + 0.5, Math.round(v.width * sx / TAM), Math.round(v.height * sy / TAM));
+    ctx.strokeRect(Math.round((v.x / TAM - ox) * sx) + 0.5, Math.round((v.y / TAM - oy) * sy) + 0.5, Math.round(v.width * sx / TAM), Math.round(v.height * sy / TAM));
     if (Math.floor(this.time.now / 400) % 2 === 0 || reduzMovimento()) ponto(this.p.x, this.p.y, "#f3e4c0", 4);
     else ponto(this.p.x, this.p.y, "#3b5a9a", 4);
   }

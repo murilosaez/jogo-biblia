@@ -12,9 +12,10 @@
 // Constantes gerais
 // ---------------------------------------------------------------------
 const TILE = 32;
-const COLS = 80;
-const ROWS = 60;
-const VERSAO_SAVE = 8;
+const COLS = DADOS_TAMANHO_MAPA.colunas; // dados/mapas.js
+const ROWS = DADOS_TAMANHO_MAPA.linhas;
+const VERSAO_SAVE = 9;
+const ESCALA_MAPAS_V8 = 2; // os mapas passaram de 80×60 (save v8) para 160×120 (save v9)
 
 const VIDA_BASE = 100;
 const VIDA_POR_NIVEL = 10;
@@ -330,33 +331,146 @@ function clonarDados(valor) {
 const areas = {};
 for (const [id, area] of Object.entries(DADOS_AREAS_BASE)) areas[id] = clonarDados(area);
 
-function criarMapa(areaId) {
-  const mapa = [];
-  for (let y = 0; y < ROWS; y++) {
-    mapa[y] = [];
-    for (let x = 0; x < COLS; x++) {
-      const borda = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
-      let obstaculo = false;
-      if (areaId === "canaan") {
-        obstaculo = x % 6 === 3 && y % 4 === 2;
-      } else if (areaId === "deserto") {
-        obstaculo = (x * 7 + y * 11) % 23 === 0;
-      } else {
-        obstaculo = x > 7 && x < COLS - 8 && y > 4 && y < ROWS - 5 && (x * 17 + y * 23) % 41 === 0;
+// ---------------------------------------------------------------------
+// Gerador de mapas (o desenho de cada região vem de dados/mapas.js)
+// ---------------------------------------------------------------------
+// mapas[area][y][x]: 0 livre, 1 bloqueado (colisão). pisos[area][y][x]: o que há no chão (PISO).
+// tiposObstaculo[area]["x,y"]: tipo fixo do obstáculo daquela casa (bosque de oliveiras, muro da vila,
+// marco); sem tipo, o bioma sorteia (sprites.js). estruturasPorArea[area]: casas, tendas, bancas e poços.
+const PISO = { CHAO: 0, CAMINHO: 1, AGUA: 2, ESTRUTURA: 3 };
+const mapas = {};
+const pisos = {};
+const tiposObstaculo = {};
+const estruturasPorArea = {};
+
+// Hash e ruído determinísticos: o mesmo desenho em toda carga.
+function hashCasa(x, y, s = 0) {
+  let h = (x * 374761393 + y * 668265263 + s * 1442695041) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function ruidoCasa(x, y, s) {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const fx = x - xi;
+  const fy = y - yi;
+  const l = (a, b, t) => a + (b - a) * t * t * (3 - 2 * t);
+  const cima = l(hashCasa(xi, yi, s), hashCasa(xi + 1, yi, s), fx);
+  const baixo = l(hashCasa(xi, yi + 1, s), hashCasa(xi + 1, yi + 1, s), fx);
+  return l(cima, baixo, fy);
+}
+
+function casaInterna(x, y) {
+  return x > 0 && y > 0 && x < COLS - 1 && y < ROWS - 1;
+}
+
+// Casas internas de um retângulo (x, y, largura, altura) ou elipse (forma "elipse": centro x, y e raios).
+function casasDaForma(f, fn) {
+  const elipse = f.forma === "elipse";
+  const x0 = Math.max(1, elipse ? Math.floor(f.x - f.raioX) : f.x);
+  const y0 = Math.max(1, elipse ? Math.floor(f.y - f.raioY) : f.y);
+  const x1 = Math.min(COLS - 2, elipse ? Math.ceil(f.x + f.raioX) : f.x + f.largura - 1);
+  const y1 = Math.min(ROWS - 2, elipse ? Math.ceil(f.y + f.raioY) : f.y + f.altura - 1);
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      if (elipse) {
+        const nx = (x - f.x) / Math.max(0.5, f.raioX);
+        const ny = (y - f.y) / Math.max(0.5, f.raioY);
+        if (nx * nx + ny * ny > 1) continue;
       }
-      mapa[y][x] = borda || obstaculo ? 1 : 0;
+      fn(x, y);
+    }
+}
+
+// Casas de um caminho: cada trecho anda primeiro na horizontal e depois na vertical, com a largura pedida.
+function casasDoCaminho(c, fn) {
+  const largura = Math.max(1, c.largura || 1);
+  const marcar = (x, y) => {
+    for (let dy = 0; dy < largura; dy++)
+      for (let dx = 0; dx < largura; dx++) if (casaInterna(x + dx, y + dy)) fn(x + dx, y + dy);
+  };
+  for (let i = 1; i < c.pontos.length; i++) {
+    const [x0, y0] = c.pontos[i - 1];
+    const [x1, y1] = c.pontos[i];
+    for (let x = x0; ; x += Math.sign(x1 - x0)) {
+      marcar(x, y0);
+      if (x === x1) break;
+    }
+    for (let y = y0; ; y += Math.sign(y1 - y0)) {
+      marcar(x1, y);
+      if (y === y1) break;
     }
   }
+}
+
+// Monta a grade de uma região: terreno de fundo, vilas, regiões, águas, caminhos, estruturas e marcos,
+// nesta ordem (cada camada sobrescreve a anterior).
+function gerarMapa(areaId) {
+  const d = DADOS_MAPAS[areaId] || {};
+  const t = d.terreno || {};
+  const semente = t.semente || 1;
+  const mapa = [];
+  const piso = [];
+  const tipos = {};
+  for (let y = 0; y < ROWS; y++) {
+    mapa[y] = [];
+    piso[y] = [];
+    for (let x = 0; x < COLS; x++) {
+      const bosque =
+        ruidoCasa(x / (t.escala || 7), y / (t.escala || 7), semente) > (t.limiar ?? 1) &&
+        hashCasa(x, y, semente + 1) < (t.densidade || 0);
+      const solto = hashCasa(x, y, semente + 2) < (t.salpico || 0);
+      mapa[y][x] = !casaInterna(x, y) || bosque || solto ? 1 : 0;
+      piso[y][x] = PISO.CHAO;
+    }
+  }
+  const definir = (x, y, bloqueado, tipo, tipoPiso = PISO.CHAO) => {
+    mapa[y][x] = bloqueado ? 1 : 0;
+    piso[y][x] = tipoPiso;
+    if (bloqueado && tipo) tipos[`${x},${y}`] = tipo;
+    else delete tipos[`${x},${y}`];
+  };
+  for (const v of d.vilas || []) {
+    casasDaForma(v, (x, y) => {
+      const beira = x === v.x || y === v.y || x === v.x + v.largura - 1 || y === v.y + v.altura - 1;
+      definir(x, y, beira && !!v.muro, v.muro);
+    });
+  }
+  (d.regioes || []).forEach((r, i) => {
+    casasDaForma(r, (x, y) => definir(x, y, hashCasa(x, y, semente + 10 + i) < (r.densidade || 0), r.tipo));
+  });
+  for (const a of d.aguas || []) casasDaForma(a, (x, y) => definir(x, y, true, null, PISO.AGUA));
+  for (const c of d.caminhos || []) casasDoCaminho(c, (x, y) => definir(x, y, false, null, PISO.CAMINHO));
+  const estruturas = [];
+  for (const e of d.estruturas || []) {
+    const modelo = DADOS_ESTRUTURAS[e.tipo];
+    if (!modelo) continue;
+    const estrutura = { ...clonarDados(e), largura: modelo.largura, altura: modelo.altura, variante: e.variante || 0 };
+    casasDaForma(estrutura, (x, y) => definir(x, y, true, null, PISO.ESTRUTURA));
+    estruturas.push(estrutura);
+  }
+  for (const m of d.marcos || []) if (casaInterna(m.x, m.y)) definir(m.x, m.y, true, m.tipo);
+  mapas[areaId] = mapa;
+  pisos[areaId] = piso;
+  tiposObstaculo[areaId] = tipos;
+  estruturasPorArea[areaId] = estruturas;
   return mapa;
 }
 
-const mapas = { canaan: criarMapa("canaan"), deserto: criarMapa("deserto"), mar: criarMapa("mar") };
+// Estrutura (casa, tenda, banca, poço) que ocupa a casa, ou null.
+function estruturaEm(areaId, x, y) {
+  return (estruturasPorArea[areaId] || []).find(
+    (e) => x >= e.x && y >= e.y && x < e.x + e.largura && y < e.y + e.altura,
+  ) || null;
+}
 
-// Abre uma casa (nunca a borda do mapa).
+// Abre uma casa (nunca a borda do mapa nem a pegada de uma estrutura). Água aberta vira chão.
 function abrirCasa(areaId, x, y) {
   const mapa = mapas[areaId];
-  if (!mapa || x < 1 || y < 1 || x > COLS - 2 || y > ROWS - 2) return;
+  if (!mapa || !casaInterna(x, y) || pisos[areaId][y][x] === PISO.ESTRUTURA) return;
   mapa[y][x] = 0;
+  if (pisos[areaId][y][x] === PISO.AGUA) pisos[areaId][y][x] = PISO.CHAO;
 }
 
 // Abre a casa e as 8 vizinhas, para que NPCs e inimigos tenham espaço em volta.
@@ -370,38 +484,40 @@ function registrarArea(area, mapa) {
   for (const ponto of [area.inicio, area.chegada, area.passagem]) if (ponto) abrirCasa(area.id, ponto.x, ponto.y);
 }
 
-// Regiões dos capítulos (dados/mundo.js), cada uma com seu padrão de obstáculos.
-// Obstáculos de cada região (padrões determinísticos).
-const PADROES_OBSTACULO = {
-  egito: (x, y) => (x * 13 + y * 17) % 29 === 0,
-  marVermelho: (x, y) => (x * 11 + y * 19) % 37 === 0,
-  sinai: (x, y) => (x * 7 + y * 13) % 17 === 0,
-  galileia: (x, y) => (x * 5 + y * 23) % 31 === 0,
-};
-
-function criarMapaCapitulo(id) {
-  const mapa = Array.from({ length: ROWS }, (_, y) =>
-    Array.from({ length: COLS }, (_, x) => {
-      const borda = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
-      return borda || PADROES_OBSTACULO[id](x, y) ? 1 : 0;
-    }),
-  );
-  // Estrada principal (linha 56) e trilha central (linha 30).
-  for (let x = 1; x < COLS - 1; x++) mapa[56][x] = 0;
-  for (let x = 2; x < COLS - 2; x++) mapa[30][x] = 0;
-  return mapa;
+// Casas livres que não se alcançam a partir do início da área (andando nas 4 direções) viram obstáculo:
+// nada nasce, brota ou cai num bolsão fechado.
+function fecharBolsoes(areaId) {
+  const mapa = mapas[areaId];
+  const inicio = areas[areaId]?.inicio;
+  if (!mapa || !inicio) return;
+  const visto = mapa.map((linha) => linha.map(() => false));
+  const fila = [[inicio.x, inicio.y]];
+  visto[inicio.y][inicio.x] = true;
+  while (fila.length) {
+    const [x, y] = fila.pop();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (mapa[ny]?.[nx] === 0 && !visto[ny][nx]) {
+        visto[ny][nx] = true;
+        fila.push([nx, ny]);
+      }
+    }
+  }
+  for (let y = 1; y < ROWS - 1; y++) for (let x = 1; x < COLS - 1; x++) if (mapa[y][x] === 0 && !visto[y][x]) mapa[y][x] = 1;
 }
 
-for (const area of Object.values(DADOS_AREAS_CAPITULOS)) {
-  registrarArea({ ...area, inicio: { x: 4, y: 56 } }, criarMapaCapitulo(area.id));
-}
+for (const id of Object.keys(DADOS_AREAS_BASE)) registrarArea(areas[id], gerarMapa(id));
+// Regiões dos capítulos (dados/mundo.js), cada uma com o seu desenho em dados/mapas.js.
+for (const area of Object.values(DADOS_AREAS_CAPITULOS)) registrarArea(clonarDados(area), gerarMapa(area.id));
 
 // ---------------------------------------------------------------------
 // NPCs, coletáveis, pesca e inimigos base
 // ---------------------------------------------------------------------
 // papel: "missao" (dá missões de dados/missoes.js), "loja", "guia", "mural" (atalaia: mural de
-// caçadas de dados/tarefas.js, aberto quando requer.missao é concluída) ou, nos capítulos,
-// "lider" (dá a missão do capítulo), "apoio" (só conversa) e "mestre" (ensina a Oração).
+// caçadas de dados/tarefas.js, aberto quando requer.missao é concluída), "ambiente" (morador: só
+// conversa, com as falas de dados/npcs.js) ou, nos capítulos, "lider" (dá a missão do capítulo),
+// "apoio" (só conversa) e "mestre" (ensina a Oração).
 const npcs = {};
 
 function registrarNpc(npc) {
@@ -426,6 +542,26 @@ function coletaveisDaArea(areaId) {
   if (!grupo) return [];
   return grupo.lista.map((c) => ({ id: c.id, x: c.x, y: c.y, item: grupo.item, textura: grupo.textura }));
 }
+
+// Pontos fixos sempre abertos: pesca, coletáveis, pontos das áreas (início, trilha, cais, viagem,
+// embarque) e portais. Depois disso, os bolsões fechados viram obstáculo.
+for (const ponto of pontosPesca) abrirCasa("mar", ponto.x, ponto.y);
+for (const [areaId, grupo] of Object.entries(COLETAVEIS_POR_AREA))
+  for (const c of grupo.lista) abrirCasa(areaId, c.x, c.y);
+for (const area of Object.values(areas)) {
+  for (const chave of ["inicio", "passagem", "chegada", "chegadaViagem", "caisCanaa", "caisDeserto", "embarqueCanaa", "embarqueDeserto"]) {
+    if (area[chave]) abrirCasa(area.id, area[chave].x, area[chave].y);
+  }
+  if (area.cais) {
+    abrirCasa(area.id, area.cais.x, area.cais.y);
+    abrirCasa(area.id, area.cais.x, area.cais.y + 1);
+  }
+}
+for (const portal of DADOS_PORTAIS) {
+  abrirCasa(portal.area, portal.x, portal.y);
+  abrirCasa(portal.destino, portal.chegada.x, portal.chegada.y);
+}
+for (const areaId of Object.keys(areas)) fecharBolsoes(areaId);
 
 const inimigos = {};
 
@@ -475,6 +611,14 @@ function sortearCasaLivre(areaId, cx, cy, raio, folga, espacoInimigos = 0) {
   return null;
 }
 
+// Casa livre numa das zonas de coleta da área (dados/mapas.js); sem zonas, em qualquer lugar da área.
+function sortearCasaDeColeta(areaId) {
+  const zonas = DADOS_MAPAS[areaId]?.zonasColeta || [];
+  if (!zonas.length) return sortearCasaLivre(areaId, COLS >> 1, ROWS >> 1, Math.max(COLS, ROWS) >> 1, 3);
+  const zona = zonas[Math.floor(Math.random() * zonas.length)];
+  return sortearCasaLivre(areaId, zona.x, zona.y, zona.raio, 3);
+}
+
 // Põe a criatura num ponto aleatório do seu grupo (nasce e renasce ali; é também o ponto para onde volta).
 // Devolve false se não houver casa livre (a criatura fica onde estava).
 function sortearPosicaoInimigo(e) {
@@ -499,32 +643,6 @@ for (const criatura of DADOS_CRIATURAS) {
     if (!sortearPosicaoInimigo(copia)) delete inimigos[copia.id]; // sem espaço: menos uma cópia
   }
 }
-
-// Trilhas terrestres contínuas e acessos aos cais.
-for (let x = 2; x <= 77; x++) {
-  mapas.canaan[56][x] = 0;
-  mapas.deserto[56][x] = 0;
-  mapas.canaan[2][x] = 0;
-}
-for (let y = 2; y <= 56; y++) {
-  mapas.canaan[y][2] = 0;
-  mapas.deserto[y][40] = 0;
-}
-for (let x = 40; x <= 77; x++) mapas.deserto[2][x] = 0;
-for (let x = 1; x <= 78; x++) mapas.mar[30][x] = 0;
-for (const ponto of pontosPesca) abrirCasa("mar", ponto.x, ponto.y);
-for (const [areaId, grupo] of Object.entries(COLETAVEIS_POR_AREA))
-  for (const c of grupo.lista) abrirCasa(areaId, c.x, c.y);
-for (const area of Object.values(areas)) {
-  for (const ponto of [area.inicio, area.passagem, area.chegada, area.chegadaViagem]) {
-    if (ponto) abrirCasa(area.id, ponto.x, ponto.y);
-  }
-  if (area.cais) {
-    abrirCasa(area.id, area.cais.x, area.cais.y);
-    abrirCasa(area.id, area.cais.x, area.cais.y + 1);
-  }
-}
-
 // ---------------------------------------------------------------------
 // Missões (dados/missoes.js) — motor genérico, sem missões escritas como código
 // ---------------------------------------------------------------------
@@ -1311,11 +1429,27 @@ const Mundo = {
       p.y = areas.canaan.inicio.y;
       p.vida = maxVida;
     }
-    // Se o mapa mudou e o jogador ficou sobre um obstáculo ou NPC, volta ao início da área.
-    if (!dentroDoMapa(p.x, p.y) || mapas[p.area][p.y][p.x] !== 0 || this.npcEm(p.area, p.x, p.y)) {
-      const inicio = areas[p.area].inicio || areas.canaan.inicio;
-      p.x = inicio.x;
-      p.y = inicio.y;
+    // Saves até a v8 são dos mapas de 80×60: a posição vai para o ponto equivalente do mapa novo (dobro).
+    if (!novo && versaoAnterior < 9) {
+      p.x = Number.isInteger(p.x) ? p.x * ESCALA_MAPAS_V8 : p.x;
+      p.y = Number.isInteger(p.y) ? p.y * ESCALA_MAPAS_V8 : p.y;
+      for (const s of p.saqueNoChao) {
+        s.x *= ESCALA_MAPAS_V8;
+        s.y *= ESCALA_MAPAS_V8;
+      }
+      this.adicionarAviso(
+        p,
+        "atualizacao_9",
+        "Os mapas ficaram maiores: vilas com ruas, casas e tendas, moradores para conversar e novas áreas de caça. " +
+          "Se a sua posição antiga não existe mais, você foi levado ao lugar livre mais próximo.",
+      );
+    }
+    // Posição segura: se o mapa mudou e o jogador ficou fora dele, sobre um obstáculo, estrutura ou NPC,
+    // vai para a casa livre mais próxima (ou para o início da área).
+    if (!this.casaParaFicar(p.area, p.x, p.y)) Object.assign(p, this.casaLivreMaisProxima(p.area, p.x, p.y));
+    // Saques no chão que ficaram sobre um obstáculo vão para a casa livre mais próxima.
+    for (const s of p.saqueNoChao) {
+      if (!dentroDoMapa(s.x, s.y) || mapas[s.area][s.y][s.x] !== 0) Object.assign(s, this.casaLivreMaisProxima(s.area, s.x, s.y));
     }
 
     // Vida dos inimigos. Saves anteriores à v6 gravaram a vida cheia da
@@ -1330,6 +1464,27 @@ const Mundo = {
     }
     p.versao = VERSAO_SAVE;
     return p;
+  },
+
+  // ----- Posição segura -----
+  // Casa onde o jogador pode ficar: dentro do mapa, livre (sem obstáculo nem estrutura) e sem NPC.
+  casaParaFicar(areaId, x, y) {
+    return dentroDoMapa(x, y) && mapas[areaId]?.[y][x] === 0 && !this.npcEm(areaId, x, y);
+  },
+
+  // Casa livre mais próxima de (x, y), em anéis cada vez maiores; sem nenhuma, o início da área.
+  casaLivreMaisProxima(areaId, x, y) {
+    const cx = Number.isInteger(x) ? Math.max(0, Math.min(COLS - 1, x)) : 0;
+    const cy = Number.isInteger(y) ? Math.max(0, Math.min(ROWS - 1, y)) : 0;
+    for (let r = 0; r < Math.max(COLS, ROWS); r++) {
+      for (let dy = -r; dy <= r; dy++)
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          if (this.casaParaFicar(areaId, cx + dx, cy + dy)) return { x: cx + dx, y: cy + dy };
+        }
+    }
+    const inicio = areas[areaId]?.inicio || areas.canaan.inicio;
+    return { x: inicio.x, y: inicio.y };
   },
 
   // ----- Avisos para a UI -----
@@ -1784,12 +1939,12 @@ const Mundo = {
       );
     }
     if (area.cais && x === area.cais.x && y === area.cais.y) {
-      const origem = p.area;
+      const embarque = p.area === "canaan" ? areas.mar.embarqueCanaa : areas.mar.embarqueDeserto;
       return this.mudarDeArea(
         p,
         "mar",
-        origem === "canaan" ? 3 : 76,
-        30,
+        embarque.x,
+        embarque.y,
         "Você embarcou no cais. Navegue até o marcador Canaã ou Deserto para desembarcar.",
       );
     }
@@ -1829,7 +1984,7 @@ const Mundo = {
     p[grupo.coletados].push(c.id);
     p[grupo.respawn][c.id] = Date.now() + TEMPO_RESPAWN_COLETAVEL;
     // Brota de novo noutro lugar da área (o progresso de missão conta pelo id, não pela posição).
-    const novaCasa = sortearCasaLivre(p.area, COLS >> 1, ROWS >> 1, Math.max(COLS, ROWS) >> 1, 3);
+    const novaCasa = sortearCasaDeColeta(p.area);
     if (novaCasa) Object.assign(c, novaCasa);
     this.registrarColeta(p, grupo.item, c.id, "mapa");
     this.salvar(p);
@@ -1996,8 +2151,20 @@ const Mundo = {
         mensagem: `${npc.nome}: Posso levar você rapidamente entre Canaã e o Deserto. A viagem é gratuita; também há uma trilha terrestre para caminhar.`,
       };
     }
+    if (npc.papel === "ambiente") return this.interagirMorador(id, npc);
     if (npc.capitulo) return this.interagirCapitulo(id, npc);
     return { ok: true, mensagem: `${npc.nome}: A paz esteja com você.` };
+  },
+
+  // Morador (papel "ambiente"): diz as falas.linhas uma de cada vez, em rodízio (só na sessão, fora do save).
+  interagirMorador(id, npc) {
+    const linhas = npc.falas?.linhas || [];
+    const nome = npc.nome.split(",")[0];
+    if (!linhas.length) return { ok: true, mensagem: `${nome}: A paz esteja com você.` };
+    const vez = (this.estado[id].falasMorador = this.estado[id].falasMorador || {});
+    const i = vez[npc.id] || 0;
+    vez[npc.id] = (i + 1) % linhas.length;
+    return { ok: true, mensagem: `${nome}: ${linhas[i]}` };
   },
 
   // ----- Motor de missões (dados/missoes.js) -----

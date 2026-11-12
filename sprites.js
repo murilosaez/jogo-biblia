@@ -574,6 +574,233 @@
     acessorios: [["cajado_alto", ["#6b4a2e", "#8a6a42"]], ["shofar", ["#eadcb6", "#8a6a42", "#5a3a24"]]],
   });
 
+  // -------------------------------------------------------------------
+  // Estruturas de várias casas (dados/mapas.js, DADOS_ESTRUTURAS): casa, tenda, banca e poço.
+  // A pegada (largura × altura em casas) bloqueia a passagem; o desenho sobe acima dela.
+  // A base da arte fica na penúltima linha; a última é margem. Cada quadro é uma variante.
+  // -------------------------------------------------------------------
+  // casa: 0 adobe claro · 1 pedra de Canaã · 2 basalto da Galileia · 3 tijolo de barro do Egito
+  const CORES_CASA = [
+    { parede: ["#a8845a", "#c8a272", "#e0c090"], teto: ["#b08a5a", "#cfae74", "#e6cf9c"], junta: "#8a6a42", pedra: false },
+    { parede: ["#8a7a62", "#a8987a", "#c8b898"], teto: ["#8a7a5e", "#a8966f", "#c2b088"], junta: "#6e604c", pedra: true },
+    { parede: ["#363432", "#4c4a48", "#6a6662"], teto: ["#5a4a3a", "#7a6448", "#94805e"], junta: "#262422", pedra: true },
+    { parede: ["#87502f", "#a8683f", "#c8865a"], teto: ["#a8865e", "#c8a272", "#dcbc8a"], junta: "#6a3c22", tijolo: true },
+  ];
+  registrar("es_casa", {
+    w: 52, h: 52, quadros: CORES_CASA.length, origem: [0.5, 1], estrutura: true,
+    desenhar(g, v) {
+      const c = CORES_CASA[v], b = 50, topo = 20, x0 = 3, x1 = 48;
+      g.sombra(30, b + 0.5, 25, 2.2);
+      // parede da frente com textura do material
+      for (let y = topo; y <= b; y++)
+        for (let x = x0; x <= x1; x++) {
+          const luz = x < x0 + 3 ? 2 : x > x1 - 4 ? 0 : 1;
+          let cor = c.parede[luz];
+          if (c.pedra) {
+            const fila = Math.floor((y - topo) / 5), off = fila % 2 ? 4 : 0;
+            if ((y - topo) % 5 === 4 || (x + off) % 8 === 0) cor = c.junta;
+            else if (hash2(Math.floor((x + off) / 8), fila, 300 + v) < 0.3) cor = c.parede[Math.max(0, luz - 1)];
+          } else if (c.tijolo) {
+            const fila = Math.floor((y - topo) / 3), off = fila % 2 ? 3 : 0;
+            if ((y - topo) % 3 === 2 || (x + off) % 6 === 0) cor = c.junta;
+          } else if (hash2(x, y, 301) < 0.06) cor = c.parede[Math.max(0, luz - 1)];
+          g.p(x, y, cor);
+        }
+      // teto plano visto de cima (com mureta) e as pontas das vigas
+      g.ret(x0 - 1, topo - 9, x1 - x0 + 3, 9, (x, y) => (y === topo - 9 || x === x0 - 1 || x === x1 + 1 ? c.teto[0] : y === topo - 8 ? c.teto[2] : c.teto[1]));
+      g.lin(x0 - 1, topo - 1, x1 + 1, topo - 1, c.teto[0]);
+      for (let x = x0 + 3; x < x1; x += 7) { g.p(x, topo + 1, "#5a3a24"); g.p(x + 1, topo + 1, "#4a3020"); }
+      // porta em arco com folha de madeira
+      const px = x0 + 13;
+      for (let y = b - 16; y <= b; y++)
+        for (let x = px; x < px + 9; x++) {
+          const nx = (x - (px + 4)) / 4.6, ny = (y - (b - 11)) / 5;
+          if (y < b - 11 && nx * nx + ny * ny > 1) continue;
+          g.p(x, y, x === px || y === b - 16 ? "#2a1a14" : x < px + 3 ? "#5a3a24" : "#7a5530");
+        }
+      g.p(px + 6, b - 7, "#e8b94a");
+      // janela com treliça
+      g.ret(x1 - 13, topo + 7, 6, 5, "#2a1a14");
+      g.p(x1 - 11, topo + 9, "#5a3a24"); g.p(x1 - 9, topo + 9, "#5a3a24");
+      g.lin(x1 - 14, topo + 12, x1 - 6, topo + 12, c.teto[2]);
+      // escada externa até o terraço (adobe e pedra)
+      if (v < 2) for (let i = 0; i < 6; i++) g.ret(x1 - 4 + Math.floor(i / 2), b - 4 - i * 5, 4, 2, c.teto[i % 2 ? 1 : 2]);
+      // jarro e degrau na soleira
+      g.ret(px - 1, b, 11, 1, c.parede[0]);
+      g.elip(px - 5, b - 2, 2, 2.5, (nx, ny) => tom(["#8e4a2a", "#b5663a", "#d88a58"], -(nx + ny)));
+    },
+  });
+
+  // tenda: 0 pano cru · 1 listras vermelhas · 2 listras índigo · 3 pelo de cabra escuro
+  const CORES_TENDA = [
+    { pano: ["#a8916a", "#c8b48a", "#e0d0a8"], listra: "#b8a07a" },
+    { pano: ["#b8a07a", "#d8c49a", "#eadcb6"], listra: "#a8402e" },
+    { pano: ["#b8a07a", "#d8c49a", "#eadcb6"], listra: "#3b5a9a" },
+    { pano: ["#2e2420", "#46382e", "#5e4c3e"], listra: "#8a7a62" },
+  ];
+  registrar("es_tenda", {
+    w: 52, h: 44, quadros: CORES_TENDA.length, origem: [0.5, 1], estrutura: true,
+    desenhar(g, v) {
+      const c = CORES_TENDA[v], b = 42, cumeeira = 9, beiral = 24;
+      g.sombra(29, b + 0.5, 25, 2);
+      // cordas e estacas
+      for (const [x0, x1] of [[4, 1], [47, 50]]) { g.lin(x0, beiral, x1, b, "#8a6a42"); g.p(x1, b, "#5a3a24"); }
+      // teto: desce da cumeeira até o beiral, com listras
+      for (let y = cumeeira; y <= beiral; y++) {
+        const t = (y - cumeeira) / (beiral - cumeeira), meia = Math.round(15 + t * 9);
+        for (let x = 26 - meia; x <= 25 + meia; x++) {
+          const lado = x < 26 - meia + 3 ? 2 : x > 25 + meia - 4 ? 0 : 1;
+          let cor = c.pano[lado];
+          if ((y - cumeeira) % 5 === 3) cor = c.listra;
+          if (y === beiral) cor = c.pano[0];
+          g.p(x, y, cor);
+        }
+      }
+      // paredes de pano até o chão, com a entrada aberta no meio
+      for (let y = beiral + 1; y <= b; y++)
+        for (let x = 3; x <= 48; x++) {
+          const entrada = x >= 21 && x <= 30;
+          let cor = x < 6 ? c.pano[2] : x > 45 ? c.pano[0] : c.pano[1];
+          if ((x - 3) % 9 === 0) cor = c.pano[0];
+          if (entrada) cor = y < beiral + 3 ? c.pano[0] : "#1c1210";
+          g.p(x, y, cor);
+        }
+      // aba enrolada sobre a entrada e varas do beiral
+      g.ret(20, beiral + 1, 12, 2, c.listra);
+      for (const x of [3, 20, 31, 48]) g.lin(x, beiral, x, b, "#6b4a2e");
+      g.lin(23, cumeeira - 3, 23, cumeeira, "#6b4a2e"); g.lin(28, cumeeira - 3, 28, cumeeira, "#6b4a2e");
+      // tapete na soleira
+      g.ret(22, b, 8, 1, "#8e2a1f");
+    },
+  });
+
+  // banca: 0 com mercadorias · 1 vazia (espaço reservado para uma loja futura)
+  registrar("es_banca", {
+    w: 52, h: 46, quadros: 2, origem: [0.5, 1], estrutura: true,
+    desenhar(g, v) {
+      const b = 44, toldo = 6, balcao = 31;
+      g.sombra(29, b + 0.5, 25, 2);
+      // fundo de pano escuro entre os postes
+      g.ret(5, toldo + 9, 42, balcao - toldo - 9, (x, y) => ((x + y) % 7 === 0 ? "#4a3a30" : "#3a2c24"));
+      // prateleira dos fundos com jarros (mercadorias) ou panos dobrados (vazia)
+      g.lin(6, balcao - 7, 45, balcao - 7, "#7a5530");
+      if (v === 0) {
+        for (const [x, cor] of [[9, "#b5663a"], [14, "#c8b070"], [19, "#8e4a2a"], [33, "#b5663a"], [38, "#d88a58"], [42, "#8e4a2a"]])
+          g.elip(x, balcao - 10, 2, 2.6, (nx, ny) => (nx + ny < -0.4 ? misturar(cor, "#ffffff", 0.25) : cor));
+      } else {
+        g.ret(10, balcao - 10, 8, 3, "#c8b48a"); g.lin(10, balcao - 10, 17, balcao - 10, "#e0d0a8");
+        g.ret(34, balcao - 9, 7, 2, "#a8916a");
+      }
+      // balcão de madeira
+      g.ret(3, balcao, 46, b - balcao + 1, (x, y) => (y === balcao ? "#c9a46a" : y === balcao + 1 ? "#a8844f" : (x - 3) % 11 === 0 ? "#5e4630" : x < 6 ? "#9a7048" : "#7a5530"));
+      // mercadorias no balcão
+      if (v === 0) {
+        g.elip(11, balcao - 1, 3, 1.5, "#e8b94a"); g.p(10, balcao - 2, "#ffe08a");
+        g.ret(17, balcao - 3, 6, 3, "#8e2a1f"); g.lin(17, balcao - 3, 22, balcao - 3, "#c2452d");
+        g.ret(25, balcao - 2, 5, 2, "#55642c"); g.p(26, balcao - 3, "#7a8a3f");
+        for (let i = 0; i < 3; i++) g.elip(35 + i * 4, balcao - 2, 1.6, 1.6, i % 2 ? "#c2452d" : "#d9a35c");
+      } else {
+        g.ret(20, balcao - 2, 10, 2, "#d4bf8f"); g.lin(20, balcao - 2, 29, balcao - 2, "#eadcb6");
+      }
+      // postes e toldo listrado com bainha recortada
+      for (const x of [4, 47]) g.lin(x, toldo, x, b, "#5e4630");
+      for (let y = toldo; y < toldo + 9; y++)
+        for (let x = 1; x <= 50; x++) {
+          const listra = Math.floor((x - 1) / 4) % 2 === 0;
+          const cor = y === toldo ? "#5e1a14" : listra ? (v === 0 ? "#c2452d" : "#3b5a9a") : "#eadcb6";
+          g.p(x, y, y > toldo + 6 && (x % 4 === 0) ? null : cor);
+        }
+      g.lin(1, toldo + 1, 50, toldo + 1, "#f3e4c0");
+    },
+  });
+
+  registrar("es_poco", {
+    w: 20, h: 28, quadros: 1, origem: [0.5, 1], estrutura: true,
+    desenhar(g) {
+      const b = 26;
+      g.sombra(12, b, 9, 1.6);
+      // cilindro de pedra
+      for (let y = 15; y <= b; y++)
+        for (let x = 2; x <= 17; x++) {
+          const fila = Math.floor((y - 15) / 3), off = fila % 2 ? 2 : 0;
+          let cor = x < 5 ? "#c8b898" : x > 14 ? "#7a6a54" : "#a8987a";
+          if ((y - 15) % 3 === 2 || (x + off) % 5 === 0) cor = "#6e604c";
+          g.p(x, y, cor);
+        }
+      // borda e água escura
+      g.elip(9.5, 14.5, 8.5, 3, "#d2c2a2");
+      g.elip(9.5, 14.5, 6, 1.8, "#1d4f5c");
+      g.p(8, 14, "#4fa3a5");
+      // armação, travessa, corda e balde
+      g.lin(3, 14, 3, 3, "#6b4a2e"); g.lin(16, 14, 16, 3, "#6b4a2e");
+      g.lin(2, 3, 17, 3, "#8a6a42"); g.lin(2, 2, 17, 2, "#5e4630");
+      g.lin(10, 4, 10, 9, "#c9a46a");
+      g.ret(9, 9, 3, 3, "#7a5530"); g.lin(9, 9, 11, 9, "#a8844f");
+    },
+  });
+
+  // ----- Moradores das vilas (papel "ambiente"; aparencia em dados/npcs.js) -----
+  humano("pj_morador_aguadeira", {
+    molde: "veu", barba: false,
+    cores: { V: "#4fa3a5", W: "#2f7680", S: "#cf9466", s: "#b07548", R: "#e6cf9c", r: "#cfae74", d: "#a8844f", A: "#8e2a1f", F: "#5a3a24" },
+    acessorios: [["jarro", ["#b5663a", "#8e4a2a", "#d88a58"]]],
+  });
+  humano("pj_morador_pastor", {
+    molde: "curta",
+    cores: { H: "#4a2f20", S: "#c68a5c", s: "#a0663f", B: "#4a2f20", R: "#eadcb6", r: "#a8916a", d: "#7d6a4a", A: "#7d522b", F: "#5a3a24" },
+    acessorios: [["cajado_curvo", ["#7a5530", "#9a7048"]], ["saco", ["#a8916a", "#d4bf8f"]]],
+  });
+  humano("pj_morador_ancia", {
+    molde: "veu", barba: false,
+    cores: { V: "#8e8882", W: "#5e5852", S: "#b97a4c", s: "#93603a", R: "#5a2d4a", r: "#3a2238", d: "#2a1a24", A: "#d4bf8f", F: "#4f3220" },
+    acessorios: [["cajado_curto", ["#6b4a2e"]]],
+  });
+  humano("pj_morador_cameleiro", {
+    molde: "manto",
+    cores: { H: "#2e1f18", S: "#b97a4c", s: "#93603a", B: "#2e1f18", R: "#7d522b", r: "#5e4630", d: "#4a3020", A: "#e8b94a", F: "#4f3220" },
+    acessorios: [["turbante", ["#eadcb6", "#c2452d"]], ["corda", ["#c9a46a", "#8a6a42"]]],
+  });
+  humano("pj_morador_tecela", {
+    molde: "veu", barba: false,
+    cores: { V: "#8e2a1f", W: "#5e1a14", S: "#b97a4c", s: "#93603a", R: "#d9a35c", r: "#b07a3e", d: "#7d522b", A: "#3b5a9a", F: "#4f3220" },
+    acessorios: [["fardo", ["#c2452d", "#e2774f"]]],
+  });
+  humano("pj_morador_oleiro", {
+    molde: "curta",
+    cores: { H: "#2e1f18", S: "#b97a4c", s: "#93603a", B: "#2e1f18", R: "#d4bf8f", r: "#b8a07a", d: "#8a7a62", A: "#8e4a2a", F: "#6a4428" },
+    acessorios: [["jarro", ["#a8683f", "#87502f", "#c8865a"]]],
+  });
+  humano("pj_morador_mae", {
+    molde: "veu", barba: false,
+    cores: { V: "#7d522b", W: "#4f3220", S: "#cf9466", s: "#b07548", R: "#a8603a", r: "#8e4a2e", d: "#6e3422", A: "#e6cf9c", F: "#4f3220" },
+    acessorios: [["saco", ["#d4bf8f", "#eadcb6"]]],
+  });
+  humano("pj_morador_anciao", {
+    molde: "manto",
+    cores: { H: "#bfb7a6", S: "#cf9466", s: "#b07548", B: "#e8e2d4", R: "#6a7f8a", r: "#4f626c", d: "#36464e", A: "#d4bf8f", F: "#4f3220" },
+    acessorios: [["cajado_curvo", ["#7a5530", "#9a7048"]]],
+  });
+  humano("pj_morador_sentinela", {
+    molde: "curta",
+    cores: { H: "#4a2f20", S: "#c68a5c", s: "#a0663f", B: "#4a2f20", R: "#8a5a32", r: "#6b4a2e", d: "#4f3220", A: "#c2452d", F: "#4a2f20" },
+    acessorios: [["lanca", ["#6b4a2e", "#a8b4bc"]], ["escudo_oval", ["#7d522b", "#b07a3e"]]],
+  });
+  humano("pj_morador_pastora", {
+    molde: "veu", barba: false,
+    cores: { V: "#d4bf8f", W: "#a8916a", S: "#c68a5c", s: "#a0663f", R: "#55642c", r: "#34401f", d: "#2a3418", A: "#e8b94a", F: "#4f3220" },
+    acessorios: [["cajado_alto", ["#6b4a2e", "#8a6a42"]]],
+  });
+  humano("pj_morador_pescador", {
+    molde: "curta",
+    cores: { H: "#4a2f20", S: "#b97a4c", s: "#93603a", B: "#4a2f20", R: "#c8b48a", r: "#a8916a", d: "#7d6a4a", A: "#2f7680", F: "#93603a" },
+    acessorios: [["rede", ["#c9b48a"]], ["saco", ["#4fa3a5", "#a9dccf"]]],
+  });
+  humano("pj_morador_vizinha", {
+    molde: "veu", barba: false,
+    cores: { V: "#b98ad0", W: "#8a4a6e", S: "#cf9466", s: "#b07548", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", A: "#5a2d4a", F: "#5a3a24" },
+    acessorios: [["jarro", ["#c8b070", "#a8904e", "#e0d0a8"]]],
+  });
+
   // ----- Inimigos humanos (§6.5) -----
   humano("in_chefe", {
     molde: "manto", alargar: true, hostil: true,
@@ -1107,7 +1334,7 @@
     },
   });
 
-  // Decoração plana dos hubs (até 3 px-a de altura; vai em casa livre).
+  // Decoração plana das vilas (até 3 px-a de altura; vai em casa livre; posições em dados/mapas.js).
   registrar("dc_tapete", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
@@ -1157,6 +1384,7 @@
   function visualDe(id) {
     if (VISUAL_NPC[id]) return VISUAL_NPC[id];
     const n = typeof npcs !== "undefined" ? npcs[id] : null;
+    if (n && n.aparencia && PIXEL_PATTERNS["pj_morador_" + n.aparencia]) return "pj_morador_" + n.aparencia;
     if (n && VISUAL_POR_PAPEL[n.papel]) return VISUAL_POR_PAPEL[n.papel];
     if (VISUAL_INIMIGO[id]) return VISUAL_INIMIGO[id];
     const ini = typeof inimigos !== "undefined" ? inimigos[id] : null;
@@ -1168,7 +1396,6 @@
   // -------------------------------------------------------------------
   // Biomas (§3.3)
   // -------------------------------------------------------------------
-  const TRILHAS_CAPITULO = { linhas: [[56, 1, 78], [30, 2, 77]], colunas: [] };
   const BIOMAS = {
     canaan: {
       chao: { base: "#8fa34e", escuro: "#7b9042", claro: "#a6b862", salpico: "#c3c873" },
@@ -1180,8 +1407,6 @@
       deco: [{ tipo: "anemona", peso: 3, cor: "#c8402f" }, { tipo: "flor_branca", peso: 3, cor: "#efe6cf" }, { tipo: "flor_amarela", peso: 2, cor: "#e9d36a" }, { tipo: "tufo", peso: 4, cor: "#6e8a3a" }, { tipo: "pedrinha", peso: 2, cor: "#b8ab8a" }],
       luz: { cor: "#ffd08a", alfa: 0.1, modo: "screen" }, vinheta: { cor: "#1a2410", forca: 0.28 }, sombra: "#2a2a1a",
       particulas: { tipo: "polen", cor: "#f2e6a0", max: 20 },
-      trilhas: { linhas: [[56, 2, 77], [2, 2, 77]], colunas: [[2, 2, 56]] },
-      hubs: [{ x: 7, y: 5, raio: 3, tipo: "vila" }],
     },
     deserto: {
       chao: { base: "#e2c07c", escuro: "#cfa863", claro: "#efd598", salpico: "#c4955a" },
@@ -1193,8 +1418,6 @@
       deco: [{ tipo: "pedrinha", peso: 3, cor: "#a8845a" }, { tipo: "tufo_seco", peso: 3, cor: "#9a8550" }, { tipo: "ondulacao", peso: 4, cor: "#cfa863" }, { tipo: "pegadas", peso: 1, cor: "#b08a58" }],
       luz: { cor: "#ffbf6a", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#3a2410", forca: 0.34 }, sombra: "#5a3424",
       particulas: { tipo: "areia", cor: "#f0dcaa", max: 25 },
-      trilhas: { linhas: [[56, 2, 77], [2, 40, 77]], colunas: [[40, 2, 56]] },
-      hubs: [{ x: 69, y: 10, raio: 4, tipo: "acampamento" }],
     },
     mar: {
       chao: { base: "#2f7f8c", escuro: "#276a78", claro: "#3f98a0", salpico: "#bfe6d6" },
@@ -1207,8 +1430,6 @@
       deco: [{ tipo: "cardume", peso: 1, cor: "#245e6a" }],
       luz: { cor: "#ffd9a0", alfa: 0.07, modo: "screen" }, vinheta: { cor: "#0a2030", forca: 0.25 }, sombra: "#173a44",
       particulas: { tipo: "brilho", cor: "#bfe6d6", max: 20 },
-      trilhas: { linhas: [[30, 1, 78]], colunas: [] },
-      hubs: [],
     },
     egito: {
       chao: { base: "#9a8650", escuro: "#857344", claro: "#b09c62", salpico: "#6f7a3a" },
@@ -1221,8 +1442,6 @@
       deco: [{ tipo: "caco", peso: 2, cor: "#b5663a" }, { tipo: "junco", peso: 3, cor: "#7a9a3a" }, { tipo: "broto", peso: 4, cor: "#6f7a3a" }],
       luz: { cor: "#ffcc66", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#2a1a08", forca: 0.32 }, sombra: "#4a3020",
       particulas: { tipo: "poeira", cor: "#f2d27a", max: 20 },
-      trilhas: TRILHAS_CAPITULO,
-      hubs: [{ x: 11, y: 52, raio: 3, tipo: "vila" }],
     },
     marVermelho: {
       chao: { base: "#c49a72", escuro: "#a8866a", claro: "#dcb48a", salpico: "#f0e0d0" },
@@ -1235,8 +1454,6 @@
       deco: [{ tipo: "concha", peso: 3, cor: "#f0e0d0" }, { tipo: "alga", peso: 3, cor: "#6a7a4a" }, { tipo: "poca", peso: 2, cor: "#7a9aa0" }],
       luz: { cor: "#ff9f78", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#3a2238", forca: 0.4 }, sombra: "#3a2238",
       particulas: { tipo: "respingo", cor: "#e8f2e0", max: 25 },
-      trilhas: TRILHAS_CAPITULO,
-      hubs: [{ x: 9, y: 52, raio: 3, tipo: "pegadas" }],
     },
     sinai: {
       chao: { base: "#8f735a", escuro: "#7a6050", claro: "#a68a6c", salpico: "#bca084" },
@@ -1248,22 +1465,18 @@
       deco: [{ tipo: "seixo", peso: 3, cor: "#7a6a5a" }, { tipo: "liquen", peso: 2, cor: "#9aa070" }, { tipo: "tufo", peso: 3, cor: "#7a7f4a" }],
       luz: { cor: "#c8d0f0", alfa: 0.08, modo: "screen" }, vinheta: { cor: "#10101e", forca: 0.42 }, sombra: "#3a2a44",
       particulas: { tipo: "nevoa", cor: "#e8ecf4", max: 12 },
-      trilhas: TRILHAS_CAPITULO,
-      hubs: [{ x: 9, y: 52, raio: 3, tipo: "estandarte" }],
     },
     galileia: {
       chao: { base: "#7ea05a", escuro: "#6a8c4c", claro: "#97b86e", salpico: "#b8d080" },
       mancha: { base: "#74965a", escuro: "#62844a" },
       caminho: { base: "#8a7a62", escuro: "#6e604c", claro: "#a8987c", borda: "#5a4e3e" },
       agua: { profunda: "#2f6a7a", base: "#3a7688", escura: "#336e80", clara: "#4a8fa0", brilho: "#6aaab8", espuma: "#e8f2e0" },
-      obstaculos: [{ tipo: "figueira", peso: 35, alto: true }, { tipo: "basalto_muro", peso: 30 }, { tipo: "basalto", peso: 20 }, { tipo: "barco", peso: 15 }],
+      obstaculos: [{ tipo: "figueira", peso: 35, alto: true }, { tipo: "basalto_muro", peso: 30 }, { tipo: "basalto", peso: 20 }, { tipo: "barco", peso: 15, soMarco: true }],
       borda: { tipo: "muro_basalto", rampa: ["#262422", "#363432", "#4c4a48", "#6e6a64"], norte: "agua" },
       moldura: { norte: "agua", sul: "colinas", leste: "colinas", oeste: "colinas" },
       deco: [{ tipo: "anemona", peso: 3, cor: "#d8443a" }, { tipo: "mostarda", peso: 3, cor: "#e2c044" }, { tipo: "lirio", peso: 2, cor: "#b8a0d0" }, { tipo: "tufo", peso: 3, cor: "#5e7e40" }],
       luz: { cor: "#ffe0a0", alfa: 0.08, modo: "screen" }, vinheta: { cor: "#1a1408", forca: 0.24 }, sombra: "#2a3a3a",
       particulas: { tipo: "borboleta", cor: "#f6efdc", max: 15 },
-      trilhas: TRILHAS_CAPITULO,
-      hubs: [{ x: 11, y: 52, raio: 3, tipo: "rede" }],
     },
   };
 
@@ -1589,16 +1802,23 @@
     g.p(14, 10, "#b03a2e"); g.p(12, 10, "#b03a2e");
   });
 
-  // Tipo de obstáculo por casa (peso por hash) e regras especiais.
+  // Tipo de obstáculo por casa: o tipo fixo do mapa (bosque, muro da vila, marco; dados/mapas.js) ou o
+  // sorteio por peso do bioma. Tipos com desenho próprio fora do bioma ficam em MARCOS.
+  const MARCOS = {
+    fogueira: { chave: "fx_fogueira", alto: false, animado: 3 },
+    estandarte: { chave: "ob_sinai_estandarte", alto: true },
+    tenda: { chave: "ob_deserto_tenda", alto: true },
+  };
   function tipoObstaculo(area, x, y) {
     const bio = BIOMAS[area];
     if (!bio) return null;
-    if (area === "deserto" && x === 70 && y === 14) return { chave: "fx_fogueira", alto: false, animado: 3 };
-    if (area === "sinai" && x === 9 && y === 54) return { chave: "ob_sinai_estandarte", alto: true };
-    if (area === "deserto") {
-      for (const n of [[68, 8], [72, 10]]) if (Math.max(Math.abs(x - n[0]), Math.abs(y - n[1])) <= 6 && hash2(x, y, 6) < 0.8) return { chave: "ob_deserto_tenda", alto: true };
+    const fixo = typeof tiposObstaculo !== "undefined" ? tiposObstaculo[area]?.[x + "," + y] : null;
+    if (fixo) {
+      const doBioma = bio.obstaculos.find((o) => o.tipo === fixo);
+      if (doBioma) return { chave: `ob_${area}_${fixo}`, alto: !!doBioma.alto };
+      if (MARCOS[fixo]) return MARCOS[fixo];
     }
-    const lista = bio.obstaculos.filter((o) => !(area === "galileia" && o.tipo === "barco" && Math.max(Math.abs(x - 9), Math.abs(y - 52)) > 8));
+    const lista = bio.obstaculos.filter((o) => !o.soMarco);
     const total = lista.reduce((s, o) => s + o.peso, 0);
     let r = hash2(x, y, 3) * total;
     for (const o of lista) {
@@ -1997,26 +2217,28 @@
     for (const a of animados) a(0);
 
     const mapa = typeof mapas !== "undefined" ? mapas[area] : null;
+    const piso = typeof pisos !== "undefined" ? pisos[area] : null;
+    const PISOm = typeof PISO !== "undefined" ? PISO : { CAMINHO: 1, AGUA: 2 };
     const COLSm = typeof COLS !== "undefined" ? COLS : 80, ROWSm = typeof ROWS !== "undefined" ? ROWS : 60;
     const ehBorda = (x, y) => x <= 0 || y <= 0 || x >= COLSm - 1 || y >= ROWSm - 1;
-    // casas de caminho
-    const caminho = new Set();
-    for (const [y, x0, x1] of bio.trilhas.linhas) for (let x = x0; x <= x1; x++) if (mapa && !mapa[y][x]) caminho.add(x + "," + y);
-    for (const [x, y0, y1] of bio.trilhas.colunas) for (let y = y0; y <= y1; y++) if (mapa && !mapa[y][x]) caminho.add(x + "," + y);
-    const ehCaminho = (x, y) => caminho.has(x + "," + y);
-    // enseada do cais (Canaã e Deserto): água na borda norte em torno de x=40
-    const temEnseada = area === "canaan" || area === "deserto";
-    const enseada = (x, y) => temEnseada && y <= 0 && x >= 37 && x <= 43;
+    // caminho (estradas e a rota do mar) e água interna (lagos, rios) vêm do piso do mapa (logica.js)
+    const ehCaminho = (x, y) => !!piso && !!mapa && piso[y]?.[x] === PISOm.CAMINHO && !mapa[y][x];
+    const ehAguaInterna = (x, y) => !!piso && piso[y]?.[x] === PISOm.AGUA;
+    // enseada do cais (Canaã e Deserto): água na borda norte em volta do cais
+    const cais = typeof areas !== "undefined" ? areas[area]?.cais : null;
+    const temEnseada = !!cais;
+    const enseada = (x, y) => temEnseada && y <= 0 && Math.abs(x - cais.x) <= 3;
     const ehAguaBorda = (x, y) => {
       if (enseada(x, y)) return true;
       if (y <= 0 && bio.borda.norte === "agua") return true;
       return false;
     };
+    const ehAgua = (x, y) => ehAguaBorda(x, y) || ehAguaInterna(x, y);
     const ehMuralha = (x, y) => temMuralha && (y <= 0 || y >= ROWSm - 1);
 
     // mancha: ruído de baixa frequência; caminho e borda nunca são mancha
     const ehMancha = (x, y) => {
-      if (area === "mar" || x <= 0 || y <= 0 || x >= COLSm - 1 || y >= ROWSm - 1 || ehCaminho(x, y)) return false;
+      if (area === "mar" || x <= 0 || y <= 0 || x >= COLSm - 1 || y >= ROWSm - 1 || ehCaminho(x, y) || ehAguaInterna(x, y)) return false;
       const r = area === "egito" ? ruido(x / 10, y / 2, semente) : ruido(x / 6, y / 6, semente);
       return r > 0.62;
     };
@@ -2037,16 +2259,22 @@
         if (ehAguaBorda(x, y)) {
           // costa: espuma nos lados com terra
           let m = 0;
-          if (!ehAguaBorda(x, y + 1)) m |= 4;
-          if (x > 0 && !ehAguaBorda(x - 1, y)) m |= 8;
-          if (x < COLSm - 1 && !ehAguaBorda(x + 1, y)) m |= 2;
+          if (!ehAgua(x, y + 1)) m |= 4;
+          if (x > 0 && !ehAgua(x - 1, y)) m |= 8;
+          if (x < COLSm - 1 && !ehAgua(x + 1, y)) m |= 2;
           return ID.COSTA + m;
         }
         const viz = (xx, yy) => (xx < 0 || yy < 0 || xx >= COLSm || yy >= ROWSm || (ehBorda(xx, yy) && !ehAguaBorda(xx, yy)) ? 1 : 0);
         const m = viz(x, y - 1) | (viz(x + 1, y) << 1) | (viz(x, y + 1) << 2) | (viz(x - 1, y) << 3);
         return ID.BORDA + m;
       }
-      if (area === "mar") return y === 30 ? ID.ROTA + Math.floor(hash2(x, y, 2) * 4) : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
+      if (area === "mar") return ehCaminho(x, y) ? ID.ROTA + Math.floor(hash2(x, y, 2) * 4) : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
+      if (ehAguaInterna(x, y)) {
+        // lago ou rio: espuma nos lados com terra (como a costa da borda)
+        const terra = (xx, yy) => (xx >= 0 && yy >= 0 && xx < COLSm && yy < ROWSm && !ehAgua(xx, yy) ? 1 : 0);
+        const m = terra(x, y - 1) | (terra(x + 1, y) << 1) | (terra(x, y + 1) << 2) | (terra(x - 1, y) << 3);
+        return m ? ID.COSTA + m : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
+      }
       if (ehCaminho(x, y)) {
         const m = (ehCaminho(x, y - 1) ? 1 : 0) | (ehCaminho(x + 1, y) ? 2 : 0) | (ehCaminho(x, y + 1) ? 4 : 0) | (ehCaminho(x - 1, y) ? 8 : 0);
         return ID.CAMINHO + m;
@@ -2060,6 +2288,7 @@
       return r < 0.55 ? 0 : r < 0.7 ? 1 : r < 0.85 ? 2 : 3;
     }
     // variantes de flor (para o campo de flores da Galileia)
+    const vilas = (typeof DADOS_MAPAS !== "undefined" && DADOS_MAPAS[area]?.vilas) || [];
     const variantesFlor = listaDeco(bio).map((d, k) => (TIPOS_FLOR.has(d.tipo) ? k : -1)).filter((k) => k >= 0);
     function indiceDeco(x, y, proibido) {
       if (!mapa || x < 1 || y < 1 || x >= COLSm - 1 || y >= ROWSm - 1 || mapa[y][x]) return -1;
@@ -2072,7 +2301,7 @@
         return ID.DECO + variantesFlor[Math.floor(hash2(x, y, 13) * variantesFlor.length)];
       }
       let p = 0.07;
-      for (const h of bio.hubs) if (Math.max(Math.abs(x - h.x), Math.abs(y - h.y)) <= h.raio) p = 0.15;
+      for (const v of vilas) if (x > v.x && y > v.y && x < v.x + v.largura - 1 && y < v.y + v.altura - 1) p = 0.15;
       if (hash2(x, y, 7) >= p) return -1;
       return ID.DECO + Math.floor(hash2(x, y, 12) * 16);
     }
@@ -2137,6 +2366,7 @@
       obstaculo: p(area === "mar" ? "#c9ad78" : bio.borda.rampa[1]),
       agua: p(agua),
       borda: p(bio.borda.rampa[0]),
+      estrutura: p("#7a5530"),
       fundo: "#e6cf9c",
     };
   }
