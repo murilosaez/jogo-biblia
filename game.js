@@ -122,6 +122,9 @@ class Cena extends Phaser.Scene {
     this.ultimoAutoAtaque = 0;
     this.alvoId = null;
     this.hoverId = null;
+    // Andar por toque/clique: rota em andamento (casas a percorrer) e perseguição do alvo escolhido.
+    this.rota = null;
+    this.perseguir = false;
     this.respawns = new Set();
     this.entidades = {}; // id → {tipo, dados, sprite, sombra, rotulo, balao, ...}
     this.spritesItens = {};
@@ -201,6 +204,13 @@ class Cena extends Phaser.Scene {
       up: "UP", down: "DOWN", left: "LEFT", right: "RIGHT", alt: "ALT",
     });
     this.input.keyboard.addCapture(["UP", "DOWN", "LEFT", "RIGHT", "SPACE", "ALT"]);
+    // Toque ou clique curto no chão (sem arrastar: arrasto é o joystick) anda até a casa tocada.
+    this.input.on("pointerup", (ptr, sobre) => {
+      if (sobre.length || this.trocando || ptr.rightButtonReleased?.()) return;
+      if (Math.hypot(ptr.upX - ptr.downX, ptr.upY - ptr.downY) > 12 || ptr.upTime - ptr.downTime > 700) return;
+      if (window.Jogo?.joystickAtivo) return;
+      this.irAteCasa(Math.floor(ptr.worldX / TAM), Math.floor(ptr.worldY / TAM));
+    });
   }
 
   // ===== chão: 3 camadas de Tilemap (chão+borda+moldura, decoração, sombras)
@@ -239,7 +249,8 @@ class Cena extends Phaser.Scene {
     for (const c of coletaveisDaArea(this.areaAtual)) marca(c.x, c.y);
     for (const p of PORTAIS) if (p.area === this.areaAtual) marca(p.x, p.y, 1);
     const a = areas[this.areaAtual];
-    for (const k of ["passagem", "cais", "caisCanaa", "caisDeserto"]) if (a?.[k]) marca(a[k].x, a[k].y, 1);
+    for (const k of ["passagem", "cais"]) if (a?.[k]) marca(a[k].x, a[k].y, 1);
+    for (const pt of Object.values(a?.portos || {})) marca(pt.cais.x, pt.cais.y, 1);
     for (const d of DADOS_MAPAS[this.areaAtual]?.decoracoes || []) marca(d.x, d.y, 1);
     return (x, y) => set.has(`${x},${y}`);
   }
@@ -354,22 +365,29 @@ class Cena extends Phaser.Scene {
       setas(p.x + (oeste ? 1 : -1), p.y, oeste, false);
       rotulo(a === "canaan" ? "Trilha para o Deserto" : "Trilha para Canaã", p.x, p.y);
     }
-    // Cais (Canaã e Deserto): píer que entra na enseada ao norte
+    // Cais de toda cidade: píer que entra na água ao norte (enseada na borda, o Nilo ou o lago da Galileia),
+    // com o barco atracado. Pisar nele paga a passagem e embarca.
     if (area?.cais) {
       const c = area.cais;
       const s = this.add.sprite(centroX(c.x), c.y * TAM + TAM + 2, "mk_cais", 0).setOrigin(0.5, 1).setDepth(PROF.marcadorChao);
       this.animados.push({ img: s, quadros: 2, fps: 2 });
-      const barco = this.add.sprite(centroX(c.x) + 30, -10, "mk_barco", 0).setOrigin(0.5, 1).setDepth(PROF.marcadorChao + 1);
+      const barco = this.add.sprite(centroX(c.x) + 30, c.y * TAM - 74, "mk_barco", 0).setOrigin(0.5, 1).setDepth(PROF.marcadorChao + 1);
       this.animados.push({ img: barco, quadros: 2, fps: 1.5 });
-      rotulo("Cais · Mar das Rotas", c.x, c.y, COR.agua);
+      const passagem = typeof REGRAS_BARCO !== "undefined" ? ` · ${REGRAS_BARCO.passagem} moedas` : "";
+      rotulo(`Cais · Mar das Rotas${passagem}`, c.x, c.y, COR.agua);
     }
-    // Mar: cais de desembarque nas duas margens
+    // Mar: um cais em cada cidade, na margem mais perto (o píer sai da margem para o mar).
     if (a === "mar") {
-      for (const [c, nome, ang] of [[area.caisCanaa, "Desembarcar · Canaã", -90], [area.caisDeserto, "Desembarcar · Deserto", 90]]) {
-        const x = ang < 0 ? c.x * TAM - TAM / 2 : c.x * TAM + TAM * 1.5;
-        const s = this.add.sprite(x, c.y * TAM + TAM / 2, "mk_cais", 0).setAngle(ang).setDepth(PROF.marcadorChao);
+      for (const [regiao, porto] of Object.entries(area.portos || {})) {
+        const c = porto.cais;
+        const lado = c.x < 10 ? "oeste" : c.x > COLS - 10 ? "leste" : c.y < 10 ? "norte" : "sul";
+        const ang = { oeste: -90, leste: 90, norte: 180, sul: 0 }[lado];
+        const x = lado === "oeste" ? c.x * TAM - TAM / 2 : lado === "leste" ? c.x * TAM + TAM * 1.5 : centroX(c.x);
+        const y = lado === "norte" ? c.y * TAM - TAM / 2 : lado === "sul" ? c.y * TAM + TAM * 1.5 : c.y * TAM + TAM / 2;
+        const s = this.add.sprite(x, y, "mk_cais", 0).setAngle(ang).setDepth(PROF.marcadorChao);
         this.animados.push({ img: s, quadros: 2, fps: 2 });
-        rotulo(nome, c.x, c.y, COR.agua);
+        const fechado = areaAberta(this.p, regiao) ? "" : " (fechado)";
+        rotulo(`Desembarcar · ${areas[regiao].nome}${fechado}`, c.x, c.y, COR.agua);
       }
     }
   }
@@ -472,7 +490,7 @@ class Cena extends Phaser.Scene {
       const raridade = s.moedas ? "comum" : s.destaque || raridadeItem(s.item);
       const sprite = this.addItemVisual(s.id, s.x, s.y, textura, 0, raridade);
       sprite.setInteractive({ useHandCursor: true });
-      sprite.on("pointerdown", () => this.pegarSaque(s.id));
+      sprite.on("pointerdown", () => this.irAteSaque(s.id));
       if (pular && !reduzMovimento()) {
         sprite.x += (Math.random() - 0.5) * 10;
         this.tweens.add({ targets: sprite, scaleY: 1.15, duration: 120, yoyo: true });
@@ -497,7 +515,7 @@ class Cena extends Phaser.Scene {
     this.pesca = [];
     for (const ponto of pontosPesca) {
       const s = this.add.sprite(centroX(ponto.x), ponto.y * TAM + TAM / 2, "mk_pesca", 0).setDepth(PROF.marcadorChao).setInteractive({ useHandCursor: true });
-      s.on("pointerdown", () => this.pescar());
+      s.on("pointerdown", () => this.irAtePesca(ponto));
       this.pesca.push({ ponto, s });
       this.marcadores.push({ x: ponto.x, y: ponto.y, rotulo: this.textoRotulo("Pesca", COR.agua), dy: -18 });
     }
@@ -577,7 +595,7 @@ class Cena extends Phaser.Scene {
     for (const n of Object.values(npcs).filter((n) => n.area === this.areaAtual)) {
       const ent = this.criarEntidade("npc", n, Arte.visualDe(n.id));
       ent.balao = this.add.image(ent.sprite.x, 0, "mk_balao_missao").setOrigin(0.5, 1).setDepth(PROF.barra).setVisible(false);
-      ent.sprite.on("pointerdown", () => this.interagir(n.id));
+      ent.sprite.on("pointerdown", () => this.irAteNpc(n.id));
     }
     this.atualizarBaloes();
   }
@@ -873,8 +891,8 @@ class Cena extends Phaser.Scene {
         if (window.UI?.dialogo) window.UI.dialogo({ id: npc.id, nome: npc.nome, papel: npc.papel, texto: r.mensagem });
       }
     }
-    if (r.abrirLoja) (window.UI?.abrirLoja || window.abrirLoja)?.();
-    if (r.abrirViagem) (window.UI?.abrirViagem || window.abrirViagem)?.();
+    if (r.abrirLoja) (window.UI?.abrirLoja || window.abrirLoja)?.(r.abrirLoja);
+    if (r.abrirViagem) (window.UI?.abrirViagem || window.abrirViagem)?.(r.abrirViagem);
     if (r.abrirMural) window.UI?.abrirMural?.(r.abrirMural);
     if (r.tarefasEntregues?.length) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 12, { subir: true, dur: 800 });
     if (r.missaoErvasIniciada || r.missaoDesertoIniciada) this.atualizarColetaveis();
@@ -900,7 +918,7 @@ class Cena extends Phaser.Scene {
     const a = areas[this.areaAtual];
     const alvos = [];
     if (this.areaAtual === "mar") {
-      for (const c of [a.caisCanaa, a.caisDeserto]) alvos.push({ tipo: "cais", id: "cais", rotulo: "Desembarcar", x: c.x, y: c.y, tecla: "F" });
+      for (const pt of Object.values(a.portos || {})) alvos.push({ tipo: "cais", id: "cais", rotulo: "Desembarcar", x: pt.cais.x, y: pt.cais.y, tecla: "F" });
       for (const pt of pontosPesca) alvos.push({ tipo: "pesca", id: pt.id, rotulo: "Pescar", x: pt.x, y: pt.y, tecla: "P" });
     } else {
       if (a?.cais) alvos.push({ tipo: "cais", id: "cais", rotulo: "Embarcar", x: a.cais.x, y: a.cais.y, tecla: "F" });
@@ -981,6 +999,8 @@ class Cena extends Phaser.Scene {
     // mãos o golpe corpo a corpo sairia sem arma (a lógica aceita o tiro
     // a partir de 1 casa).
     const podeAtirar = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0 && alinhado;
+    // Ainda a caminho do alvo: espera chegar (sem a mensagem "chegue ao lado" a cada 2 s).
+    if (this.perseguir && !this.alcancaAlvo(e)) return;
     this.ultimoAutoAtaque = this.time.now;
     this.atacarAlvo(!!podeAtirar, true);
   }
@@ -1053,10 +1073,12 @@ class Cena extends Phaser.Scene {
     });
   }
   selecionarAlvo(id) {
-    if (!id) { this.alvoId = null; window.atualizarInterface?.(); return; }
+    if (!id) { this.alvoId = null; this.perseguir = false; window.atualizarInterface?.(); return; }
     if (!inimigos[id] || Mundo.obterVidaInimigo(MEU_ID, id) <= 0) return;
     const novo = this.alvoId !== id;
     this.alvoId = id;
+    this.rota = null;
+    this.perseguir = true; // vai até ficar ao alcance (o movimento manual cancela)
     this.proximoAutoAtaque = Date.now() + INTERVALO_AUTO_ATAQUE;
     this.ultimoAutoAtaque = this.time.now;
     if (novo && !reduzMovimento()) {
@@ -1258,13 +1280,155 @@ class Cena extends Phaser.Scene {
     else if (t.s.isDown || t.down.isDown) dy = 1;
     if (t.q.isDown) { dx = -1; dy = -1; } else if (t.e.isDown) { dx = 1; dy = -1; } else if (t.z.isDown) { dx = -1; dy = 1; } else if (t.c.isDown) { dx = 1; dy = 1; }
     const ent = window.Jogo?.entrada;
+    const manual = dx || dy || (ent && (ent.dx || ent.dy));
+    // Movimento manual (teclado ou joystick) cancela a rota e a perseguição.
+    if (manual && (this.rota || this.perseguir)) this.pararRota(true);
     if (!dx && !dy && ent?.analogico) return this.passoAnalogico(time, ent);
     this.desvioJoystick = 0;
     if (!dx && !dy && ent) { dx = Math.sign(ent.dx || 0); dy = Math.sign(ent.dy || 0); }
     if (dx || dy) {
       this.proximoPasso = time + 140;
       this.mover(dx, dy);
+      return;
     }
+    if (this.rota) return this.passoDaRota(time);
+    if (this.perseguir && this.alvoId) this.passoDePerseguicao(time);
+  }
+
+  // ===== andar por toque/clique ========================================
+  // Rota pela grade em 8 direções (busca em largura), só por casas livres (Mundo.casaLivre). Casas de
+  // transição (cais, trilha, portal) só entram como destino, para a rota não trocar de área no meio.
+  // objetivo(x, y): a casa serve de chegada? Devolve a lista de passos [dx, dy] ou null (sem caminho).
+  calcularRota(objetivo, limite = 4000) {
+    const p = this.p;
+    if (objetivo(p.x, p.y)) return [];
+    const transicao = this.casasDeTransicao();
+    const chave = (x, y) => y * COLS + x;
+    const veio = new Map([[chave(p.x, p.y), null]]);
+    const fila = [[p.x, p.y]];
+    for (let i = 0; i < fila.length && veio.size < limite; i++) {
+      const [x, y] = fila[i];
+      for (const [dx, dy] of DIRECOES_8) {
+        const nx = x + dx, ny = y + dy, k = chave(nx, ny);
+        if (veio.has(k) || !Mundo.casaLivre(nx, ny, p, true)) continue;
+        const chega = objetivo(nx, ny);
+        if (transicao.has(k) && !chega) continue;
+        veio.set(k, [x, y, dx, dy]);
+        if (chega) {
+          const passos = [];
+          for (let c = veio.get(k); c; c = veio.get(chave(c[0], c[1]))) passos.unshift([c[2], c[3]]);
+          return passos;
+        }
+        fila.push([nx, ny]);
+      }
+    }
+    return null;
+  }
+  casasDeTransicao() {
+    if (this._transicao?.area === this.areaAtual) return this._transicao.casas;
+    const a = areas[this.areaAtual] || {}, casas = new Set(), add = (c) => c && casas.add(c.y * COLS + c.x);
+    add(a.passagem); add(a.cais);
+    for (const c of Object.values(a.portos || {})) add(c.cais);
+    for (const t of PORTAIS) if (t.area === this.areaAtual) add(t);
+    this._transicao = { area: this.areaAtual, casas };
+    return casas;
+  }
+  // Começa uma rota; ao chegar, chama fim(). Sem caminho, avisa.
+  iniciarRota(objetivo, fim, destino) {
+    const passos = this.calcularRota(objetivo);
+    if (!passos) { this.mensagem("Não há caminho até lá."); return false; }
+    this.perseguir = false;
+    this.rota = { passos, objetivo, fim, destino };
+    this.marcarDestino(destino);
+    if (!passos.length) this.concluirRota();
+    return true;
+  }
+  passoDaRota(time) {
+    const r = this.rota;
+    if (!r.passos.length) return this.concluirRota();
+    const [dx, dy] = r.passos[0];
+    if (this.mover(dx, dy, dx && dy ? 170 : 130)) {
+      r.passos.shift();
+      this.proximoPasso = time + (dx && dy ? 180 : 140);
+      if (this.trocando) { this.rota = null; return; }
+      if (!r.passos.length) this.concluirRota();
+      return;
+    }
+    // Algo entrou no caminho (uma criatura andou): refaz a rota uma vez a cada bloqueio.
+    const nova = this.calcularRota(r.objetivo);
+    if (!nova || !nova.length) { this.pararRota(); return; }
+    r.passos = nova;
+    this.proximoPasso = time + 140;
+  }
+  concluirRota() {
+    const r = this.rota;
+    this.pararRota();
+    r?.fim?.();
+  }
+  pararRota(manual = false) {
+    this.rota = null;
+    if (manual) this.perseguir = false;
+    if (this.marcaDestino) this.marcaDestino.setVisible(false);
+  }
+  marcarDestino(c) {
+    if (!c) return;
+    if (!this.marcaDestino) {
+      this.marcaDestino = this.add.graphics().setDepth(PROF.marcadorChao);
+      this.marcaDestino.lineStyle(2, 0xf2d27a, 0.9).strokeRect(-11, -11, 22, 22).lineStyle(2, 0x2a1a14, 0.6).strokeRect(-13, -13, 26, 26);
+    }
+    this.marcaDestino.setPosition(centroX(c.x), c.y * TAM + TAM / 2).setVisible(true).setAlpha(1);
+  }
+  // Destinos do toque: casa do chão (ou a vizinha mais perto, se for obstáculo), NPC (fala ao chegar),
+  // saque (recolhe ao pisar) e ponto de pesca (pesca ao chegar).
+  irAteCasa(x, y) {
+    if (x < 0 || y < 0 || x >= COLS || y >= ROWS || (x === this.p.x && y === this.p.y)) return;
+    const livre = Mundo.casaLivre(x, y, this.p, true);
+    const objetivo = livre ? (cx, cy) => cx === x && cy === y : (cx, cy) => cheb({ x: cx, y: cy }, { x, y }) <= 1;
+    this.iniciarRota(objetivo, null, { x, y });
+    window.atualizarInterface?.();
+  }
+  irAteNpc(id) {
+    const n = npcs[id];
+    if (!n) return;
+    if (cheb(this.p, n) <= 1) { this.pararRota(); this.interagir(id); return; }
+    this.iniciarRota((x, y) => cheb({ x, y }, n) <= 1, () => this.interagir(id), n);
+  }
+  irAteSaque(id) {
+    const s = this.p.saqueNoChao.find((x) => x.id === id);
+    if (!s) return;
+    if (cheb(this.p, s) <= 1) { this.pararRota(); this.pegarSaque(id); return; }
+    this.iniciarRota((x, y) => x === s.x && y === s.y, null, s);
+  }
+  irAtePesca(ponto) {
+    if (cheb(this.p, ponto) <= 1) { this.pararRota(); this.pescar(); return; }
+    this.iniciarRota((x, y) => cheb({ x, y }, ponto) <= 1, () => this.pescar(), ponto);
+  }
+  // O alvo está ao alcance do ataque que o autoataque usaria (arco com flechas e caminho livre, ou ao lado)?
+  alcancaAlvo(e) {
+    const arco = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0;
+    return arco ? Mundo.linhaDeTiroLivre(this.p, e) : cheb(this.p, e) <= 1;
+  }
+  // Persegue o alvo um passo por vez (a criatura anda: a rota é refeita a cada passo). Ao chegar,
+  // o autoataque sai na hora.
+  passoDePerseguicao(time) {
+    const e = inimigos[this.alvoId];
+    if (!e || e.area !== this.areaAtual || Mundo.obterVidaInimigo(MEU_ID, e.id) <= 0) { this.perseguir = false; return; }
+    if (this.alcancaAlvo(e)) {
+      if (!this.chegouAoAlvo) this.proximoAutoAtaque = Math.min(this.proximoAutoAtaque, Date.now());
+      this.chegouAoAlvo = true;
+      return;
+    }
+    this.chegouAoAlvo = false;
+    const arco = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0;
+    const objetivo = arco
+      ? (x, y) => Mundo.linhaDeTiroLivre({ x, y, area: this.areaAtual }, e)
+      : (x, y) => cheb({ x, y }, e) <= 1;
+    const passos = this.calcularRota(objetivo, 2500);
+    if (!passos) { this.perseguir = false; this.mensagem("Não há caminho até o alvo."); return; }
+    if (!passos.length) return;
+    const [dx, dy] = passos[0];
+    if (this.mover(dx, dy, dx && dy ? 170 : 130)) this.proximoPasso = time + (dx && dy ? 180 : 140);
+    else this.proximoPasso = time + 140;
   }
 
   // Joystick analógico em 360°: o mapa é em casas, então cada passo é um dos 2 vizinhos da grade em volta
@@ -1743,7 +1907,7 @@ class Cena extends Phaser.Scene {
     if (a?.passagem) ponto(a.passagem.x, a.passagem.y, "#b98ad0", 3);
     if (a?.cais) ponto(a.cais.x, a.cais.y, "#6fd0d0", 3);
     if (this.areaAtual === "mar") {
-      for (const c of [a.caisCanaa, a.caisDeserto]) ponto(c.x, c.y, "#6fd0d0", 3);
+      for (const pt of Object.values(a.portos || {})) ponto(pt.cais.x, pt.cais.y, "#6fd0d0", 3);
       for (const pt of pontosPesca) ponto(pt.x, pt.y, "#6fd0d0", 2);
     }
     for (const ent of Object.values(this.entidades)) {

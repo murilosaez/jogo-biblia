@@ -758,8 +758,12 @@ for (const ponto of pontosPesca) abrirCasa("mar", ponto.x, ponto.y);
 for (const [areaId, grupo] of Object.entries(COLETAVEIS_POR_AREA))
   for (const c of grupo.lista) abrirCasa(areaId, c.x, c.y);
 for (const area of Object.values(areas)) {
-  for (const chave of ["inicio", "passagem", "chegada", "chegadaViagem", "caisCanaa", "caisDeserto", "embarqueCanaa", "embarqueDeserto"]) {
+  for (const chave of ["inicio", "passagem", "chegada", "chegadaViagem"]) {
     if (area[chave]) abrirCasa(area.id, area[chave].x, area[chave].y);
+  }
+  for (const porto of Object.values(area.portos || {})) {
+    abrirCasa(area.id, porto.cais.x, porto.cais.y);
+    abrirCasa(area.id, porto.embarque.x, porto.embarque.y);
   }
   if (area.cais) {
     abrirCasa(area.id, area.cais.x, area.cais.y);
@@ -1354,6 +1358,54 @@ const PREPOSICAO_AREA = {
 function nomeComPreposicao(areaId) {
   return `${PREPOSICAO_AREA[areaId] || "a"} ${areas[areaId]?.nome || areaId}`;
 }
+// "do Egito", "da Galileia", "de Canaã".
+function nomeComDe(areaId) {
+  const de = { a: "de", ao: "do", "à": "da" }[PREPOSICAO_AREA[areaId] || "a"];
+  return `${de} ${areas[areaId]?.nome || areaId}`;
+}
+
+// ---------------------------------------------------------------------
+// Viagem rápida, barco e lojas (funções puras para a interface)
+// ---------------------------------------------------------------------
+// Cidade aberta para viagem rápida e desembarque: Canaã e o Deserto sempre; um capítulo, quando o
+// capítulo anterior foi concluído (a mesma regra dos portais).
+function areaAberta(p, areaId) {
+  if (!REGRAS_VIAGEM.ordem.includes(areaId)) return false;
+  return CAPITULOS[areaId] ? capituloAnteriorConcluido(p, areaId) : true;
+}
+
+// Preço da viagem rápida entre duas cidades (null se não houver rota): base + porEtapa × etapas.
+function precoViagem(origem, destino) {
+  const o = REGRAS_VIAGEM.ordem;
+  const i = o.indexOf(origem);
+  const j = o.indexOf(destino);
+  if (i < 0 || j < 0 || i === j) return null;
+  return REGRAS_VIAGEM.base + REGRAS_VIAGEM.porEtapa * Math.abs(i - j);
+}
+
+// Destinos que um guia oferece a partir da área do jogador: todas as cidades, com preço, se estão abertas
+// e quanto falta de moedas.
+function destinosDeViagem(p) {
+  return REGRAS_VIAGEM.ordem.map((area) => {
+    const preco = precoViagem(p.area, area);
+    const aberta = areaAberta(p, area);
+    return {
+      area,
+      nome: areas[area].nome,
+      atual: area === p.area,
+      aberta,
+      preco,
+      falta: preco !== null ? Math.max(0, preco - (p.moedas || 0)) : 0,
+      motivo: aberta ? "" : "conclua o capítulo anterior",
+    };
+  });
+}
+
+// Catálogo de um mercador: [{ item, preco }] na ordem de LOJAS (só itens com preço em PRECOS_LOJA).
+function catalogoDaLoja(npcId) {
+  const lista = registroDe(LOJAS, npcId) || [];
+  return lista.filter((item) => registroDe(PRECOS_LOJA, item)).map((item) => ({ item, preco: PRECOS_LOJA[item] }));
+}
 
 // Fase do capítulo do ponto de vista do jogador (a fase da sua missão).
 function faseCapitulo(p, chave) {
@@ -1640,7 +1692,7 @@ function textoMissaoAtual(p) {
   const nome = areas[p.area]?.nome || p.area;
   let texto = textoMissaoDaArea(p, p.area);
   if (!texto && p.area === "mar") {
-    texto = "Pesque nos pontos marcados (P) ou navegue até um cais: Canaã a oeste, Deserto a leste.";
+    texto = "Pesque nos pontos marcados (P) ou navegue até o cais de uma cidade aberta para desembarcar.";
   }
   return `${nome} · ${texto || "Explore a região."}`;
 }
@@ -1769,7 +1821,7 @@ function custoFlecha() {
   return (PRECOS_LOJA.flechas || 0) / (FLECHAS_POR_PACOTE || 1);
 }
 
-// Quanto o Azarias paga pelo item (0 para equipamento, que ele não compra).
+// Quanto os mercadores pagam pelo item (0 para equipamento, que eles não compram).
 function valorDeVenda(item) {
   return registroDe(VALORES_VENDA, baseItem(item)) || 0;
 }
@@ -2493,9 +2545,10 @@ const Mundo = {
 
   comprarItem(id, item) {
     const p = this.jogadores[id];
-    if (!p || !this.mercadorProximo(p)) return { ok: false, mensagem: "Aproxime-se do mercador para comprar." };
-    const preco = registroDe(PRECOS_LOJA, item);
-    if (!preco) return { ok: false, mensagem: "Esse item não está à venda." };
+    const merc = p && this.mercadorProximo(p);
+    if (!merc) return { ok: false, mensagem: "Aproxime-se do mercador para comprar." };
+    const preco = catalogoDaLoja(merc.id).find((x) => x.item === item)?.preco;
+    if (!preco) return { ok: false, mensagem: "Esse mercador não vende esse item." };
     const lista = item === "flechas" ? Array(FLECHAS_POR_PACOTE).fill("flecha") : [item];
     if (p.moedas < preco) return { ok: false, mensagem: `Você precisa de ${preco} moedas.` };
     if (!this.podeReceberComRemocao(p, lista)) return { ok: false, mensagem: "A mochila está cheia." };
@@ -2609,24 +2662,19 @@ const Mundo = {
   verificarTransicao(p) {
     const { x, y } = p;
     if (p.area === "mar") {
-      const mar = areas.mar;
-      if (x === mar.caisCanaa.x && y === mar.caisCanaa.y) {
-        return this.mudarDeArea(
-          p,
-          "canaan",
-          areas.canaan.cais.x,
-          areas.canaan.cais.y + 1,
-          "O barco chegou ao cais de Canaã.",
-        );
-      }
-      if (x === mar.caisDeserto.x && y === mar.caisDeserto.y) {
-        return this.mudarDeArea(
-          p,
-          "deserto",
-          areas.deserto.cais.x,
-          areas.deserto.cais.y + 1,
-          "O barco chegou ao cais do Deserto.",
-        );
+      // Cais de cada cidade: desembarca logo abaixo do cais dela, se a cidade já estiver aberta.
+      for (const [regiao, porto] of Object.entries(areas.mar.portos)) {
+        if (x !== porto.cais.x || y !== porto.cais.y) continue;
+        if (!areaAberta(p, regiao)) {
+          this.salvar(p);
+          return {
+            ok: true,
+            caminhoBloqueado: true,
+            mensagem: `O cais ${nomeComDe(regiao)} ainda está fechado. Conclua o capítulo anterior para desembarcar ali.`,
+          };
+        }
+        const cais = areas[regiao].cais;
+        return this.mudarDeArea(p, regiao, cais.x, cais.y + 1, `O barco chegou ao cais ${nomeComDe(regiao)}.`);
       }
       return null;
     }
@@ -2642,15 +2690,29 @@ const Mundo = {
         `Você percorreu a trilha terrestre e chegou ${nomeComPreposicao(destino)}.`,
       );
     }
-    if (area.cais && x === area.cais.x && y === area.cais.y) {
-      const embarque = p.area === "canaan" ? areas.mar.embarqueCanaa : areas.mar.embarqueDeserto;
-      return this.mudarDeArea(
-        p,
-        "mar",
-        embarque.x,
-        embarque.y,
-        "Você embarcou no cais. Navegue até o marcador Canaã ou Deserto para desembarcar.",
-      );
+    if (area.cais && x === area.cais.x && y === area.cais.y && areas.mar.portos[p.area]) {
+      // Barco pago: sem moedas, o jogador fica no cais.
+      const passagem = REGRAS_BARCO.passagem;
+      if (p.moedas < passagem) {
+        this.salvar(p);
+        return {
+          ok: true,
+          caminhoBloqueado: true,
+          mensagem: `A passagem do barco custa ${passagem} moedas e você tem ${p.moedas}.`,
+        };
+      }
+      p.moedas -= passagem;
+      const embarque = areas.mar.portos[p.area].embarque;
+      return {
+        ...this.mudarDeArea(
+          p,
+          "mar",
+          embarque.x,
+          embarque.y,
+          `Você pagou ${passagem} moedas de passagem e embarcou. Navegue até o cais de qualquer cidade aberta para desembarcar.`,
+        ),
+        passagemPaga: passagem,
+      };
     }
     const portal = PORTAIS.find((t) => t.area === p.area && t.x === x && t.y === y);
     if (portal) {
@@ -2700,17 +2762,24 @@ const Mundo = {
     const p = this.jogadores[id];
     const guia = this.npcProximo(p, (n) => n.papel === "guia");
     if (!guia) return { ok: false, mensagem: "Aproxime-se de um guia de caravanas para usar a viagem rápida." };
-    if (!["canaan", "deserto"].includes(destino) || destino === p.area) {
-      return { ok: false, mensagem: "Destino indisponível." };
+    const preco = precoViagem(p.area, destino);
+    if (preco === null) return { ok: false, mensagem: "Destino indisponível." };
+    if (!areaAberta(p, destino)) {
+      return { ok: false, mensagem: `A rota ${nomeComPreposicao(destino)} ainda está fechada: conclua o capítulo anterior.` };
     }
+    if (p.moedas < preco) return { ok: false, mensagem: `A viagem custa ${preco} moedas e você tem ${p.moedas}.` };
+    p.moedas -= preco;
     const chegada = areas[destino].chegadaViagem;
-    return this.mudarDeArea(
-      p,
-      destino,
-      chegada.x,
-      chegada.y,
-      `Viagem rápida para ${areas[destino].nome}. A trilha terrestre continua disponível para viajar a pé.`,
-    );
+    return {
+      ...this.mudarDeArea(
+        p,
+        destino,
+        chegada.x,
+        chegada.y,
+        `Viagem rápida ${nomeComPreposicao(destino)} por ${preco} moedas.`,
+      ),
+      precoViagem: preco,
+    };
   },
 
   pescar(id) {
@@ -2729,7 +2798,7 @@ const Mundo = {
     this.salvar(p);
     return {
       ok: true,
-      mensagem: `Você pescou um peixe fresco! Azarias compra cada peixe por ${VALORES_VENDA.peixe} moedas.`,
+      mensagem: `Você pescou um peixe fresco! Os mercadores compram cada peixe por ${VALORES_VENDA.peixe} moedas.`,
     };
   },
 
@@ -2867,15 +2936,16 @@ const Mundo = {
     if (npc.papel === "loja") {
       return {
         ok: true,
-        abrirLoja: true,
-        mensagem: `${npc.nome.split(",")[0]}: Tenho provisões, flechas e equipamentos para vender.`,
+        abrirLoja: npc.id,
+        mensagem: `${npc.nome.split(",")[0]}: ${npc.falas?.saudacao || "Tenho provisões, flechas e equipamentos para vender."}`,
       };
     }
     if (npc.papel === "guia") {
+      const abertas = destinosDeViagem(p).filter((d) => d.aberta && !d.atual).length;
       return {
         ok: true,
-        abrirViagem: true,
-        mensagem: `${npc.nome}: Posso levar você rapidamente entre Canaã e o Deserto. A viagem é gratuita; também há uma trilha terrestre para caminhar.`,
+        abrirViagem: npc.id,
+        mensagem: `${npc.nome.split(",")[0]}: Levo você a ${abertas === 1 ? "1 cidade" : `${abertas} cidades`} daqui. O preço depende da distância; a pé e de barco também se chega.`,
       };
     }
     if (npc.papel === "ambiente") return this.interagirMorador(id, npc);
