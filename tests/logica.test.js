@@ -21,6 +21,7 @@ const ARQUIVOS_DADOS = [
   "dados/missoes.js",
   "dados/tarefas.js",
   "dados/vocacoes.js",
+  "dados/oficios.js",
 ];
 const ARQUIVOS = ["storage.js", ...ARQUIVOS_DADOS, "logica.js"];
 const FONTES = ARQUIVOS.map((f) => fs.readFileSync(path.join(RAIZ, f), "utf8"));
@@ -5450,6 +5451,234 @@ teste("64e. equilíbrio dos talentos (JGB-46): todo build focado vence e ajuda, 
     assert.strictEqual(maisSeguro.id, DEFENSIVOS[v], `${v}: o ramo mais seguro é ${maisSeguro.nome}`);
   }
 });
+
+// ---------------------------------------------------------------------
+// Ofícios (JGB-24)
+// ---------------------------------------------------------------------
+// Dá n unidades de um item na mochila (sem peso: a carga é aumentada se faltar).
+function darItens(j, item, n) {
+  for (let i = 0; i < n; i++) j.p.inventario.push(item);
+}
+
+teste("65. ofícios (JGB-24): 6 ofícios, receitas coerentes, materiais de caça e coleta, extração alcançável e economia", () => {
+  const j = carregarJogo();
+  const [OF, REC, R, ITENS, VENDA, LOJA] = ["OFICIOS", "RECEITAS", "REGRAS_OFICIOS", "ITENS", "VALORES_VENDA", "PRECOS_LOJA"].map(j.g);
+  igual(Object.keys(OF), ["pescador", "ferreiro", "carpinteiro", "oleiro", "tecelao", "perfumista"]);
+  // De onde vem cada item: saque das criaturas, coleta (ervas, odres, pesca, extração) ou outra receita.
+  const doSaque = new Set(Object.values(j.g("inimigos")).flatMap((e) => e.saque.itens.map((l) => l.item)));
+  const extracoes = j.g("pontosExtracao");
+  const coletados = new Set(["erva", "odre_agua", "peixe", "peixe_grande", ...extracoes.map((pt) => pt.item)]);
+  const fabricados = new Set(Object.values(REC).map((r) => r.produto.item));
+  const exclusivosDaTroca = new Set(j.g("DADOS_TROCA_PONTOS").map((o) => o.item).filter((i) => i && !(i in LOJA)));
+  assert.ok(exclusivosDaTroca.has("escudo_ferro"), "itens exclusivos da troca");
+  for (const [id, o] of Object.entries(OF)) {
+    assert.ok(o.nome && o.descricao && o.onde, `${id}: textos`);
+    assert.ok(new RegExp(`glifo\\("of_${o.icone}"`).test(FONTE_SPRITES), `${id}: glifo of_${o.icone}`);
+    for (const [item, xp] of Object.entries(o.coleta)) assert.ok(ITENS[item] && xp > 0 && coletados.has(item), `${id}: coleta ${item}`);
+    const receitas = Object.values(REC).filter((r) => r.oficio === id);
+    assert.ok(receitas.length >= 3, `${id}: 3+ receitas`);
+    assert.ok(receitas.some((r) => r.nivel === 1), `${id}: receita no nível 1`);
+    assert.ok(Object.keys(o.coleta).length || id === "tecelao", `${id}: colhe algo (o tecelão só fabrica)`);
+  }
+  for (const [rid, r] of Object.entries(REC)) {
+    assert.ok(OF[r.oficio] && Number.isInteger(r.nivel) && r.nivel >= 1 && r.nivel <= R.nivelMaximo && r.xp > 0, `${rid}: campos`);
+    assert.ok(ITENS[r.produto.item] && r.produto.quantidade >= 1, `${rid}: produto`);
+    assert.ok(!exclusivosDaTroca.has(r.produto.item), `${rid}: não fabrica item exclusivo da troca de pontos`);
+    for (const [item, q] of Object.entries(r.materiais)) {
+      assert.ok(ITENS[item] && Number.isInteger(q) && q >= 1, `${rid}: material ${item}`);
+      assert.ok(doSaque.has(item) || coletados.has(item) || fabricados.has(item), `${rid}: ${item} não vem de caça, coleta nem receita`);
+      assert.ok(!(item in LOJA), `${rid}: ${item} vem da loja (comprar e fabricar não pode virar lucro)`);
+    }
+    // Mercadoria: vale mais que os materiais, sem exagero.
+    const custo = Object.entries(r.materiais).reduce((s, [item, q]) => s + (VENDA[item] || 0) * q, 0);
+    const valor = (VENDA[r.produto.item] || 0) * r.produto.quantidade;
+    if (valor && custo) assert.ok(valor >= custo * 1.05 && valor <= custo * 3, `${rid}: vende ${valor} com materiais de ${custo}`);
+  }
+  for (const item of [...coletados, ...fabricados].filter((i) => !["erva", "odre_agua", "peixe"].includes(i))) {
+    assert.ok(new RegExp(`item\\("${item}"`).test(FONTE_SPRITES) || ITENS[item].tipo !== "recurso", `${item}: sprite`);
+  }
+  // Pontos de extração: ids únicos, casa livre, alcançável a pé a partir do início da área e longe de NPCs.
+  igual(new Set(extracoes.map((pt) => pt.id)).size, extracoes.length);
+  const mapas = j.g("mapas");
+  for (const pt of extracoes) {
+    assert.ok(OF[j.g("OFICIO_DA_COLETA")[pt.item]], `${pt.id}: o item rende XP a um ofício`);
+    assert.strictEqual(mapas[pt.area][pt.y][pt.x], 0, `${pt.id}: casa livre`);
+    const ini = j.g("areas")[pt.area].inicio;
+    const vis = new Set([`${ini.x},${ini.y}`]);
+    const fila = [ini];
+    while (fila.length) {
+      const c = fila.shift();
+      for (const [dx, dy] of VIZINHOS.slice(0, 4)) {
+        const k = `${c.x + dx},${c.y + dy}`;
+        if (mapas[pt.area][c.y + dy]?.[c.x + dx] === 0 && !vis.has(k)) { vis.add(k); fila.push({ x: c.x + dx, y: c.y + dy }); }
+      }
+    }
+    assert.ok(vis.has(`${pt.x},${pt.y}`), `${pt.id}: alcançável`);
+    assert.ok(!Object.values(j.g("npcs")).some((n) => n.area === pt.area && distanciaJ(n, pt) < 3), `${pt.id}: longe de NPC`);
+  }
+  // Cada matéria-prima de extração tem 3+ pontos.
+  for (const item of new Set(extracoes.map((pt) => pt.item))) assert.ok(extracoes.filter((pt) => pt.item === item).length >= 3, `${item}: 3+ pontos`);
+  // Curva: 10 XP do 1 ao 2, crescendo; o máximo é alcançável.
+  igual([j.g("xpParaSubirOficio")(1), j.g("xpParaSubirOficio")(10) > j.g("xpParaSubirOficio")(9)], [10, true]);
+});
+
+teste("65b. ofícios: pesca vira Pescador (XP, peixe grande, peixe extra), ervas e extração dão XP, respawn e mochila cheia", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const g = (n) => j.g(n);
+  // Pesca: +8 XP de Pescador; nível 1 nunca traz peixe grande nem extra.
+  concluirMissoes(j);
+  const ponto = g("pontosPesca")[0];
+  posicionarAoLado(j, "mar", ponto);
+  j.definirAleatorio(() => 0);
+  let r = j.exec({ tipo: "pescar" });
+  assert.ok(r.ok && r.item === "peixe" && r.quantidade === 1 && /\+8 XP de Pescador/.test(r.mensagem), r.mensagem);
+  igual(p.oficios.pescador.xp, 8);
+  // Nível 10: peixe grande (sorteio 0) e um peixe a mais.
+  p.oficios.pescador.xp = g("xpTotalOficio")(10);
+  j.avancar(13_000);
+  const antes = p.inventario.length;
+  r = j.exec({ tipo: "pescar" });
+  assert.ok(r.ok && r.item === "peixe_grande" && r.quantidade === 2 && p.inventario.length === antes + 2, r.mensagem);
+  igual(p.oficios.pescador.xp, g("xpTotalOficio")(10) + 12 + 8);
+  assert.ok(g("chancePeixeGrande")(4) === 0 && g("chancePeixeGrande")(5) > 0 && g("chancePeixeGrande")(30) <= 0.25);
+  // Ervas: +2 XP de Perfumista.
+  const erva = g("coletaveisDaArea")("canaan")[0];
+  r = pisarEm(j, "canaan", erva);
+  assert.ok(r.itemColetado && /\+2 XP de Perfumista/.test(r.mensagem), r.mensagem);
+  igual(p.oficios.perfumista.xp, 2);
+  // Extração: madeira em Canaã (+4 XP de Carpinteiro); o ponto some e brota de novo.
+  j.definirAleatorio(() => 0.99);
+  const madeira = g("pontosExtracao").find((pt) => pt.item === "madeira" && pt.area === "canaan");
+  igual(g("extracoesDaArea")("canaan").map((c) => c.item).every((i) => i === "madeira"), true);
+  r = pisarEm(j, "canaan", madeira);
+  assert.ok(r.ok && r.extracao === madeira.id && r.quantidade === 1 && /\+4 XP de Carpinteiro/.test(r.mensagem), r.mensagem);
+  assert.strictEqual(p.inventario.filter((i) => i === "madeira").length, 1);
+  assert.ok(!j.M.extracaoDisponivel(ID, "canaan", madeira.id), "o ponto descansa");
+  r = pisarEm(j, "canaan", madeira);
+  assert.ok(!r.extracao, "sem colher de novo antes do respawn");
+  j.avancar(g("REGRAS_OFICIOS").respawnExtracao);
+  assert.ok(j.M.extracaoDisponivel(ID, "canaan", madeira.id), "brotou");
+  // Nível alto: às vezes 2 (sorteio 0); sobe de nível e avisa.
+  p.oficios.carpinteiro.xp = g("xpTotalOficio")(15) - 1;
+  j.definirAleatorio(() => 0);
+  r = pisarEm(j, "canaan", madeira);
+  assert.ok(r.quantidade === 2 && r.oficioSubiu?.nivel === 15 && /Carpinteiro subiu para o nível 15/.test(r.mensagem), r.mensagem);
+  // Mochila cheia: não colhe e o ponto continua lá.
+  j.avancar(g("REGRAS_OFICIOS").respawnExtracao);
+  while (j.M.adicionarItem(p, "anfora"));
+  r = pisarEm(j, "canaan", madeira);
+  assert.ok(!r.extracao && /Mochila cheia/.test(r.mensagem) && j.M.extracaoDisponivel(ID, "canaan", madeira.id), r.mensagem);
+  // Ponto de outra área não conta.
+  assert.ok(!j.M.extracaoDisponivel(ID, "egito", madeira.id));
+});
+
+teste("65c. fabricar: nível, materiais, todos, mochila cheia, qualidade dos equipamentos, XP e visão da janela", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const g = (n) => j.g(n);
+  const fab = (receita, quantidade) => j.exec({ tipo: "fabricar", receita, quantidade });
+  p.inventario = [];
+  let r = fab("peixe_seco");
+  assert.ok(!r.ok && /Faltam: 3 peixe fresco/.test(r.mensagem), r.mensagem);
+  assert.ok(!fab("nao_existe").ok && !fab("constructor").ok);
+  darItens(j, "peixe", 7);
+  r = fab("peixe_seco");
+  assert.ok(r.ok && r.feitos === 1 && /\+12 XP/.test(r.mensagem), r.mensagem);
+  igual([p.inventario.filter((i) => i === "peixe").length, p.inventario.filter((i) => i === "peixe_seco").length, p.oficios.pescador.xp], [4, 1, 12]);
+  // Nível baixo: recusa e não gasta nada.
+  darItens(j, "peixe_grande", 1);
+  darItens(j, "madeira", 1);
+  r = fab("peixe_defumado");
+  assert.ok(!r.ok && /nível 8/.test(r.mensagem) && p.inventario.includes("peixe_grande"), r.mensagem);
+  // "todos": faz quantas der (4 peixes → 1 peixe seco) e para.
+  r = fab("peixe_seco", "todos");
+  assert.ok(r.ok && r.feitos === 1, r.mensagem);
+  // O equipamento vestido não serve de material; a quantidade sai dos materiais da mochila.
+  const visao = g("visaoOficios")(p);
+  const pescador = visao.find((o) => o.id === "pescador");
+  igual([visao.map((o) => o.id).length, pescador.nivel, pescador.receitas.map((x) => x.id)], [6, 2, ["peixe_seco", "oleo_peixe", "peixe_defumado"]], "24 XP: nível 2");
+  igual(pescador.receitas[0].materiais[0], { item: "peixe", nome: "Peixe fresco", precisa: 3, tem: 1 });
+  assert.ok(!pescador.receitas[2].aberta && pescador.receitas[0].motivo, "a janela recebe o motivo");
+  // Equipamento: escudo de bronze (ferreiro 5) sai comum no nível da receita e pode sair melhor acima dele.
+  p.oficios.ferreiro.xp = g("xpTotalOficio")(5);
+  p.inventario = [];
+  darItens(j, "lingote_bronze", 6);
+  darItens(j, "madeira", 4);
+  j.definirAleatorio(() => 0);
+  r = fab("escudo_bronze");
+  assert.ok(r.ok && r.itens[0] === "escudo_bronze", `no nível da receita: ${r.itens}`);
+  p.oficios.ferreiro.xp = g("xpTotalOficio")(15);
+  r = fab("escudo_bronze");
+  const escudo = r.itens[0];
+  assert.ok(r.ok && g("raridadeItem")(escudo) !== "comum" && g("infoItem")(escudo).defesa > g("ITENS").escudo_bronze.defesa, `acima do nível: ${escudo} — ${r.mensagem}`);
+  assert.ok(/Saiu Escudo de bronze/.test(r.mensagem), r.mensagem);
+  igual(g("chanceQualidade")(15, 5), 0.3);
+  igual(g("chanceQualidade")(5, 5), 0);
+  // Flechas: 1 fabricação = 5 flechas.
+  p.oficios.carpinteiro.xp = 0;
+  p.inventario = [];
+  darItens(j, "madeira", 2);
+  darItens(j, "pena_ave", 2);
+  r = fab("flechas", 2);
+  assert.ok(r.ok && r.feitos === 2 && p.inventario.filter((i) => i === "flecha").length === 10, r.mensagem);
+  // Mochila cheia: a túnica (4 kg) pesa mais que os 2 tecidos (2 kg); sem espaço, nada é gasto.
+  p.inventario = [];
+  darItens(j, "tecido_linho", 2);
+  p.oficios.tecelao.xp = g("xpTotalOficio")(3);
+  while (j.M.adicionarItem(p, "flecha"));
+  r = fab("tunica_pano");
+  assert.ok(!r.ok && /Mochila cheia/.test(r.mensagem) && p.inventario.filter((i) => i === "tecido_linho").length === 2, r.mensagem);
+  // Subir de nível: oficioSubiu no resultado.
+  p.inventario = [];
+  p.oficios.tecelao.xp = g("xpTotalOficio")(2) - 1;
+  darItens(j, "linho_egipcio", 2);
+  r = fab("tecido_linho");
+  assert.ok(r.ok && r.oficioSubiu?.oficio === "tecelao" && r.oficioSubiu.nivel === 2 && /Tecelão subiu para o nível 2/.test(r.mensagem), r.mensagem);
+  // XP para no nível máximo.
+  p.oficios.tecelao.xp = g("xpTotalOficio")(30) - 5;
+  darItens(j, "linho_egipcio", 2);
+  fab("tecido_linho");
+  igual([g("nivelOficio")(p, "tecelao"), p.oficios.tecelao.xp, g("progressoOficio")(p, "tecelao").maximo], [30, g("xpTotalOficio")(30), true]);
+});
+
+teste("65d. ofícios no save: recarrega igual, v14 recebe o aviso, XP e relógios corrompidos são normalizados", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  p.oficios.ferreiro.xp = 250;
+  p.extracaoRespawn.minerio1 = j.agora + 10_000;
+  j.g("Storage").flush();
+  const q = carregarJogo({ store: j.store, inicio: j.agora }).entrar();
+  igual([q.oficios.ferreiro.xp, q.extracaoRespawn.minerio1, Object.keys(q.oficios)], [250, j.agora + 10_000, ["pescador", "ferreiro", "carpinteiro", "oleiro", "tecelao", "perfumista"]]);
+  // Corrompido: XP negativo, texto, enorme; ofício inventado; relógio no futuro distante; ponto inventado.
+  const k = carregarJogo();
+  k.entrar();
+  k.p.oficios = { pescador: { xp: -5 }, ferreiro: { xp: "muito" }, oleiro: { xp: 1e12 }, alfaiate: { xp: 99 }, tecelao: { xp: 12.7 } };
+  k.p.extracaoRespawn = { minerio1: k.agora + 1e12, inventado: k.agora + 1000, argila1: "x" };
+  k.g("Storage").flush();
+  const q2 = carregarJogo({ store: k.store, inicio: k.agora }).entrar();
+  igual(
+    [q2.oficios.pescador.xp, q2.oficios.ferreiro.xp, q2.oficios.oleiro.xp, q2.oficios.alfaiate, q2.oficios.tecelao.xp],
+    [0, 0, k.g("xpTotalOficio")(30), undefined, 12],
+  );
+  igual(q2.extracaoRespawn, { minerio1: k.agora + k.g("REGRAS_OFICIOS").respawnExtracao });
+  // Save v14: aviso da novidade, uma vez.
+  const m = carregarJogo();
+  m.entrar();
+  m.g("Storage").flush();
+  const chave = Object.keys(m.store).find((c) => c.startsWith("save_"));
+  const dados = JSON.parse(m.store[chave]);
+  dados.versao = 14;
+  delete dados.oficios;
+  delete dados.extracaoRespawn;
+  m.store[chave] = JSON.stringify(dados);
+  const q3 = carregarJogo({ store: m.store }).entrar();
+  assert.ok(q3.avisosPendentes.some((a) => a.id === "atualizacao_15") && q3.oficios.pescador.xp === 0 && objetoVazio(q3.extracaoRespawn));
+});
+const objetoVazio = (o) => o && typeof o === "object" && !Object.keys(o).length;
 
 // ---------------------------------------------------------------------
 // Execução

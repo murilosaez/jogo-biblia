@@ -38,13 +38,18 @@ Conteúdo do jogo (pasta dados/)
   (REGRAS_TALENTOS: pontos por nível, pontos para abrir cada fileira, ápices, preço de refazer e limites;
   TALENTOS: 3 ramos por vocação, 6 talentos por ramo, com fileira, graus, requisito e efeito por grau).
   Os ids dos talentos ficam no save: renomear um devolve os pontos de quem o tinha.
-O progresso fica no save (save versão 14): missoes[id] = { status, etapa, progresso },
+- dados/oficios.js: os ofícios (REGRAS_OFICIOS: nível máximo, curva de XP, chance de colher a mais, peixe
+  grande, qualidade dos equipamentos e respawn da extração; OFICIOS: os 6 ofícios, de onde vêm os materiais e
+  o XP de cada coleta; RECEITAS: ofício, nível, materiais, produto e XP). Os pontos de extração (madeira,
+  argila, minério e resina) ficam em dados/mundo.js (pontosExtracao) e os itens novos em dados/itens.js.
+O progresso fica no save (save versão 15): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
 mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte } e status[tipo] =
 { ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
 vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica pronta) e talentos[id] = graus
-(só os da vocação atual; os pontos saem do nível). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+(só os da vocação atual; os pontos saem do nível), oficios[id] = { xp } (o nível sai do XP) e
+extracaoRespawn[ponto] (quando o ponto de extração brota de novo). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -58,7 +63,8 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 14, sem perder itens, moedas, nível ou progresso. A versão 14 traz os talentos (a árvore
+   para a versão 15, sem perder itens, moedas, nível ou progresso. A versão 15 traz os ofícios (todos começam
+   no nível 1, com um aviso da novidade). A versão 14 trouxe os talentos (a árvore
    começa vazia, com os pontos do seu nível livres, e quem já tem vocação recebe um aviso). A versão 13 trouxe
    as vocações (quem já passou do nível 8 recebe um aviso para escolher a sua). A versão 12 juntou os status num motor só
    (o veneno ou sangramento que ainda estiver valendo continua; o atordoamento não sobrevive). A versão 11 trouxe o maná diário (o jarro
@@ -87,7 +93,8 @@ Controles — teclado e mouse
   alcance). V: janela Vocação (escolher no nível 8, especialização no 50, habilidades de cada vocação e,
   na aba Talentos, a árvore; também pelo botão Vocação, no topo, que acende quando há escolha a fazer ou
   ponto de talento livre).
-- P: pescar (no barco, ao lado de um ponto de pesca).
+- P: pescar (no barco, ao lado de um ponto de pesca). A pesca rende XP de Pescador.
+- O: janela Ofícios (também pelo botão Ofícios, no topo).
 - T: suas caçadas (consulta em qualquer lugar; aceitar e trocar só ao lado de um atalaia). O saldo
   de pontos de tarefa, no topo, e as caçadas do painel Missão também abrem a consulta.
 - B: bestiário (abates de cada espécie, ficha, fraquezas, saque e amuletos; também pelo botão Bestiário,
@@ -406,6 +413,28 @@ numa habilidade. Cada talento mostra o que dá por ponto, o que você já tem e,
 - Limites: a recarga cai no máximo 40% (talentos gerais e da habilidade somados) e o dano recebido no
   máximo 80% (talentos e buffs somados).
 
+Ofícios
+Tecla O ou o botão Ofícios, no topo. Seis ofícios sobem de nível (1 a 30) à parte do seu nível de
+personagem: colhendo materiais e fabricando. Fabrique em qualquer lugar, com os materiais da mochila (o
+equipamento vestido não conta); a receita abre no nível do ofício e a janela mostra o que falta.
+    Pescador ...... pesca (+8 XP; peixe grande +12); peixe seco, óleo de peixe e peixe defumado
+    Ferreiro ...... minério de cobre nas penhas do Sinai (+5); lingote de bronze, escudo de bronze e espada temperada
+    Carpinteiro ... madeira nos olivais de Canaã e nas figueiras da Galileia (+4); flechas, escudo de madeira,
+                    arco de madeira e arco composto
+    Oleiro ........ argila nas margens do Nilo (+4); frasco, jarro, lamparina e ânfora
+    Tecelão ....... só fabrica (linho, couro, penas e braceletes das criaturas); tecido, túnica, armadura de
+                    couro e manto bordado
+    Perfumista .... ervas de Canaã (+2) e resina das acácias do Sinai (+4); poção de vida, incenso, poção de
+                    fé e óleo da unção
+- Pontos de extração: pise no ponto (madeira, argila, minério ou resina) para colher; ele brota de novo em
+  45 s. Cada nível do ofício dá +2% de chance de colher 1 a mais (até 40%); vale também para a pesca.
+- Pescador: a partir do nível 5, a pesca pode trazer um peixe grande (4%, +1% por nível, até 25%).
+- XP: do nível 1 ao 2, 10 XP; do 10 ao 11, 251 XP. Cada receita rende o seu XP a cada fabricação.
+- Equipamento fabricado (escudos, espadas, arcos, túnica e armadura) pode sair incomum ou melhor: 3% por
+  nível do ofício acima do nível da receita, até 30%.
+- Mercadorias (peixe seco, jarro, lamparina, ânfora, incenso, óleo da unção, manto bordado e outras) valem
+  mais nos mercadores que os materiais que gastam. Nenhuma receita usa itens da loja.
+
 Maná diário e descanso do Sábado
 Tecla N ou o botão Maná, no topo. Nada aqui exige entrar todo dia: perder um dia não tira nada.
 - Maná (Êxodo 16): o dia do maná vai de um amanhecer (6 h, hora do seu computador) ao seguinte; é a janela de
@@ -446,7 +475,7 @@ Para desenvolvedores
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
   estadoDescanso(p, agora), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
-  visaoTalentos(p), pontosTalentoLivres(p),
+  visaoTalentos(p), pontosTalentoLivres(p), visaoOficios(p), extracoesDaArea(areaId), Mundo.extracaoDisponivel(id, area, pontoId),
   Mundo.aliados(id), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
@@ -472,6 +501,13 @@ Para desenvolvedores
   tempo; nenhum ramo perde em tudo para outro da mesma vocação; e o ramo defensivo (Baluarte, Ligeireza, Guarda
   da Tenda, Deserto, Aprisco) é o que recebe menos dano por segundo. Ao mudar valores dos talentos, rode
   node tests/logica.test.js 64e e veja a tabela.
+- Ofícios: comando { tipo: "fabricar", receita, quantidade } (quantidade: número ou "todos") de
+  Mundo.executar; devolve feitos, itens e oficioSubiu ({ oficio, nivel }) quando sobe de nível, que também
+  vem na pesca e ao pisar num ponto de extração (com extracao, item e quantidade). nivelOficio(p, oficio),
+  progressoOficio(p, oficio), podeFabricar(p, receitaId) e as chances (chanceColetaExtra, chancePeixeGrande,
+  chanceQualidade) são puras. Os testes 65 a 65d conferem os dados e a economia (materiais de caça, coleta ou
+  outra receita, nunca da loja; mercadoria vale mais que os materiais), a pesca, as ervas e a extração, a
+  fabricação e o save.
 - Status: aplicarStatus(alvo, { tipo, ...ajustes }, agora), statusAtivo(alvo, tipo, agora),
   passoDosStatus(alvo, agora) e combinacoesNoGolpe(alvo, agora) são puras e valem para o jogador e para
   qualquer criatura; Mundo.aplicarStatusNaCriatura(id, inimigoId, ef) aplica numa criatura viva. Os testes

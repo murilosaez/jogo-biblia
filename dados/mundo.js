@@ -97,6 +97,31 @@ const odres = [
   { id: "odre6", x: 114, y: 52 },
 ];
 
+// Pontos de extração dos ofícios (JGB-24): pise no ponto para colher o item (madeira, argila, minério ou
+// resina). Cada ponto fica sempre no mesmo lugar e brota de novo depois de REGRAS_OFICIOS.respawnExtracao.
+// O XP vai para o ofício que tem o item em OFICIOS[...].coleta (dados/oficios.js).
+const pontosExtracao = [
+  { id: "madeira_canaa1", area: "canaan", item: "madeira", x: 128, y: 37 },
+  { id: "madeira_canaa2", area: "canaan", item: "madeira", x: 105, y: 15 },
+  { id: "madeira_canaa3", area: "canaan", item: "madeira", x: 140, y: 33 },
+  { id: "madeira_canaa4", area: "canaan", item: "madeira", x: 106, y: 24 },
+  { id: "madeira_galileia1", area: "galileia", item: "madeira", x: 118, y: 98 },
+  { id: "madeira_galileia2", area: "galileia", item: "madeira", x: 142, y: 90 },
+  { id: "madeira_galileia3", area: "galileia", item: "madeira", x: 135, y: 100 },
+  { id: "argila1", area: "egito", item: "argila", x: 117, y: 11 },
+  { id: "argila2", area: "egito", item: "argila", x: 129, y: 7 },
+  { id: "argila3", area: "egito", item: "argila", x: 51, y: 11 },
+  { id: "argila4", area: "egito", item: "argila", x: 68, y: 13 },
+  { id: "resina1", area: "sinai", item: "resina", x: 61, y: 28 },
+  { id: "resina2", area: "sinai", item: "resina", x: 69, y: 22 },
+  { id: "resina3", area: "sinai", item: "resina", x: 57, y: 21 },
+  { id: "resina4", area: "sinai", item: "resina", x: 52, y: 29 },
+  { id: "minerio1", area: "sinai", item: "minerio_cobre", x: 148, y: 27 },
+  { id: "minerio2", area: "sinai", item: "minerio_cobre", x: 125, y: 39 },
+  { id: "minerio3", area: "sinai", item: "minerio_cobre", x: 102, y: 17 },
+  { id: "minerio4", area: "sinai", item: "minerio_cobre", x: 137, y: 35 },
+];
+
 // Portais entre regiões (os de ida exigem o capítulo anterior concluído).
 const DADOS_PORTAIS = [
   {

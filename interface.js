@@ -1451,6 +1451,80 @@
     if (r?.ok) { fecharModal(); atualizar(); }
   }
 
+  // ----- Ofícios (JGB-24) -----
+  // A janela só lê visaoOficios; fabricar é o comando { tipo: "fabricar", receita, quantidade }.
+  const temOficios = () => typeof visaoOficios === "function";
+  let abaOficio = "pescador", retornoOficio = null, htmlOficios = "";
+  function abrirOficios(aba) {
+    if (!jogador() || !temOficios()) return;
+    if (typeof aba === "string" && typeof OFICIOS !== "undefined" && OFICIOS[aba]) abaOficio = aba;
+    retornoOficio = null;
+    desenharOficios(true);
+    abrirModal("modalOficios");
+  }
+  function desenharOficios(forcar) {
+    const p = jogador();
+    const corpo = $("#oficiosCorpo");
+    if (!p || !corpo || !temOficios()) return;
+    const html = montarOficios(p);
+    if (!forcar && html === htmlOficios) return;
+    htmlOficios = html;
+    const ativo = document.activeElement && corpo.contains(document.activeElement) ? document.activeElement : null;
+    const chave = ativo?.dataset.fabricar ? `[data-fabricar="${ativo.dataset.fabricar}"][data-qtd="${ativo.dataset.qtd}"]` : ativo?.dataset.abaOficio ? `[data-aba-oficio="${ativo.dataset.abaOficio}"]` : null;
+    const rolagem = corpo.scrollTop;
+    corpo.innerHTML = html;
+    preencherGlifos(corpo);
+    corpo.scrollTop = rolagem;
+    if (chave) ($(chave, corpo) || $("[data-retorno]", corpo))?.focus({ preventScroll: true });
+  }
+  const pct = (x) => `${String(Math.round(x * 1000) / 10).replace(".", ",")}%`;
+  function montarOficios(p) {
+    const lista = visaoOficios(p);
+    const o = lista.find((x) => x.id === abaOficio) || lista[0];
+    const abas = `<div class="abas-modal abas-oficios" role="tablist" aria-label="Ofícios">${lista.map((x) => `<button type="button" class="aba-modal" role="tab"
+      id="abaOficio-${x.id}" data-aba-oficio="${x.id}" aria-selected="${x.id === o.id}" aria-controls="painelOficio">${imgGlifo("of_" + x.icone)}<span>${esc(x.nome)}</span><small>${x.nivel}</small></button>`).join("")}</div>`;
+    const r = retornoOficio;
+    const retorno = r ? `<p class="retorno${r.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(r.mensagem)}</p>` : "";
+    const barra = o.maximo ? "Nível máximo" : `${o.xpNoNivel}/${o.xpParaProximo} XP`;
+    const largura = o.maximo ? 100 : (o.xpNoNivel / o.xpParaProximo) * 100;
+    const bonus = [];
+    if (o.coleta.length) bonus.push(`Colher: ${o.coleta.map((c) => `${esc(c.nome.toLowerCase())} +${c.xp} XP`).join(", ")}.`);
+    if (o.extra > 0) bonus.push(`Chance de colher 1 a mais: ${pct(o.extra)}.`);
+    if (o.id === "pescador") bonus.push(o.peixeGrande > 0 ? `Peixe grande: ${pct(o.peixeGrande)} por pesca.` : `Peixe grande a partir do nível ${typeof REGRAS_OFICIOS !== "undefined" ? REGRAS_OFICIOS.peixeGrande.nivel : 5}.`);
+    const cab = `<div class="oficio-cab"><div><h3>${esc(o.nome)} · nível ${o.nivel}</h3><p>${esc(o.descricao)}</p></div>
+      <div class="oficio-xp" title="${barra}"><span class="mini-barra xp"><i style="width:${largura.toFixed(1)}%"></i></span><b>${barra}</b></div></div>
+      <p class="oficio-onde">${esc(o.onde)}${bonus.length ? ` ${bonus.join(" ")}` : ""}</p>`;
+    const receitas = `<ul class="lista-loja receitas">${o.receitas.map(htmlReceita).join("")}</ul>`;
+    return `${abas}<div id="painelOficio" role="tabpanel" aria-labelledby="abaOficio-${o.id}">${retorno}${cab}${receitas}
+      <p class="oficio-pe">Fabrique em qualquer lugar, com os materiais da mochila (o equipamento vestido não conta).</p></div>`;
+  }
+  function htmlReceita(x) {
+    const prod = x.produto;
+    const nome = `${prod.quantidade > 1 ? `${prod.quantidade}× ` : ""}${esc(prod.nome)}`;
+    const mats = x.materiais.map((m) => `<span class="${m.tem >= m.precisa ? "tem" : "falta"}">${esc(m.nome)} ${Math.min(m.tem, 99)}/${m.precisa}</span>`).join(" · ");
+    const extras = [`+${x.xp} XP`];
+    if (prod.valor) extras.push(`vende por ${prod.valor}`);
+    if (x.qualidade > 0) extras.push(`${pct(x.qualidade)} de sair incomum ou melhor`);
+    let acao;
+    if (!x.aberta) acao = `<span class="receita-nivel">Nível ${x.nivel}</span>`;
+    else if (!x.pode) acao = `<button type="button" class="btn secundario" disabled title="${esc(x.motivo)}">Fazer</button>`;
+    else acao = `<span class="receita-acoes"><button type="button" class="btn primario" data-fabricar="${x.id}" data-qtd="1">Fazer</button>${x.vezes > 1 ? `<button type="button" class="btn secundario" data-fabricar="${x.id}" data-qtd="todos">Todos (${x.vezes})</button>` : ""}</span>`;
+    return `<li class="item-loja receita${x.aberta ? "" : " fechada"}"><span class="icone">${htmlItem(prod.item)}</span>
+      <span><strong>${nome} <small>nível ${x.nivel}</small></strong><span class="materiais">${mats}</span><span>${extras.join(" · ")}</span>${x.aberta && !x.pode ? `<span class="motivo">${esc(x.motivo)}</span>` : ""}</span>${acao}</li>`;
+  }
+  function acaoOficio(botao) {
+    if (botao.dataset.abaOficio) {
+      abaOficio = botao.dataset.abaOficio;
+      retornoOficio = null;
+      desenharOficios(true);
+      $(`#oficiosCorpo [data-aba-oficio="${abaOficio}"]`)?.focus();
+      return;
+    }
+    retornoOficio = executar({ tipo: "fabricar", receita: botao.dataset.fabricar, quantidade: botao.dataset.qtd === "todos" ? "todos" : 1 });
+    desenharOficios(true);
+    atualizar();
+  }
+
   // ----- Maná diário e descanso do Sábado (JGB-11) -----
   // Só lê p.mana e p.descanso pelas funções puras (estadoMana, estadoDescanso); colher e comer são comandos.
   const temMana = () => typeof estadoMana === "function" && typeof estadoDescanso === "function";
@@ -1862,6 +1936,7 @@
       [k("B"), "Bestiário: abates, ficha, fraquezas, saque e amuletos"],
       [k("N"), "Maná do dia (colher e comer) e reserva de descanso do Sábado"],
       [k("V"), "Vocação: escolher (nível 8), especialização (nível 50), habilidades e talentos (1 ponto por nível)"],
+      [k("O"), "Ofícios: nível de cada ofício e receitas para fabricar com os materiais da mochila"],
       [k("1", "–", "8"), "Habilidades da vocação (com vocação; os itens passam para Shift + 1 a 6)"],
       [k("X"), "Mostrar ou ocultar o analisador de caçada (XP/h, saque/h, lucro)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
@@ -2377,6 +2452,7 @@
     if (modalAberto?.id === "modalBestiario") desenharBestiario();
     if (modalAberto?.id === "modalMana") desenharMana();
     if (modalAberto?.id === "modalVocacao") desenharVocacao();
+    if (modalAberto?.id === "modalOficios") desenharOficios();
   }
 
   function areaMudou(area) {
@@ -2436,6 +2512,7 @@
     $("#dialogo").addEventListener("click", () => (dlg.mostrado < dlg.texto.length ? completarDialogo() : fecharDialogo()));
     $("#pontos").addEventListener("click", () => abrirMural(null));
     $("#btnBestiario").addEventListener("click", abrirBestiario);
+    $("#btnOficios")?.addEventListener("click", () => abrirOficios());
     $("#btnMana").addEventListener("click", abrirMana);
     $("#btnVocacao").addEventListener("click", () => abrirVocacao(null));
     $("#barraHab").addEventListener("click", (e) => {
@@ -2508,6 +2585,11 @@
           if (!voc.disabled) acaoVocacao(voc);
           return;
         }
+        const ofi = e.target.closest("[data-fabricar], [data-aba-oficio]");
+        if (ofi) {
+          if (!ofi.disabled) acaoOficio(ofi);
+          return;
+        }
         const tal = e.target.closest("[data-talento], [data-reset-talentos], [data-aba-vocacao]");
         if (tal) {
           if (!tal.disabled) acaoTalento(tal);
@@ -2571,6 +2653,8 @@
       if (teclaT && modalAberto?.id === "modalMural") { e.preventDefault(); fecharModal(); return; }
       const teclaB = (e.key === "b" || e.key === "B") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaB && modalAberto?.id === "modalBestiario") { e.preventDefault(); fecharModal(); return; }
+      const teclaO = (e.key === "o" || e.key === "O") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (teclaO && modalAberto?.id === "modalOficios") { e.preventDefault(); fecharModal(); return; }
       const teclaV = (e.key === "v" || e.key === "V") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaV && modalAberto?.id === "modalVocacao") { e.preventDefault(); fecharModal(); return; }
       const teclaN = (e.key === "n" || e.key === "N") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
@@ -2583,6 +2667,7 @@
       if (e.key === "?") { e.preventDefault(); abrirAjuda(); return; }
       if (teclaT) { e.preventDefault(); abrirMural(null); return; }
       if (teclaB) { e.preventDefault(); abrirBestiario(); return; }
+      if (teclaO) { e.preventDefault(); abrirOficios(); return; }
       if (teclaN) { e.preventDefault(); abrirMana(); return; }
       if (teclaV) { e.preventDefault(); abrirVocacao(null); return; }
       // Com vocação: 1 a 8 usam as habilidades e Shift + 1 a 6 os atalhos de itens. Sem vocação, 1 a 6 são os itens.
@@ -2656,6 +2741,7 @@
     abrirOracao,
     abrirMural,
     abrirBestiario,
+    abrirOficios,
     abrirVocacao,
     abrirAjuda,
     alternarMinimapa,

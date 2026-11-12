@@ -247,7 +247,7 @@ class Cena extends Phaser.Scene {
     const marca = (x, y, r = 0) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) set.add(`${x + dx},${y + dy}`); };
     for (const n of Object.values(npcs)) if (n.area === this.areaAtual) marca(n.x, n.y);
     for (const e of Object.values(inimigos)) if (e.area === this.areaAtual) marca(e.x, e.y);
-    for (const c of coletaveisDaArea(this.areaAtual)) marca(c.x, c.y);
+    for (const c of this.todosColetaveis()) marca(c.x, c.y);
     for (const p of PORTAIS) if (p.area === this.areaAtual) marca(p.x, p.y, 1);
     const a = areas[this.areaAtual];
     for (const k of ["passagem", "cais"]) if (a?.[k]) marca(a[k].x, a[k].y, 1);
@@ -466,14 +466,22 @@ class Cena extends Phaser.Scene {
     }
     if (r.brilho >= 3 && !reduzMovimento()) this.cameras.main.flash(160, ...[1, 3, 5].map((i) => parseInt(r.cor.slice(i, i + 2), 16) >> 1));
   }
+  // Ervas e odres (coletaveisDaArea) e os pontos de extração dos ofícios (extracoesDaArea, JGB-24).
+  todosColetaveis() {
+    const extracoes = typeof extracoesDaArea === "function" ? extracoesDaArea(this.areaAtual).map((c) => ({ ...c, extracao: true })) : [];
+    return [...coletaveisDaArea(this.areaAtual), ...extracoes];
+  }
+  coletavelPronto(it) {
+    return it.extracao ? Mundo.extracaoDisponivel(MEU_ID, this.areaAtual, it.id) : Mundo.coletavelDisponivel(MEU_ID, this.areaAtual, it.id);
+  }
   desenharColetaveis() {
-    for (const it of coletaveisDaArea(this.areaAtual))
-      if (Mundo.coletavelDisponivel(MEU_ID, this.areaAtual, it.id) && !this.spritesItens[it.id]) this.addItemVisual(it.id, it.x, it.y, it.textura);
+    for (const it of this.todosColetaveis())
+      if (this.coletavelPronto(it) && !this.spritesItens[it.id]) this.addItemVisual(it.id, it.x, it.y, it.textura);
   }
   atualizarColetaveis() {
     this.p = Mundo.jogadores[MEU_ID];
-    for (const it of coletaveisDaArea(this.areaAtual)) {
-      const disponivel = Mundo.coletavelDisponivel(MEU_ID, this.areaAtual, it.id), visual = this.spritesItens[it.id];
+    for (const it of this.todosColetaveis()) {
+      const disponivel = this.coletavelPronto(it), visual = this.spritesItens[it.id];
       if (disponivel && !visual) {
         const s = this.addItemVisual(it.id, it.x, it.y, it.textura);
         s.setAlpha(0);
@@ -532,8 +540,19 @@ class Cena extends Phaser.Scene {
         this.tweens.add({ targets: peixe, x: this.jogador.x, duration: 600 });
         this.tweens.add({ targets: peixe, y: peixe.y - 30, duration: 300, yoyo: true, ease: "Quad.easeOut", onComplete: () => peixe.destroy() });
       }
+      this.oficioSubiu(r.oficioSubiu);
       window.atualizarInterface?.();
     }
+  }
+
+  // Ofício subiu de nível (JGB-24): "CARPINTEIRO 3" sobre o jogador, no estilo do "NÍVEL N".
+  oficioSubiu(subiu) {
+    if (!subiu || !this.jogador?.active || typeof OFICIOS === "undefined") return;
+    const x = this.jogador.x, y = this.jogador.y;
+    const t = this.add.text(x, y - 40, `${OFICIOS[subiu.oficio].nome.toUpperCase()} ${subiu.nivel}`, { fontFamily: FONTE_TITULO, fontStyle: "700", fontSize: "16px", color: "#e6cf9c", stroke: COR.tinta, strokeThickness: 4, resolution: 2 })
+      .setOrigin(0.5, 1).setDepth(PROF.numero);
+    this.tweens.add({ targets: t, y: y - 66, alpha: 0, delay: 700, duration: 600, onComplete: () => t.destroy() });
+    if (!reduzMovimento()) this.particulasSimples(x, y - 10, "#e6cf9c", 10, { subir: true, dur: 800 });
   }
 
   // ===== entidades ====================================================
@@ -1163,7 +1182,7 @@ class Cena extends Phaser.Scene {
     this.p = Mundo.jogadores[MEU_ID];
     // Pilha de saque: a lógica recolhe tudo o que couber (itensColetados);
     // r.itemColetado sozinho vem dos coletáveis (erva, odre).
-    const coletados = r.itensColetados || (r.itemColetado ? [r.itemColetado] : []);
+    const coletados = r.itensColetados || (r.itemColetado ? [r.itemColetado] : r.extracao ? [r.extracao] : []);
     if (coletados.length) {
       if (r.moedas) this.numero(centroX(this.p.x), this.p.y * TAM + 8, `+${r.moedas}`, "moeda");
       for (const id of coletados) {
@@ -1173,6 +1192,7 @@ class Cena extends Phaser.Scene {
       this.mensagem(r.mensagem, "saque");
       this.atualizarBaloes();
     } else if (r.mensagem) this.mensagem(r.mensagem);
+    this.oficioSubiu(r.oficioSubiu);
     if (this.areaAtual !== "mar" && dx) this.jogador.setFlipX(dx < 0);
     if (this.areaAtual === "mar" && dx) this.jogador.setFlipX(dx < 0);
     const nx = centroX(this.p.x), ny = baseY(this.p.y) + (this.areaAtual === "mar" ? 6 : 0);
@@ -1205,6 +1225,7 @@ class Cena extends Phaser.Scene {
     if (r.mensagem) this.mensagem(r.mensagem);
     if (r.areaAlterada) { this.trocarArea(null); return r; }
     if (comando.tipo === "comerMana" && r.ok && r.cura) this.efeitoCura(r.cura);
+    this.oficioSubiu(r.oficioSubiu);
     if (comando.tipo === "orar" && r.ok) {
       if (r.cura) this.efeitoCura(r.cura);
       this.particulasSimples(this.jogador.x, this.jogador.y - 10, "#f2d27a", 10, { subir: true, dur: 800 });
