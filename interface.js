@@ -328,9 +328,19 @@
     return Object.keys(mapa).find((s) => mapa[s] === tipo) || null;
   };
 
+  // Item com raridade e atributos (logica.js); a loja usa "flechas", que não é item.
+  const info = (id) => (typeof infoItem === "function" ? infoItem(id) : typeof ITENS !== "undefined" ? ITENS[id] : null);
+  const raridadeDe = (id) => info(id)?.raridade || "comum";
+  const corRaridade = (r) => (typeof RARIDADES !== "undefined" && RARIDADES[r]?.cor) || "";
+  // Classe e cor da borda do espaço (só acima de comum).
+  function attrRaridade(id) {
+    const r = raridadeDe(id);
+    return r === "comum" ? "" : ` data-raridade="${r}" style="--rar:${corRaridade(r)}"`;
+  }
+
   function atributoItem(id, p = jogador()) {
     if (id === "flechas") return "munição para o arco";
-    const d = typeof ITENS !== "undefined" ? ITENS[id] : null;
+    const d = info(id);
     if (!d) return "";
     if (d.bonus) return `+${d.bonus} de dano`;
     if (d.defesa) return `+${d.defesa} de defesa`;
@@ -342,7 +352,7 @@
   }
 
   function atributoCurto(id) {
-    const d = typeof ITENS !== "undefined" ? ITENS[id] : null;
+    const d = info(id);
     if (!d) return "";
     if (d.bonus) return `+${d.bonus} dano`;
     if (d.defesa) return `+${d.defesa} def`;
@@ -350,15 +360,21 @@
   }
 
   function htmlDica(id, origem) {
-    const d = typeof ITENS !== "undefined" ? ITENS[id] : null;
+    const d = info(id);
     if (!d) return "";
     const partes = [NOME_TIPO[d.tipo] || "Item", atributoItem(id), `${typeof pesoItem === "function" ? pesoItem(id) : d.peso} kg`].filter(Boolean);
+    const r = raridadeDe(id);
+    const nomeR = typeof RARIDADES !== "undefined" ? RARIDADES[r]?.nome : "";
+    const linhaRaridade = r !== "comum" && nomeR ? `<p class="raridade" style="--rar:${corRaridade(r)}">${esc(nomeR)}</p>` : "";
+    const atributos = typeof textoAtributos === "function" ? textoAtributos(id) : [];
+    const linhaAtributos = atributos.length ? `<ul class="atr-item">${atributos.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "";
     let acao = "";
     if (origem === "equip") acao = "Arraste para a mochila, ou dê duplo clique, para guardar.";
     else if (slotDoTipo(d.tipo)) acao = "Duplo clique equipa. Também pode arrastar ou tocar e escolher o espaço.";
     else if (d.tipo === "consumivel") acao = "Duplo clique usa. Arraste para uma tecla de atalho.";
     else if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) acao = "Venda ao mercador Azarias, no Deserto.";
-    return `<h4>${esc(nomeDoItem(id))}</h4><p>${esc([...new Set(partes)].join(" · "))}</p>${acao ? `<p class="acao">${esc(acao)}</p>` : ""}`;
+    const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
+    return `<h4${titulo}>${esc(nomeDoItem(id))}</h4>${linhaRaridade}<p>${esc([...new Set(partes)].join(" · "))}</p>${linhaAtributos}${acao ? `<p class="acao">${esc(acao)}</p>` : ""}`;
   }
 
   // ------------------------------------------------------------------
@@ -529,7 +545,7 @@
   function htmlSlotItem(id, qtd) {
     const nome = nomeDoItem(id);
     const sel = selecao && selecao.origem === "item" && selecao.id === id ? " selecionado" : "";
-    return `<button type="button" class="slot cheio${sel}" role="listitem" draggable="true" data-item="${esc(id)}" data-dica="${esc(id)}" aria-label="${esc(nome)}${qtd > 1 ? `, ${qtd} unidades` : ""}">${htmlItem(id)}${qtd > 1 ? `<span class="qtd">${qtd}</span>` : ""}</button>`;
+    return `<button type="button" class="slot cheio${sel}" role="listitem" draggable="true" data-item="${esc(id)}" data-dica="${esc(id)}"${attrRaridade(id)} aria-label="${esc(nome)}${qtd > 1 ? `, ${qtd} unidades` : ""}">${htmlItem(id)}${qtd > 1 ? `<span class="qtd">${qtd}</span>` : ""}</button>`;
   }
 
   function atualizarItens(p, forcar) {
@@ -544,7 +560,7 @@
     const g = contar(p.inventario);
     const mochila = [], bolsa = [];
     for (const [id, qtd] of g) {
-      const d = typeof ITENS !== "undefined" ? ITENS[id] : null;
+      const d = info(id);
       if (!d) continue;
       (ehMochila(d.tipo) ? mochila : bolsa).push(htmlSlotItem(id, qtd));
     }
@@ -560,9 +576,9 @@
     $("#gradeEquip").innerHTML = Object.keys(ROTULO_SLOT).map((slot) => {
       const id = eq[slot];
       const sel = selecao && selecao.origem === "equip" && selecao.slot === slot ? " selecionado" : "";
-      if (id && ITENS[id]) {
+      if (id && info(id)) {
         return `<button type="button" class="equip cheio${sel}" draggable="true" data-equip-slot="${slot}" data-dica="${esc(id)}" data-dica-origem="equip" aria-label="${ROTULO_SLOT[slot]}: ${esc(nomeDoItem(id))}">
-          <span class="slot">${htmlItem(id)}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>${esc(atributoCurto(id))}</em></span></button>`;
+          <span class="slot"${attrRaridade(id)}>${htmlItem(id)}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>${esc(atributoCurto(id))}</em></span></button>`;
       }
       const sil = silhuetaURL(SILHUETA_SLOT[slot]);
       return `<button type="button" class="equip vazio${sel}" data-equip-slot="${slot}" aria-label="Espaço de ${ROTULO_SLOT[slot].toLowerCase()} vazio">
@@ -682,6 +698,7 @@
     missao: { cor: "var(--fe-2)", glifo: "ui_pergaminho", nome: "missão" },
     sistema: { cor: "var(--tinta-suave)", glifo: "ui_losango", nome: "sistema" },
     fala: { cor: "var(--bronze-500)", glifo: "ui_falar", nome: "fala" },
+    anuncio: { cor: "#b46be0", glifo: "ui_louro", nome: "saque raro" },
   };
   // "Nome: fala" só é fala quando o nome é de um personagem conhecido.
   function ehFala(t) {
@@ -713,6 +730,7 @@
     registro.unshift({ texto, tipo, hora });
     if (registro.length > 30) registro.length = 30;
     const li = document.createElement("li");
+    if (tipo === "anuncio") li.className = "anuncio";
     li.innerHTML = `<span class="marca-tipo" style="--cor:${(TIPOS[tipo] || TIPOS.sistema).cor}">${imgGlifo(glifoDoTipo(tipo, texto), "px g16", (TIPOS[tipo] || TIPOS.sistema).nome)}</span><time>${hora}</time><span>${esc(texto)}</span>`;
     const ol = $("#listaRegistro");
     ol.prepend(li);
@@ -734,7 +752,7 @@
     }
     const t = TIPOS[tipo] || TIPOS.sistema;
     const el = document.createElement("div");
-    el.className = "aviso";
+    el.className = tipo === "anuncio" ? "aviso anuncio" : "aviso";
     el.dataset.texto = texto;
     el.style.setProperty("--cor", t.cor);
     el.innerHTML = `${imgGlifo(glifoDoTipo(tipo, texto), "px", t.nome)}<span>${esc(texto)}</span>`;
@@ -958,7 +976,7 @@
         lista += `<li class="item-loja"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>Você tem ${n}</span></span>
           <button type="button" class="btn primario" data-vender="${esc(id)}" aria-label="Vender um ${esc(nomeDoItem(id))} por ${valor} moedas">+${valor} ${moeda}</button></li>`;
       }
-      if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">Você não tem nada que o mercador compre. Ele aceita pele de lobo, erva, odre de água e peixe.</li>';
+      if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">Você não tem nada que o mercador compre. Ele aceita recursos: peles, presas, ferrões, linho, ervas, odres, peixe e as pedras preciosas.</li>';
     }
     corpo.innerHTML = `${falaLoja ? `<p class="fala-modal">${esc(falaLoja)}</p>` : ""}
       <div class="saldo">${moeda}<span>${p.moedas} moedas</span></div>
@@ -1389,7 +1407,7 @@
       <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele. Botão direito numa tecla de atalho a esvazia. Espada e arco ocupam as mãos: equipar um guarda o outro.</p>`;
     const secToque = `
       <h3>Toque</h3>
-      <p>O joystick redondo, à esquerda, anda para onde você arrastar o dedo (o mapa é em casas, então o passo segue a direção mais próxima entre 8). À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo. Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
+      <p>O joystick redondo, à esquerda, anda para onde você arrastar o dedo, em qualquer ângulo: o personagem alterna passos retos e diagonais para seguir a linha do dedo e contorna sozinho a quina de um obstáculo. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo. Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
     // No toque, a seção de toque vem primeiro.
     const toque = comToque || mm("(pointer: coarse)");
     $("#ajudaCorpo").innerHTML = `${toque ? secToque + secItens + secTeclado : secTeclado + secItens + secToque}
@@ -1398,9 +1416,12 @@
       <p>Caçadas: depois da missão principal de cada região, o atalaia oferece rondas (voltam 20 h depois da entrega) e grandes caçadas
         (voltam 6 d 20 h depois). Até 3 ao mesmo tempo; cada abate conta para todas as que pedem aquela criatura. Entregue a qualquer
         atalaia e troque os pontos de tarefa por melhorias.</p>
+      <p>Saques: cada criatura tem a sua tabela, com itens comuns e drops raros (1%) e muito raros (0,1%). A cor e o brilho no chão
+        mostram a raridade (comum, incomum, raro, épico, relíquia); equipamentos raros ou melhores trazem atributos aleatórios.</p>
       <p>Viagem rápida: fale com Micael em Canaã ou Tamar no Deserto. A trilha no extremo sul liga as regiões a pé. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. Azarias, no Deserto, vende provisões e compra recursos. No mar, pesque nos pontos com ondulação.</p>
       <div class="acoes-modal">
         <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${comToque}">${comToque ? "Ocultar" : "Mostrar"} controles de toque</button>
+        <button type="button" class="btn secundario" data-som aria-pressed="${!!window.Som?.ligado}">Som: ${window.Som?.ligado ? "ligado" : "desligado"}</button>
         <button type="button" class="btn secundario" data-tela-cheia>${imgGlifo("ui_tela_cheia", "px g16")}Tela cheia</button>
         <button type="button" class="btn primario" data-fechar data-foco-inicial>Entendi</button>
       </div>`;
@@ -1607,7 +1628,7 @@
     atualizar();
   }
   function usarItem(id) {
-    const d = ITENS[id];
+    const d = info(id);
     if (!d) return;
     if (id === "pocao") return window.Jogo ? Jogo.acao("pocao") : executar({ tipo: "usarPocao" });
     if (id === "pocao_fe") return window.Jogo ? Jogo.acao("pocaoFe") : executar({ tipo: "usarPocaoFe" });
@@ -1666,7 +1687,7 @@
       if (it) {
         const id = it.dataset.item;
         if (selecao && selecao.origem === "item" && selecao.id === id) return selecionar(null);
-        const d = ITENS[id];
+        const d = info(id);
         const dica = mouse ? null : slotDoTipo(d.tipo) ? "Toque num espaço de equipamento para equipar." : d.tipo === "consumivel" ? "Toque numa tecla de atalho para guardar ali." : `${nomeDoItem(id)} selecionado.`;
         return selecionar({ origem: "item", id }, dica);
       }
@@ -1739,11 +1760,12 @@
   // Controles de toque (direcional + ações)
   // ------------------------------------------------------------------
   function ligarToque() {
-    // Joystick redondo: o pino segue o dedo em 360°; o ângulo vira uma das 8 direções do mapa em
-    // grade (setores de 45°). Perto do centro (zona morta) o personagem para.
+    // Joystick redondo e analógico: o pino segue o dedo em 360° e o vetor (de −1 a 1 em cada eixo) vai
+    // para Jogo.entrada. O MUNDO (game.js, passoAnalogico) transforma o ângulo em passos da grade,
+    // alternando reto e diagonal para seguir a linha do dedo. Perto do centro (zona morta) para.
     const dpad = $("#dpad");
     const pino = dpad.querySelector(".joy-pino");
-    const DIRECOES = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+    const ZONA_MORTA = 0.22;
     let ativo = null;
     const zerar = () => {
       if (window.Jogo) Jogo.entrada = { dx: 0, dy: 0 };
@@ -1753,7 +1775,7 @@
     };
     const ler = (e) => {
       const r = dpad.getBoundingClientRect();
-      const raio = r.width / 2 - 28;
+      const raio = Math.max(20, r.width / 2 - pino.offsetWidth / 2);
       let vx = e.clientX - (r.left + r.width / 2);
       let vy = e.clientY - (r.top + r.height / 2);
       const dist = Math.hypot(vx, vy);
@@ -1763,10 +1785,10 @@
       }
       pino.style.transform = "translate(" + vx + "px, " + vy + "px)";
       dpad.classList.add("ativo");
-      const setor = ((Math.round(Math.atan2(vy, vx) / (Math.PI / 4)) % 8) + 8) % 8;
-      const passo = dist < raio * 0.3 ? [0, 0] : DIRECOES[setor];
-      if (window.Jogo) Jogo.entrada = { dx: passo[0], dy: passo[1] };
-      ativo = passo.join(",");
+      const forca = Math.min(1, dist / raio);
+      const parado = forca < ZONA_MORTA;
+      if (window.Jogo) Jogo.entrada = parado ? { dx: 0, dy: 0 } : { dx: vx / raio, dy: vy / raio, analogico: true };
+      ativo = e.pointerId;
     };
     dpad.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -1944,6 +1966,12 @@
         }
         if (e.target.closest("[data-alternar-toque]")) {
           alternarControlesDeToque();
+          abrirAjuda();
+          return;
+        }
+        if (e.target.closest("[data-som]")) {
+          window.Som?.definir(!window.Som.ligado);
+          if (window.Som?.ligado) window.Som.saque("incomum");
           abrirAjuda();
           return;
         }

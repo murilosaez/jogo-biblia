@@ -29,6 +29,63 @@ const ESTILO_NUM = {
   bloqueio: ["#b9c6d6", 11], errou: ["#b9a27a", 11], tarefa: ["#e6cf9c", 12],
 };
 
+// Vizinhos da grade em ordem de ângulo (0°, 45°… com y para baixo), para o joystick analógico.
+const DIRECOES_8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+
+// Rótulo que sobe quando cai um saque raro ou melhor ("ÉPICO!").
+const ESTILO_RARIDADE = { incomum: 13, raro: 15, epico: 18, reliquia: 20 };
+
+// ---------------------------------------------------------------------
+// Sons do saque (Web Audio, sintetizados: sem arquivos). Cada raridade tem o seu arpejo; desligáveis
+// na ajuda (a escolha fica neste navegador).
+// ---------------------------------------------------------------------
+const Som = {
+  ctx: null,
+  ligado: (() => { try { return localStorage.getItem("jornada_som") !== "0"; } catch (e) { return true; } })(),
+  definir(ligado) {
+    this.ligado = !!ligado;
+    try { localStorage.setItem("jornada_som", ligado ? "1" : "0"); } catch (e) { /* armazenamento bloqueado */ }
+  },
+  contexto() {
+    if (!this.ligado) return null;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!this.ctx) { try { this.ctx = new AC(); } catch (e) { return null; } }
+    if (this.ctx.state === "suspended") this.ctx.resume?.().catch?.(() => {});
+    return this.ctx;
+  },
+  nota(ctx, freq, inicio, dur, tipo, volume) {
+    const osc = ctx.createOscillator(), ganho = ctx.createGain();
+    osc.type = tipo;
+    osc.frequency.setValueAtTime(freq, inicio);
+    ganho.gain.setValueAtTime(0.0001, inicio);
+    ganho.gain.exponentialRampToValueAtTime(volume, inicio + 0.012);
+    ganho.gain.exponentialRampToValueAtTime(0.0001, inicio + dur);
+    osc.connect(ganho).connect(ctx.destination);
+    osc.start(inicio);
+    osc.stop(inicio + dur + 0.02);
+  },
+  // Arpejos por raridade (Hz): quanto mais rara, mais notas, mais aguda e mais longa.
+  ARPEJOS: {
+    incomum: [[784, 0.18]],
+    raro: [[659, 0.16], [988, 0.3]],
+    epico: [[523, 0.14], [659, 0.14], [784, 0.14], [1047, 0.45]],
+    reliquia: [[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.12], [1319, 0.7]],
+  },
+  saque(raridade) {
+    const notas = this.ARPEJOS[raridade];
+    const ctx = notas && this.contexto();
+    if (!ctx) return;
+    let t = ctx.currentTime + 0.02;
+    for (const [freq, dur] of notas) {
+      this.nota(ctx, freq, t, dur + 0.15, "triangle", 0.07);
+      if (raridade === "epico" || raridade === "reliquia") this.nota(ctx, freq * 2, t, dur, "sine", 0.025);
+      t += Math.min(dur, 0.12);
+    }
+  },
+};
+window.Som = Som;
+
 // Números que levam um glifo à esquerda: moedas e a contagem das caçadas ("27/40").
 const ICONE_NUM = { moeda: "ui_moeda", tarefa: "ui_cacada" };
 
@@ -315,7 +372,7 @@ class Cena extends Phaser.Scene {
   }
 
   // ===== coletáveis e saques ==========================================
-  addItemVisual(id, x, y, textura, quadro = 0) {
+  addItemVisual(id, x, y, textura, quadro = 0, raridade = "comum") {
     const chave = Arte.aliasItem(textura);
     const tex = this.textures.exists(chave) ? chave : "pele_lobo";
     const px = centroX(x), py = y * TAM + 24;
@@ -324,10 +381,68 @@ class Cena extends Phaser.Scene {
     s.sombraItem = sombra;
     if (!reduzMovimento()) this.tweens.add({ targets: s, y: py - 2, duration: 600, yoyo: true, repeat: -1, ease: "Sine.easeInOut", delay: Math.random() * 600 });
     if (tex === "moeda") this.animados.push({ img: s, quadros: 4, fps: 6 });
+    const extras = this.brilhoDoSaque(px, y, raridade);
     const destruir = s.destroy.bind(s);
-    s.destroy = (...args) => { sombra.destroy(); this.animados = this.animados.filter((a) => a.img !== s); destruir(...args); };
+    s.destroy = (...args) => {
+      sombra.destroy();
+      for (const x of extras) x.destroy();
+      this.animados = this.animados.filter((a) => a.img !== s);
+      destruir(...args);
+    };
     this.spritesItens[id] = s;
     return s;
+  }
+  // Brilho no chão conforme a raridade (RARIDADES[r].brilho): 1 aura; 2 aura e faíscas;
+  // 3 também o pilar de luz; 4 pilar mais alto e aura maior. Devolve o que destruir junto com o item.
+  brilhoDoSaque(px, y, raridade) {
+    const r = typeof RARIDADES !== "undefined" ? RARIDADES[raridade] : null;
+    const nivel = r?.brilho || 0;
+    if (!nivel) return [];
+    const cor = hexNum(r.cor), reduz = reduzMovimento(), extras = [];
+    const aura = this.add.image(px, y * TAM + 26, "fx_aura").setOrigin(0.5, 0.5).setDepth(PROF.sombra + 1).setTint(cor)
+      .setScale(nivel >= 4 ? 1.35 : nivel >= 3 ? 1.15 : 1).setAlpha(0.5 + 0.1 * nivel);
+    extras.push(aura);
+    if (!reduz) this.tweens.add({ targets: aura, alpha: 0.3 + 0.05 * nivel, duration: 900, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    if (nivel >= 3) {
+      const pilar = this.add.image(px, y * TAM + 28, "fx_pilar").setOrigin(0.5, 1).setDepth(PROF.entidade + y * TAM + 19).setTint(cor)
+        .setScale(nivel >= 4 ? 1.6 : 1.2, nivel >= 4 ? 2.4 : 1.7).setAlpha(0.7);
+      extras.push(pilar);
+      if (!reduz) this.tweens.add({ targets: pilar, alpha: 0.4, scaleX: pilar.scaleX * 0.8, duration: 1100, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    }
+    if (nivel >= 2 && !reduz) {
+      const evento = this.time.addEvent({
+        delay: nivel >= 4 ? 380 : nivel >= 3 ? 560 : 820, loop: true,
+        callback: () => {
+          const f = this.add.sprite(px + (Math.random() - 0.5) * 22, y * TAM + 22 - Math.random() * (nivel >= 3 ? 34 : 14), "fx_brilho", 0)
+            .setTint(cor).setDepth(PROF.numero - 3);
+          this.tweens.add({ targets: f, y: f.y - 10, alpha: 0, duration: 700, onComplete: () => f.destroy() });
+          this.time.delayedCall(180, () => f.active && f.setFrame(1));
+          this.time.delayedCall(380, () => f.active && f.setFrame(2));
+        },
+      });
+      extras.push({ destroy: () => evento.remove(false) });
+    }
+    return extras;
+  }
+  // Saque raro ou melhor acabou de cair: som, estouro de faíscas e o nome da raridade subindo.
+  anunciarSaqueRaro(saques, e) {
+    if (!saques?.length || !e) return;
+    const ordem = typeof RARIDADES !== "undefined" ? Object.keys(RARIDADES) : [];
+    const melhor = saques.reduce((a, b) => (ordem.indexOf(b.raridade) > ordem.indexOf(a.raridade) ? b : a));
+    const r = RARIDADES[melhor.raridade];
+    if (!r) return;
+    Som.saque(melhor.raridade);
+    const x = centroX(e.x), y = baseY(e.y);
+    this.particulasSimples(x, y - 12, r.cor, 6 + 4 * r.brilho, { subir: true, dur: 700, espalha: 14 + 3 * r.brilho });
+    if (r.brilho >= 2) {
+      const t = this.add.text(x, y - 52, `${r.nome.toUpperCase()}!`, {
+        fontFamily: FONTE_PIXEL, fontSize: (ESTILO_RARIDADE[melhor.raridade] || 14) + "px", color: r.cor, stroke: COR.tinta, strokeThickness: 3, resolution: 2,
+      }).setOrigin(0.5, 1).setDepth(PROF.numero);
+      if (!reduzMovimento()) { t.setScale(1.5); this.tweens.add({ targets: t, scale: 1, duration: 220, ease: "Back.easeOut" }); }
+      this.tweens.add({ targets: t, y: t.y - 22, duration: 1400, ease: "Cubic.easeOut" });
+      this.tweens.add({ targets: t, alpha: 0, delay: 1100, duration: 400, onComplete: () => t.destroy() });
+    }
+    if (r.brilho >= 3 && !reduzMovimento()) this.cameras.main.flash(160, ...[1, 3, 5].map((i) => parseInt(r.cor.slice(i, i + 2), 16) >> 1));
   }
   desenharColetaveis() {
     for (const it of coletaveisDaArea(this.areaAtual))
@@ -351,7 +466,8 @@ class Cena extends Phaser.Scene {
     for (const s of this.p.saqueNoChao || []) {
       if (s.area !== this.areaAtual || this.spritesItens[s.id]) continue;
       const textura = s.moedas ? (s.moedas >= 10 ? "moeda_pilha" : "moeda") : s.item;
-      const sprite = this.addItemVisual(s.id, s.x, s.y, textura);
+      const raridade = s.moedas ? "comum" : s.destaque || raridadeItem(s.item);
+      const sprite = this.addItemVisual(s.id, s.x, s.y, textura, 0, raridade);
       sprite.setInteractive({ useHandCursor: true });
       sprite.on("pointerdown", () => this.pegarSaque(s.id));
       if (pular && !reduzMovimento()) {
@@ -864,6 +980,8 @@ class Cena extends Phaser.Scene {
       if (e) (r.tarefas || []).slice(0, 3).forEach((t, i) => {
         this.time.delayedCall(450 + i * 250, () => this.numero(centroX(e.x), baseY(e.y) - 28, `${t.progresso}/${t.meta}`, "tarefa"));
       });
+      if (e && r.saquesRaros?.length) this.time.delayedCall(300, () => this.anunciarSaqueRaro(r.saquesRaros, e));
+      for (const texto of r.anuncios || []) this.time.delayedCall(320, () => this.mensagem(texto, "anuncio"));
     }
     this.p = Mundo.jogadores[MEU_ID];
     this.time.delayedCall(r.derrotado ? 250 : 0, () => this.criarSaques(true));
@@ -971,11 +1089,12 @@ class Cena extends Phaser.Scene {
     this.tweens.add({ targets: c, y: y - 84, alpha: 0, delay: 1200, duration: 600, onComplete: () => c.destroy() });
   }
 
-  mover(dx, dy) {
-    if (this.trocando) return;
+  // Devolve true se o passo aconteceu (o joystick analógico tenta outro passo quando não acontece).
+  mover(dx, dy, duracao = 130) {
+    if (this.trocando) return false;
     const r = Mundo.executar(MEU_ID, { tipo: "mover", dx, dy });
-    if (!r.ok) return;
-    if (r.areaAlterada) return this.trocarArea(r.mensagem);
+    if (!r.ok) return false;
+    if (r.areaAlterada) { this.trocarArea(r.mensagem); return true; }
     this.p = Mundo.jogadores[MEU_ID];
     // Pilha de saque: a lógica recolhe tudo o que couber (itensColetados);
     // r.itemColetado sozinho vem dos coletáveis (erva, odre).
@@ -992,10 +1111,11 @@ class Cena extends Phaser.Scene {
     if (this.areaAtual !== "mar" && dx) this.jogador.setFlipX(dx < 0);
     if (this.areaAtual === "mar" && dx) this.jogador.setFlipX(dx < 0);
     const nx = centroX(this.p.x), ny = baseY(this.p.y) + (this.areaAtual === "mar" ? 6 : 0);
-    this.estadoJogador.andandoAte = this.time.now + 140;
-    this.tweens.add({ targets: this.jogador, x: nx, y: ny, duration: 130 });
+    this.estadoJogador.andandoAte = this.time.now + duracao + 10;
+    this.tweens.add({ targets: this.jogador, x: nx, y: ny, duration: duracao });
     if (this.areaAtual === "mar" && !reduzMovimento()) this.particulasSimples(this.jogador.x - dx * 20, this.jogador.y - 4, "#e8f2e0", 2, { espalha: 6, dur: 500 });
     window.atualizarInterface?.();
+    return true;
   }
   trocarArea(mensagem) {
     this.trocando = true;
@@ -1098,11 +1218,51 @@ class Cena extends Phaser.Scene {
     if (t.w.isDown || t.up.isDown) dy = -1;
     else if (t.s.isDown || t.down.isDown) dy = 1;
     if (t.q.isDown) { dx = -1; dy = -1; } else if (t.e.isDown) { dx = 1; dy = -1; } else if (t.z.isDown) { dx = -1; dy = 1; } else if (t.c.isDown) { dx = 1; dy = 1; }
-    if (!dx && !dy && window.Jogo?.entrada) { dx = Math.sign(window.Jogo.entrada.dx || 0); dy = Math.sign(window.Jogo.entrada.dy || 0); }
+    const ent = window.Jogo?.entrada;
+    if (!dx && !dy && ent?.analogico) return this.passoAnalogico(time, ent);
+    this.desvioJoystick = 0;
+    if (!dx && !dy && ent) { dx = Math.sign(ent.dx || 0); dy = Math.sign(ent.dy || 0); }
     if (dx || dy) {
       this.proximoPasso = time + 140;
       this.mover(dx, dy);
     }
+  }
+
+  // Joystick analógico em 360°: o mapa é em casas, então cada passo é um dos 2 vizinhos da grade em volta
+  // do ângulo (reto ou diagonal). O desvio acumulado (distância do caminho feito até a linha do dedo)
+  // escolhe qual: a 20°, por exemplo, sai "reto, diagonal, reto, reto, diagonal…" e o trajeto segue a
+  // linha. Bloqueado, tenta o outro vizinho e depois os passos que ainda avançam (desliza na quina).
+  // A velocidade ao longo da linha é constante: o passo diagonal (1,41 casa) demora um pouco mais.
+  passoAnalogico(time, ent) {
+    const mag = Math.hypot(ent.dx, ent.dy);
+    if (mag < 0.001) { this.desvioJoystick = 0; return; }
+    const ux = ent.dx / mag, uy = ent.dy / mag;
+    const ang = Math.atan2(uy, ux);
+    // Mudou bastante de direção: começa uma linha nova.
+    if (this.anguloJoystick === undefined || Math.abs(Math.atan2(Math.sin(ang - this.anguloJoystick), Math.cos(ang - this.anguloJoystick))) > 0.3) this.desvioJoystick = 0;
+    this.anguloJoystick = ang;
+    const setor = Math.floor(ang / (Math.PI / 4));
+    const a = DIRECOES_8[((setor % 8) + 8) % 8], b = DIRECOES_8[(((setor + 1) % 8) + 8) % 8];
+    const cruz = (d) => d[0] * uy - d[1] * ux; // desvio lateral que o passo acrescenta
+    const desvio = this.desvioJoystick || 0;
+    const ordem = Math.abs(desvio + cruz(a)) <= Math.abs(desvio + cruz(b)) ? [a, b] : [b, a];
+    const avanco = (d) => d[0] * ux + d[1] * uy;
+    // Contra a parede: primeiro os eixos do dedo (a 10° num muro vertical, desliza para baixo, do lado
+    // em que o dedo está), depois o que ainda avança.
+    const eixos = [[Math.sign(ux), 0], [0, Math.sign(uy)]].filter((d) => d[0] || d[1]).sort((p, q) => avanco(q) - avanco(p));
+    const tentativas = [...ordem];
+    for (const d of [...eixos, ...DIRECOES_8.filter((d) => avanco(d) > 0.2).sort((p, q) => avanco(q) - avanco(p))]) {
+      if (!tentativas.some((t) => t[0] === d[0] && t[1] === d[1])) tentativas.push(d);
+    }
+    for (const d of tentativas) {
+      const dur = Math.round(140 * Math.min(1.3, Math.max(1, avanco(d))));
+      if (!this.mover(d[0], d[1], dur - 10)) continue;
+      // Um passo de desvio (bloqueio) não entra na conta: a linha recomeça de onde o jogador está.
+      this.desvioJoystick = ordem.includes(d) ? desvio + cruz(d) : 0;
+      this.proximoPasso = time + dur;
+      return;
+    }
+    this.proximoPasso = time + 140; // tudo bloqueado: tenta de novo no próximo passo
   }
 
   moverInimigo(id) {

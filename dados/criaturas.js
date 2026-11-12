@@ -6,6 +6,11 @@
 // Campos: id, nome, aparencia (sprite), especie, familia, area, x, y, vidaMaxima, danoContraJogador
 // (antes da defesa), defesa, raioPercepcao, nivel, xpRecompensa, saque { itens, moedas } e veneno ("padrao" ou
 // { duracao, dano, intervalo }).
+// saque: { moedas, itens: [{ item, chance, raridade?, raridadeMinima? }] } — tabela de saque. Cada linha é
+// sorteada à parte: chance é um número de 0 a 1 ou um nome de CHANCES_SAQUE (dados/itens.js): "sempre" (100%),
+// "comum" (25%), "incomum" (8%), "raro" (1%) e "muito_raro" (0,1%). Equipamento sem raridade fixa sorteia a
+// raridade por SORTEIO_RARIDADE; raridadeMinima corta as raridades abaixo dela. Itens que uma missão pede
+// (pele, veneno, insígnia) ficam em "sempre", para a campanha não depender de sorte.
 // nivel: nível da criatura (nível em que o jogador costuma chegar à região). Quem está mais de 5 níveis
 // acima rende menos XP (ver xpDoAbate em logica.js).
 // grupo: { quantidade, raio }: quantas criaturas iguais existem na área e o raio (em casas) em volta de x, y
@@ -40,7 +45,17 @@ const DADOS_CRIATURAS = [
     nivel: 3,
     grupo: { quantidade: 6, raio: 22 },
     xpRecompensa: 40,
-    saque: { itens: ["pele_lobo"], moedas: 4 },
+    saque: {
+      moedas: 4,
+      itens: [
+        { item: "pele_lobo", chance: "sempre" },
+        { item: "presa_lobo", chance: "comum" },
+        { item: "pocao", chance: 0.06 },
+        { item: "tunica_pano", chance: 0.03 },
+        { item: "escudo_madeira", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_sardio", chance: "muito_raro" },
+      ],
+    },
   },
   {
     id: "escorpiao1",
@@ -58,7 +73,17 @@ const DADOS_CRIATURAS = [
     nivel: 5,
     grupo: { quantidade: 6, raio: 20 },
     xpRecompensa: 60,
-    saque: { itens: ["veneno_escorpiao"], moedas: 8 },
+    saque: {
+      moedas: 8,
+      itens: [
+        { item: "veneno_escorpiao", chance: "sempre" },
+        { item: "ferrao_escorpiao", chance: "comum" },
+        { item: "pocao_fe", chance: 0.05 },
+        { item: "escudo_madeira", chance: 0.03 },
+        { item: "arco_madeira", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_topazio", chance: "muito_raro" },
+      ],
+    },
     veneno: "padrao",
   },
   {
@@ -77,7 +102,16 @@ const DADOS_CRIATURAS = [
     nivel: 6,
     grupo: { quantidade: 1, raio: 6 },
     xpRecompensa: 100,
-    saque: { itens: ["insignia_bandido"], moedas: 15 },
+    saque: {
+      moedas: 15,
+      itens: [
+        { item: "insignia_bandido", chance: "sempre" },
+        { item: "pocao", chance: "comum" },
+        { item: "espada_ferro", chance: 0.05, raridadeMinima: "incomum" },
+        { item: "armadura_couro", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_esmeralda", chance: "muito_raro" },
+      ],
+    },
   },
   {
     id: "soldadoEgito1",
@@ -95,7 +129,16 @@ const DADOS_CRIATURAS = [
     nivel: 6,
     grupo: { quantidade: 4, raio: 20 },
     xpRecompensa: 100,
-    saque: { itens: [], moedas: 18 },
+    saque: {
+      moedas: 18,
+      itens: [
+        { item: "linho_egipcio", chance: "comum" },
+        { item: "pocao", chance: 0.08 },
+        { item: "escudo_bronze", chance: 0.03 },
+        { item: "espada_ferro", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_carbunculo", chance: "muito_raro" },
+      ],
+    },
   },
   {
     id: "perseguidorMar1",
@@ -113,7 +156,16 @@ const DADOS_CRIATURAS = [
     nivel: 7,
     grupo: { quantidade: 4, raio: 20 },
     xpRecompensa: 130,
-    saque: { itens: [], moedas: 22 },
+    saque: {
+      moedas: 22,
+      itens: [
+        { item: "ponta_lanca", chance: "comum" },
+        { item: "pocao", chance: 0.08 },
+        { item: "armadura_couro", chance: 0.03 },
+        { item: "escudo_bronze", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_safira", chance: "muito_raro" },
+      ],
+    },
   },
   {
     id: "guardiaoSinai1",
@@ -131,7 +183,16 @@ const DADOS_CRIATURAS = [
     nivel: 8,
     grupo: { quantidade: 4, raio: 20 },
     xpRecompensa: 160,
-    saque: { itens: [], moedas: 26 },
+    saque: {
+      moedas: 26,
+      itens: [
+        { item: "bracelete_cobre", chance: "comum" },
+        { item: "pocao", chance: 0.08 },
+        { item: "arco_madeira", chance: 0.03 },
+        { item: "espada_temperada", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_ametista", chance: "muito_raro" },
+      ],
+    },
   },
   // O id com "ç" foi mantido para não invalidar saves existentes.
   {
@@ -150,6 +211,15 @@ const DADOS_CRIATURAS = [
     nivel: 9,
     grupo: { quantidade: 4, raio: 20 },
     xpRecompensa: 190,
-    saque: { itens: [], moedas: 30 },
+    saque: {
+      moedas: 30,
+      itens: [
+        { item: "pocao", chance: "comum" },
+        { item: "pocao_fe", chance: 0.08 },
+        { item: "espada_temperada", chance: 0.03 },
+        { item: "arco_composto", chance: "raro", raridadeMinima: "raro" },
+        { item: "pedra_onix", chance: "muito_raro" },
+      ],
+    },
   },
 ];

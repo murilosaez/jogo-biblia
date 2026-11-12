@@ -204,10 +204,10 @@ function pegarSaques(j) {
 
 function equiparMelhor(j) {
   const p = j.p;
-  const ITENS = j.g("ITENS");
+  const info = j.g("infoItem");
   for (const [slot, tipo] of Object.entries({ arma: "arma", escudo: "escudo", armadura: "armadura" })) {
-    const valor = (i) => (i ? ITENS[i].bonus || ITENS[i].defesa || 0 : -1);
-    const melhor = p.inventario.filter((i) => ITENS[i].tipo === tipo).sort((a, b) => valor(b) - valor(a))[0];
+    const valor = (i) => (i ? info(i).bonus || info(i).defesa || 0 : -1);
+    const melhor = p.inventario.filter((i) => info(i).tipo === tipo).sort((a, b) => valor(b) - valor(a))[0];
     if (melhor && valor(melhor) > valor(p.equipamento[slot])) {
       const r = j.M.equiparItem(ID, melhor, slot);
       assert.ok(r.ok, r.mensagem);
@@ -1406,7 +1406,19 @@ teste("27. dados/: conteúdo puro e todas as referências apontam para algo que 
   for (const n of Object.values(npcs)) area(n.area, `npc ${n.id}`);
   for (const e of Object.values(inimigos)) {
     area(e.area, `criatura ${e.id}`);
-    for (const i of e.saque.itens) item(i, `saque de ${e.id}`);
+    const RARIDADES = j.g("RARIDADES");
+    const CHANCES = j.g("CHANCES_SAQUE");
+    assert.ok(Array.isArray(e.saque.itens) && e.saque.itens.length, `${e.id}: tabela de saque`);
+    for (const linha of e.saque.itens) {
+      const onde = `saque de ${e.id}`;
+      assert.ok(typeof linha === "object" && linha, `${onde}: cada linha é { item, chance }`);
+      item(linha.item, onde);
+      const chance = typeof linha.chance === "string" ? CHANCES[linha.chance] : linha.chance;
+      assert.ok(chance > 0 && chance <= 1, `${onde}: chance de ${linha.item} (${linha.chance})`);
+      for (const campo of ["raridade", "raridadeMinima"]) {
+        if (campo in linha) assert.ok(RARIDADES[linha[campo]], `${onde}: ${campo} "${linha[campo]}"`);
+      }
+    }
     assert.ok(e.vidaMaxima > 0 && e.xpRecompensa > 0, `atributos de ${e.id}`);
   }
   for (const [chave, c] of Object.entries(CAPITULOS)) {
@@ -2969,6 +2981,263 @@ teste("46. migração para a v9: posição e saques dos mapas de 80×60 vão par
     if (onde !== "fora do mapa") assert.ok(Math.max(Math.abs(p.x - x), Math.abs(p.y - y)) <= 3, `${onde}: vai para perto`);
   }
 });
+
+// ---------------------------------------------------------------------
+// Raridades, atributos aleatórios e tabelas de saque (JGB-4 e JGB-5)
+// ---------------------------------------------------------------------
+teste("47. raridades: item com raridade se descreve sozinho, só a forma canônica vale e o sorteio respeita as faixas", () => {
+  const j = carregarJogo();
+  const [info, gerar, codigo, valido, nome, textoAtr] = ["infoItem", "gerarItem", "codigoItem", "itemValido", "nomeItem", "textoAtributos"].map(j.g);
+  const RARIDADES = j.g("RARIDADES");
+  const ATR = j.g("ATRIBUTOS_ITEM");
+  const ordem = Object.keys(RARIDADES);
+  igual(ordem, ["comum", "incomum", "raro", "epico", "reliquia"]);
+  for (const r of ordem) assert.match(RARIDADES[r].cor, /^#[0-9a-f]{6}$/i, `cor de ${r}`);
+  for (let i = 1; i < ordem.length; i++) {
+    assert.ok(RARIDADES[ordem[i]].brilho > RARIDADES[ordem[i - 1]].brilho, `${ordem[i]} brilha mais que ${ordem[i - 1]}`);
+    assert.ok(RARIDADES[ordem[i]].som, `${ordem[i]} tem som`);
+  }
+  assert.ok(!RARIDADES.comum.som && !RARIDADES.comum.brilho, "comum não brilha nem toca");
+  assert.ok(RARIDADES.epico.anuncio && RARIDADES.reliquia.anuncio && !RARIDADES.raro.anuncio, "anúncio a partir do épico");
+  // Atributos aleatórios só a partir do raro.
+  for (const r of ["comum", "incomum"]) assert.strictEqual(RARIDADES[r].atributos, 0);
+  for (const r of ["raro", "epico", "reliquia"]) assert.ok(RARIDADES[r].atributos >= 1);
+
+  // Item base: raridade comum (ou a dos dados) e nome sem sufixo.
+  assert.strictEqual(info("espada_ferro").raridade, "comum");
+  assert.strictEqual(info("pedra_onix").raridade, "reliquia");
+  assert.strictEqual(nome("pedra_onix"), "Ônix");
+  // Forma canônica: base@raridade.atributoValor na ordem de ATRIBUTOS_ITEM.
+  const id = codigo("espada_ferro", "epico", { critico: 3, dano: 4 });
+  assert.strictEqual(id, "espada_ferro@epico.dano4.critico3");
+  const d = info(id);
+  assert.strictEqual(d.bonus, 12 + 4);
+  assert.strictEqual(d.raridade, "epico");
+  assert.strictEqual(nome(id), "Espada de ferro (Épico)");
+  igual(textoAtr(id), ["+4 de dano", "+3% de chance de crítico"]);
+  assert.strictEqual(j.g("pesoItem")(id), 10);
+  assert.strictEqual(info("escudo_bronze@raro.defesa2.vida8").defesa, 5 + 2);
+  // Recusas: ordem errada, atributo que o tipo não tem, valor fora do teto, raridade inválida,
+  // raridade em item que não é equipamento, atributos demais, sobras.
+  for (const ruim of [
+    "espada_ferro@epico.critico3.dano4",
+    "espada_ferro@raro.defesa1",
+    "espada_ferro@raro.dano99",
+    "espada_ferro@lendario.dano1",
+    "espada_ferro@comum",
+    "pocao@raro",
+    "pele_lobo@epico.vida5",
+    "espada_ferro@incomum.dano1.critico1.vida5",
+    "espada_ferro@raro.dano0",
+    "espada_ferro@raro.dano1@x",
+    "nada@raro",
+    "constructor@raro",
+    "__proto__",
+    42,
+    null,
+  ]) assert.ok(!valido(ruim), `inválido: ${ruim}`);
+
+  // Sorteio: muitas gerações por raridade e tipo ficam dentro das faixas e são sempre canônicas.
+  const rng = aleatorioComSemente(7);
+  const principal = { arma: "dano", arma_distancia: "dano", escudo: "defesa", armadura: "defesa" };
+  for (const base of ["espada_ferro", "arco_composto", "escudo_bronze", "armadura_couro"]) {
+    const tipo = j.g("ITENS")[base].tipo;
+    for (const r of ordem) {
+      for (let i = 0; i < 300; i++) {
+        const item = gerar(base, r, rng);
+        if (r === "comum") { assert.strictEqual(item, base); continue; }
+        const x = info(item);
+        assert.ok(x, `${base} ${r}: ${item} válido`);
+        assert.strictEqual(x.raridade, r);
+        const chaves = Object.keys(x.atributos);
+        const melhoria = RARIDADES[r].melhoria;
+        const sorteados = chaves.filter((k) => k !== principal[tipo]).length;
+        assert.ok(sorteados <= RARIDADES[r].atributos, `${item}: atributos demais`);
+        assert.ok((x.atributos[principal[tipo]] || 0) >= melhoria, `${item}: melhoria do principal`);
+        for (const k of chaves) {
+          assert.ok(ATR[k].tipos.includes(tipo), `${item}: ${k} não vale para ${tipo}`);
+          const faixa = ATR[k].faixas[r] || [0, 0];
+          const max = faixa[1] + (k === principal[tipo] ? melhoria : 0);
+          assert.ok(x.atributos[k] >= 1 && x.atributos[k] <= max, `${item}: ${k}=${x.atributos[k]} fora da faixa`);
+        }
+      }
+    }
+  }
+});
+
+teste("48. raridades: atributos valem no combate, na vida, na carga e sobrevivem ao save; inválidos somem na carga", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const [vidaMaxima, capacidade, chance, defesa, danoBruto] = ["vidaMaxima", "capacidadeCarga", "chanceCritico", "defesaEquipamento", "danoBruto"].map(j.g);
+  const vida0 = vidaMaxima(p), carga0 = capacidade(p), crit0 = chance(p, "corpo"), def0 = defesa(p), dano0 = danoBruto(p, "corpo");
+  const arma0 = p.equipamento.arma;
+  const espada = "espada_ferro@reliquia.dano5.critico4.vida25";
+  const couraca = "armadura_couro@epico.defesa3.carga5";
+  p.inventario.push(espada, couraca);
+  assert.ok(j.M.equiparItem(ID, espada, "arma").ok);
+  const r = j.M.equiparItem(ID, couraca, "armadura");
+  assert.ok(r.ok);
+  assert.match(r.mensagem, /Armadura de couro \(Épico\) equipado \(\+8 de defesa, \+5 kg de carga\)/);
+  const baseArma = arma0 ? j.g("infoItem")(arma0).bonus : 0;
+  assert.strictEqual(danoBruto(p, "corpo"), dano0 - baseArma + 12 + 5);
+  assert.strictEqual(vidaMaxima(p), vida0 + 25);
+  assert.strictEqual(chance(p, "corpo"), crit0 + 4);
+  assert.strictEqual(chance(p, "distancia") - chance({ ...p, equipamento: {} }, "distancia"), 4, "crítico do equipamento vale no arco também");
+  assert.strictEqual(capacidade(p), carga0 + 5);
+  assert.ok(defesa(p) >= def0 - 10 + 8);
+  // Tirar o equipamento de vida baixa a vida atual até a nova máxima.
+  p.vida = vidaMaxima(p);
+  assert.ok(j.M.desequiparItem(ID, "arma").ok);
+  assert.strictEqual(p.vida, vida0);
+  // alternarEquipamento escolhe o de maior dano (o raro ganha da espada comum).
+  p.inventario.push("espada_ferro");
+  j.M.alternarEquipamento(ID, "arma");
+  assert.strictEqual(p.equipamento.arma, espada);
+
+  // Save: os itens com raridade voltam iguais; os inválidos somem (mochila, equipamento e chão).
+  p.saqueNoChao.push(
+    { id: "s_raro", area: "canaan", x: 5, y: 5, item: "escudo_madeira@raro.vida7", criadoEm: j.agora },
+    { id: "s_ruim", area: "canaan", x: 5, y: 5, item: "escudo_madeira@raro.dano7", criadoEm: j.agora },
+    { id: "s_dest", area: "canaan", x: 5, y: 5, item: "pele_lobo", destaque: "inventado", criadoEm: j.agora },
+  );
+  p.inventario.push("arco_madeira@lendario", "pocao");
+  j.g("Storage").salvarAgora(p);
+  const salvo = JSON.parse(j.store.save_jogador1);
+  const j2 = carregarJogo({ store: { save_jogador1: JSON.stringify(salvo) } });
+  const p2 = j2.entrar();
+  assert.strictEqual(p2.equipamento.arma, espada);
+  assert.strictEqual(p2.equipamento.armadura, couraca);
+  assert.ok(!p2.inventario.includes("arco_madeira@lendario"));
+  assert.ok(p2.saqueNoChao.some((s) => s.id === "s_raro"));
+  assert.ok(!p2.saqueNoChao.some((s) => s.id === "s_ruim"));
+  assert.ok(!("destaque" in p2.saqueNoChao.find((s) => s.id === "s_dest")), "destaque inválido sai do save");
+  assert.strictEqual(j2.g("vidaMaxima")(p2), vida0 + 25);
+  // A troca de pontos reconhece o item em qualquer raridade.
+  p2.inventario.push("escudo_ferro@raro.vida5");
+  assert.strictEqual(j2.g("unidadesDoItem")(p2, "escudo_ferro"), 1);
+});
+
+teste("49. tabelas de saque: simulação de muitos abates bate com as chances, drop raro anuncia e a campanha não depende de sorte", () => {
+  const j = carregarJogo();
+  const inimigos = j.g("inimigos");
+  const sortear = j.g("sortearSaque");
+  const chanceSaque = j.g("chanceSaque");
+  const RARIDADES = j.g("RARIDADES");
+  const CHANCES = j.g("CHANCES_SAQUE");
+  const base = j.g("baseItem");
+  const raridade = j.g("raridadeItem");
+  const ordem = Object.keys(RARIDADES);
+  const originais = Object.values(inimigos).filter((e) => !e.base);
+  const N = 200_000;
+  const linhas = [];
+  for (const e of originais) {
+    const tabela = e.saque.itens;
+    const itens = tabela.map((l) => l.item);
+    assert.strictEqual(new Set(itens).size, itens.length, `${e.id}: cada item aparece uma vez na tabela`);
+    assert.ok(tabela.some((l) => chanceSaque(l.chance) <= CHANCES.raro && chanceSaque(l.chance) > CHANCES.muito_raro), `${e.id}: tem drop raro (1%)`);
+    assert.ok(tabela.some((l) => chanceSaque(l.chance) <= CHANCES.muito_raro), `${e.id}: tem drop muito raro (0,1%)`);
+    // Linhas de 1% ou menos sempre rendem raro ou melhor (brilham e tocam).
+    for (const l of tabela.filter((l) => chanceSaque(l.chance) <= CHANCES.raro)) {
+      const min = l.raridadeMinima || l.raridade || raridade(l.item);
+      assert.ok(ordem.indexOf(min) >= ordem.indexOf("raro"), `${e.id}: ${l.item} a ${l.chance} precisa ser raro ou melhor`);
+    }
+    const rng = aleatorioComSemente(1000 + originais.indexOf(e));
+    const contagem = Object.fromEntries(itens.map((i) => [i, 0]));
+    const raridades = Object.fromEntries(itens.map((i) => [i, {}]));
+    for (let k = 0; k < N; k++) {
+      for (const { item } of sortear(e, rng)) {
+        contagem[base(item)]++;
+        const r = raridade(item);
+        raridades[base(item)][r] = (raridades[base(item)][r] || 0) + 1;
+      }
+    }
+    for (const l of tabela) {
+      const pr = chanceSaque(l.chance);
+      const esperado = N * pr;
+      const sigma = Math.sqrt(N * pr * (1 - pr)) || 1;
+      const obs = contagem[l.item];
+      assert.ok(Math.abs(obs - esperado) <= 5 * sigma, `${e.id}: ${l.item} caiu ${obs}× em ${N} (esperado ${esperado.toFixed(0)})`);
+      if (l.raridadeMinima) {
+        for (const r of Object.keys(raridades[l.item])) assert.ok(ordem.indexOf(r) >= ordem.indexOf(l.raridadeMinima), `${l.item}: ${r} abaixo do mínimo`);
+      }
+      linhas.push({ criatura: e.id, item: l.item, chance: pr, obs, esperado });
+    }
+  }
+  console.log("\n    Simulação das tabelas de saque (" + N.toLocaleString("pt-BR") + " abates por criatura):");
+  for (const l of linhas.filter((l) => l.chance < 1)) {
+    console.log(`    ${l.criatura.padEnd(18)}${l.item.padEnd(20)}${(l.chance * 100).toFixed(1).padStart(6)}%  ${String(l.obs).padStart(7)}  (esperado ${l.esperado.toFixed(0)})`);
+  }
+
+  // Sorteio de raridade de equipamento: distribuição segue SORTEIO_RARIDADE, cortada pelo mínimo.
+  const sortearRaridade = j.g("sortearRaridade");
+  const pesos = j.g("SORTEIO_RARIDADE");
+  const rng = aleatorioComSemente(99);
+  for (const minima of [undefined, "incomum", "raro"]) {
+    const corte = Math.max(0, ordem.indexOf(minima));
+    const opcoes = ordem.slice(corte);
+    const total = opcoes.reduce((s, r) => s + pesos[r], 0);
+    const cont = {};
+    const M = 100_000;
+    for (let k = 0; k < M; k++) { const r = sortearRaridade(minima, rng); cont[r] = (cont[r] || 0) + 1; }
+    for (const r of ordem) {
+      const pr = opcoes.includes(r) ? pesos[r] / total : 0;
+      const sigma = Math.sqrt(M * pr * (1 - pr)) || 1;
+      assert.ok(Math.abs((cont[r] || 0) - M * pr) <= 5 * sigma, `raridade ${r} com mínimo ${minima}: ${cont[r] || 0}`);
+    }
+  }
+
+  // Itens que as missões pedem como saque caem sempre (a campanha não depende de sorte).
+  const pedidos = new Set();
+  for (const m of Object.values(j.g("MISSOES")))
+    for (const etapa of m.etapas || []) for (const o of etapa.objetivos || []) if (o.tipo === "coletar" && o.origem === "saque") pedidos.add(o.item);
+  assert.ok(pedidos.size >= 2);
+  for (const item of pedidos) {
+    const donos = originais.filter((e) => e.saque.itens.some((l) => l.item === item));
+    assert.ok(donos.length, `${item}: alguma criatura deixa cair`);
+    for (const e of donos) assert.strictEqual(chanceSaque(e.saque.itens.find((l) => l.item === item).chance), 1, `${e.id}: ${item} sempre cai`);
+  }
+
+  // No jogo: abate com drop raro devolve saquesRaros e anúncio; o saque no chão tem o item com raridade.
+  j.entrar();
+  const p = j.p;
+  p.nivel = 30;
+  p.vida = 9999;
+  let r = null;
+  for (let tentativa = 0; tentativa < 400 && !r?.anuncios?.length; tentativa++) {
+    // Força o sorteio: tudo abaixo de 1% cai, e a raridade sai épica (sorteio alto).
+    let n = 0;
+    j.definirAleatorio(() => (n++ % 2 === 0 ? 0.0005 : 0.97));
+    r = abaterSemLimpar(j, "lobo1");
+  }
+  j.definirAleatorio(aleatorioComSemente(5));
+  assert.ok(r.saquesRaros.length, "drop raro marcado");
+  assert.ok(r.anuncios.includes("Drop muito raro (0,1%)! Lobo deixou cair: Sárdio."), r.anuncios.join(" | "));
+  assert.ok(r.anuncios.some((t) => /^Drop raro \(1%\)! Lobo deixou cair: Escudo de madeira \((Raro|Épico|Relíquia)\)\.$/.test(t)), r.anuncios.join(" | "));
+  for (const s of r.saquesRaros) {
+    assert.ok(ordem.indexOf(s.raridade) >= ordem.indexOf("incomum"));
+    assert.ok(p.saqueNoChao.some((c) => c.id === s.saqueId && c.item === s.item), "o destaque aponta para o saque no chão");
+  }
+  const sardio = p.saqueNoChao.find((s) => s.item === "pedra_sardio");
+  assert.ok(sardio, "a pedra muito rara caiu com o sorteio forçado");
+  // E entra na mochila pelo caminho normal, com o nome da pedra.
+  posicionarAoLado(j, sardio.area, sardio);
+  const c = j.exec({ tipo: "coletarSaque", saqueId: sardio.id });
+  assert.ok(c.ok && /Sárdio/.test(c.mensagem), c.mensagem);
+});
+
+// Abate num golpe sem limpar o saque (para olhar o que caiu).
+function abaterSemLimpar(j, inimigoId) {
+  const p = j.p;
+  const e = j.g("inimigos")[inimigoId];
+  if (j.M.obterVidaInimigo(ID, inimigoId) <= 0) j.M.reaparecerInimigo(ID, inimigoId);
+  p.vidaInimigos[inimigoId] = 1;
+  posicionarAoLado(j, e.area, e);
+  j.avancar(1000);
+  const r = j.exec({ tipo: "atacar", alvoId: inimigoId });
+  assert.ok(r.derrotado, `abate de ${inimigoId}: ${r.mensagem}`);
+  return r;
+}
 
 // ---------------------------------------------------------------------
 // Execução

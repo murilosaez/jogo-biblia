@@ -1031,6 +1031,49 @@
     g.p(8, 7, "#8a3a4a"); g.ret(7, 8, 3, 1, "#8a3a4a"); g.ret(6, 9, 5, 1, "#6a2a3a"); g.ret(7, 10, 3, 1, "#6a2a3a"); g.p(8, 11, "#6a2a3a");
     g.p(8, 4, "#5e3c1c"); g.p(7, 3, "#b07a38"); g.p(9, 3, "#b07a38"); g.p(8, 2, "#b07a38");
   });
+  // Saques das tabelas das criaturas.
+  item("presa_lobo", (g) => {
+    // presa curva, base escura e ponta clara
+    for (const [x, y, c] of [[5, 13, "#b8a888"], [6, 12, "#d8cbb0"], [7, 11, "#d8cbb0"], [8, 10, "#eadcb6"], [9, 8, "#eadcb6"], [10, 7, "#f6efdc"], [10, 5, "#f6efdc"], [11, 4, "#ffffff"]]) g.p(x, y, c);
+    for (const [x, y] of [[6, 13], [7, 12], [8, 11], [9, 10], [9, 9], [10, 8], [11, 6], [11, 5]]) g.p(x, y, "#a89a86");
+    g.ret(4, 13, 2, 2, "#8a3a2a"); g.p(5, 12, "#b8a888");
+  });
+  item("ferrao_escorpiao", (g) => {
+    g.elip(7, 11, 3.2, 2.6, esfera(["#4f3220", "#7d522b", "#b07a3e"]));
+    g.lin(9, 9, 11, 6, "#7d522b"); g.lin(10, 9, 12, 6, "#4f3220");
+    g.p(12, 5, "#a8c84a"); g.p(11, 4, "#d8e88a"); g.p(13, 5, "#6a8a2a");
+  });
+  item("linho_egipcio", (g) => {
+    // rolo de linho dobrado
+    g.ret(3, 7, 10, 6, (x, y) => tom(["#b8a888", "#d8cbb0", "#f6efdc"], -((y - 9.5) * 0.45 + (x - 8) * 0.12)));
+    g.lin(3, 9, 12, 9, "#b8a888"); g.lin(3, 11, 12, 11, "#b8a888");
+    g.ret(7, 6, 2, 8, "#3b5a9a"); g.p(7, 6, "#7fa3e0");
+  });
+  item("ponta_lanca", (g) => {
+    for (let i = 0; i < 6; i++) {
+      const w = Math.max(0, 2 - Math.floor(i / 2));
+      g.ret(8 - w, 3 + i, 1 + 2 * w, 1, (x) => (x < 8 ? "#e8b94a" : x > 8 ? "#8a5e2a" : "#b8862b"));
+    }
+    g.ret(7, 9, 3, 4, "#7a4a30"); g.ret(7, 9, 1, 4, "#a8703a"); g.p(8, 13, "#4f3220");
+  });
+  item("bracelete_cobre", (g) => {
+    g.elip(8, 10, 5, 3.6, esfera(["#7a3a1a", "#b8642b", "#e89a5a"]));
+    for (let y = 8; y <= 12; y++) for (let x = 4; x <= 12; x++) if (((x + 0.5 - 8) / 3) ** 2 + ((y + 0.5 - 10) / 1.8) ** 2 < 1) g.apagar(x, y);
+    g.p(8, 7, "#3fa66a"); g.p(5, 9, "#f0c080");
+  });
+  // Pedras do peitoral: a mesma lapidação, na cor de cada pedra (campo "pedra" em dados/itens.js).
+  for (const [chave, d] of Object.entries(typeof ITENS !== "undefined" ? ITENS : {})) {
+    if (!d.pedra) continue;
+    const rampa = [misturar(d.pedra, "#120a08", 0.45), d.pedra, misturar(d.pedra, "#ffffff", 0.45)];
+    item(chave, (g) => {
+      // gema lapidada: mesa no alto, facetas laterais e brilho
+      for (let y = 6; y <= 13; y++) {
+        const w = y <= 8 ? 2 + (y - 6) : Math.max(0, 4 - (y - 9));
+        for (let x = 8 - w; x <= 7 + w; x++) g.p(x, y, tom(rampa, -((x - 7.5) * 0.18 + (y - 9) * 0.25) + (y <= 8 ? 0.5 : 0)));
+      }
+      g.p(6, 7, "#ffffff"); g.p(7, 6, misturar(d.pedra, "#ffffff", 0.7));
+    });
+  }
   item("peixe", (g) => {
     g.elip(7.5, 9, 4.6, 2.6, (nx, ny) => (ny > 0.45 ? "#eadcb6" : tom(["#2f7680", "#4fa3a5", "#a9dccf"], -(0.4 * nx + 0.9 * ny))));
     g.lin(2, 7, 3, 8, "#2f7680"); g.lin(2, 11, 3, 10, "#2f7680"); g.p(2, 9, "#2f7680"); g.p(1, 6, "#4fa3a5"); g.p(1, 12, "#4fa3a5");
@@ -1049,7 +1092,11 @@
     }
   });
   const ALIAS_ITEM = { odre: "odre_agua", flechas: "flecha", moedas: "moeda" };
-  const aliasItem = (id) => ALIAS_ITEM[id] || id;
+  // Item com raridade ("espada_ferro@raro.dano2") usa a arte do item base.
+  const aliasItem = (id) => {
+    const base = typeof id === "string" ? id.split("@")[0] : id;
+    return ALIAS_ITEM[base] || base;
+  };
 
   // -------------------------------------------------------------------
   // Glifos de UI (§6.7) — 8×8 ou 12×12, contorno já desenhado
@@ -1283,6 +1330,25 @@
       g.p(2, 2, c);
       if (q >= 1) { g.p(2, 1, c); g.p(2, 3, c); g.p(1, 2, c); g.p(3, 2, c); }
       if (q === 2) { g.p(2, 0, comAlfa(c, 0.6)); g.p(2, 4, comAlfa(c, 0.6)); g.p(0, 2, comAlfa(c, 0.6)); g.p(4, 2, comAlfa(c, 0.6)); }
+    },
+  });
+  // Brilho do saque no chão e pilar de luz (brancos: o jogo tinge na cor da raridade).
+  registrar("fx_aura", {
+    w: 28, h: 12, contorno: null, origem: [0.5, 0.5],
+    desenhar: (g) => g.elip(14, 6, 13, 5.2, (nx, ny) => {
+      const d = nx * nx + ny * ny;
+      return comAlfa("#ffffff", d < 0.2 ? 0.75 : d < 0.5 ? 0.45 : 0.2);
+    }),
+  });
+  registrar("fx_pilar", {
+    w: 8, h: 56, contorno: null, origem: [0.5, 1],
+    desenhar(g) {
+      for (let y = 0; y < 56; y++) {
+        const a = 0.65 * (y / 55) ** 1.4;
+        g.ret(2, y, 4, 1, comAlfa("#ffffff", a));
+        g.p(1, y, comAlfa("#ffffff", a * 0.4)); g.p(6, y, comAlfa("#ffffff", a * 0.4));
+        g.p(3, y, comAlfa("#ffffff", Math.min(1, a * 1.4))); g.p(4, y, comAlfa("#ffffff", Math.min(1, a * 1.4)));
+      }
     },
   });
   registrar("fx_pixel", { w: 1, h: 1, contorno: null, origem: [0.5, 0.5], desenhar: (g) => g.p(0, 0, "#ffffff") });

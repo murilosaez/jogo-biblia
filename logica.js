@@ -104,17 +104,214 @@ function registroDe(tabela, id) {
   return typeof id === "string" && Object.hasOwn(tabela, id) ? tabela[id] : undefined;
 }
 
+// ---------------------------------------------------------------------
+// Raridades e atributos aleatórios
+// ---------------------------------------------------------------------
+// RARIDADES, ATRIBUTOS_ITEM, SORTEIO_RARIDADE e CHANCES_SAQUE vêm de dados/itens.js.
+// Um equipamento acima de comum é guardado como um texto que se descreve sozinho:
+// "<item>@<raridade>[.<atributo><valor>]…", por exemplo "espada_ferro@epico.critico3.dano4" (os atributos
+// na ordem de ATRIBUTOS_ITEM). Mochila, equipamento, saques no chão e save continuam listas de textos;
+// dois itens com o mesmo sorteio são iguais e se empilham. O valor do atributo principal (dano da arma
+// ou do arco, defesa do escudo ou da armadura) já inclui a melhoria da raridade.
+const ORDEM_RARIDADES = Object.keys(RARIDADES);
+const ORDEM_ATRIBUTOS = Object.keys(ATRIBUTOS_ITEM);
+const TIPOS_COM_RARIDADE = new Set(Object.values(SLOTS_EQUIPAMENTO));
+const CRITICO_EQUIPAMENTO_MAXIMO = 25; // soma dos atributos de crítico do equipamento, em pontos de %
+const cacheItens = new Map();
+
+// Id do item da tabela ITENS ("espada_ferro@raro.dano2" → "espada_ferro").
+function baseItem(id) {
+  return typeof id === "string" ? id.split("@")[0] : id;
+}
+
+function indiceRaridade(raridade) {
+  return ORDEM_RARIDADES.indexOf(raridade);
+}
+
+function atributoPrincipal(tipo) {
+  if (tipo === "arma" || tipo === "arma_distancia") return "dano";
+  if (tipo === "escudo" || tipo === "armadura") return "defesa";
+  return null;
+}
+
+// Maior valor que um atributo pode ter (confere saves): maior faixa + maior melhoria.
+function tetoAtributo(chave) {
+  const faixas = Object.values(ATRIBUTOS_ITEM[chave].faixas);
+  const melhoria = Math.max(...Object.values(RARIDADES).map((r) => r.melhoria || 0));
+  return Math.max(...faixas.map((f) => f[1])) + melhoria;
+}
+
+// Texto canônico de um item com raridade e atributos.
+function codigoItem(base, raridade, atributos = {}) {
+  if (!raridade || raridade === "comum") return base;
+  const partes = ORDEM_ATRIBUTOS.filter((k) => atributos[k] > 0).map((k) => `${k}${atributos[k]}`);
+  return [`${base}@${raridade}`, ...partes].join(".");
+}
+
+function lerItem(id) {
+  if (typeof id !== "string") return null;
+  const [base, resto, ...sobra] = id.split("@");
+  const d = registroDe(ITENS, base);
+  if (!d || sobra.length) return null;
+  const montar = (raridade, atributos) => ({
+    ...d,
+    id,
+    base,
+    raridade,
+    atributos,
+    nome: raridade !== (d.raridade || "comum") ? `${d.nome} (${RARIDADES[raridade].nome})` : d.nome,
+    bonus: (d.bonus || 0) + (atributos.dano || 0),
+    defesa: (d.defesa || 0) + (atributos.defesa || 0),
+  });
+  if (resto === undefined) return montar(registroDe(RARIDADES, d.raridade) ? d.raridade : "comum", {});
+  if (!TIPOS_COM_RARIDADE.has(d.tipo)) return null;
+  const [raridade, ...partes] = resto.split(".");
+  const r = registroDe(RARIDADES, raridade);
+  if (!r || raridade === "comum") return null;
+  const atributos = {};
+  for (const parte of partes) {
+    const m = /^([a-z]+)([1-9]\d{0,2})$/.exec(parte);
+    const def = m && registroDe(ATRIBUTOS_ITEM, m[1]);
+    if (!def || !def.tipos.includes(d.tipo) || m[1] in atributos) return null;
+    if (Number(m[2]) > tetoAtributo(m[1])) return null;
+    atributos[m[1]] = Number(m[2]);
+  }
+  if (Object.keys(atributos).length > r.atributos + 1) return null; // +1: a melhoria do principal
+  if (codigoItem(base, raridade, atributos) !== id) return null; // só a forma canônica
+  return montar(raridade, atributos);
+}
+
+// Descrição completa de um item (base + raridade + atributos), ou null se o id não for válido.
+// O objeto vem de um cache: só leia.
+function infoItem(id) {
+  if (cacheItens.has(id)) return cacheItens.get(id);
+  const info = lerItem(id);
+  if (typeof id === "string") {
+    if (cacheItens.size > 4000) cacheItens.clear();
+    cacheItens.set(id, info);
+  }
+  return info;
+}
+
+function itemValido(id) {
+  return !!infoItem(id);
+}
+
+function raridadeItem(id) {
+  return infoItem(id)?.raridade || "comum";
+}
+
+// Linhas de atributo para a interface ("+3 de dano", "+2% de chance de crítico"…), na ordem dos dados.
+// Só os atributos acima do item base: o dano ou a defesa base aparecem à parte.
+function textoAtributos(id) {
+  const info = infoItem(id);
+  if (!info) return [];
+  return ORDEM_ATRIBUTOS.filter((k) => info.atributos[k] > 0).map((k) =>
+    ATRIBUTOS_ITEM[k].texto.replace("{v}", String(info.atributos[k])),
+  );
+}
+
+// Sorteia a raridade (pesos de SORTEIO_RARIDADE), sem as raridades abaixo de "minima".
+function sortearRaridade(minima, aleatorio = Math.random) {
+  const corte = Math.max(0, indiceRaridade(minima));
+  const opcoes = ORDEM_RARIDADES.filter((r, i) => i >= corte && SORTEIO_RARIDADE[r] > 0);
+  if (!opcoes.length) return ORDEM_RARIDADES[corte] || "comum";
+  const total = opcoes.reduce((s, r) => s + SORTEIO_RARIDADE[r], 0);
+  let sorteio = aleatorio() * total;
+  for (const r of opcoes) {
+    sorteio -= SORTEIO_RARIDADE[r];
+    if (sorteio < 0) return r;
+  }
+  return opcoes[opcoes.length - 1];
+}
+
+// Cria um equipamento da raridade pedida, com a melhoria e os atributos aleatórios dela.
+// Itens que não são equipamento (ou raridade comum) voltam como o id base.
+function gerarItem(base, raridade, aleatorio = Math.random) {
+  const d = registroDe(ITENS, base);
+  const r = registroDe(RARIDADES, raridade);
+  if (!d || !r || raridade === "comum" || !TIPOS_COM_RARIDADE.has(d.tipo)) return base;
+  const atributos = {};
+  const principal = atributoPrincipal(d.tipo);
+  if (r.melhoria && principal) atributos[principal] = r.melhoria;
+  const possiveis = ORDEM_ATRIBUTOS.filter((k) => ATRIBUTOS_ITEM[k].tipos.includes(d.tipo) && ATRIBUTOS_ITEM[k].faixas[raridade]);
+  for (let i = 0; i < r.atributos && possiveis.length; i++) {
+    const k = possiveis.splice(Math.floor(aleatorio() * possiveis.length), 1)[0];
+    const [min, max] = ATRIBUTOS_ITEM[k].faixas[raridade];
+    atributos[k] = Math.min(tetoAtributo(k), (atributos[k] || 0) + min + Math.floor(aleatorio() * (max - min + 1)));
+  }
+  return codigoItem(base, raridade, atributos);
+}
+
+// ---------------------------------------------------------------------
+// Tabelas de saque
+// ---------------------------------------------------------------------
+// Chance de uma linha da tabela (número de 0 a 1 ou nome de CHANCES_SAQUE).
+function chanceSaque(chance) {
+  const valor = typeof chance === "string" ? registroDe(CHANCES_SAQUE, chance) : chance;
+  return Number.isFinite(valor) ? Math.max(0, Math.min(1, valor)) : 0;
+}
+
+// Linhas da tabela de saque de uma criatura (aceita a forma antiga, só com ids: sempre caem).
+function tabelaDeSaque(e) {
+  return (e?.saque?.itens || []).map((linha) => (typeof linha === "string" ? { item: linha, chance: 1 } : linha));
+}
+
+// Item que uma linha da tabela gera: equipamento sorteia a raridade (ou usa a fixa da linha).
+function itemDaLinha(linha, aleatorio = Math.random) {
+  const d = registroDe(ITENS, linha.item);
+  if (!d || !TIPOS_COM_RARIDADE.has(d.tipo)) return linha.item;
+  const raridade = registroDe(RARIDADES, linha.raridade) ? linha.raridade : sortearRaridade(linha.raridadeMinima, aleatorio);
+  return gerarItem(linha.item, raridade, aleatorio);
+}
+
+// Sorteia o saque de um abate: cada linha da tabela é sorteada à parte (a de 100% não gasta sorteio).
+// Devolve [{ item, chance }] na ordem da tabela.
+function sortearSaque(e, aleatorio = Math.random) {
+  const saque = [];
+  for (const linha of tabelaDeSaque(e)) {
+    const chance = chanceSaque(linha.chance ?? 1);
+    if (chance <= 0 || (chance < 1 && aleatorio() >= chance)) continue;
+    const item = itemDaLinha(linha, aleatorio);
+    if (itemValido(item)) saque.push({ item, chance });
+  }
+  return saque;
+}
+
+// Destaque de um saque que acabou de cair: a raridade do item, e pelo menos "raro" se a linha da
+// tabela tinha 1% de chance ou menos (o drop raro sempre brilha e toca, mesmo sendo um item comum).
+function destaqueDoSaque(item, chance) {
+  const r = raridadeItem(item);
+  if (chance <= CHANCES_SAQUE.raro && indiceRaridade(r) < indiceRaridade("raro")) return "raro";
+  return r;
+}
+
+// "1%", "0,1%", "25%".
+function textoChance(chance) {
+  const pct = chance * 100;
+  return `${String(Math.round(pct * 100) / 100).replace(".", ",")}%`;
+}
+
+// ---------------------------------------------------------------------
+// Itens e equipamento
+// ---------------------------------------------------------------------
 function nomeItem(id) {
-  return ITENS[id]?.nome || id;
+  return infoItem(id)?.nome || ITENS[id]?.nome || id;
 }
 
 function pesoItem(id) {
-  return ITENS[id]?.peso ?? 1;
+  return infoItem(id)?.peso ?? 1;
 }
 
-// Carga máxima: base + 10 kg por nível acima do 1º + melhorias da troca de pontos (bonusCarga).
+// Soma de um atributo em todo o equipamento vestido.
+function atributoEquipado(p, chave) {
+  return Object.values(p?.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.atributos[chave] || 0 : 0), 0);
+}
+
+// Carga máxima: base + 10 kg por nível acima do 1º + melhorias da troca de pontos (bonusCarga)
+// + atributo de carga do equipamento.
 function capacidadeCarga(p) {
-  return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL + bonusCarga(p);
+  return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL + bonusCarga(p) + atributoEquipado(p, "carga");
 }
 
 function pesoCarregado(p) {
@@ -124,7 +321,7 @@ function pesoCarregado(p) {
 }
 
 function defesaEquipamento(p) {
-  return Object.values(p.equipamento || {}).reduce((soma, item) => soma + (item ? ITENS[item]?.defesa || 0 : 0), 0);
+  return Object.values(p.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.defesa || 0 : 0), 0);
 }
 
 function curaPocao(p) {
@@ -133,19 +330,25 @@ function curaPocao(p) {
 
 function bonusArma(p) {
   const item = p.equipamento?.arma;
-  return item ? ITENS[item]?.bonus || 0 : 0;
+  return item ? infoItem(item)?.bonus || 0 : 0;
 }
 
 function bonusArco(p) {
   const item = p.equipamento?.arco;
-  return item ? ITENS[item]?.bonus || 0 : 0;
+  return item ? infoItem(item)?.bonus || 0 : 0;
+}
+
+// Chance de crítico vinda do equipamento, em pontos de % (no máximo CRITICO_EQUIPAMENTO_MAXIMO).
+function criticoEquipamento(p) {
+  return Math.min(CRITICO_EQUIPAMENTO_MAXIMO, atributoEquipado(p, "critico"));
 }
 
 // ---------------------------------------------------------------------
 // Níveis do personagem
 // ---------------------------------------------------------------------
+// Vida máxima = base + 10 por nível acima do 1º + atributo de vida do equipamento.
 function vidaMaxima(personagem) {
-  return VIDA_BASE + Math.max(0, (personagem.nivel || 1) - 1) * VIDA_POR_NIVEL;
+  return VIDA_BASE + Math.max(0, (personagem.nivel || 1) - 1) * VIDA_POR_NIVEL + atributoEquipado(personagem, "vida");
 }
 
 // XP total necessário para sair do nível informado.
@@ -245,10 +448,10 @@ function danoBruto(p, tipo) {
   return DANO_BASE_CORPO + porNivel + bonusArma(p) + bonusHabilidade(p, "corpo");
 }
 
-// Chance de crítico em % (5% com habilidade 0 até 25% com habilidade 100).
+// Chance de crítico em % (5% com habilidade 0 até 25% com habilidade 100), mais o crítico do equipamento.
 function chanceCritico(p, tipo) {
   const n = nivelHabilidade(p, tipo === "distancia" ? "distancia" : "corpo");
-  return CRITICO_MINIMO + ((CRITICO_MAXIMO - CRITICO_MINIMO) * n) / HABILIDADE_MAXIMA;
+  return CRITICO_MINIMO + ((CRITICO_MAXIMO - CRITICO_MINIMO) * n) / HABILIDADE_MAXIMA + criticoEquipamento(p);
 }
 
 function mitigarDano(dano, defesa) {
@@ -1023,8 +1226,9 @@ function efeitoOferta(oferta) {
 
 // Unidades de um item que o jogador tem (mochila e equipamento).
 function unidadesDoItem(p, item) {
-  const naMochila = (p?.inventario || []).filter((x) => x === item).length;
-  return naMochila + Object.values(p?.equipamento || {}).filter((x) => x === item).length;
+  // Conta o item em qualquer raridade ("escudo_ferro@raro.vida8" também é um escudo de ferro).
+  const naMochila = (p?.inventario || []).filter((x) => baseItem(x) === item).length;
+  return naMochila + Object.values(p?.equipamento || {}).filter((x) => x && baseItem(x) === item).length;
 }
 
 // Ofertas da troca de pontos, na ordem dos dados. possui: unidades do item da oferta que o jogador
@@ -1281,7 +1485,7 @@ const Mundo = {
     const versaoAnterior = Number(p.versao) || 0;
     p.id = id;
     if (!Array.isArray(p.inventario)) p.inventario = [];
-    p.inventario = p.inventario.filter((item) => typeof item === "string" && ITENS[item]);
+    p.inventario = p.inventario.filter((item) => itemValido(item));
 
     if (!p.economiaInicialEntregue) {
       p.moedas = Math.max(0, Number(p.moedas) || 0) + 30;
@@ -1306,8 +1510,8 @@ const Mundo = {
     for (const slot of Object.keys(SLOTS_EQUIPAMENTO)) if (!(slot in p.equipamento)) p.equipamento[slot] = null;
     for (const [slot, tipo] of Object.entries(SLOTS_EQUIPAMENTO)) {
       const item = p.equipamento[slot];
-      if (item && ITENS[item]?.tipo !== tipo) {
-        if (ITENS[item]) p.inventario.push(item);
+      if (item && infoItem(item)?.tipo !== tipo) {
+        if (itemValido(item)) p.inventario.push(item);
         p.equipamento[slot] = null;
       }
     }
@@ -1336,9 +1540,12 @@ const Mundo = {
         areas[s.area] &&
         Number.isInteger(s.x) &&
         Number.isInteger(s.y) &&
-        ((Number.isInteger(s.moedas) && s.moedas > 0) || ITENS[s.item]),
+        ((Number.isInteger(s.moedas) && s.moedas > 0) || itemValido(s.item)),
     );
-    for (const s of p.saqueNoChao) if (!Number.isFinite(s.criadoEm)) s.criadoEm = agora;
+    for (const s of p.saqueNoChao) {
+      if (!Number.isFinite(s.criadoEm)) s.criadoEm = agora;
+      if ("destaque" in s && (!s.item || !registroDe(RARIDADES, s.destaque))) delete s.destaque;
+    }
 
     // Itens iniciais (uma única vez).
     if (!p.itensIniciaisEntregues) {
@@ -1561,7 +1768,7 @@ const Mundo = {
 
   // ----- Inventário -----
   adicionarItem(p, item) {
-    if (!ITENS[item] || pesoCarregado(p) + pesoItem(item) > capacidadeCarga(p) + 0.0001) return false;
+    if (!itemValido(item) || pesoCarregado(p) + pesoItem(item) > capacidadeCarga(p) + 0.0001) return false;
     p.inventario.push(item);
     return true;
   },
@@ -1586,6 +1793,11 @@ const Mundo = {
     return quantidade - restante;
   },
 
+  // Tirar um equipamento com vida extra baixa a vida máxima: a vida atual não passa dela.
+  ajustarVidaAoEquipamento(p) {
+    p.vida = Math.min(p.vida, vidaMaxima(p));
+  },
+
   mensagemMochilaCheia(p, complemento) {
     return `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). ${complemento}`;
   },
@@ -1593,7 +1805,7 @@ const Mundo = {
   equiparItem(id, itemId, slot) {
     const p = this.jogadores[id];
     const tipo = registroDe(SLOTS_EQUIPAMENTO, slot);
-    if (!p || !tipo || registroDe(ITENS, itemId)?.tipo !== tipo)
+    if (!p || !tipo || infoItem(itemId)?.tipo !== tipo)
       return { ok: false, mensagem: "Esse item não serve neste espaço." };
     const indice = p.inventario.indexOf(itemId);
     if (indice < 0) return { ok: false, mensagem: "O item não está na mochila." };
@@ -1606,10 +1818,11 @@ const Mundo = {
     p.inventario.splice(indice, 1);
     if (anterior) p.inventario.push(anterior);
     p.equipamento[slot] = itemId;
+    this.ajustarVidaAoEquipamento(p);
     this.salvar(p);
-    const d = ITENS[itemId];
-    const efeito = d.bonus ? `+${d.bonus} de dano` : `+${d.defesa || 0} de defesa`;
-    return { ok: true, mensagem: `${nomeItem(itemId)} equipado (${efeito}).` };
+    const d = infoItem(itemId);
+    const efeito = [d.bonus ? `+${d.bonus} de dano` : `+${d.defesa || 0} de defesa`, ...textoAtributos(itemId).filter((t) => !/de dano$|de defesa$/.test(t))];
+    return { ok: true, mensagem: `${nomeItem(itemId)} equipado (${efeito.join(", ")}).` };
   },
 
   desequiparItem(id, slot) {
@@ -1618,6 +1831,7 @@ const Mundo = {
     if (!item) return { ok: false };
     p.inventario.push(item);
     p.equipamento[slot] = null;
+    this.ajustarVidaAoEquipamento(p);
     this.salvar(p);
     return { ok: true, mensagem: `${nomeItem(item)} voltou para a mochila.` };
   },
@@ -1638,18 +1852,20 @@ const Mundo = {
     const tipo = registroDe(SLOTS_EQUIPAMENTO, slot);
     if (!tipo) return { ok: false, mensagem: "Espaço de equipamento inválido." };
     const atual = p.equipamento[slot];
-    const valor = (item) => ITENS[item].bonus || ITENS[item].defesa || 0;
-    const candidatos = p.inventario.filter((item) => ITENS[item]?.tipo === tipo).sort((a, b) => valor(b) - valor(a));
+    const valor = (item) => infoItem(item).bonus || infoItem(item).defesa || 0;
+    const candidatos = p.inventario.filter((item) => infoItem(item)?.tipo === tipo).sort((a, b) => valor(b) - valor(a));
     if (atual && candidatos.length) {
       const escolhido = candidatos[0];
       p.inventario[p.inventario.indexOf(escolhido)] = atual;
       p.equipamento[slot] = escolhido;
+      this.ajustarVidaAoEquipamento(p);
       this.salvar(p);
       return { ok: true, mensagem: `Equipado: ${nomeItem(escolhido)}. ${nomeItem(atual)} foi para a mochila.` };
     }
     if (atual) {
       p.inventario.push(atual);
       p.equipamento[slot] = null;
+      this.ajustarVidaAoEquipamento(p);
       this.salvar(p);
       return { ok: true, mensagem: `Você guardou ${nomeItem(atual)} na mochila.` };
     }
@@ -1663,19 +1879,29 @@ const Mundo = {
     }
     p.inventario.splice(p.inventario.indexOf(escolhido), 1);
     p.equipamento[slot] = escolhido;
+    this.ajustarVidaAoEquipamento(p);
     this.salvar(p);
     const aviso = trocou ? " Espada e arco não podem ser usados ao mesmo tempo; o outro foi para a mochila." : "";
     return { ok: true, mensagem: `Equipado: ${nomeItem(escolhido)}.${aviso}` };
   },
 
   // ----- Saques no chão -----
+  // Sorteia a tabela de saque da criatura e põe no chão. Devolve os nomes (para a mensagem) e os
+  // destaques: saques incomuns ou melhores, ou de linha com 1% de chance ou menos, que brilham e tocam.
   criarSaque(p, e, agora = Date.now()) {
-    const itens = e.saque?.itens || [];
     const moedas = e.saque?.moedas || 0;
     const sufixo = `${agora}_${Math.floor(Math.random() * 1e6).toString(36)}`;
-    itens.forEach((item, i) => {
-      p.saqueNoChao.push({ id: `saque_${e.id}_${sufixo}_${i}`, area: e.area, x: e.x, y: e.y, item, criadoEm: agora });
-    });
+    const itens = [];
+    const destaques = [];
+    for (const { item, chance } of sortearSaque(e)) {
+      const id = `saque_${e.id}_${sufixo}_${itens.length}`;
+      const destaque = destaqueDoSaque(item, chance);
+      const s = { id, area: e.area, x: e.x, y: e.y, item, criadoEm: agora };
+      if (indiceRaridade(destaque) > indiceRaridade(raridadeItem(item))) s.destaque = destaque;
+      p.saqueNoChao.push(s);
+      itens.push(item);
+      if (indiceRaridade(destaque) >= indiceRaridade("incomum")) destaques.push({ saqueId: id, item, raridade: destaque, chance });
+    }
     if (moedas > 0) {
       p.saqueNoChao.push({
         id: `saque_${e.id}_${sufixo}_moedas`,
@@ -1686,7 +1912,8 @@ const Mundo = {
         criadoEm: agora,
       });
     }
-    return [...itens.map(nomeItem), ...(moedas > 0 ? [`${moedas} moedas`] : [])];
+    const nomes = [...itens.map(nomeItem), ...(moedas > 0 ? [`${moedas} moedas`] : [])];
+    return { nomes, destaques };
   },
 
   // Itens que uma missão em andamento ainda pede como saque: esses saques nunca expiram.
@@ -2596,6 +2823,8 @@ const Mundo = {
         ...base,
         derrotado: true,
         saques: morte.saques,
+        saquesRaros: morte.saquesRaros,
+        anuncios: morte.anuncios,
         tarefas: morte.tarefas,
         xpGanho: morte.xpGanho,
         mensagem: `${prefixo}${morte.mensagem}${textoHabilidade}`,
@@ -2627,10 +2856,21 @@ const Mundo = {
     const saque = this.criarSaque(p, e, agora);
     this.salvar(p);
     const up = niveis.length ? ` Você subiu para o nível ${p.nivel}! Vida máxima: ${vidaMaxima(p)}.` : "";
-    const textoSaque = saque.length ? ` Saque no chão: ${saque.join(", ")}. Clique no saque ou caminhe sobre ele.` : "";
+    const textoSaque = saque.nomes.length ? ` Saque no chão: ${saque.nomes.join(", ")}. Clique no saque ou caminhe sobre ele.` : "";
+    // Épico ou melhor, ou linha de 1% ou menos: anúncio próprio no Registro.
+    const tituloAnuncio = (d) => {
+      if (d.chance <= CHANCES_SAQUE.muito_raro) return `Drop muito raro (${textoChance(d.chance)})!`;
+      if (d.chance <= CHANCES_SAQUE.raro) return `Drop raro (${textoChance(d.chance)})!`;
+      return RARIDADES[d.raridade].anuncio;
+    };
+    const anuncios = saque.destaques
+      .filter((d) => tituloAnuncio(d))
+      .map((d) => `${tituloAnuncio(d)} ${e.nome} deixou cair: ${nomeItem(d.item)}.`);
     const reaparece = ` Ele reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
     return {
       saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id),
+      saquesRaros: saque.destaques.map(({ saqueId, item, raridade }) => ({ saqueId, item, raridade })),
+      anuncios,
       tarefas,
       xpGanho,
       mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${xpGanho} XP${xpGanho < e.xpRecompensa ? " (criatura fraca para o seu nível)" : ""}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
