@@ -91,7 +91,7 @@ const DADOS_TAREFAS = [
     curto: "Escorpiões",
     descricao: "Derrote {total} escorpiões e deixe seguras as rotas das caravanas.",
     alvo: { especies: ["escorpiao"] },
-    total: 150,
+    total: 180, // 6 escorpiões no deserto: 180 mantém a grande caçada acima de 30 min
     recompensa: { xp: 1800, moedas: 300, pontos: 50 },
   },
   // ------------------------------------------------------------------ Egito

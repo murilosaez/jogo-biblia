@@ -8,6 +8,9 @@
 // { duracao, dano, intervalo }).
 // nivel: nível da criatura (nível em que o jogador costuma chegar à região). Quem está mais de 5 níveis
 // acima rende menos XP (ver xpDoAbate em logica.js).
+// grupo: { quantidade, raio }: quantas criaturas iguais existem na área e o raio (em casas) em volta de x, y
+// onde elas nascem e renascem, sempre num ponto aleatório livre. As cópias se chamam <id>_2, <id>_3...
+// e contam como a original em missões e caçadas.
 // especie: grupo das instâncias da mesma criatura (escorpiao1, escorpiao2… = "escorpiao"); familia: chave de
 // FAMILIAS_CRIATURAS. As caçadas (dados/tarefas.js) e, no futuro, o bestiário contam por espécie ou família.
 
@@ -35,6 +38,7 @@ const DADOS_CRIATURAS = [
     defesa: 2,
     raioPercepcao: 6,
     nivel: 3,
+    grupo: { quantidade: 6, raio: 16 },
     xpRecompensa: 40,
     saque: { itens: ["pele_lobo"], moedas: 4 },
   },
@@ -52,6 +56,7 @@ const DADOS_CRIATURAS = [
     defesa: 4,
     raioPercepcao: 5,
     nivel: 5,
+    grupo: { quantidade: 6, raio: 16 },
     xpRecompensa: 60,
     saque: { itens: ["veneno_escorpiao"], moedas: 8 },
     veneno: "padrao",
@@ -70,6 +75,7 @@ const DADOS_CRIATURAS = [
     defesa: 6,
     raioPercepcao: 6,
     nivel: 6,
+    grupo: { quantidade: 1, raio: 8 },
     xpRecompensa: 100,
     saque: { itens: ["insignia_bandido"], moedas: 15 },
   },
@@ -87,6 +93,7 @@ const DADOS_CRIATURAS = [
     defesa: 8,
     raioPercepcao: 6,
     nivel: 6,
+    grupo: { quantidade: 4, raio: 14 },
     xpRecompensa: 100,
     saque: { itens: [], moedas: 18 },
   },
@@ -104,6 +111,7 @@ const DADOS_CRIATURAS = [
     defesa: 10,
     raioPercepcao: 7,
     nivel: 7,
+    grupo: { quantidade: 4, raio: 14 },
     xpRecompensa: 130,
     saque: { itens: [], moedas: 22 },
   },
@@ -121,6 +129,7 @@ const DADOS_CRIATURAS = [
     defesa: 12,
     raioPercepcao: 7,
     nivel: 8,
+    grupo: { quantidade: 4, raio: 14 },
     xpRecompensa: 160,
     saque: { itens: [], moedas: 26 },
   },
@@ -139,6 +148,7 @@ const DADOS_CRIATURAS = [
     defesa: 14,
     raioPercepcao: 7,
     nivel: 9,
+    grupo: { quantidade: 4, raio: 14 },
     xpRecompensa: 190,
     saque: { itens: [], moedas: 30 },
   },

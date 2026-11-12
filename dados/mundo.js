@@ -49,15 +49,22 @@ const pontosPesca = [
 ];
 
 // Ervas só existem em Canaã e odres só no Deserto.
+// Posições iniciais; depois de coletado, cada ponto brota de novo num lugar aleatório da área.
 const ervas = [
   { id: "erva1", x: 13, y: 12 },
   { id: "erva2", x: 41, y: 31 },
   { id: "erva3", x: 71, y: 49 },
+  { id: "erva4", x: 30, y: 22 },
+  { id: "erva5", x: 58, y: 38 },
+  { id: "erva6", x: 20, y: 44 },
 ];
 const odres = [
   { id: "odre1", x: 11, y: 48 },
   { id: "odre2", x: 39, y: 34 },
   { id: "odre3", x: 70, y: 15 },
+  { id: "odre4", x: 25, y: 20 },
+  { id: "odre5", x: 58, y: 28 },
+  { id: "odre6", x: 63, y: 44 },
 ];
 
 // Portais entre regiões (os de ida exigem o capítulo anterior concluído).

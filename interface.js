@@ -1388,7 +1388,7 @@
       <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele. Botão direito numa tecla de atalho a esvazia. Espada e arco ocupam as mãos: equipar um guarda o outro.</p>`;
     const secToque = `
       <h3>Toque</h3>
-      <p>O direcional, à esquerda, anda nas 8 direções. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo. Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
+      <p>O joystick redondo, à esquerda, anda para onde você arrastar o dedo (o mapa é em casas, então o passo segue a direção mais próxima entre 8). À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo. Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
     // No toque, a seção de toque vem primeiro.
     const toque = comToque || mm("(pointer: coarse)");
     $("#ajudaCorpo").innerHTML = `${toque ? secToque + secItens + secTeclado : secTeclado + secItens + secToque}
@@ -1738,24 +1738,34 @@
   // Controles de toque (direcional + ações)
   // ------------------------------------------------------------------
   function ligarToque() {
+    // Joystick redondo: o pino segue o dedo em 360°; o ângulo vira uma das 8 direções do mapa em
+    // grade (setores de 45°). Perto do centro (zona morta) o personagem para.
     const dpad = $("#dpad");
+    const pino = dpad.querySelector(".joy-pino");
+    const DIRECOES = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
     let ativo = null;
     const zerar = () => {
       if (window.Jogo) Jogo.entrada = { dx: 0, dy: 0 };
-      for (const s of $$("#dpad span")) s.classList.remove("ativo");
+      dpad.classList.remove("ativo");
+      pino.style.transform = "";
       ativo = null;
     };
     const ler = (e) => {
       const r = dpad.getBoundingClientRect();
-      const col = Math.max(0, Math.min(2, Math.floor(((e.clientX - r.left) / r.width) * 3)));
-      const lin = Math.max(0, Math.min(2, Math.floor(((e.clientY - r.top) / r.height) * 3)));
-      const dx = col - 1, dy = lin - 1;
-      if (window.Jogo) Jogo.entrada = { dx, dy };
-      const chave = `${dx},${dy}`;
-      if (chave !== ativo) {
-        ativo = chave;
-        for (const s of $$("#dpad span")) s.classList.toggle("ativo", s.dataset.d === chave);
+      const raio = r.width / 2 - 28;
+      let vx = e.clientX - (r.left + r.width / 2);
+      let vy = e.clientY - (r.top + r.height / 2);
+      const dist = Math.hypot(vx, vy);
+      if (dist > raio) {
+        vx = (vx / dist) * raio;
+        vy = (vy / dist) * raio;
       }
+      pino.style.transform = "translate(" + vx + "px, " + vy + "px)";
+      dpad.classList.add("ativo");
+      const setor = ((Math.round(Math.atan2(vy, vx) / (Math.PI / 4)) % 8) + 8) % 8;
+      const passo = dist < raio * 0.3 ? [0, 0] : DIRECOES[setor];
+      if (window.Jogo) Jogo.entrada = { dx: passo[0], dy: passo[1] };
+      ativo = passo.join(",");
     };
     dpad.addEventListener("pointerdown", (e) => {
       e.preventDefault();

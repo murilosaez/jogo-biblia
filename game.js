@@ -800,12 +800,11 @@ class Cena extends Phaser.Scene {
       window.atualizarInterface?.();
       return;
     }
-    const dx = Math.abs(e.x - this.p.x), dy = Math.abs(e.y - this.p.y);
-    const alinhado = dx === 0 || dy === 0 || dx === dy, dist = Math.max(dx, dy);
+    const alinhado = Mundo.linhaDeTiroLivre(this.p, e); // qualquer direção, caminho livre
     // Também a 1 casa: espada e arco são exclusivos, então com o arco nas
     // mãos o golpe corpo a corpo sairia sem arma (a lógica aceita o tiro
     // a partir de 1 casa).
-    const podeAtirar = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0 && alinhado && dist <= ALCANCE_ARCO;
+    const podeAtirar = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0 && alinhado;
     this.ultimoAutoAtaque = this.time.now;
     this.atacarAlvo(!!podeAtirar, true);
   }
