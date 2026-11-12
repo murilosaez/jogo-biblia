@@ -3,15 +3,16 @@ JORNADA — RPG BÍBLICO
 Conteúdo do jogo (pasta dados/)
 - dados/itens.js: itens, raridades (cor, brilho, som, melhoria e quantos atributos aleatórios), atributos
   aleatórios com as faixas de cada raridade, sorteio de raridade, chances nomeadas das tabelas de saque,
-  preços da loja e valores de venda.
+  preços da loja, o que cada mercador vende (LOJAS) e valores de venda.
 - dados/mapas.js: tamanho dos mapas (160×120 casas) e o desenho de cada região: terreno de fundo,
   regiões (bosques, pedregais, clareiras, com o tipo de obstáculo), águas (lagos e rios), vilas (com
   muro opcional), caminhos (estradas e ruas), estruturas (casas, tendas, bancas e poços, com colisão),
   marcos (fogueira, estandarte, barcos, jarros), decoração do chão e zonas de coleta. Nenhuma
   coordenada fica no código: o gerador (gerarMapa, em logica.js) monta o mapa a partir daqui, e as
   casas livres que não se alcançam a partir do início da área viram obstáculo.
-- dados/mundo.js: áreas (início, trilha, cais, chegada da viagem e embarque no mar), regiões dos
-  capítulos, ervas, odres, pontos de pesca e portais.
+- dados/mundo.js: áreas (início, trilha, cais, chegada da viagem e os portos do mar, um por cidade),
+  regiões dos capítulos, preços da viagem rápida (REGRAS_VIAGEM) e da passagem do barco (REGRAS_BARCO),
+  ervas, odres, pontos de pesca e portais.
 - dados/npcs.js: personagens, posições, papéis e falas próprias. Comerciantes, guias e atalaias
   atendem à frente de uma tenda ou banca (estruturas com npc em dados/mapas.js); os moradores
   (papel "ambiente") só conversam, dizendo as suas falas em rodízio.
@@ -55,8 +56,13 @@ Controles — teclado e mouse
 - F: ação ao lado — conversar com o NPC, embarcar/desembarcar no cais ou seguir a rota do portal
   (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo; ao lado
   de um atalaia ele mostra "F · Caçadas" e abre o mural (o clique no atalaia faz o mesmo).
-- Clique num inimigo (no mundo ou na lista Batalha): seleciona e ativa o autoataque a cada 2 segundos
-  (usa o arco se ele estiver equipado, houver flechas e o alvo estiver no alcance com o caminho livre).
+- Clique no chão: anda até a casa clicada pelo caminho mais curto, contornando obstáculos (a rota não
+  passa por cais, trilha ou portal no meio do caminho). Clique num personagem, num saque ou num ponto de
+  pesca: vai até ele e conversa, recolhe ou pesca. Qualquer tecla de movimento cancela a caminhada.
+- Clique num inimigo (no mundo ou na lista Batalha): seleciona, vai até ele (até ficar ao lado, ou ao
+  alcance do arco com o caminho livre) e ativa o autoataque a cada 2 segundos (usa o arco se ele estiver
+  equipado, houver flechas e o alvo estiver no alcance com o caminho livre). Andar com as teclas para a
+  perseguição; o alvo continua escolhido.
 - Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s. O anel em
   volta do alvo mostra o tempo até o próximo autoataque (2 s).
 - H: poção de vida. 1–6: atalhos. Botão direito num atalho o esvazia.
@@ -73,12 +79,17 @@ Controles — teclado e mouse
 
 Controles — toque (celular e tablet)
 - Aparecem sozinhos em telas de toque (ou pelo botão "Mostrar controles de toque" na ajuda).
-- Joystick redondo à esquerda, analógico em 360°: o personagem anda para onde o dedo aponta. O mapa é
-  em casas, então ele alterna passos retos e diagonais para seguir a linha do dedo (a 20°, por exemplo,
-  reto-diagonal-reto…), com a mesma velocidade em qualquer ângulo, e contorna sozinho a quina de um
-  obstáculo, deslizando para o lado em que o dedo está. Segure para continuar andando.
+- Tocar para andar: toque no chão e o personagem vai até lá, contornando obstáculos. Toque num
+  personagem para ir até ele e conversar, num saque para buscá-lo, num ponto de pesca para pescar e num
+  inimigo para escolhê-lo como alvo: o personagem vai até ele e ataca sozinho.
+- Joystick flutuante: encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste; o
+  joystick nasce onde o dedo encostou e é analógico em 360°. O mapa é em casas, então ele alterna passos
+  retos e diagonais para seguir a linha do dedo (a 20°, por exemplo, reto-diagonal-reto…), com a mesma
+  velocidade em qualquer ângulo, e contorna sozinho a quina de um obstáculo. Solto, ele volta ao canto,
+  apagado, só como lembrete. Mexer o joystick cancela a caminhada e a perseguição.
 - À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
-  (falar, caçadas, cais, pesca, rota). Toque num inimigo para escolher o alvo.
+  (falar, caçadas, cais, pesca, rota). Os vãos entre os botões deixam o toque chegar ao mundo, e os
+  avisos no topo são menores e não seguram o dedo.
 - Barra inferior: Mochila, Equipamento, Batalha, Missão e Registro abrem em folhas recolhíveis (o
   analisador de caçada fica na folha Batalha).
   Toque num item e depois no espaço de equipamento ou no atalho; toque longo mostra a descrição.
@@ -123,9 +134,10 @@ aleatório das zonas de coleta da região.
 
 Mapas e vilas
 Cada região tem 160×120 casas, com vilas e acampamentos (Vila de Canaã, Acampamento de Noemi, Gósen,
-Acampamento à beira-mar, Refidim e Cafarnaum), estradas, áreas de caça, lagos e rios. Azarias atende
-na banca dele; Micael, Tamar e os atalaias, em tendas. As bancas vazias de Canaã e do Deserto estão
-reservadas para lojas futuras (ferreiro e curandeiro). Cada vila tem moradores para conversar.
+Acampamento à beira-mar, Refidim e Cafarnaum), estradas, áreas de caça, lagos e rios. Toda cidade tem
+um mercador numa banca, um guia de caravanas e um atalaia em tendas, e um cais ao norte (no Egito, na
+margem do Nilo; na Galileia, no lago). As bancas vazias de Canaã e do Deserto estão reservadas para o
+ferreiro. Cada vila tem moradores para conversar.
 O minimapa mostra 80×60 casas em volta do jogador.
 
 Combate
@@ -255,12 +267,25 @@ vida restaurada. Nível, equipamento e missões são preservados. Penalidade con
 - Nível 51 ou mais: perde 10% das moedas, 10% do XP de cada habilidade (mesma regra) e tem 30% de
   chance de deixar cair um item da mochila no local da derrota (ele fica no chão por 10 minutos).
 
-Loja de Azarias (Deserto)
-Poção de vida 12 · Poção de fé 18 · 5 flechas 8 · Escudo de madeira 35 · Armadura de couro 65 ·
-Arco de madeira 80. Ele compra pele de lobo (5), erva (2), odre (3), peixe (6), veneno de escorpião (4),
+Mercadores (um em cada cidade)
+Hadassa (Canaã), Azarias (Deserto), Senefer (Egito), Quenaz (Mar Vermelho), Mesulão (Monte Sinai) e
+Eliaquim (Galileia). Todos vendem poção de vida 12 · poção de fé 18 · 5 flechas 8; os equipamentos
+variam: escudo de madeira 35 (todos menos o do Egito), armadura de couro 65 e arco de madeira 80 (todos
+menos a de Canaã). Todos compram pele de lobo (5), erva (2), odre (3), peixe (6), veneno de escorpião (4),
 insígnia do bando (6), presa de lobo (10), ferrão de escorpião (12), linho egípcio (8), ponta de lança (9),
 bracelete de cobre (16) e as pedras do peitoral (150 a 200).
-Micael (Canaã) e Tamar (Deserto) fazem a viagem rápida gratuita entre as duas regiões.
+
+Viagem rápida, barco e mar
+- Guias de caravanas: Micael (Canaã), Tamar (Deserto), Natanael (Egito), Abigail (Mar Vermelho), Hobabe
+  (Monte Sinai) e Salomé (Galileia). Cada um leva a qualquer cidade aberta (Canaã e Deserto desde o
+  início; cada capítulo quando o anterior é concluído, como os portais). Preço = 4 + 6 por etapa de
+  distância na ordem Canaã → Deserto → Egito → Mar Vermelho → Monte Sinai → Galileia (Canaã ↔ Deserto 10,
+  Canaã ↔ Galileia 34). Sem moedas, a viagem é recusada sem cobrar; chega-se ao lado do guia de lá.
+- Barco: pisar no cais de qualquer cidade paga 8 moedas de passagem e embarca no Mar das Rotas, que tem
+  um cais para cada cidade (Canaã a oeste, Deserto a leste, Galileia e Sinai ao norte, Egito e Mar
+  Vermelho ao sul). Navegue até o cais de uma cidade aberta para desembarcar logo abaixo do cais dela;
+  o cais de uma cidade fechada recusa o desembarque. Sem moedas, você fica no cais. A pesca é grátis.
+- A pé, as rotas e a trilha continuam de graça.
 
 Caçadas (tarefas de caça)
 Cada região com criaturas tem um atalaia (vigia) com o mural de caçadas da região. O mural abre
@@ -284,7 +309,7 @@ quando a missão principal da região é concluída.
     Escudo de ferro (defesa 7; requer a missão do Egito) ............. 150 pontos
     Alforje de viagem (+10 kg de carga; requer o Alforje de couro) ... 180 pontos
     Couraça de escamas (defesa 8; requer a missão do Monte Sinai) .... 300 pontos
-  Os pontos não expiram nem se perdem na morte; pontos e moedas nunca se convertem, e o Azarias não
+  Os pontos não expiram nem se perdem na morte; pontos e moedas nunca se convertem, e os mercadores não
   compra itens da troca. Trocar de novo um item que você já tem (na mochila ou equipado) pede
   confirmação, e um duplo clique no mural vale como um clique só.
 
@@ -309,7 +334,7 @@ oculta; a escolha fica no navegador.
 - O relógio começa no seu primeiro golpe e corre até você zerar (botão Zerar) ou recarregar a página;
   trocar de área, viajar ou morrer não zeram.
 - Por sessão e por hora: XP (dos abates), saque (moedas recolhidas + valor de venda dos itens recolhidos,
-  pelo preço do Azarias; equipamento não tem preço de venda e só é contado), lucro (saque − poções e
+  pelo preço dos mercadores; equipamento não tem preço de venda e só é contado), lucro (saque − poções e
   flechas gastas, pelo preço da loja, − moedas perdidas na morte) e abates; também as mortes, as espécies
   mais caçadas e o tempo até o próximo nível no ritmo atual. As taxas por hora aparecem depois de 1 minuto.
 - O item que você deixou cair ao morrer não conta como saque quando você o recolhe.
@@ -348,6 +373,13 @@ Para desenvolvedores
   área e a morte, zera ao recarregar a página ou com o comando { tipo: "zerarAnalisador" }).
   Mundo.analisador(id) devolve totais, taxas por hora (null no 1º minuto), lucro e tempo até o próximo
   nível. O teste 57 confere as contas.
+- Cidades, viagem e barco: areaAberta(p, area), precoViagem(origem, destino), destinosDeViagem(p) (a lista
+  do modal do guia: preço, aberta, atual, falta) e catalogoDaLoja(npcId) são puras. Falar com um mercador
+  devolve abrirLoja (o id dele) e com um guia, abrirViagem (o id dele); viajar devolve precoViagem e o
+  embarque, passagemPaga. O teste 58 confere mercador, guia e cais em toda cidade e os catálogos; o 59, a
+  viagem de todas para todas, os preços, as recusas e o barco ligando todos os cais.
+- Andar por toque/clique (game.js): rota em 8 direções por busca em largura sobre Mundo.casaLivre, sem
+  atravessar casas de transição que não sejam o destino; a perseguição do alvo refaz a rota a cada passo.
 - Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
   interface.js (window.UI: painéis, modais, atalhos, toque; window.UI.abrirMural(npcId) abre o mural de
   um atalaia, ou a consulta com null; window.UI.abrirBestiario() abre o bestiário). Os nomes antigos continuam

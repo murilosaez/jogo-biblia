@@ -5,8 +5,10 @@
 
 // Áreas de Canaã, Deserto e Mar (o desenho de cada mapa fica em dados/mapas.js).
 // inicio: onde se nasce (e renasce, em Canaã); passagem/chegada: trilha terrestre Canaã ↔ Deserto;
-// cais: onde se embarca; chegadaViagem: onde a viagem rápida do guia deixa o jogador.
-// No mar: caisCanaa/caisDeserto (desembarque) e embarqueCanaa/embarqueDeserto (onde o barco aparece).
+// cais: onde se embarca (pisar nele paga a passagem do barco); quem desembarca chega logo abaixo do cais;
+// chegadaViagem: onde a viagem rápida do guia deixa o jogador.
+// No mar, portos[regiao]: cais (a casa do mar onde se desembarca naquela região) e embarque (onde o barco
+// aparece quando se embarca nela). Todas as cidades se ligam pelo mar.
 const DADOS_AREAS_BASE = {
   canaan: {
     id: "canaan",
@@ -30,20 +32,38 @@ const DADOS_AREAS_BASE = {
     id: "mar",
     nome: "Mar das Rotas",
     inicio: { x: 4, y: 60 },
-    caisCanaa: { x: 2, y: 60 },
-    caisDeserto: { x: 157, y: 60 },
-    embarqueCanaa: { x: 4, y: 60 },
-    embarqueDeserto: { x: 155, y: 60 },
+    portos: {
+      canaan: { cais: { x: 2, y: 60 }, embarque: { x: 4, y: 60 } },
+      deserto: { cais: { x: 157, y: 60 }, embarque: { x: 155, y: 60 } },
+      egito: { cais: { x: 40, y: 117 }, embarque: { x: 40, y: 115 } },
+      marVermelho: { cais: { x: 120, y: 117 }, embarque: { x: 120, y: 115 } },
+      sinai: { cais: { x: 120, y: 2 }, embarque: { x: 120, y: 4 } },
+      galileia: { cais: { x: 40, y: 2 }, embarque: { x: 40, y: 4 } },
+    },
   },
 };
 
 // Regiões dos capítulos. inicio: onde o jogador chega pela primeira vez.
+// cais e chegadaViagem: como nas áreas acima (cada cidade tem o seu cais e o seu guia de caravanas).
 const DADOS_AREAS_CAPITULOS = {
-  egito: { id: "egito", nome: "Egito", bioma: "nilo", inicio: { x: 5, y: 112 } },
-  marVermelho: { id: "marVermelho", nome: "Mar Vermelho", bioma: "costa", inicio: { x: 5, y: 112 } },
-  sinai: { id: "sinai", nome: "Monte Sinai", bioma: "montanha", inicio: { x: 5, y: 112 } },
-  galileia: { id: "galileia", nome: "Galileia", bioma: "galileia", inicio: { x: 5, y: 112 } },
+  egito: { id: "egito", nome: "Egito", bioma: "nilo", inicio: { x: 5, y: 112 }, cais: { x: 24, y: 6 }, chegadaViagem: { x: 31, y: 95 } },
+  marVermelho: { id: "marVermelho", nome: "Mar Vermelho", bioma: "costa", inicio: { x: 5, y: 112 }, cais: { x: 22, y: 2 }, chegadaViagem: { x: 34, y: 95 } },
+  sinai: { id: "sinai", nome: "Monte Sinai", bioma: "montanha", inicio: { x: 5, y: 112 }, cais: { x: 22, y: 2 }, chegadaViagem: { x: 34, y: 95 } },
+  galileia: { id: "galileia", nome: "Galileia", bioma: "galileia", inicio: { x: 5, y: 112 }, cais: { x: 44, y: 17 }, chegadaViagem: { x: 9, y: 28 } },
 };
+
+// Viagem rápida (guias de caravanas, um em cada cidade): de qualquer cidade para qualquer outra já aberta
+// (Canaã e o Deserto desde o início; cada capítulo, quando o anterior é concluído, como os portais).
+// Preço em moedas = base + porEtapa × etapas, e etapas = a distância entre as duas na ordem do caminho.
+const REGRAS_VIAGEM = {
+  ordem: ["canaan", "deserto", "egito", "marVermelho", "sinai", "galileia"],
+  base: 4,
+  porEtapa: 6,
+};
+
+// Barco: pisar no cais de qualquer cidade paga a passagem e embarca no Mar das Rotas; no mar, navegue até o
+// cais de qualquer cidade aberta para desembarcar (a pesca no mar continua de graça).
+const REGRAS_BARCO = { passagem: 8 };
 
 // Pontos de pesca no Mar das Rotas.
 const pontosPesca = [

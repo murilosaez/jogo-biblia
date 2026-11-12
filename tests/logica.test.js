@@ -868,7 +868,8 @@ teste("9. inimigos longe das vilas e tudo alcançável (BFS)", () => {
       assert.ok(alcancavel(vis, t), `portal ${t.x},${t.y} em ${area}`);
     for (const c of j.g("coletaveisDaArea")(area)) assert.ok(alcancavel(vis, c), `coletável ${c.id}`);
     const a = areas[area];
-    for (const ponto of [a.passagem, a.cais, a.chegada, a.chegadaViagem, a.caisCanaa, a.caisDeserto].filter(Boolean)) {
+    const portos = Object.values(a.portos || {}).flatMap((pt) => [pt.cais, pt.embarque]);
+    for (const ponto of [a.passagem, a.cais, a.chegada, a.chegadaViagem, ...portos].filter(Boolean)) {
       assert.ok(alcancavel(vis, ponto), `${area}: ponto ${ponto.x},${ponto.y} inalcançável`);
     }
     if (area === "mar")
@@ -1235,7 +1236,7 @@ teste("18. API usada por game.js continua disponível", () => {
   }
   assert.strictEqual(k.exec({ tipo: "trocarPontos", ofertaId: "constructor" }).mensagem, "Essa troca não existe.");
   posicionarAoLado(k, "deserto", k.g("npcs").mercador1);
-  assert.strictEqual(k.exec({ tipo: "comprar", item: "constructor" }).mensagem, "Esse item não está à venda.");
+  assert.strictEqual(k.exec({ tipo: "comprar", item: "constructor" }).mensagem, "Esse mercador não vende esse item.");
   k.g("Storage").flush();
   const recarregado = carregarJogo({ store: k.store });
   recarregado.entrar();
@@ -1621,7 +1622,7 @@ teste("28. motor: falar, chegar, derrotar, coletar e entregar, com variáveis e 
   atravessar(j, "deserto", j.g("areas").deserto.passagem, -1, 0);
   falar(j, "guia_canaa");
   const v = j.exec({ tipo: "viajar", areaDestino: "deserto" });
-  assert.match(v.mensagem, /Viagem rápida para Deserto\..* Você achou Tamar\.$/);
+  assert.match(v.mensagem, /Viagem rápida ao Deserto por \d+ moedas\..* Você achou Tamar\.$/);
   igual(m().progresso, [1]);
   falar(j, "anciaoTeste");
   assert.strictEqual(m().etapa, 2);
@@ -2941,14 +2942,16 @@ teste("45. mapas: moradores conversam em rodízio, coleta brota nas zonas e o ba
     assert.ok(naZona, `${erva.id} brotou fora das zonas (${erva.x},${erva.y})`);
     assert.strictEqual(j.g("mapas").canaan[erva.y][erva.x], 0, "brota em casa livre");
   }
-  // Cais: embarca no ponto de embarque do mar e desembarca ao lado do cais de origem.
+  // Cais: toda cidade tem o seu; embarca (pagando a passagem) no ponto de embarque dela no mar.
   const areas = j.g("areas");
-  for (const [origem, embarque] of [["canaan", "embarqueCanaa"], ["deserto", "embarqueDeserto"]]) {
+  for (const origem of j.g("REGRAS_VIAGEM").ordem) {
     const cais = areas[origem].cais;
-    Object.assign(p, { area: origem, x: cais.x, y: cais.y + 1 });
+    assert.ok(cais && areas.mar.portos[origem], `${origem}: cais e porto no mar`);
+    Object.assign(p, { area: origem, x: cais.x, y: cais.y + 1, moedas: 100 });
     const r = j.exec({ tipo: "mover", dx: 0, dy: -1 });
     assert.ok(r.areaAlterada, `${origem}: embarque`);
-    igual([p.area, p.x, p.y], ["mar", areas.mar[embarque].x, areas.mar[embarque].y], `${origem}: barco no ${embarque}`);
+    const embarque = areas.mar.portos[origem].embarque;
+    igual([p.area, p.x, p.y, p.moedas], ["mar", embarque.x, embarque.y, 100 - j.g("REGRAS_BARCO").passagem], `${origem}: barco no embarque`);
   }
 });
 
@@ -4159,6 +4162,165 @@ teste("57. analisador de caçada (JGB-10): XP/h, saque/h, lucro, abates, mortes 
   j.avancar(2 * MIN);
   a = A();
   igual([a.nivelMaximo, a.xpFalta, a.proximoNivelMs], [true, 0, null]);
+});
+
+// ---------------------------------------------------------------------
+// Cidades: mercador, guia e cais em todas; viagem e barco pagos
+// ---------------------------------------------------------------------
+// Abre os capítulos até (e sem incluir) o da cidade pedida: concluir a missão de cada capítulo anterior.
+function abrirAte(j, regiao) {
+  const ordem = j.g("REGRAS_VIAGEM").ordem;
+  const CAP = j.g("CAPITULOS");
+  for (const area of ordem.slice(0, ordem.indexOf(regiao) + 1)) {
+    const anterior = CAP[area]?.anterior;
+    if (anterior) j.p.missoes[anterior].status = "concluida";
+  }
+}
+
+teste("58. cidades: toda cidade tem mercador, guia e cais; cada mercador vende o próprio catálogo e todos compram", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const [npcs, areas, LOJAS, PRECOS, VENDA, ordem] = ["npcs", "areas", "LOJAS", "PRECOS_LOJA", "VALORES_VENDA", "REGRAS_VIAGEM"].map(j.g);
+  igual(ordem.ordem, ["canaan", "deserto", "egito", "marVermelho", "sinai", "galileia"]);
+  for (const area of ordem.ordem) {
+    const daqui = Object.values(npcs).filter((n) => n.area === area);
+    const lojas = daqui.filter((n) => n.papel === "loja");
+    assert.strictEqual(lojas.length, 1, `${area}: um mercador`);
+    assert.strictEqual(daqui.filter((n) => n.papel === "guia").length, 1, `${area}: um guia de caravanas`);
+    assert.ok(areas[area].cais && areas[area].chegadaViagem, `${area}: cais e chegada da viagem`);
+    assert.ok(j.M.casaParaFicar(area, areas[area].chegadaViagem.x, areas[area].chegadaViagem.y), `${area}: chegada da viagem livre`);
+    assert.ok(j.M.casaParaFicar(area, areas[area].cais.x, areas[area].cais.y + 1), `${area}: desembarque livre`);
+    // O catálogo existe, tem preço e inclui as provisões.
+    const cat = j.g("catalogoDaLoja")(lojas[0].id);
+    assert.ok(Array.isArray(LOJAS[lojas[0].id]) && cat.length === LOJAS[lojas[0].id].length, `${lojas[0].id}: catálogo com preços`);
+    for (const item of ["pocao", "pocao_fe", "flechas"]) assert.ok(cat.some((x) => x.item === item), `${lojas[0].id} vende ${item}`);
+    for (const { item, preco } of cat) assert.strictEqual(preco, PRECOS[item]);
+  }
+  for (const id of Object.keys(LOJAS)) assert.strictEqual(npcs[id]?.papel, "loja", `LOJAS.${id} é um mercador`);
+  // Comprar: só ao lado de um mercador e só o que ele vende; vender: qualquer mercador compra tudo de VALORES_VENDA.
+  const loja = (id) => {
+    const n = npcs[id];
+    posicionarAoLado(j, n.area, n);
+    return n;
+  };
+  p.moedas = 500;
+  loja("mercador_canaa");
+  assert.ok(j.exec({ tipo: "comprar", item: "pocao" }).ok);
+  const r = j.exec({ tipo: "comprar", item: "arco_madeira" });
+  igual([r.ok, r.mensagem], [false, "Esse mercador não vende esse item."]);
+  loja("mercador1");
+  assert.ok(j.exec({ tipo: "comprar", item: "arco_madeira" }).ok, "Azarias vende o arco");
+  for (const id of ["mercador_egito", "mercador_mar", "mercador_sinai", "mercador_galileia"]) {
+    loja(id);
+    const falar = j.exec({ tipo: "interagir", alvoId: id });
+    assert.strictEqual(falar.abrirLoja, id, `${id}: falar abre a loja dele`);
+    assert.match(falar.mensagem, new RegExp(`^${npcs[id].nome.split(",")[0]}: `));
+    p.inventario.push("pele_lobo");
+    const moedas = p.moedas;
+    assert.ok(j.exec({ tipo: "vender", item: "pele_lobo" }).ok, `${id} compra pele`);
+    assert.strictEqual(p.moedas, moedas + VENDA.pele_lobo);
+    assert.ok(j.exec({ tipo: "comprar", item: "flechas" }).ok, `${id} vende flechas`);
+  }
+  Object.assign(p, { area: "canaan", x: areas.canaan.inicio.x, y: areas.canaan.inicio.y });
+  assert.strictEqual(j.exec({ tipo: "comprar", item: "pocao" }).ok, false, "longe do mercador não compra");
+});
+
+teste("59. viagem rápida entre todas as cidades abertas, paga pela distância, e o barco pago que liga todos os cais", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const [areas, npcs, RV, RB] = ["areas", "npcs", "REGRAS_VIAGEM", "REGRAS_BARCO"].map(j.g);
+  const preco = j.g("precoViagem");
+  // 1. Preço: base + porEtapa × distância na ordem; simétrico; sem rota para a mesma cidade.
+  igual([preco("canaan", "deserto"), preco("deserto", "canaan"), preco("canaan", "galileia"), preco("sinai", "egito")],
+    [RV.base + RV.porEtapa, RV.base + RV.porEtapa, RV.base + 5 * RV.porEtapa, RV.base + 2 * RV.porEtapa]);
+  igual([preco("canaan", "canaan"), preco("canaan", "mar"), preco("canaan", "constructor")], [null, null, null]);
+  // 2. Personagem novo: Canaã e Deserto abertos; os capítulos fecham até o anterior ser concluído.
+  const abertas = () => j.g("destinosDeViagem")(p).filter((d) => d.aberta).map((d) => d.area);
+  igual(abertas(), ["canaan", "deserto"]);
+  const guia = (id) => posicionarAoLado(j, npcs[id].area, npcs[id]);
+  guia("guia_canaa");
+  p.moedas = 1000;
+  let r = j.exec({ tipo: "viajar", areaDestino: "egito" });
+  assert.ok(!r.ok && /fechada/.test(r.mensagem), r.mensagem);
+  assert.strictEqual(p.moedas, 1000, "recusa não cobra");
+  // 3. Sem moedas suficientes: recusa sem cobrar; com moedas: cobra e chega ao lado do guia de lá.
+  p.moedas = preco("canaan", "deserto") - 1;
+  r = j.exec({ tipo: "viajar", areaDestino: "deserto" });
+  assert.ok(!r.ok && r.mensagem.includes(`custa ${preco("canaan", "deserto")} moedas`), r.mensagem);
+  igual([p.area, p.moedas], ["canaan", preco("canaan", "deserto") - 1]);
+  p.moedas = 100;
+  r = j.exec({ tipo: "viajar", areaDestino: "deserto" });
+  assert.ok(r.ok && r.areaAlterada && r.precoViagem === preco("canaan", "deserto"));
+  igual([p.area, p.x, p.y, p.moedas], ["deserto", areas.deserto.chegadaViagem.x, areas.deserto.chegadaViagem.y, 100 - preco("canaan", "deserto")]);
+  // 4. Todas as cidades, de todas para todas, depois de abertas.
+  abrirAte(j, "galileia");
+  igual(abertas(), RV.ordem);
+  for (const de of RV.ordem) {
+    const id = Object.values(npcs).find((n) => n.area === de && n.papel === "guia").id;
+    for (const para of RV.ordem) {
+      if (para === de) continue;
+      guia(id);
+      p.moedas = 100;
+      r = j.exec({ tipo: "viajar", areaDestino: para });
+      assert.ok(r.ok, `${de} → ${para}: ${r.mensagem}`);
+      igual([p.area, p.moedas], [para, 100 - preco(de, para)], `${de} → ${para}`);
+    }
+  }
+  Object.assign(p, { area: "canaan", x: areas.canaan.inicio.x, y: areas.canaan.inicio.y });
+  r = j.exec({ tipo: "viajar", areaDestino: "deserto" });
+  assert.ok(!r.ok, "longe do guia não viaja");
+
+  // 5. Barco: o cais de cada cidade cobra a passagem e embarca no porto dela; sem moedas, fica no cais.
+  const j2 = carregarJogo();
+  j2.entrar();
+  const p2 = j2.p;
+  const embarcar = (area, moedas) => {
+    const cais = areas[area].cais;
+    Object.assign(p2, { area, x: cais.x, y: cais.y + 1, moedas });
+    return j2.exec({ tipo: "mover", dx: 0, dy: -1 });
+  };
+  r = embarcar("canaan", RB.passagem - 1);
+  assert.ok(r.caminhoBloqueado && /passagem do barco custa/.test(r.mensagem), r.mensagem);
+  igual([p2.area, p2.moedas], ["canaan", RB.passagem - 1]);
+  r = embarcar("canaan", 50);
+  assert.ok(r.areaAlterada && r.passagemPaga === RB.passagem);
+  igual([p2.area, p2.moedas], ["mar", 50 - RB.passagem]);
+  // 6. No mar: desembarca no cais de qualquer cidade aberta; o de cidade fechada recusa e o jogador fica no mar.
+  const portos = areas.mar.portos;
+  igual(Object.keys(portos).sort(), [...RV.ordem].sort(), "um porto no mar para cada cidade");
+  const desembarcar = (regiao) => {
+    const c = portos[regiao].cais;
+    const vizinho = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy })).find((v) => j2.M.casaLivre(v.x, v.y, { ...p2, area: "mar" }, true));
+    Object.assign(p2, { area: "mar", x: vizinho.x, y: vizinho.y });
+    return j2.exec({ tipo: "mover", dx: c.x - vizinho.x, dy: c.y - vizinho.y });
+  };
+  r = desembarcar("egito");
+  assert.ok(r.caminhoBloqueado && /fechado/.test(r.mensagem), r.mensagem);
+  assert.strictEqual(p2.area, "mar");
+  abrirAte(j2, "galileia");
+  for (const regiao of RV.ordem) {
+    r = desembarcar(regiao);
+    assert.ok(r.areaAlterada, `desembarque ${regiao}: ${r.mensagem}`);
+    igual([p2.area, p2.x, p2.y], [regiao, areas[regiao].cais.x, areas[regiao].cais.y + 1], `${regiao}: logo abaixo do cais`);
+    r = embarcar(regiao, 20);
+    igual([r.areaAlterada, p2.area, p2.x, p2.y, p2.moedas], [true, "mar", portos[regiao].embarque.x, portos[regiao].embarque.y, 20 - RB.passagem], `${regiao}: embarque`);
+  }
+  // 7. Todo porto do mar se alcança a partir de qualquer outro (o mar liga todas as cidades).
+  const mapa = j2.g("mapas").mar;
+  const visto = new Set([`${areas.mar.inicio.x},${areas.mar.inicio.y}`]);
+  const fila = [[areas.mar.inicio.x, areas.mar.inicio.y]];
+  while (fila.length) {
+    const [x, y] = fila.pop();
+    for (const [dx, dy] of VIZINHOS) {
+      const k = `${x + dx},${y + dy}`;
+      if (mapa[y + dy]?.[x + dx] === 0 && !visto.has(k)) { visto.add(k); fila.push([x + dx, y + dy]); }
+    }
+  }
+  for (const [regiao, pt] of Object.entries(portos)) {
+    assert.ok(visto.has(`${pt.cais.x},${pt.cais.y}`) && visto.has(`${pt.embarque.x},${pt.embarque.y}`), `porto ${regiao} alcançável no mar`);
+  }
 });
 
 // ---------------------------------------------------------------------

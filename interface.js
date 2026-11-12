@@ -347,7 +347,7 @@
     if (id === "pocao") return `cura ${p && typeof curaPocao === "function" ? curaPocao(p) : 30} de vida`;
     if (id === "pocao_fe") return `+${typeof CURA_POCAO_FE !== "undefined" ? CURA_POCAO_FE : 40} de fé`;
     if (d.tipo === "municao") return "munição para o arco";
-    if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) return `Azarias compra por ${VALORES_VENDA[id]}`;
+    if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) return `os mercadores pagam ${VALORES_VENDA[id]}`;
     return NOME_TIPO[d.tipo] || "";
   }
 
@@ -372,7 +372,7 @@
     if (origem === "equip") acao = "Arraste para a mochila, ou dê duplo clique, para guardar.";
     else if (slotDoTipo(d.tipo)) acao = "Duplo clique equipa. Também pode arrastar ou tocar e escolher o espaço.";
     else if (d.tipo === "consumivel") acao = "Duplo clique usa. Arraste para uma tecla de atalho.";
-    else if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) acao = "Venda ao mercador Azarias, no Deserto.";
+    else if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) acao = "Venda a qualquer mercador (há um em cada cidade).";
     const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
     return `<h4${titulo}>${esc(nomeDoItem(id))}</h4>${linhaRaridade}<p>${esc([...new Set(partes)].join(" · "))}</p>${linhaAtributos}${acao ? `<p class="acao">${esc(acao)}</p>` : ""}`;
   }
@@ -971,8 +971,13 @@
 
   // ----- Loja -----
   let abaLoja = "comprar", falaLoja = "";
-  function abrirLoja() {
-    const merc = typeof npcs !== "undefined" ? Object.values(npcs).find((n) => n.papel === "loja") : null;
+  let lojaAtual = null;
+  function abrirLoja(mercId) {
+    const p = jogador();
+    const merc = typeof npcs !== "undefined"
+      ? (typeof mercId === "string" && npcs[mercId]) || (p && Mundo.mercadorProximo?.(p)) || Object.values(npcs).find((n) => n.papel === "loja" && n.area === p?.area)
+      : null;
+    lojaAtual = merc?.id || null;
     $("#lojaTitulo").textContent = nomeCurto(merc?.nome || "Mercador");
     const url = retratoURL(visualDe(merc?.id || "mercador1"), { escala: 3, recorte: "busto" });
     if (url) $("#lojaRetrato").src = url;
@@ -989,7 +994,8 @@
     const moeda = imgGlifo("ui_moeda", "px g16");
     let lista = "";
     if (abaLoja === "comprar") {
-      for (const [id, preco] of Object.entries(typeof PRECOS_LOJA !== "undefined" ? PRECOS_LOJA : {})) {
+      const catalogo = typeof catalogoDaLoja === "function" && lojaAtual ? catalogoDaLoja(lojaAtual) : [];
+      for (const { item: id, preco } of catalogo) {
         const falta = preco - p.moedas;
         lista += `<li class="item-loja"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>${esc(atributoItem(id, p))}</span></span>
           <button type="button" class="btn primario" data-comprar="${esc(id)}" ${falta > 0 ? `disabled title="Faltam ${falta} moedas"` : ""} aria-label="Comprar ${esc(nomeDoItem(id))} por ${preco} moedas${falta > 0 ? `; faltam ${falta}` : ""}">${falta > 0 ? `faltam ${falta}` : `${preco} ${moeda}`}</button></li>`;
@@ -1231,7 +1237,7 @@
     }).join("");
     const consulta = aqui ? "" : '<p class="nota">Para trocar, fale com um atalaia de mural aberto. Aqui você vê os preços e o que falta.</p>';
     return `${consulta}<ul class="lista-loja">${linhas}</ul>
-      <p class="nota">Pontos de tarefa não expiram nem se perdem na morte. O Azarias não compra itens da troca.</p>`;
+      <p class="nota">Pontos de tarefa não expiram nem se perdem na morte. Os mercadores não compram itens da troca.</p>`;
   }
 
 
@@ -1392,7 +1398,7 @@
     const proximo = a.nivelMaximo ? "nível máximo" : a.proximoNivelMs !== null ? `em ${typeof textoEspera === "function" ? textoEspera(a.proximoNivelMs) : ""}` : "—";
     const linhas = [
       ["XP", fmt(a.xp), hora(a.xpHora), ""],
-      ["Saque", fmt(a.saque), hora(a.saqueHora), `Moedas ${fmt(a.moedas)} + itens ${fmt(a.valorItens)} (pelo preço do Azarias)${a.equipamentos ? `; ${a.equipamentos} equipamento${a.equipamentos > 1 ? "s" : ""} sem preço de venda` : ""}`],
+      ["Saque", fmt(a.saque), hora(a.saqueHora), `Moedas ${fmt(a.moedas)} + itens ${fmt(a.valorItens)} (pelo preço dos mercadores)${a.equipamentos ? `; ${a.equipamentos} equipamento${a.equipamentos > 1 ? "s" : ""} sem preço de venda` : ""}`],
       ["Lucro", `<span${neg(a.lucro)}>${fmt(a.lucro)}</span>`, a.lucroHora === null ? "—" : `<span${neg(a.lucroHora)}>${fmt(a.lucroHora)}/h</span>`, tituloLucro],
       ["Abates", fmt(a.abates), hora(a.abatesHora), ""],
       ["Mortes", fmt(a.mortes), "", a.perdas ? `${fmt(a.perdas)} moedas perdidas` : ""],
@@ -1413,71 +1419,47 @@
   }
 
   // ----- Viagem -----
-  // x, y: selo no mapa (px do canvas 160×100). lado: o botão fica acima ou
-  // abaixo do selo, do lado oposto à trilha, para o selo, o ponto "você está
-  // aqui" e as pontas da trilha continuarem visíveis.
-  const DESTINOS = [
-    { area: "canaan", x: 44, y: 34, lado: "acima" },
-    { area: "deserto", x: 116, y: 66, lado: "abaixo" },
-  ];
-  function abrirViagem() {
+  // Lista de todas as cidades (destinosDeViagem, logica.js): preço pela distância, a cidade atual e as
+  // ainda fechadas (capítulo anterior não concluído) aparecem desabilitadas, com o motivo.
+  let guiaViagem = null;
+  function abrirViagem(guiaId) {
     const p = jogador();
     if (!p) return;
-    const guia = typeof npcs !== "undefined" ? Object.values(npcs).find((n) => n.papel === "guia" && n.area === p.area) : null;
+    const guia = typeof npcs !== "undefined"
+      ? (typeof guiaId === "string" && npcs[guiaId]) || Object.values(npcs).find((n) => n.papel === "guia" && n.area === p.area)
+      : null;
+    guiaViagem = guia?.id || null;
     const url = retratoURL(visualDe(guia?.id || "guia_canaa"), { escala: 3, recorte: "busto" });
     if (url) $("#viagemRetrato").src = url;
     $("#viagemTitulo").textContent = guia ? `Viagem com ${nomeCurto(guia.nome)}` : "Viagem rápida";
     const fala = guia && dlg.id === guia.id ? dlg.texto : "";
     if (fala) fecharDialogo();
-    const nomeA = (a) => (typeof areas !== "undefined" && areas[a]?.nome) || a;
-    $("#viagemCorpo").innerHTML = `${fala ? `<p class="fala-modal">${esc(fala)}</p>` : "<p>Escolha o destino. A viagem é gratuita; a trilha no extremo sul também liga as regiões a pé.</p>"}
-      <div class="mapa-antigo"><canvas width="160" height="100" id="mapaViagem" aria-hidden="true"></canvas>
-      ${DESTINOS.map((d) => `<button type="button" class="btn primario destino ${d.lado}" style="left:${(d.x / 160) * 100}%;top:${(d.y / 100) * 100}%" data-viajar="${d.area}"
-        ${d.area === p.area ? 'disabled title="Você está aqui"' : ""} aria-label="${d.area === p.area ? `${nomeA(d.area)}: você está aqui` : `Viajar para ${nomeA(d.area)}`}">${esc(nomeA(d.area))}${d.area === p.area ? " · aqui" : ""}</button>`).join("")}
-      </div>`;
-    desenharMapaViagem(p);
+    desenharViagem(fala);
     abrirModal("modalViagem");
   }
-  function desenharMapaViagem(p) {
-    const c = $("#mapaViagem");
-    const ctx = c && c.getContext("2d");
-    if (!ctx) return;
-    const W = 160, H = 100;
-    const h = (x, y) => (temArte() && Arte.hash2 ? Arte.hash2(x, y, 11) : ((x * 7 + y * 13) % 10) / 10);
-    // pergaminho com manchas
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const n = h(x >> 2, y >> 2);
-      ctx.fillStyle = n > 0.8 ? "#d9bd84" : n < 0.15 ? "#f0dfb6" : "#e6cf9c";
-      ctx.fillRect(x, y, 1, 1);
-    }
-    // mar das rotas (entre os portos)
-    ctx.fillStyle = "#9fc4b8";
-    for (let y = 40; y < 64; y++) for (let x = 56; x < 104; x++) if (h(x, y) > 0.25 || (x > 60 && x < 100 && y > 43 && y < 61)) ctx.fillRect(x, y, 1, 1);
-    // trilha tracejada entre os destinos
-    const [a, b] = DESTINOS;
-    ctx.fillStyle = "#2a1a14";
-    const passos = 60;
-    for (let i = 0; i <= passos; i++) {
-      if (Math.floor(i / 3) % 2) continue;
-      const t = i / passos;
-      const x = Math.round(a.x + (b.x - a.x) * t), y = Math.round(a.y + (b.y - a.y) * t + Math.sin(t * Math.PI) * 18);
-      ctx.fillRect(x, y, 1, 1);
-    }
-    // selos dos destinos na cor do chão do bioma
-    for (const d of DESTINOS) {
+  function desenharViagem(fala = "") {
+    const p = jogador();
+    if (!p || typeof destinosDeViagem !== "function") return;
+    const moeda = imgGlifo("ui_moeda", "px g16");
+    const linhas = destinosDeViagem(p).map((d) => {
       let cor = "#8fa34e";
       try { cor = Arte.minimapaCores(d.area).chao; } catch (e) { /* reserva */ }
-      ctx.fillStyle = "#2a1a14"; ctx.fillRect(d.x - 4, d.y - 4, 9, 9);
-      ctx.fillStyle = cor; ctx.fillRect(d.x - 3, d.y - 3, 7, 7);
-      if (d.area === p.area) { ctx.fillStyle = "#3b5a9a"; ctx.fillRect(d.x - 1, d.y - 1, 3, 3); }
-    }
-    // rosa-dos-ventos (glifo ui_rosa)
-    const rosa = new Image();
-    rosa.onload = () => { ctx.imageSmoothingEnabled = false; ctx.drawImage(rosa, 140, 4, 16, 16); };
-    const url = glifoURL("ui_rosa", 2);
-    if (url) rosa.src = url;
-    // moldura de tinta
-    ctx.strokeStyle = "#5a3a24"; ctx.lineWidth = 1; ctx.strokeRect(2.5, 2.5, W - 5, H - 5);
+      const selo = `<span class="selo-cidade" style="--cor:${cor}"></span>`;
+      let rot, attrs = "", sub;
+      if (d.atual) { rot = "Você está aqui"; attrs = "disabled"; sub = "cidade atual"; }
+      else if (!d.aberta) { rot = `${imgGlifo("ui_cadeado")}Fechada`; attrs = `disabled title="${esc(d.motivo)}"`; sub = `Fechada: ${d.motivo}.`; }
+      else if (d.falta > 0) { rot = `faltam ${d.falta}`; attrs = `disabled title="Faltam ${d.falta} moedas"`; sub = `${d.preco} moedas`; }
+      else { rot = `${d.preco} ${moeda}`; sub = `${d.preco} moedas`; }
+      const rotulo = d.atual ? `${d.nome}: você está aqui` : !d.aberta ? `${d.nome}: fechada, ${d.motivo}` : `Viajar para ${d.nome} por ${d.preco} moedas${d.falta ? `; faltam ${d.falta}` : ""}`;
+      return `<li class="item-loja"><span class="icone">${selo}</span><span><strong>${esc(d.nome)}</strong><span>${esc(sub)}</span></span>
+        <button type="button" class="btn primario" data-viajar="${esc(d.area)}" ${attrs} aria-label="${esc(rotulo)}">${rot}</button></li>`;
+    }).join("");
+    const barco = typeof REGRAS_BARCO !== "undefined" ? REGRAS_BARCO.passagem : 0;
+    $("#viagemCorpo").innerHTML = `${fala ? `<p class="fala-modal">${esc(fala)}</p>` : ""}
+      <div class="saldo">${moeda}<span>${p.moedas} moedas</span></div>
+      <ul class="lista-loja">${linhas}</ul>
+      <p class="nota">O preço cresce com a distância. Também dá para ir a pé pelas rotas e trilhas, de graça, ou de barco
+        (${barco} moedas de passagem no cais de qualquer cidade).</p>`;
   }
 
   // ----- Oração -----
@@ -1587,7 +1569,8 @@
       [k("W", "A", "S", "D") + " " + k("setas"), "Andar"],
       [k("Q", "E", "Z", "C"), "Andar na diagonal"],
       [k("F"), "Ação ao lado: falar, embarcar, desembarcar ou seguir a rota"],
-      ["Clique no inimigo", "Escolhe o alvo e ataca sozinho a cada 2 s"],
+      ["Clique no chão", "Anda até lá (contorna obstáculos); num personagem ou saque, vai até ele"],
+      ["Clique no inimigo", "Escolhe o alvo, vai até ele e ataca sozinho a cada 2 s"],
       [k("Espaço"), "Golpe corpo a corpo no alvo (também na diagonal)"],
       [k("R"), "Flecha no alvo, se houver arco equipado e flechas"],
       [k("H"), "Usar poção de vida"],
@@ -1612,7 +1595,7 @@
       <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele. Botão direito numa tecla de atalho a esvazia. Espada e arco ocupam as mãos: equipar um guarda o outro.</p>`;
     const secToque = `
       <h3>Toque</h3>
-      <p>O joystick redondo, à esquerda, anda para onde você arrastar o dedo, em qualquer ângulo: o personagem alterna passos retos e diagonais para seguir a linha do dedo e contorna sozinho a quina de um obstáculo. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo. Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
+      <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
     // No toque, a seção de toque vem primeiro.
     const toque = comToque || mm("(pointer: coarse)");
     $("#ajudaCorpo").innerHTML = `${toque ? secToque + secItens + secTeclado : secTeclado + secItens + secToque}
@@ -1634,7 +1617,7 @@
       <p>Analisador de caçada: o relógio começa no seu primeiro golpe e mostra XP, saque (moedas e o valor de venda dos itens
         recolhidos), lucro (menos poções, flechas e perdas na morte), abates e mortes, por sessão e por hora, e quanto falta para
         o próximo nível. Zere quando quiser; recarregar a página também zera.</p>
-      <p>Viagem rápida: fale com Micael em Canaã ou Tamar no Deserto. A trilha no extremo sul liga as regiões a pé. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. Azarias, no Deserto, vende provisões e compra recursos. No mar, pesque nos pontos com ondulação.</p>
+      <p>Cidades: toda cidade tem um mercador (vende provisões e compra recursos), um guia de caravanas e um cais. O guia leva a qualquer cidade aberta, cobrando pela distância. No cais, a passagem do barco leva ao Mar das Rotas, que liga todas as cidades: navegue até o cais de uma cidade aberta para desembarcar. A pé, as rotas ligam as regiões de graça. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. No mar, pesque nos pontos com ondulação.</p>
       <div class="acoes-modal">
         <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${comToque}">${comToque ? "Ocultar" : "Mostrar"} controles de toque</button>
         <button type="button" class="btn secundario" data-som aria-pressed="${!!window.Som?.ligado}">Som: ${window.Som?.ligado ? "ligado" : "desligado"}</button>
@@ -1977,18 +1960,35 @@
   // Controles de toque (direcional + ações)
   // ------------------------------------------------------------------
   function ligarToque() {
-    // Joystick redondo e analógico: o pino segue o dedo em 360° e o vetor (de −1 a 1 em cada eixo) vai
-    // para Jogo.entrada. O MUNDO (game.js, passoAnalogico) transforma o ângulo em passos da grade,
-    // alternando reto e diagonal para seguir a linha do dedo. Perto do centro (zona morta) para.
+    // Joystick flutuante e analógico: encostar o dedo em qualquer ponto da metade esquerda do mundo e
+    // arrastar faz o joystick nascer ali, com o pino seguindo o dedo em 360°. O vetor (de −1 a 1 em cada
+    // eixo) vai para Jogo.entrada; o MUNDO (game.js, passoAnalogico) transforma o ângulo em passos da
+    // grade. Um toque sem arrastar não é joystick: o MUNDO anda até a casa tocada (ou fala, pega o saque
+    // ou ataca o que foi tocado). Solto, o joystick volta ao canto, apagado, só como lembrete.
     const dpad = $("#dpad");
     const pino = dpad.querySelector(".joy-pino");
-    const ZONA_MORTA = 0.22;
-    let ativo = null;
+    const raiz = $("#game-root"), palco = $("#palco");
+    const ZONA_MORTA = 0.22, ARRASTO = 12;
+    let toque = null; // { id, x, y }: dedo na metade esquerda, ainda sem saber se é toque ou arrasto
+    let ativo = false;
     const zerar = () => {
-      if (window.Jogo) Jogo.entrada = { dx: 0, dy: 0 };
+      if (window.Jogo) { Jogo.entrada = { dx: 0, dy: 0 }; Jogo.joystickAtivo = false; }
       dpad.classList.remove("ativo");
+      dpad.style.left = dpad.style.top = dpad.style.bottom = "";
       pino.style.transform = "";
-      ativo = null;
+      ativo = false;
+      toque = null;
+    };
+    const ativar = () => {
+      const r = palco.getBoundingClientRect();
+      const meio = dpad.offsetWidth / 2;
+      // O centro do joystick fica onde o dedo encostou (sem sair do palco).
+      dpad.style.left = `${Math.max(0, Math.min(r.width - 2 * meio, toque.x - r.left - meio))}px`;
+      dpad.style.top = `${Math.max(0, Math.min(r.height - 2 * meio, toque.y - r.top - meio))}px`;
+      dpad.style.bottom = "auto";
+      dpad.classList.add("ativo");
+      ativo = true;
+      if (window.Jogo) Jogo.joystickAtivo = true;
     };
     const ler = (e) => {
       const r = dpad.getBoundingClientRect();
@@ -2001,19 +2001,30 @@
         vy = (vy / dist) * raio;
       }
       pino.style.transform = "translate(" + vx + "px, " + vy + "px)";
-      dpad.classList.add("ativo");
       const forca = Math.min(1, dist / raio);
-      const parado = forca < ZONA_MORTA;
-      if (window.Jogo) Jogo.entrada = parado ? { dx: 0, dy: 0 } : { dx: vx / raio, dy: vy / raio, analogico: true };
-      ativo = e.pointerId;
+      if (window.Jogo) Jogo.entrada = forca < ZONA_MORTA ? { dx: 0, dy: 0 } : { dx: vx / raio, dy: vy / raio, analogico: true };
     };
-    dpad.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      try { dpad.setPointerCapture(e.pointerId); } catch (erro) { /* ponteiro sintético */ }
+    raiz.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" || toque || !controlesDeToqueVisiveis()) return;
+      const r = palco.getBoundingClientRect();
+      if (e.clientX > r.left + r.width / 2) return; // metade direita: tocar alvos e botões
+      toque = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    }, true);
+    addEventListener("pointermove", (e) => {
+      if (!toque || e.pointerId !== toque.id) return;
+      if (!ativo) {
+        if (Math.hypot(e.clientX - toque.x, e.clientY - toque.y) < ARRASTO) return;
+        ativar();
+      }
       ler(e);
-    });
-    dpad.addEventListener("pointermove", (e) => { if (ativo !== null) ler(e); });
-    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) dpad.addEventListener(ev, zerar);
+    }, { passive: true });
+    for (const ev of ["pointerup", "pointercancel"]) {
+      addEventListener(ev, (e) => {
+        if (!toque || e.pointerId !== toque.id) return;
+        // O "pointerup" do MUNDO (andar até a casa) vem logo depois: o arrasto ainda vale até lá.
+        setTimeout(zerar, 0);
+      });
+    }
     dpad.addEventListener("contextmenu", (e) => e.preventDefault());
 
     for (const b of $$("#acoes [data-acao]")) {
@@ -2304,8 +2315,8 @@
   // Compatibilidade com o código antigo
   window.atualizarInterface = () => UI.atualizar();
   window.mostrarMensagem = (t) => UI.mensagem(t);
-  window.abrirLoja = () => UI.abrirLoja();
-  window.abrirViagem = () => UI.abrirViagem();
+  window.abrirLoja = (id) => UI.abrirLoja(id);
+  window.abrirViagem = (id) => UI.abrirViagem(id);
   window.abrirOracao = () => UI.abrirOracao();
   window.abrirMural = (id) => UI.abrirMural(id ?? null);
   window.abrirBestiario = () => UI.abrirBestiario();

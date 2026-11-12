@@ -67,7 +67,7 @@ const DADOS_MAPAS = {
       { tipo: "casa", x: 35, y: 9, variante: 1 },
       { tipo: "tenda", x: 12, y: 15, variante: 1, npc: "guia_canaa" },
       { tipo: "banca", x: 17, y: 15, variante: 1, reservada: "ferreiro" },
-      { tipo: "banca", x: 29, y: 15, variante: 1, reservada: "curandeiro" },
+      { tipo: "banca", x: 29, y: 15, variante: 0, npc: "mercador_canaa" },
       { tipo: "tenda", x: 34, y: 15, variante: 2, npc: "atalaia_canaa" },
       { tipo: "poco", x: 21, y: 24 },
       { tipo: "casa", x: 11, y: 27, variante: 1 },
@@ -131,6 +131,9 @@ const DADOS_MAPAS = {
       { forma: "elipse", x: 52, y: 92, raioX: 16, raioY: 9, densidade: 0.16, tipo: "rochedo" },
       { forma: "elipse", x: 122, y: 84, raioX: 16, raioY: 10, densidade: 0.16, tipo: "recife" },
       { x: 1, y: 56, largura: 158, altura: 9, densidade: 0 },
+      // corredores norte–sul até os cais da Galileia e do Egito (x 40) e do Sinai e do Mar Vermelho (x 120)
+      { x: 37, y: 1, largura: 7, altura: 118, densidade: 0 },
+      { x: 117, y: 1, largura: 7, altura: 118, densidade: 0 },
     ],
     aguas: [],
     vilas: [],
@@ -159,8 +162,11 @@ const DADOS_MAPAS = {
       { largura: 2, pontos: [[4, 60], [155, 60]] },
       { largura: 2, pontos: [[24, 60], [24, 112]] },
       { largura: 1, pontos: [[120, 60], [120, 112]] },
+      { largura: 2, pontos: [[24, 7], [24, 60]] },
     ],
     estruturas: [
+      { tipo: "banca", x: 14, y: 92, variante: 0, npc: "mercador_egito" },
+      { tipo: "tenda", x: 30, y: 92, variante: 1, npc: "guia_egito" },
       { tipo: "casa", x: 11, y: 88, variante: 3 },
       { tipo: "casa", x: 16, y: 88, variante: 3 },
       { tipo: "casa", x: 29, y: 88, variante: 3 },
@@ -193,9 +199,11 @@ const DADOS_MAPAS = {
     caminhos: [
       { largura: 2, pontos: [[2, 112], [157, 112]] },
       { largura: 2, pontos: [[4, 60], [155, 60]] },
-      { largura: 2, pontos: [[22, 60], [22, 112]] },
+      { largura: 2, pontos: [[22, 3], [22, 112]] },
     ],
     estruturas: [
+      { tipo: "banca", x: 12, y: 93, variante: 0, npc: "mercador_mar" },
+      { tipo: "tenda", x: 33, y: 92, variante: 1, npc: "guia_mar" },
       { tipo: "tenda", x: 10, y: 88, variante: 3 },
       { tipo: "tenda", x: 15, y: 88, variante: 0 },
       { tipo: "tenda", x: 27, y: 88, variante: 1 },
@@ -223,9 +231,11 @@ const DADOS_MAPAS = {
     caminhos: [
       { largura: 2, pontos: [[2, 112], [157, 112]] },
       { largura: 2, pontos: [[4, 60], [155, 60]] },
-      { largura: 2, pontos: [[22, 60], [22, 112]] },
+      { largura: 2, pontos: [[22, 3], [22, 112]] },
     ],
     estruturas: [
+      { tipo: "banca", x: 11, y: 93, variante: 0, npc: "mercador_sinai" },
+      { tipo: "tenda", x: 33, y: 92, variante: 3, npc: "guia_sinai" },
       { tipo: "tenda", x: 10, y: 88, variante: 3 },
       { tipo: "tenda", x: 15, y: 88, variante: 3 },
       { tipo: "tenda", x: 27, y: 88, variante: 0 },
@@ -254,8 +264,11 @@ const DADOS_MAPAS = {
       { largura: 2, pontos: [[4, 60], [155, 60]] },
       { largura: 2, pontos: [[22, 24], [22, 112]] },
       { largura: 1, pontos: [[22, 24], [60, 24], [60, 34], [150, 34]] },
+      { largura: 1, pontos: [[44, 18], [44, 24]] },
     ],
     estruturas: [
+      { tipo: "banca", x: 36, y: 20, variante: 0, npc: "mercador_galileia" },
+      { tipo: "tenda", x: 8, y: 25, variante: 0, npc: "guia_galileia" },
       { tipo: "casa", x: 9, y: 21, variante: 2 },
       { tipo: "casa", x: 14, y: 21, variante: 2 },
       { tipo: "casa", x: 27, y: 20, variante: 2 },

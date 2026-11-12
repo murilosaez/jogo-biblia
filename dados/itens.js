@@ -38,7 +38,7 @@ const ITENS = {
   carapaca: { nome: "Carapaça", peso: 0.8, tipo: "recurso" },
   amuleto_faianca: { nome: "Amuleto de faiança", peso: 0.3, tipo: "recurso", raridade: "incomum" },
   // Pedras do peitoral do sumo sacerdote (Êxodo 28.17–20): saques muito raros (0,1%). No futuro serão
-  // engastadas nos equipamentos; por ora Azarias as compra.
+  // engastadas nos equipamentos; por ora os mercadores as compram.
   pedra_sardio: { nome: "Sárdio", peso: 0.2, tipo: "recurso", raridade: "reliquia", pedra: "#c2452d" },
   pedra_topazio: { nome: "Topázio", peso: 0.2, tipo: "recurso", raridade: "reliquia", pedra: "#e8b94a" },
   pedra_esmeralda: { nome: "Esmeralda", peso: 0.2, tipo: "recurso", raridade: "reliquia", pedra: "#3fa66a" },
@@ -86,10 +86,20 @@ const SORTEIO_RARIDADE = { comum: 600, incomum: 280, raro: 90, epico: 25, reliqu
 // Chances nomeadas para as tabelas de saque (dados/criaturas.js). Também vale um número de 0 a 1.
 const CHANCES_SAQUE = { sempre: 1, comum: 0.25, incomum: 0.08, raro: 0.01, muito_raro: 0.001 };
 
-// Loja do Azarias: preço de compra ("flechas" é um pacote de FLECHAS_POR_PACOTE). Os itens da troca de pontos
+// Preço de compra nas lojas ("flechas" é um pacote de FLECHAS_POR_PACOTE). Os itens da troca de pontos
 // de tarefa (dados/tarefas.js) ficam fora desta lista e de VALORES_VENDA: pontos nunca viram moedas.
 const PRECOS_LOJA = { pocao: 12, pocao_fe: 18, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
 const FLECHAS_POR_PACOTE = 5;
+// O que cada mercador (NPC com papel "loja", dados/npcs.js) vende, na ordem da lista; o preço é o de
+// PRECOS_LOJA. Todo mercador compra todos os itens de VALORES_VENDA.
+const LOJAS = {
+  mercador_canaa: ["pocao", "pocao_fe", "flechas", "escudo_madeira"],
+  mercador1: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira"],
+  mercador_egito: ["pocao", "pocao_fe", "flechas", "armadura_couro", "arco_madeira"],
+  mercador_mar: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira"],
+  mercador_sinai: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira"],
+  mercador_galileia: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira"],
+};
 const VALORES_VENDA = {
   pele_lobo: 5,
   erva: 2,
