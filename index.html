@@ -544,6 +544,28 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .voc-habs li.fechada{opacity:.55}
 .voc-habs img{width:16px;height:16px}
 .voc-card .acoes-modal{margin-top:6px}
+/* Talentos (JGB-21) */
+.modal-caixa.larga{width:min(940px,100%)}
+.tal-topo,.tal-resumo{font-size:var(--fs-13)}
+.tal-resumo{padding:6px 8px;border:1px dashed var(--perg-400)}
+.tal-ramos{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;align-items:start}
+.tal-ramo{padding:8px;border:2px solid var(--perg-400);background:#fff2}
+.modal-corpo .tal-ramo h3{margin:0 0 6px}
+.tal-ramo h3 small{display:block;font:400 var(--fs-12)/1.2 var(--f-texto);color:var(--tinta-suave)}
+.tal-fileira{display:grid;gap:6px;padding:6px 0;border-top:1px solid var(--perg-400)}
+.tal-fileira.fechada{opacity:.6}
+.modal-corpo .tal-req{margin:0;font:600 var(--fs-12)/1.2 var(--f-pixel);color:var(--tinta-suave)}
+.tal{padding:6px 8px;border:2px solid var(--perg-400);background:var(--perg-100);font-size:var(--fs-13);line-height:1.35}
+.tal.tem{border-color:var(--bronze-500)}
+.tal.cheio{background:#f2d27a33;border-color:var(--bronze-600)}
+.tal.apice{border-style:double;border-width:4px}
+.tal-cab{display:flex;justify-content:space-between;gap:6px;align-items:baseline}
+.tal-graus{font:600 var(--fs-12)/1 var(--f-pixel);white-space:nowrap}
+.modal-corpo .tal p{margin:3px 0 0}
+.modal-corpo .tal-sabor{font-style:italic;color:var(--tinta-suave)}
+.modal-corpo .tal-motivo,.modal-corpo .tal-req-t{font-size:var(--fs-12);color:var(--tinta-suave)}
+.tal-btn{margin-top:6px;width:100%;white-space:normal;line-height:1.15}
+.tal-reset{margin-top:12px}
 /* Status do jogador (JGB-16): um selo por status ativo, com o tempo que falta e as pilhas. */
 .status-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .status-chips:empty{display:none}
@@ -730,7 +752,7 @@ body.toque-forcado #dpad{display:block}
     <span class="moedas" id="moedas" title="Moedas"><img class="px g16" data-glifo="ui_moeda" alt=""><b id="moedasValor">0</b><span class="sr"> moedas</span></span>
     <button class="moedas pontos" id="pontos" type="button" title="Pontos de tarefa · T: suas caçadas" hidden>
       <img class="px g16" data-glifo="ui_selo" alt=""><b id="pontosValor">0</b><span class="sr"> pontos de tarefa (abre suas caçadas)</span></button>
-    <button class="btn-icone voc-btn" id="btnVocacao" type="button" aria-label="Vocação e habilidades (V)" title="Vocação e habilidades (V)"><img class="px g16" data-glifo="hb_escudo" alt=""><span class="rotulo">Vocação</span></button>
+    <button class="btn-icone voc-btn" id="btnVocacao" type="button" aria-label="Vocação, habilidades e talentos (V)" title="Vocação, habilidades e talentos (V)"><img class="px g16" data-glifo="hb_escudo" alt=""><span class="rotulo">Vocação</span></button>
     <button class="btn-icone mana-btn" id="btnMana" type="button" aria-label="Maná e descanso (N)" title="Maná e descanso (N)"><img class="px g16" data-glifo="ui_mana" alt=""><span class="rotulo">Maná</span><b class="mana-qtd" id="manaQtd" hidden></b></button>
     <button class="btn-icone" id="btnBestiario" type="button" aria-label="Bestiário (B)" title="Bestiário (B)"><img class="px g16" data-glifo="ui_bestiario" alt=""><span class="rotulo">Bestiário</span></button>
     <button class="btn-icone" id="btnMapa" type="button" aria-label="Mostrar ou ocultar o mapa (M)" aria-pressed="true"><img class="px g16" data-glifo="ui_rosa" alt=""><span class="rotulo">Mapa</span></button>
@@ -898,9 +920,9 @@ body.toque-forcado #dpad{display:block}
 </div>
 
 <div class="modal" id="modalVocacao" aria-hidden="true">
-  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="vocacaoTitulo">
+  <div class="modal-caixa perg larga" role="dialog" aria-modal="true" aria-labelledby="vocacaoTitulo">
     <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="hb_escudo" data-escala="4" alt=""></span><div><h2 id="vocacaoTitulo">Vocação</h2>
-      <p class="sub" id="vocacaoSub">Habilidades e especialização</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+      <p class="sub" id="vocacaoSub">Habilidades, especialização e talentos</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
     <div class="modal-corpo" id="vocacaoCorpo"></div>
   </div>
 </div>

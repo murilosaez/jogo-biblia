@@ -34,13 +34,17 @@ Conteúdo do jogo (pasta dados/)
 - dados/vocacoes.js: regras das vocações (REGRAS_VOCACAO: nível de escolha e de especialização, trocas,
   recarga global, dano mágico, cão e ovelhas do Pastor), as habilidades (HABILIDADES_VOCACAO: nível,
   recarga, alcance e efeitos — dano, status, combinação, cura, buff, movimento, invocação) e as 5
-  vocações (VOCACOES: passivo, 7 habilidades em ordem de barra e 2 especializações).
-O progresso fica no save (save versão 13): missoes[id] = { status, etapa, progresso },
+  vocações (VOCACOES: passivo, 7 habilidades em ordem de barra e 2 especializações); os talentos
+  (REGRAS_TALENTOS: pontos por nível, pontos para abrir cada fileira, ápices, preço de refazer e limites;
+  TALENTOS: 3 ramos por vocação, 6 talentos por ramo, com fileira, graus, requisito e efeito por grau).
+  Os ids dos talentos ficam no save: renomear um devolve os pontos de quem o tinha.
+O progresso fica no save (save versão 14): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
 mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte } e status[tipo] =
 { ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
-vocacao = { id, especializacao, trocas } e recargas[habilidade] (quando ela fica pronta). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica pronta) e talentos[id] = graus
+(só os da vocação atual; os pontos saem do nível). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -54,8 +58,9 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 13, sem perder itens, moedas, nível ou progresso. A versão 13 traz as vocações (quem já
-   passou do nível 8 recebe um aviso para escolher a sua). A versão 12 juntou os status num motor só
+   para a versão 14, sem perder itens, moedas, nível ou progresso. A versão 14 traz os talentos (a árvore
+   começa vazia, com os pontos do seu nível livres, e quem já tem vocação recebe um aviso). A versão 13 trouxe
+   as vocações (quem já passou do nível 8 recebe um aviso para escolher a sua). A versão 12 juntou os status num motor só
    (o veneno ou sangramento que ainda estiver valendo continua; o atordoamento não sobrevive). A versão 11 trouxe o maná diário (o jarro
    começa vazio) e o descanso do Sábado (a ausência conta a partir da primeira carga). A versão 10 trouxe o
    bestiário, que começou do zero (os saves antigos não contavam abates por espécie). Na versão 9 os mapas dobraram de
@@ -79,8 +84,9 @@ Controles — teclado e mouse
   volta do alvo mostra o tempo até o próximo autoataque (2 s).
 - H: poção de vida. 1–6: atalhos (com vocação, Shift + 1–6). Botão direito num atalho o esvazia.
 - 1–8 (com vocação): habilidades da barra, usadas no alvo escolhido (ou na criatura mais perto ao
-  alcance). V: janela Vocação (escolher no nível 8, especialização no 50, habilidades de cada vocação;
-  também pelo botão Vocação, no topo, que acende quando há escolha a fazer).
+  alcance). V: janela Vocação (escolher no nível 8, especialização no 50, habilidades de cada vocação e,
+  na aba Talentos, a árvore; também pelo botão Vocação, no topo, que acende quando há escolha a fazer ou
+  ponto de talento livre).
 - P: pescar (no barco, ao lado de um ponto de pesca).
 - T: suas caçadas (consulta em qualquer lugar; aceitar e trocar só ao lado de um atalaia). O saldo
   de pontos de tarefa, no topo, e as caçadas do painel Missão também abrem a consulta.
@@ -377,7 +383,28 @@ toque na barra). No nível 50, escolha uma das 2 especializações: um passivo a
   que esteja lutando com você, e o XP do abate é seu. A ovelha fica parada por 12 s, com 30% da sua vida:
   as criaturas a até 4 casas dela a atacam em vez de você. Trocar de área ou morrer dispensa os aliados.
 - Trocar de vocação só com Jetro, o mestre de vocações, na vila de Canaã: a primeira troca é grátis, as
-  outras custam 150 moedas. Trocar recomeça a especialização e as recargas.
+  outras custam 150 moedas. Trocar recomeça a especialização e as recargas e devolve os talentos.
+
+Talentos
+Janela Vocação (tecla V), aba Talentos. Com vocação, cada nível dá 1 ponto de talento, a contar do 8 (no
+nível 8: 1 ponto; no 20: 13). Cada vocação tem 3 ramos, cada um com 4 fileiras:
+    Fileira 1 ... abre já (2 talentos de 3 pontos)
+    Fileira 2 ... com 3 pontos no ramo (2 talentos de 3 pontos)
+    Fileira 3 ... com 6 pontos no ramo (1 talento de 3 pontos, que pede um talento de cima completo)
+    Fileira 4 ... com 10 pontos no ramo: o ápice (1 ponto, pede o talento da fileira 3 completo)
+Só um ápice vale por vez: é a escolha que define o build (por exemplo, Guerreiro com Torre de Davi, Os três
+valentes ou Espada de Gideão). Os efeitos somam a cada ponto: vida, defesa, dano e crítico por tipo, curas,
+dano dos aliados, menos dano recebido, menos recarga em todas as habilidades ou numa só, e mais dano ou cura
+numa habilidade. Cada talento mostra o que dá por ponto, o que você já tem e, quando não abre, o porquê.
+    Guerreiro ...... Baluarte (defesa e vida), Valentia (dano corpo a corpo), Comando (controle e recarga)
+    Fundibulário ... Pontaria (dano e crítico), Saraiva (área e sangramento), Ligeireza (sobrevivência)
+    Levita ......... Santuário (curas), Luz (dano mágico), Guarda da Tenda (proteção)
+    Profeta ........ Fogo (dano mágico), Juízo (controle e combinações), Deserto (sobrevivência)
+    Pastor ......... Matilha (o cão), Aprisco (ovelhas e proteção), Cajado (corpo a corpo e cura)
+- Refazer: devolve todos os pontos, em qualquer lugar, por 50 moedas + 5 por ponto gasto (com 20 pontos
+  gastos, 150 moedas). Trocar de vocação devolve os pontos de graça.
+- Limites: a recarga cai no máximo 40% (talentos gerais e da habilidade somados) e o dano recebido no
+  máximo 80% (talentos e buffs somados).
 
 Maná diário e descanso do Sábado
 Tecla N ou o botão Maná, no topo. Nada aqui exige entrar todo dia: perder um dia não tira nada.
@@ -419,6 +446,7 @@ Para desenvolvedores
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
   estadoDescanso(p, agora), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
+  visaoTalentos(p), pontosTalentoLivres(p),
   Mundo.aliados(id), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
@@ -431,6 +459,11 @@ Para desenvolvedores
   O laço de tempo devolve também aliadoAtacou, iscaAtingida, aliadoPartiu e curaBuff. Os testes 63 a 63e
   conferem os dados, a escolha e a troca, cada efeito, o Pastor e simulam cada vocação contra as elites
   de cada região (comparando com o jogador sem vocação).
+- Talentos: comandos { tipo: "aprenderTalento", talento } (1 ponto) e { tipo: "resetarTalentos" } de
+  Mundo.executar. podeAprenderTalento(p, talentoId) devolve { ok, motivo }; efeitosTalentos(p) soma os
+  efeitos (passivosDe já os inclui), recargaHabilidade(p, habilidadeId) dá a recarga com os talentos e
+  textoEfeitoTalento(efeito, graus) o texto da interface. Os testes 64 a 64d conferem os dados, as regras
+  (fileira, requisito, ápice, pontos e reset pago), a troca de vocação, o save e cada tipo de efeito no combate.
 - Status: aplicarStatus(alvo, { tipo, ...ajustes }, agora), statusAtivo(alvo, tipo, agora),
   passoDosStatus(alvo, agora) e combinacoesNoGolpe(alvo, agora) são puras e valem para o jogador e para
   qualquer criatura; Mundo.aplicarStatusNaCriatura(id, inimigoId, ef) aplica numa criatura viva. Os testes

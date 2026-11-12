@@ -14,7 +14,7 @@
 const TILE = 32;
 const COLS = DADOS_TAMANHO_MAPA.colunas; // dados/mapas.js
 const ROWS = DADOS_TAMANHO_MAPA.linhas;
-const VERSAO_SAVE = 13;
+const VERSAO_SAVE = 14;
 const ESCALA_MAPAS_V8 = 2; // os mapas passaram de 80×60 (save v8) para 160×120 (save v9)
 
 const VIDA_BASE = 100;
@@ -979,10 +979,10 @@ function especializacaoDe(p) {
   return v ? registroDe(v.especializacoes, p.vocacao.especializacao) || null : null;
 }
 
-// Passivos da vocação e da especialização, somados: { vida, defesa, dano: { corpo, distancia, magia },
-// critico: { corpo, distancia }, cura, aliados }.
+// Passivos da vocação, da especialização e dos talentos (JGB-21), somados: { vida, defesa,
+// dano: { corpo, distancia, magia }, critico: { corpo, distancia }, cura, aliados, reducao }.
 function passivosDe(p) {
-  const r = { vida: 0, defesa: 0, dano: { corpo: 1, distancia: 1, magia: 1 }, critico: { corpo: 0, distancia: 0 }, cura: 1, aliados: 1 };
+  const r = { vida: 0, defesa: 0, dano: { corpo: 1, distancia: 1, magia: 1 }, critico: { corpo: 0, distancia: 0 }, cura: 1, aliados: 1, reducao: 0 };
   for (const fonte of [vocacaoDe(p)?.passivo, especializacaoDe(p)?.passivo]) {
     if (!fonte) continue;
     r.vida += fonte.vida || 0;
@@ -992,6 +992,15 @@ function passivosDe(p) {
     r.cura *= fonte.cura || 1;
     r.aliados *= fonte.aliados || 1;
   }
+  if (!p?.talentos || !vocacaoDe(p)) return r;
+  const t = efeitosTalentos(p);
+  r.vida += t.vida;
+  r.defesa += t.defesa;
+  for (const k of Object.keys(r.dano)) r.dano[k] *= 1 + t.dano[k];
+  for (const k of Object.keys(r.critico)) r.critico[k] += t.critico[k];
+  r.cura *= 1 + t.cura;
+  r.aliados *= 1 + t.aliados;
+  r.reducao = t.reducao;
   return r;
 }
 
@@ -1037,7 +1046,7 @@ function barraHabilidades(p, agora) {
       descricao: h.descricao,
       nivel: h.nivel,
       aberta: (p.nivel || 1) >= h.nivel,
-      recarga: h.recarga,
+      recarga: recargaHabilidade(p, id),
       restanteMs: Math.max(0, (p.recargas?.[id] || 0) - agora),
       tecla: i + 1,
     };
@@ -1091,6 +1100,7 @@ function normalizarVocacao(p, agora) {
     trocas: Number.isInteger(v.trocas) && v.trocas >= 0 ? v.trocas : 0,
     avisada: v.avisada === true,
     avisadaEspecializacao: v.avisadaEspecializacao === true,
+    avisadaTalentos: v.avisadaTalentos === true,
   };
   if (p.vocacao.id && registroDe(VOCACOES[p.vocacao.id].especializacoes, v.especializacao)) p.vocacao.especializacao = v.especializacao;
   const recargas = objetoValido(p.recargas) ? p.recargas : {};
@@ -1101,6 +1111,236 @@ function normalizarVocacao(p, agora) {
     if (Number.isFinite(t) && t > agora) p.recargas[id] = Math.min(t, agora + HABILIDADES_VOCACAO[id].recarga);
   }
   p.buffs = {};
+}
+
+// ---------------------------------------------------------------------
+// Talentos (JGB-21)
+// ---------------------------------------------------------------------
+// TALENTOS e REGRAS_TALENTOS vêm de dados/vocacoes.js. Save: p.talentos[idTalento] = graus (só os da
+// vocação atual). Os pontos não ficam no save: saem do nível (1 por nível desde o de escolha da vocação).
+const INDICE_TALENTOS = {};
+for (const [vocacao, ramos] of Object.entries(TALENTOS)) {
+  for (const ramo of ramos) for (const t of ramo.talentos) INDICE_TALENTOS[t.id] = { talento: t, ramo, vocacao };
+}
+
+function ramosDe(p) {
+  return (vocacaoDe(p) && registroDe(TALENTOS, p.vocacao.id)) || [];
+}
+
+function grausTalento(p, talentoId) {
+  const g = p?.talentos?.[talentoId];
+  return Number.isInteger(g) && g > 0 ? g : 0;
+}
+
+// Pontos que o nível dá (0 sem vocação).
+function pontosTalentoTotais(p) {
+  if (!vocacaoDe(p)) return 0;
+  return Math.max(0, (p.nivel || 1) - REGRAS_VOCACAO.nivelEscolha + 1) * REGRAS_TALENTOS.pontosPorNivel;
+}
+
+function pontosTalentoGastos(p) {
+  return ramosDe(p).reduce((s, r) => s + pontosNoRamo(p, r), 0);
+}
+
+function pontosTalentoLivres(p) {
+  return Math.max(0, pontosTalentoTotais(p) - pontosTalentoGastos(p));
+}
+
+function pontosNoRamo(p, ramo) {
+  return ramo.talentos.reduce((s, t) => s + grausTalento(p, t.id), 0);
+}
+
+// Pontos do ramo nas fileiras acima da informada (são eles que abrem a fileira).
+function pontosAcimaDaFileira(p, ramo, tier) {
+  return ramo.talentos.filter((o) => o.tier < tier).reduce((s, o) => s + grausTalento(p, o.id), 0);
+}
+
+function apicesDe(p) {
+  return ramosDe(p).flatMap((r) => r.talentos.filter((t) => t.apice && grausTalento(p, t.id) > 0));
+}
+
+// Pode pôr mais 1 ponto neste talento? { ok, motivo } (motivo em texto para a interface).
+function podeAprenderTalento(p, talentoId) {
+  const reg = registroDe(INDICE_TALENTOS, talentoId);
+  if (!vocacaoDe(p)) return { ok: false, motivo: `Escolha uma vocação no nível ${REGRAS_VOCACAO.nivelEscolha} para ter talentos.` };
+  if (!reg || reg.vocacao !== p.vocacao.id) return { ok: false, motivo: "Esse talento não é da sua vocação." };
+  const { talento: t, ramo } = reg;
+  if (grausTalento(p, t.id) >= t.graus) return { ok: false, motivo: `${t.nome} já está completo.` };
+  const precisa = REGRAS_TALENTOS.tiers[t.tier - 1];
+  const noRamo = pontosAcimaDaFileira(p, ramo, t.tier);
+  if (noRamo < precisa) return { ok: false, motivo: `Requer ${precisa} pontos em ${ramo.nome} (você tem ${noRamo}).` };
+  if (t.requer) {
+    const req = INDICE_TALENTOS[t.requer].talento;
+    if (grausTalento(p, req.id) < req.graus) return { ok: false, motivo: `Requer ${req.nome} completo (${grausTalento(p, req.id)}/${req.graus}).` };
+  }
+  if (t.apice && apicesDe(p).length >= REGRAS_TALENTOS.apicesPorPersonagem) {
+    return { ok: false, motivo: `Só ${REGRAS_TALENTOS.apicesPorPersonagem === 1 ? "um ápice" : `${REGRAS_TALENTOS.apicesPorPersonagem} ápices`} por vez: você já tem ${apicesDe(p).map((a) => a.nome).join(", ")}.` };
+  }
+  if (pontosTalentoLivres(p) < 1) {
+    return { ok: false, motivo: vocacaoDe(p) ? `Sem pontos livres: você ganha 1 por nível (próximo no nível ${(p.nivel || 1) + 1}).` : "Sem pontos livres." };
+  }
+  return { ok: true };
+}
+
+// Efeitos somados dos talentos: { vida, defesa, dano: { corpo, distancia, magia }, critico: { corpo, distancia },
+// cura, aliados, reducao, recarga, habilidades: { id: { dano, cura, recarga } } } (tudo aditivo).
+function efeitosTalentos(p) {
+  const r = { vida: 0, defesa: 0, dano: { corpo: 0, distancia: 0, magia: 0 }, critico: { corpo: 0, distancia: 0 }, cura: 0, aliados: 0, reducao: 0, recarga: 0, habilidades: {} };
+  for (const ramo of ramosDe(p)) {
+    for (const t of ramo.talentos) {
+      const g = Math.min(t.graus, grausTalento(p, t.id));
+      if (g) somarEfeito(r, t.efeito, g);
+    }
+  }
+  return r;
+}
+
+function somarEfeito(r, ef, g) {
+  for (const k of ["vida", "defesa", "cura", "aliados", "reducao", "recarga"]) r[k] += (ef[k] || 0) * g;
+  for (const k of Object.keys(r.dano)) r.dano[k] += (ef.dano?.[k] || 0) * g;
+  for (const k of Object.keys(r.critico)) r.critico[k] += (ef.critico?.[k] || 0) * g;
+  for (const [h, m] of Object.entries(ef.habilidades || {})) {
+    const alvo = (r.habilidades[h] ||= { dano: 0, cura: 0, recarga: 0 });
+    for (const k of ["dano", "cura", "recarga"]) alvo[k] += (m[k] || 0) * g;
+  }
+  return r;
+}
+
+// Multiplicador de uma habilidade pelos talentos: campo "dano" ou "cura" (1 + soma).
+function fatorTalentoHabilidade(p, habilidadeId, campo) {
+  return 1 + (efeitosTalentos(p).habilidades[habilidadeId]?.[campo] || 0);
+}
+
+// Recarga de uma habilidade com os talentos (geral + da habilidade, até limiteRecarga).
+function recargaHabilidade(p, habilidadeId) {
+  const h = HABILIDADES_VOCACAO[habilidadeId];
+  const ef = efeitosTalentos(p);
+  const corte = Math.min(REGRAS_TALENTOS.limiteRecarga, ef.recarga + (ef.habilidades[habilidadeId]?.recarga || 0));
+  return Math.round(h.recarga * (1 - corte));
+}
+
+// Texto do efeito de um talento com n graus: "+3% de dano corpo a corpo e +1 de defesa".
+function textoEfeitoTalento(ef, g = 1) {
+  const pct = (x) => `${Math.round(x * g * 1000) / 10}`.replace(".", ",") + "%";
+  const partes = [];
+  if (ef.vida) partes.push(`+${pct(ef.vida)} de vida máxima`);
+  if (ef.defesa) partes.push(`+${ef.defesa * g} de defesa`);
+  const nomesDano = { corpo: "corpo a corpo", distancia: "à distância", magia: "mágico" };
+  for (const [k, v] of Object.entries(ef.dano || {})) if (v) partes.push(`+${pct(v)} de dano ${nomesDano[k]}`);
+  const nomesCrit = { corpo: "corpo a corpo", distancia: "à distância e mágico" };
+  for (const [k, v] of Object.entries(ef.critico || {})) if (v) partes.push(`+${v * g}% de crítico ${nomesCrit[k]}`);
+  if (ef.cura) partes.push(`+${pct(ef.cura)} nas curas`);
+  if (ef.aliados) partes.push(`+${pct(ef.aliados)} de dano dos aliados`);
+  if (ef.reducao) partes.push(`${pct(ef.reducao)} menos dano recebido`);
+  if (ef.recarga) partes.push(`${pct(ef.recarga)} menos recarga em todas as habilidades`);
+  for (const [h, m] of Object.entries(ef.habilidades || {})) {
+    const sub = [];
+    if (m.dano) sub.push(`+${pct(m.dano)} de dano`);
+    if (m.cura) sub.push(`+${pct(m.cura)} de cura`);
+    if (m.recarga) sub.push(`${pct(m.recarga)} menos recarga`);
+    partes.push(`${HABILIDADES_VOCACAO[h]?.nome || h}: ${sub.join(", ")}`);
+  }
+  if (partes.length <= 1) return partes.join("");
+  return `${partes.slice(0, -1).join("; ")} e ${partes[partes.length - 1]}`;
+}
+
+function precoResetTalentos(p) {
+  const gastos = pontosTalentoGastos(p);
+  return gastos ? REGRAS_TALENTOS.precoReset.base + REGRAS_TALENTOS.precoReset.porPonto * gastos : 0;
+}
+
+// Tudo o que a aba Talentos mostra (pura).
+function visaoTalentos(p) {
+  const totais = pontosTalentoTotais(p);
+  const gastos = pontosTalentoGastos(p);
+  return {
+    temVocacao: !!vocacaoDe(p),
+    nivelInicial: REGRAS_VOCACAO.nivelEscolha,
+    totais,
+    gastos,
+    livres: Math.max(0, totais - gastos),
+    precoReset: precoResetTalentos(p),
+    apicesPorPersonagem: REGRAS_TALENTOS.apicesPorPersonagem,
+    resumo: gastos ? textoEfeitoTalento(efeitoCompacto(efeitosTalentos(p))) : "",
+    ramos: ramosDe(p).map((ramo) => ({
+      id: ramo.id,
+      nome: ramo.nome,
+      foco: ramo.foco,
+      pontos: pontosNoRamo(p, ramo),
+      talentos: ramo.talentos.map((t) => {
+        const graus = grausTalento(p, t.id);
+        const pode = podeAprenderTalento(p, t.id);
+        return {
+          id: t.id,
+          nome: t.nome,
+          tier: t.tier,
+          precisa: REGRAS_TALENTOS.tiers[t.tier - 1],
+          requer: t.requer ? INDICE_TALENTOS[t.requer].talento.nome : null,
+          apice: !!t.apice,
+          texto: t.texto || "",
+          graus,
+          maximo: t.graus,
+          porGrau: textoEfeitoTalento(t.efeito, 1),
+          atual: graus ? textoEfeitoTalento(t.efeito, graus) : "",
+          proximo: graus < t.graus ? textoEfeitoTalento(t.efeito, graus + 1) : "",
+          pode: pode.ok,
+          motivo: pode.ok ? "" : pode.motivo,
+        };
+      }),
+    })),
+  };
+}
+
+// Tira os zeros de um efeito somado (para o resumo).
+function efeitoCompacto(ef) {
+  const r = {};
+  for (const k of ["vida", "defesa", "cura", "aliados", "reducao", "recarga"]) if (ef[k]) r[k] = Math.round(ef[k] * 1000) / 1000;
+  for (const k of ["dano", "critico"]) {
+    const sub = Object.fromEntries(Object.entries(ef[k]).filter(([, v]) => v).map(([c, v]) => [c, Math.round(v * 1000) / 1000]));
+    if (Object.keys(sub).length) r[k] = sub;
+  }
+  const habs = {};
+  for (const [h, m] of Object.entries(ef.habilidades)) {
+    const sub = Object.fromEntries(Object.entries(m).filter(([, v]) => v).map(([c, v]) => [c, Math.round(v * 1000) / 1000]));
+    if (Object.keys(sub).length) habs[h] = sub;
+  }
+  if (Object.keys(habs).length) r.habilidades = habs;
+  return r;
+}
+
+// Save: só talentos da vocação atual, graus inteiros até o máximo; se a árvore salva não respeita as
+// regras (pontos a mais, fileira ou requisito faltando, ápices demais), os pontos voltam de graça.
+// Devolve true se devolveu os pontos.
+function normalizarTalentos(p) {
+  const salvo = objetoValido(p.talentos) ? p.talentos : {};
+  p.talentos = {};
+  const vocacao = vocacaoDe(p) ? p.vocacao.id : null;
+  let mexeu = false;
+  for (const [id, g] of Object.entries(salvo)) {
+    const reg = registroDe(INDICE_TALENTOS, id);
+    if (!reg || reg.vocacao !== vocacao || !Number.isInteger(g) || g <= 0) {
+      if (reg && reg.vocacao === vocacao) mexeu = true;
+      continue;
+    }
+    p.talentos[id] = Math.min(g, reg.talento.graus);
+    if (g > reg.talento.graus) mexeu = true;
+  }
+  if (!arvoreValida(p)) mexeu = true;
+  if (mexeu) p.talentos = {};
+  return mexeu && Object.keys(salvo).some((id) => INDICE_TALENTOS[id]?.vocacao === vocacao);
+}
+
+function arvoreValida(p) {
+  if (pontosTalentoGastos(p) > pontosTalentoTotais(p)) return false;
+  if (apicesDe(p).length > REGRAS_TALENTOS.apicesPorPersonagem) return false;
+  for (const ramo of ramosDe(p)) {
+    for (const t of ramo.talentos) {
+      if (!grausTalento(p, t.id)) continue;
+      if (pontosAcimaDaFileira(p, ramo, t.tier) < REGRAS_TALENTOS.tiers[t.tier - 1]) return false;
+      if (t.requer && grausTalento(p, t.requer) < INDICE_TALENTOS[t.requer].talento.graus) return false;
+    }
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------
@@ -2469,6 +2709,10 @@ const Mundo = {
     normalizarStatus(p, agora);
     // Vocação (save v13): saves anteriores começam sem vocação (escolha no nível de escolha).
     normalizarVocacao(p, agora);
+    // Talentos (save v14): saves anteriores começam com a árvore vazia e os pontos do nível livres.
+    if (normalizarTalentos(p)) {
+      this.adicionarAviso(p, "talentos_devolvidos", "Os seus talentos mudaram nesta versão: os pontos voltaram, de graça. Distribua de novo na janela Vocação (tecla V), aba Talentos.");
+    }
     delete p.proximaRegenFe;
 
     // Avisos pendentes para a UI (exibidos uma vez via Mundo.consumirAviso).
@@ -2526,6 +2770,15 @@ const Mundo = {
         "atualizacao_13",
         "Novidade: as vocações! Escolha a sua (tecla V): Guerreiro, Fundibulário, Levita, Profeta ou Pastor. " +
           "Cada uma tem 7 habilidades na barra (teclas 1 a 8); os atalhos de itens passam para Shift + 1 a 6.",
+      );
+    }
+    if (!novo && versaoAnterior < 14 && vocacaoDe(p)) {
+      p.vocacao.avisadaTalentos = true;
+      this.adicionarAviso(
+        p,
+        "atualizacao_14",
+        `Novidade: a árvore de talentos! Você tem ${pontosTalentoTotais(p)} pontos (1 por nível desde o ${REGRAS_VOCACAO.nivelEscolha}) ` +
+          "para distribuir em 3 ramos da sua vocação. Janela Vocação (tecla V), aba Talentos.",
       );
     }
     if (!novo && versaoAnterior < 11) {
@@ -3072,6 +3325,10 @@ const Mundo = {
         return this.escolherVocacao(id, comando.vocacao);
       case "escolherEspecializacao":
         return this.escolherEspecializacao(id, comando.especializacao);
+      case "aprenderTalento":
+        return this.aprenderTalento(id, comando.talento);
+      case "resetarTalentos":
+        return this.resetarTalentos(id);
       case "usarHabilidade":
         return this.usarHabilidade(id, comando.habilidade, comando.alvoId);
       case "colherMana":
@@ -4555,8 +4812,10 @@ const Mundo = {
       p.moedas -= preco;
       p.vocacao.trocas += 1;
     }
+    const devolvidos = pontosTalentoGastos(p);
     p.vocacao.id = vocacaoId;
     p.vocacao.especializacao = null;
+    p.talentos = {};
     p.recargas = {};
     p.buffs = {};
     if (this.estado[id]) this.estado[id].aliados = [];
@@ -4566,7 +4825,8 @@ const Mundo = {
     }
     this.ajustarVidaAoEquipamento(p);
     this.salvar(p);
-    const custo = atual ? (preco ? ` A troca custou ${preco} moedas.` : " A troca foi grátis.") : "";
+    const custo = (atual ? (preco ? ` A troca custou ${preco} moedas.` : " A troca foi grátis.") : "") +
+      (devolvidos ? ` Os ${devolvidos} pontos de talento voltaram: distribua na árvore do ${v.nome} (aba Talentos).` : "");
     return {
       ok: true,
       vocacao: vocacaoId,
@@ -4603,6 +4863,45 @@ const Mundo = {
       p.vocacao.avisadaEspecializacao = true;
       this.adicionarAviso(p, "especializacao", `Nível ${REGRAS_VOCACAO.nivelEspecializacao}: escolha a especialização da sua vocação (tecla V).`);
     }
+    if (vocacaoDe(p) && !p.vocacao.avisadaTalentos && pontosTalentoLivres(p) > 0) {
+      p.vocacao.avisadaTalentos = true;
+      this.adicionarAviso(p, "talentos", `Você tem pontos de talento: 1 por nível desde o ${REGRAS_VOCACAO.nivelEscolha}. Distribua na janela Vocação (tecla V), aba Talentos — 3 ramos, cada um com um ápice.`);
+    }
+  },
+
+  // ----- Talentos (JGB-21) -----
+  // Põe 1 ponto num talento (em qualquer lugar), respeitando fileira, requisito, ápice e pontos livres.
+  aprenderTalento(id, talentoId) {
+    const p = this.jogadores[id];
+    const pode = podeAprenderTalento(p, talentoId);
+    if (!pode.ok) return { ok: false, mensagem: pode.motivo };
+    const t = INDICE_TALENTOS[talentoId].talento;
+    p.talentos[talentoId] = grausTalento(p, talentoId) + 1;
+    this.ajustarVidaAoEquipamento(p);
+    this.salvar(p);
+    const g = p.talentos[talentoId];
+    return {
+      ok: true,
+      talento: talentoId,
+      graus: g,
+      livres: pontosTalentoLivres(p),
+      mensagem: `${t.nome} ${g}/${t.graus}: ${textoEfeitoTalento(t.efeito, g)}.`,
+    };
+  },
+
+  // Devolve todos os pontos (pago: base + porPonto × pontos gastos), em qualquer lugar.
+  resetarTalentos(id) {
+    const p = this.jogadores[id];
+    if (!vocacaoDe(p)) return { ok: false, mensagem: "Sem vocação, não há talentos." };
+    const gastos = pontosTalentoGastos(p);
+    if (!gastos) return { ok: false, mensagem: "Nenhum ponto gasto para devolver." };
+    const preco = precoResetTalentos(p);
+    if (p.moedas < preco) return { ok: false, mensagem: `Refazer os talentos custa ${preco} moedas e você tem ${p.moedas}.` };
+    p.moedas -= preco;
+    p.talentos = {};
+    this.ajustarVidaAoEquipamento(p);
+    this.salvar(p);
+    return { ok: true, moedasGastas: preco, livres: pontosTalentoLivres(p), mensagem: `Talentos refeitos por ${preco} moedas: ${gastos} pontos livres para distribuir de novo.` };
   },
 
   // Casa onde o jogador pode parar sem disparar nada: livre, sem criatura, sem portal, trilha ou cais.
@@ -4636,13 +4935,13 @@ const Mundo = {
   },
 
   // Dano de uma habilidade numa criatura: { dano, critico, combinacoes }. Consome o status do bônus, se pedir.
-  danoDeHabilidade(p, h, e, agora) {
+  danoDeHabilidade(p, h, e, agora, habilidadeId) {
     const at = atributosInimigo(p, e);
     const tipo = h.dano.tipo;
     const magia = REGRAS_VOCACAO.magia;
     const base = tipo === "magia" ? magia.base + magia.porNivel * Math.max(0, (p.nivel || 1) - 1) : danoBruto(p, tipo);
     const combo = combinacoesNoGolpe(e, agora);
-    let mult = h.dano.mult * fatorDano(p, tipo, agora) * (1 + bonusAmuleto(p, e)) * combo.multiplicador;
+    let mult = h.dano.mult * fatorDano(p, tipo, agora) * (1 + bonusAmuleto(p, e)) * combo.multiplicador * fatorTalentoHabilidade(p, habilidadeId, "dano");
     const nomes = [...combo.nomes];
     if (h.bonus) {
       const status = [].concat(h.bonus.status).filter((t) => statusAtivo(e, t, agora));
@@ -4710,7 +5009,7 @@ const Mundo = {
       if (!ameaca) return { ok: false, mensagem: "Nenhuma criatura por perto para recuar dela." };
     }
 
-    p.recargas[habilidadeId] = agora + h.recarga;
+    p.recargas[habilidadeId] = agora + recargaHabilidade(p, habilidadeId);
     estado.proximoAtaqueJogador = agora + REGRAS_VOCACAO.recargaGlobal;
     const resultado = { ok: true, habilidade: habilidadeId, nome: h.nome, alvos: [], mortes: [], cura: 0, aliados: [] };
     const textos = [];
@@ -4744,7 +5043,7 @@ const Mundo = {
         let critico = false;
         let combinacoes = [];
         for (let g = 0; g < golpes && this.inimigoVivo(p, e.id); g++) {
-          const r = this.danoDeHabilidade(p, h, e, agora);
+          const r = this.danoDeHabilidade(p, h, e, agora, habilidadeId);
           p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - r.dano);
           total += r.dano;
           critico = critico || r.critico;
@@ -4780,7 +5079,7 @@ const Mundo = {
       const cao = caes.sort((a, b) => distanciaChebyshev(a, alvo) - distanciaChebyshev(b, alvo))[0];
       const casa = this.casaAoLadoPara(p, cao, alvo);
       if (casa) Object.assign(cao, casa);
-      const linha = this.mordidaDoCao(p, cao, alvo, h.cao.mult, agora);
+      const linha = this.mordidaDoCao(p, cao, alvo, h.cao.mult * fatorTalentoHabilidade(p, habilidadeId, "dano"), agora);
       if (h.cao.status && !linha.derrotado) {
         const st = aplicarStatus(alvo, h.cao.status, agora);
         if (st) linha.status = h.cao.status.tipo;
@@ -4791,14 +5090,14 @@ const Mundo = {
     }
 
     // Cura, purificação e buff (em você).
-    const passivos = passivosDe(p);
+    const fatorCura = passivosDe(p).cura * fatorTalentoHabilidade(p, habilidadeId, "cura");
     if (h.cura) {
       const vidaMax = vidaMaxima(p);
       const antes = p.vida;
-      p.vida = Math.min(vidaMax, p.vida + Math.round(vidaMax * h.cura.vida * passivos.cura));
+      p.vida = Math.min(vidaMax, p.vida + Math.round(vidaMax * h.cura.vida * fatorCura));
       resultado.cura = p.vida - antes;
       if (h.cura.aliados) {
-        for (const o of (estado.aliados || []).filter((x) => x.vidaMax)) o.vida = Math.min(o.vidaMax, o.vida + Math.round(o.vidaMax * h.cura.vida * passivos.cura));
+        for (const o of (estado.aliados || []).filter((x) => x.vidaMax)) o.vida = Math.min(o.vidaMax, o.vida + Math.round(o.vidaMax * h.cura.vida * fatorCura));
       }
     }
     if (h.purificar) {
@@ -4809,7 +5108,10 @@ const Mundo = {
     if (h.buff) {
       const b = { ...h.buff, ate: agora + h.buff.duracao };
       if (h.buff.escudo) b.pontos = Math.round(vidaMaxima(p) * h.buff.escudo);
-      if (h.buff.regen) b.proximaRegen = agora + h.buff.regen.intervalo;
+      if (h.buff.regen) {
+        b.proximaRegen = agora + h.buff.regen.intervalo;
+        b.fatorCura = fatorTalentoHabilidade(p, habilidadeId, "cura");
+      }
       p.buffs[habilidadeId] = b;
       resultado.buff = { id: habilidadeId, ate: b.ate };
     }
@@ -5018,7 +5320,7 @@ const Mundo = {
         b.proximaRegen += b.regen.intervalo;
         const vidaMax = vidaMaxima(p);
         const antes = p.vida;
-        p.vida = Math.min(vidaMax, p.vida + Math.max(1, Math.round(vidaMax * b.regen.vida * passivosDe(p).cura)));
+        p.vida = Math.min(vidaMax, p.vida + Math.max(1, Math.round(vidaMax * b.regen.vida * passivosDe(p).cura * (b.fatorCura || 1))));
         if (p.vida > antes) eventos.push({ tipo: "curaBuff", cura: p.vida - antes, habilidade: k });
         mudou = true;
       }
@@ -5028,7 +5330,7 @@ const Mundo = {
 
   // Dano que chega ao jogador depois da redução e do escudo dos buffs: { dano, absorvido }.
   absorverDano(p, dano, agora) {
-    const reducao = somaBuffs(p, "reducao", agora);
+    const reducao = Math.min(REGRAS_TALENTOS.limiteReducao, somaBuffs(p, "reducao", agora) + passivosDe(p).reducao);
     let restante = reducao ? Math.max(1, Math.round(dano * (1 - reducao))) : dano;
     let absorvido = 0;
     for (const b of buffsAtivos(p, agora)) {

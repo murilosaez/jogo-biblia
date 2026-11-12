@@ -1125,6 +1125,13 @@ class Cena extends Phaser.Scene {
       const t = this.add.text(x, y - 56, `NÍVEL ${p.nivel}`, { fontFamily: FONTE_TITULO, fontStyle: "700", fontSize: "20px", color: "#ffe08a", stroke: COR.tinta, strokeThickness: 4, resolution: 2 })
         .setOrigin(0.5, 1).setDepth(PROF.numero);
       this.tweens.add({ targets: t, y: y - 80, alpha: 0, delay: 600, duration: 600, onComplete: () => t.destroy() });
+      // Talentos (JGB-21): com vocação, cada nível dá ponto de talento.
+      const livres = typeof pontosTalentoLivres === "function" ? pontosTalentoLivres(p) : 0;
+      if (livres > 0) {
+        const sub = this.add.text(x, y - 54, `+ TALENTO · ${livres} livre${livres > 1 ? "s" : ""} (V)`, { fontFamily: FONTE_PIXEL, fontSize: "11px", color: "#e6cf9c", stroke: COR.tinta, strokeThickness: 3, resolution: 2 })
+          .setOrigin(0.5, 0).setDepth(PROF.numero);
+        this.tweens.add({ targets: sub, y: y - 78, alpha: 0, delay: 900, duration: 600, onComplete: () => sub.destroy() });
+      }
     }
     this.nivelAnterior = p.nivel;
   }

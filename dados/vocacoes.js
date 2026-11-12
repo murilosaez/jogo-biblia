@@ -360,3 +360,226 @@ const VOCACOES = {
     },
   },
 };
+
+// =====================================================================
+// Talentos (JGB-21): 3 ramos por vocação, 1 ponto por nível.
+// =====================================================================
+// Regras.
+//   pontosPorNivel: pontos ganhos a cada nível a partir do nivelEscolha da vocação (no 8: 1 ponto; no 20: 13);
+//   tiers: pontos já gastos no ramo para abrir cada fileira (fileira 1 = 0 pontos, 2 = 3, 3 = 6, 4 = 10);
+//   apicesPorPersonagem: quantos talentos ápice (o último de cada ramo) se pode ter ao mesmo tempo;
+//   precoReset: devolver todos os pontos custa base + porPonto × pontos gastos (em moedas, em qualquer lugar);
+//   limiteRecarga: a maior redução de recarga somada (geral + da habilidade);
+//   limiteReducao: o máximo de dano recebido que some (talentos + buffs).
+//   Trocar de vocação devolve os pontos de graça (cada vocação tem a sua árvore).
+const REGRAS_TALENTOS = {
+  pontosPorNivel: 1,
+  tiers: [0, 3, 6, 10],
+  apicesPorPersonagem: 1,
+  precoReset: { base: 50, porPonto: 5 },
+  limiteRecarga: 0.4,
+  limiteReducao: 0.8,
+};
+
+// Árvores. Cada vocação tem 3 ramos { id, nome, foco, talentos }; cada talento:
+//   id (único no jogo; fica no save), nome, tier (fileira 1 a 4), graus (máximo de pontos),
+//   requer (opcional): id de um talento do mesmo ramo que precisa estar completo;
+//   apice: true — o talento final do ramo (limite de REGRAS_TALENTOS.apicesPorPersonagem);
+//   texto (opcional): uma frase de sabor; a interface mostra o efeito calculado do "efeito";
+//   efeito — o que CADA grau soma:
+//     vida (fração da vida máxima), defesa (pontos), dano: { corpo, distancia, magia } (fração),
+//     critico: { corpo, distancia } (% somado; o crítico mágico usa o da distância), cura (fração a mais
+//     nas curas), aliados (fração a mais no dano do cão), reducao (fração do dano recebido que some),
+//     recarga (fração a menos em todas as recargas de habilidade),
+//     habilidades: { idHabilidade: { dano, cura, recarga } } (frações, só naquela habilidade).
+const TALENTOS = {
+  guerreiro: [
+    {
+      id: "baluarte", nome: "Baluarte", foco: "Defesa e vida",
+      talentos: [
+        { id: "gu_pele_de_couro", nome: "Pele curtida", tier: 1, graus: 3, efeito: { defesa: 1 } },
+        { id: "gu_folego", nome: "Fôlego de soldado", tier: 1, graus: 3, efeito: { vida: 0.03 } },
+        { id: "gu_escudo_treinado", nome: "Escudo treinado", tier: 2, graus: 3, efeito: { habilidades: { escudo_erguido: { recarga: 0.1 }, golpe_de_escudo: { dano: 0.1 } } } },
+        { id: "gu_firmeza", nome: "Firmeza", tier: 2, graus: 3, efeito: { reducao: 0.02 } },
+        { id: "gu_ultimo_folego", nome: "Último fôlego", tier: 3, graus: 3, requer: "gu_firmeza", efeito: { habilidades: { ultimo_bastiao: { cura: 0.15, recarga: 0.08 } }, vida: 0.02 } },
+        { id: "gu_torre_de_davi", nome: "Torre de Davi", tier: 4, graus: 1, apice: true, requer: "gu_ultimo_folego", texto: "Mil escudos pendem dela (Ct 4:4).", efeito: { reducao: 0.08, vida: 0.1, defesa: 3 } },
+      ],
+    },
+    {
+      id: "valentia", nome: "Valentia", foco: "Dano corpo a corpo",
+      talentos: [
+        { id: "gu_braco_forte", nome: "Braço forte", tier: 1, graus: 3, efeito: { dano: { corpo: 0.03 } } },
+        { id: "gu_olho_no_golpe", nome: "Olho no golpe", tier: 1, graus: 3, efeito: { critico: { corpo: 1 } } },
+        { id: "gu_golpe_pesado", nome: "Golpe pesado", tier: 2, graus: 3, efeito: { habilidades: { golpe_firme: { dano: 0.12 } } } },
+        { id: "gu_redemoinho_afiado", nome: "Redemoinho afiado", tier: 2, graus: 3, efeito: { habilidades: { redemoinho: { dano: 0.12 } } } },
+        { id: "gu_sede_de_batalha", nome: "Sede de batalha", tier: 3, graus: 3, requer: "gu_braco_forte", efeito: { dano: { corpo: 0.03 }, critico: { corpo: 1 } } },
+        { id: "gu_tres_valentes", nome: "Os três valentes", tier: 4, graus: 1, apice: true, requer: "gu_sede_de_batalha", texto: "Josebe, Eleazar e Samá (2 Sm 23:8-12).",
+          efeito: { dano: { corpo: 0.12 }, critico: { corpo: 5 } } },
+      ],
+    },
+    {
+      id: "comando", nome: "Comando", foco: "Controle e recarga",
+      talentos: [
+        { id: "gu_voz_de_comando", nome: "Voz de comando", tier: 1, graus: 3, efeito: { habilidades: { grito_de_guerra: { recarga: 0.1, dano: 0.1 } } } },
+        { id: "gu_passo_largo", nome: "Passo largo", tier: 1, graus: 3, efeito: { habilidades: { investida_do_valente: { recarga: 0.08, dano: 0.08 } } } },
+        { id: "gu_disciplina", nome: "Disciplina", tier: 2, graus: 3, efeito: { recarga: 0.03 } },
+        { id: "gu_pes_firmes", nome: "Pés firmes", tier: 2, graus: 3, efeito: { vida: 0.02, defesa: 1 } },
+        { id: "gu_capitao_de_mil", nome: "Capitão de mil", tier: 3, graus: 3, requer: "gu_disciplina", efeito: { recarga: 0.02, dano: { corpo: 0.02 } } },
+        { id: "gu_espada_de_gideao", nome: "Espada de Gideão", tier: 4, graus: 1, apice: true, requer: "gu_capitao_de_mil", texto: "Pela espada do Senhor e de Gideão! (Jz 7:20)",
+          efeito: { recarga: 0.1, habilidades: { grito_de_guerra: { dano: 0.3 }, investida_do_valente: { dano: 0.3 }, golpe_de_escudo: { dano: 0.3 } } } },
+      ],
+    },
+  ],
+
+  fundibulario: [
+    {
+      id: "pontaria", nome: "Pontaria", foco: "Dano e crítico à distância",
+      talentos: [
+        { id: "fu_mao_firme", nome: "Mão firme", tier: 1, graus: 3, efeito: { dano: { distancia: 0.03 } } },
+        { id: "fu_olhar_atento", nome: "Olhar atento", tier: 1, graus: 3, efeito: { critico: { distancia: 1 } } },
+        { id: "fu_pedra_escolhida", nome: "Pedra escolhida", tier: 2, graus: 3, efeito: { habilidades: { pedra_certeira: { dano: 0.12 } } } },
+        { id: "fu_vigia", nome: "Vigia", tier: 2, graus: 3, efeito: { habilidades: { olho_de_aguia: { recarga: 0.1 } } } },
+        { id: "fu_sem_errar", nome: "Sem errar um fio", tier: 3, graus: 3, requer: "fu_mao_firme", efeito: { dano: { distancia: 0.03 }, critico: { distancia: 1 } } },
+        { id: "fu_setecentos", nome: "Os setecentos escolhidos", tier: 4, graus: 1, apice: true, requer: "fu_sem_errar", texto: "Atiravam pedras num cabelo e não erravam (Jz 20:16).",
+          efeito: { dano: { distancia: 0.1 }, critico: { distancia: 6 } } },
+      ],
+    },
+    {
+      id: "saraiva", nome: "Saraiva", foco: "Golpes em área e sangramento",
+      talentos: [
+        { id: "fu_pedras_soltas", nome: "Pedras soltas", tier: 1, graus: 3, efeito: { habilidades: { chuva_de_pedras: { dano: 0.1 } } } },
+        { id: "fu_lasca", nome: "Lasca afiada", tier: 1, graus: 3, efeito: { habilidades: { pedra_afiada: { dano: 0.1 } } } },
+        { id: "fu_ambidestro", nome: "Ambidestro", tier: 2, graus: 3, efeito: { habilidades: { mao_esquerda: { dano: 0.1 } } } },
+        { id: "fu_ritmo", nome: "Ritmo", tier: 2, graus: 3, efeito: { recarga: 0.03 } },
+        { id: "fu_tempestade", nome: "Tempestade de pedras", tier: 3, graus: 3, requer: "fu_pedras_soltas", efeito: { habilidades: { chuva_de_pedras: { recarga: 0.08, dano: 0.06 } } } },
+        { id: "fu_funda_de_benjamim", nome: "Funda de Benjamim", tier: 4, graus: 1, apice: true, requer: "fu_tempestade", texto: "Destros com a mão direita e com a esquerda (1 Cr 12:2).",
+          efeito: { habilidades: { chuva_de_pedras: { dano: 0.3 }, mao_esquerda: { dano: 0.3 }, saraivada: { dano: 0.3 } } } },
+      ],
+    },
+    {
+      id: "ligeireza", nome: "Ligeireza", foco: "Sobrevivência e mobilidade",
+      talentos: [
+        { id: "fu_couro_leve", nome: "Couro leve", tier: 1, graus: 3, efeito: { defesa: 1 } },
+        { id: "fu_resistencia", nome: "Resistência", tier: 1, graus: 3, efeito: { vida: 0.03 } },
+        { id: "fu_salto", nome: "Salto de gazela", tier: 2, graus: 3, efeito: { habilidades: { recuo_agil: { recarga: 0.12 } } } },
+        { id: "fu_pedrada_rapida", nome: "Pedrada rápida", tier: 2, graus: 3, efeito: { habilidades: { pedra_na_testa: { recarga: 0.08 } } } },
+        { id: "fu_esquivo", nome: "Esquivo", tier: 3, graus: 3, requer: "fu_salto", efeito: { reducao: 0.02 } },
+        { id: "fu_asael", nome: "Ligeiro como Asael", tier: 4, graus: 1, apice: true, requer: "fu_esquivo", texto: "Ligeiro de pés como uma gazela do campo (2 Sm 2:18).", efeito: { reducao: 0.08, recarga: 0.08 } },
+      ],
+    },
+  ],
+
+  levita: [
+    {
+      id: "santuario", nome: "Santuário", foco: "Curas",
+      talentos: [
+        { id: "le_maos_que_curam", nome: "Mãos que curam", tier: 1, graus: 3, efeito: { cura: 0.04 } },
+        { id: "le_bencao_pronta", nome: "Bênção pronta", tier: 1, graus: 3, efeito: { habilidades: { bencao: { recarga: 0.08 } } } },
+        { id: "le_incenso_suave", nome: "Incenso suave", tier: 2, graus: 3, efeito: { habilidades: { incenso: { cura: 0.1 } } } },
+        { id: "le_bencao_ampla", nome: "Bênção ampla", tier: 2, graus: 3, efeito: { habilidades: { bencao_sacerdotal: { cura: 0.1 } } } },
+        { id: "le_ministerio", nome: "Ministério", tier: 3, graus: 3, requer: "le_maos_que_curam", efeito: { cura: 0.04, vida: 0.02 } },
+        { id: "le_oleo_da_uncao", nome: "Óleo da unção", tier: 4, graus: 1, apice: true, requer: "le_ministerio", texto: "Desce sobre a barba de Arão (Sl 133:2).", efeito: { cura: 0.15, recarga: 0.05 } },
+      ],
+    },
+    {
+      id: "luz", nome: "Luz", foco: "Dano mágico",
+      talentos: [
+        { id: "le_chama_acesa", nome: "Chama acesa", tier: 1, graus: 3, efeito: { dano: { magia: 0.03 } } },
+        { id: "le_pavio_limpo", nome: "Pavio limpo", tier: 1, graus: 3, efeito: { habilidades: { luz_do_candelabro: { dano: 0.1 } } } },
+        { id: "le_som_do_shofar", nome: "Som do shofar", tier: 2, graus: 3, efeito: { habilidades: { toque_do_shofar: { recarga: 0.08, dano: 0.1 } } } },
+        { id: "le_brilho", nome: "Brilho", tier: 2, graus: 3, efeito: { critico: { distancia: 1 } } },
+        { id: "le_azeite_puro", nome: "Azeite puro", tier: 3, graus: 3, requer: "le_chama_acesa", efeito: { dano: { magia: 0.04 } } },
+        { id: "le_sete_lampadas", nome: "Sete lâmpadas", tier: 4, graus: 1, apice: true, requer: "le_azeite_puro", texto: "Para que alumiem defronte do candelabro (Êx 25:37).",
+          efeito: { dano: { magia: 0.12 }, habilidades: { luz_do_candelabro: { recarga: 0.3 } } } },
+      ],
+    },
+    {
+      id: "guarda", nome: "Guarda da Tenda", foco: "Proteção",
+      talentos: [
+        { id: "le_vestes_de_linho", nome: "Vestes de linho", tier: 1, graus: 3, efeito: { defesa: 1 } },
+        { id: "le_vigilia", nome: "Vigília", tier: 1, graus: 3, efeito: { vida: 0.03 } },
+        { id: "le_fe_firme", nome: "Fé firme", tier: 2, graus: 3, efeito: { habilidades: { escudo_da_fe: { recarga: 0.1 } } } },
+        { id: "le_agua_pura", nome: "Água pura", tier: 2, graus: 3, efeito: { habilidades: { purificacao: { recarga: 0.1, cura: 0.15 } } } },
+        { id: "le_porteiro", nome: "Porteiro", tier: 3, graus: 3, requer: "le_fe_firme", efeito: { reducao: 0.02 } },
+        { id: "le_guarda_da_tenda", nome: "Guardiões da Tenda", tier: 4, graus: 1, apice: true, requer: "le_porteiro", texto: "Farão a guarda da Tenda do Encontro (Nm 3:7).", efeito: { reducao: 0.08, vida: 0.1 } },
+      ],
+    },
+  ],
+
+  profeta: [
+    {
+      id: "fogo", nome: "Fogo", foco: "Dano mágico",
+      talentos: [
+        { id: "pr_brasa", nome: "Brasa viva", tier: 1, graus: 3, efeito: { dano: { magia: 0.03 } } },
+        { id: "pr_palavra_ardente", nome: "Palavra ardente", tier: 1, graus: 3, efeito: { habilidades: { palavra_de_fogo: { dano: 0.1 } } } },
+        { id: "pr_relampago", nome: "Relâmpago", tier: 2, graus: 3, efeito: { habilidades: { fogo_do_ceu: { dano: 0.12 } } } },
+        { id: "pr_visao", nome: "Visão clara", tier: 2, graus: 3, efeito: { critico: { distancia: 1 } } },
+        { id: "pr_zelo", nome: "Zelo", tier: 3, graus: 3, requer: "pr_brasa", efeito: { dano: { magia: 0.04 } } },
+        { id: "pr_fogo_que_consome", nome: "Fogo que consome", tier: 4, graus: 1, apice: true, requer: "pr_zelo", texto: "Caiu fogo do Senhor e consumiu o holocausto (1 Rs 18:38).",
+          efeito: { dano: { magia: 0.12 }, habilidades: { fogo_do_ceu: { recarga: 0.2 }, carro_de_fogo: { recarga: 0.2 } } } },
+      ],
+    },
+    {
+      id: "juizo", nome: "Juízo", foco: "Controle e combinações",
+      talentos: [
+        { id: "pr_voz_que_assusta", nome: "Voz que assusta", tier: 1, graus: 3, efeito: { habilidades: { repreensao: { recarga: 0.08 } } } },
+        { id: "pr_nuvem_densa", nome: "Nuvem densa", tier: 1, graus: 3, efeito: { habilidades: { coluna_de_nuvem: { recarga: 0.08 } } } },
+        { id: "pr_sentenca", nome: "Sentença", tier: 2, graus: 3, efeito: { habilidades: { juizo: { dano: 0.12 } } } },
+        { id: "pr_pragas", nome: "As pragas", tier: 2, graus: 3, efeito: { habilidades: { praga: { dano: 0.12 } } } },
+        { id: "pr_vigilante", nome: "Vigilante", tier: 3, graus: 3, requer: "pr_sentenca", efeito: { recarga: 0.03 } },
+        { id: "pr_dia_do_senhor", nome: "Dia do Senhor", tier: 4, graus: 1, apice: true, requer: "pr_vigilante", texto: "Dia de trevas e de escuridão (Jl 2:2).",
+          efeito: { recarga: 0.06, habilidades: { juizo: { dano: 0.4 }, mar_aberto: { recarga: 0.2 } } } },
+      ],
+    },
+    {
+      id: "deserto", nome: "Deserto", foco: "Sobrevivência",
+      talentos: [
+        { id: "pr_manto_de_pelos", nome: "Manto de pelos", tier: 1, graus: 3, efeito: { defesa: 1 } },
+        { id: "pr_gafanhotos_e_mel", nome: "Gafanhotos e mel", tier: 1, graus: 3, efeito: { vida: 0.03 } },
+        { id: "pr_mar_dividido", nome: "Mar dividido", tier: 2, graus: 3, efeito: { habilidades: { mar_aberto: { recarga: 0.1 } } } },
+        { id: "pr_jejum", nome: "Jejum", tier: 2, graus: 3, efeito: { reducao: 0.015 } },
+        { id: "pr_quarenta_dias", nome: "Quarenta dias", tier: 3, graus: 3, requer: "pr_gafanhotos_e_mel", efeito: { vida: 0.03, defesa: 1 } },
+        { id: "pr_corvos", nome: "Alimentado pelos corvos", tier: 4, graus: 1, apice: true, requer: "pr_quarenta_dias", texto: "Os corvos lhe traziam pão e carne (1 Rs 17:6).", efeito: { vida: 0.12, reducao: 0.06 } },
+      ],
+    },
+  ],
+
+  pastor: [
+    {
+      id: "matilha", nome: "Matilha", foco: "O cão pastor",
+      talentos: [
+        { id: "pa_faro", nome: "Faro", tier: 1, graus: 3, efeito: { aliados: 0.04 } },
+        { id: "pa_assobio", nome: "Assobio", tier: 1, graus: 3, efeito: { habilidades: { chamar_o_cao: { recarga: 0.08 } } } },
+        { id: "pa_presas", nome: "Presas", tier: 2, graus: 3, efeito: { habilidades: { mordida: { dano: 0.12 } } } },
+        { id: "pa_adestramento", nome: "Adestramento", tier: 2, graus: 3, efeito: { aliados: 0.03 } },
+        { id: "pa_ataque_em_dupla", nome: "Ataque em dupla", tier: 3, graus: 3, requer: "pa_presas", efeito: { aliados: 0.03, habilidades: { mordida: { recarga: 0.08 } } } },
+        { id: "pa_cao_fiel", nome: "Cão fiel", tier: 4, graus: 1, apice: true, requer: "pa_ataque_em_dupla", texto: "Nem um cão moverá a língua contra o rebanho (Êx 11:7).",
+          efeito: { aliados: 0.15, habilidades: { matilha_fiel: { recarga: 0.2 } } } },
+      ],
+    },
+    {
+      id: "aprisco", nome: "Aprisco", foco: "Ovelhas e proteção",
+      talentos: [
+        { id: "pa_la_grossa", nome: "Lã grossa", tier: 1, graus: 3, efeito: { vida: 0.03 } },
+        { id: "pa_balido", nome: "Balido", tier: 1, graus: 3, efeito: { habilidades: { ovelha_isca: { recarga: 0.08 } } } },
+        { id: "pa_cercado", nome: "Cercado", tier: 2, graus: 3, efeito: { habilidades: { rebanho: { recarga: 0.08 } } } },
+        { id: "pa_pastoreio", nome: "Pastoreio", tier: 2, graus: 3, efeito: { defesa: 1 } },
+        { id: "pa_porta_do_aprisco", nome: "Porta do aprisco", tier: 3, graus: 3, requer: "pa_cercado", efeito: { reducao: 0.02 } },
+        { id: "pa_nao_temerei", nome: "Não temerei mal algum", tier: 4, graus: 1, apice: true, requer: "pa_porta_do_aprisco", texto: "Ainda que eu ande pelo vale da sombra da morte (Sl 23:4).",
+          efeito: { reducao: 0.08, vida: 0.08 } },
+      ],
+    },
+    {
+      id: "cajado", nome: "Cajado", foco: "Corpo a corpo e cura",
+      talentos: [
+        { id: "pa_braco_de_pastor", nome: "Braço de pastor", tier: 1, graus: 3, efeito: { dano: { corpo: 0.03 } } },
+        { id: "pa_cajado_firme", nome: "Cajado firme", tier: 1, graus: 3, efeito: { habilidades: { cajado: { dano: 0.1 } } } },
+        { id: "pa_cuidado", nome: "Cuidado do rebanho", tier: 2, graus: 3, efeito: { habilidades: { bom_pastor: { cura: 0.12 } } } },
+        { id: "pa_vara", nome: "Vara de pastor", tier: 2, graus: 3, efeito: { habilidades: { vara_e_cajado: { recarga: 0.08 } } } },
+        { id: "pa_contra_o_lobo", nome: "Contra o lobo", tier: 3, graus: 3, requer: "pa_braco_de_pastor", efeito: { dano: { corpo: 0.03 }, critico: { corpo: 1 } } },
+        { id: "pa_leao_e_urso", nome: "O leão e o urso", tier: 4, graus: 1, apice: true, requer: "pa_contra_o_lobo", texto: "Eu o agarrava pela barba e o matava (1 Sm 17:34-35).",
+          efeito: { dano: { corpo: 0.12 }, habilidades: { cajado: { dano: 0.3 } } } },
+      ],
+    },
+  ],
+};
