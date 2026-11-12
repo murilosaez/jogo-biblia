@@ -1,7 +1,9 @@
 JORNADA — RPG BÍBLICO
 
 Conteúdo do jogo (pasta dados/)
-- dados/itens.js: itens, preços da loja e valores de venda.
+- dados/itens.js: itens, raridades (cor, brilho, som, melhoria e quantos atributos aleatórios), atributos
+  aleatórios com as faixas de cada raridade, sorteio de raridade, chances nomeadas das tabelas de saque,
+  preços da loja e valores de venda.
 - dados/mapas.js: tamanho dos mapas (160×120 casas) e o desenho de cada região: terreno de fundo,
   regiões (bosques, pedregais, clareiras, com o tipo de obstáculo), águas (lagos e rios), vilas (com
   muro opcional), caminhos (estradas e ruas), estruturas (casas, tendas, bancas e poços, com colisão),
@@ -13,7 +15,7 @@ Conteúdo do jogo (pasta dados/)
 - dados/npcs.js: personagens, posições, papéis e falas próprias. Comerciantes, guias e atalaias
   atendem à frente de uma tenda ou banca (estruturas com npc em dados/mapas.js); os moradores
   (papel "ambiente") só conversam, dizendo as suas falas em rodízio.
-- dados/criaturas.js: inimigos, atributos, saque e veneno; especie e familia de cada criatura (as
+- dados/criaturas.js: inimigos, atributos, tabela de saque (itens com chance) e veneno; especie e familia de cada criatura (as
   caçadas contam por elas) e os nomes das famílias.
 - dados/capitulos.js: capítulos em ordem, a missão de cada um e o Mestre que ensina a Oração.
 - dados/missoes.js: todas as missões (Eliabe, Noemi e capítulos): quem dá e recebe, missão
@@ -66,7 +68,10 @@ Controles — teclado e mouse
 
 Controles — toque (celular e tablet)
 - Aparecem sozinhos em telas de toque (ou pelo botão "Mostrar controles de toque" na ajuda).
-- Direcional à esquerda (8 direções, segure para continuar andando).
+- Joystick redondo à esquerda, analógico em 360°: o personagem anda para onde o dedo aponta. O mapa é
+  em casas, então ele alterna passos retos e diagonais para seguir a linha do dedo (a 20°, por exemplo,
+  reto-diagonal-reto…), com a mesma velocidade em qualquer ângulo, e contorna sozinho a quina de um
+  obstáculo, deslizando para o lado em que o dedo está. Segure para continuar andando.
 - À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
   (falar, caçadas, cais, pesca, rota). Toque num inimigo para escolher o alvo.
 - Barra inferior: Mochila, Equipamento, Batalha, Missão e Registro abrem em folhas recolhíveis.
@@ -131,6 +136,29 @@ Combate
 - Inimigos derrotados reaparecem em 5 s. Saques no chão (moedas e itens) somem depois de 10 minutos,
   exceto os itens que uma missão em andamento ainda pede.
 
+Saques e raridades
+- Cada criatura tem uma tabela de saque (dados/criaturas.js): cada linha é sorteada à parte, com chance
+  "sempre" (100%), "comum" (25%), "incomum" (8%), "raro" (1%), "muito_raro" (0,1%) ou um número.
+  Os itens que as missões pedem (pele, veneno, insígnia) caem sempre: a campanha não depende de sorte.
+  Cada criatura tem um recurso comum (presa, ferrão, linho, ponta de lança, bracelete), poções, um
+  equipamento a 3–5%, um equipamento raro ou melhor a 1% e uma pedra do peitoral (Êx 28) a 0,1%.
+- Raridades: comum, incomum (verde), raro (azul), épico (roxo) e relíquia (dourado). No chão, o item
+  brilha na cor da raridade: aura (incomum), aura e faíscas (raro), pilar de luz (épico e relíquia, mais
+  alto na relíquia). Na mochila, a borda do espaço ganha a cor; a dica mostra a raridade e os atributos.
+- Equipamento que cai sem raridade fixa sorteia: comum 60%, incomum 28%, raro 9%, épico 2,5%, relíquia
+  0,5% (com raridadeMinima na tabela, as de baixo ficam fora do sorteio). Incomum soma +1 no atributo
+  principal (dano da arma ou do arco, defesa do escudo ou da armadura); raro +1 e 1 atributo aleatório;
+  épico +2 e 2; relíquia +3 e 3. Atributos: dano, defesa, chance de crítico (o do equipamento soma até
+  +25%), vida máxima e carga (escudo e armadura).
+- Quando cai um saque incomum ou melhor (ou de linha com 1% de chance ou menos), toca um arpejo da
+  raridade e sobe o nome dela sobre a criatura; épico e relíquia também piscam a tela. Saque épico ou
+  melhor, e todo drop de 1% ou menos, é anunciado no Registro ("Saque épico! Lobo deixou cair: …",
+  "Drop muito raro (0,1%)! Lobo deixou cair: Sárdio.").
+  O som pode ser desligado na ajuda (?), e a escolha fica no navegador.
+- No save, um item com raridade é um texto que se descreve sozinho, "<item>@<raridade>.<atributo><valor>…"
+  (por exemplo "espada_ferro@epico.dano4.critico3"); dois itens com o mesmo sorteio se empilham. Itens
+  com texto inválido somem na carga do save.
+
 Inimigos obrigatórios (vida / defesa / dano por golpe antes da sua defesa)
 - Lobo 70 / 2 / 6 · Escorpião 130 / 4 / 9 (envenena) · Chefe dos saqueadores 190 / 6 / 10
 - Guarda egípcio 250 / 8 / 10 · Soldado perseguidor 310 / 10 / 11
@@ -177,7 +205,9 @@ vida restaurada. Nível, equipamento e missões são preservados. Penalidade con
 
 Loja de Azarias (Deserto)
 Poção de vida 12 · Poção de fé 18 · 5 flechas 8 · Escudo de madeira 35 · Armadura de couro 65 ·
-Arco de madeira 80. Ele compra pele de lobo (5), erva (2), odre (3) e peixe (6).
+Arco de madeira 80. Ele compra pele de lobo (5), erva (2), odre (3), peixe (6), veneno de escorpião (4),
+insígnia do bando (6), presa de lobo (10), ferrão de escorpião (12), linho egípcio (8), ponta de lança (9),
+bracelete de cobre (16) e as pedras do peitoral (150 a 200).
 Micael (Canaã) e Tamar (Deserto) fazem a viagem rápida gratuita entre as duas regiões.
 
 Caçadas (tarefas de caça)
@@ -213,7 +243,11 @@ Para desenvolvedores
   estadoMissaoNpc(p, npcId) (balão sobre o NPC: "missao", "andamento", "entregar", "mural" para o
   atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
-  tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p); constante ALCANCE_ARCO.
+  tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), infoItem(id) (item com raridade,
+  atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
+- Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
+  som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
+  são puras; o teste 49 simula 200 mil abates por criatura e confere a frequência de cada linha da tabela.
 - Caçadas: comandos { tipo: "aceitarTarefa", tarefaId }, { tipo: "guardarTarefa", tarefaId } e
   { tipo: "trocarPontos", ofertaId } de Mundo.executar. Falar com um atalaia devolve abrirMural (mural
   aberto) e, se houve entrega, tarefasEntregues e niveis; os ataques que derrotam devolvem tarefas
