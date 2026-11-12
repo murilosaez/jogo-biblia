@@ -400,9 +400,9 @@ const TALENTOS = {
         { id: "gu_pele_de_couro", nome: "Pele curtida", tier: 1, graus: 3, efeito: { defesa: 1 } },
         { id: "gu_folego", nome: "Fôlego de soldado", tier: 1, graus: 3, efeito: { vida: 0.03 } },
         { id: "gu_escudo_treinado", nome: "Escudo treinado", tier: 2, graus: 3, efeito: { habilidades: { escudo_erguido: { recarga: 0.1 }, golpe_de_escudo: { dano: 0.1 } } } },
-        { id: "gu_firmeza", nome: "Firmeza", tier: 2, graus: 3, efeito: { reducao: 0.02 } },
+        { id: "gu_firmeza", nome: "Firmeza", tier: 2, graus: 3, efeito: { reducao: 0.03 } },
         { id: "gu_ultimo_folego", nome: "Último fôlego", tier: 3, graus: 3, requer: "gu_firmeza", efeito: { habilidades: { ultimo_bastiao: { cura: 0.15, recarga: 0.08 } }, vida: 0.02 } },
-        { id: "gu_torre_de_davi", nome: "Torre de Davi", tier: 4, graus: 1, apice: true, requer: "gu_ultimo_folego", texto: "Mil escudos pendem dela (Ct 4:4).", efeito: { reducao: 0.08, vida: 0.1, defesa: 3 } },
+        { id: "gu_torre_de_davi", nome: "Torre de Davi", tier: 4, graus: 1, apice: true, requer: "gu_ultimo_folego", texto: "Mil escudos pendem dela (Ct 4:4).", efeito: { reducao: 0.1, vida: 0.1, defesa: 3 } },
       ],
     },
     {
@@ -522,13 +522,13 @@ const TALENTOS = {
     {
       id: "juizo", nome: "Juízo", foco: "Controle e combinações",
       talentos: [
-        { id: "pr_voz_que_assusta", nome: "Voz que assusta", tier: 1, graus: 3, efeito: { habilidades: { repreensao: { recarga: 0.08 } } } },
+        { id: "pr_pragas", nome: "As pragas", tier: 1, graus: 3, efeito: { habilidades: { praga: { dano: 0.2 } } } },
         { id: "pr_nuvem_densa", nome: "Nuvem densa", tier: 1, graus: 3, efeito: { habilidades: { coluna_de_nuvem: { recarga: 0.08 } } } },
-        { id: "pr_sentenca", nome: "Sentença", tier: 2, graus: 3, efeito: { habilidades: { juizo: { dano: 0.12 } } } },
-        { id: "pr_pragas", nome: "As pragas", tier: 2, graus: 3, efeito: { habilidades: { praga: { dano: 0.12 } } } },
-        { id: "pr_vigilante", nome: "Vigilante", tier: 3, graus: 3, requer: "pr_sentenca", efeito: { recarga: 0.03 } },
+        { id: "pr_sentenca", nome: "Sentença", tier: 2, graus: 3, efeito: { habilidades: { juizo: { dano: 0.2 } } } },
+        { id: "pr_voz_que_assusta", nome: "Voz que assusta", tier: 2, graus: 3, efeito: { habilidades: { repreensao: { recarga: 0.08 } }, dano: { magia: 0.02 } } },
+        { id: "pr_vigilante", nome: "Vigilante", tier: 3, graus: 3, requer: "pr_sentenca", efeito: { recarga: 0.03, dano: { magia: 0.02 } } },
         { id: "pr_dia_do_senhor", nome: "Dia do Senhor", tier: 4, graus: 1, apice: true, requer: "pr_vigilante", texto: "Dia de trevas e de escuridão (Jl 2:2).",
-          efeito: { recarga: 0.06, habilidades: { juizo: { dano: 0.4 }, mar_aberto: { recarga: 0.2 } } } },
+          efeito: { recarga: 0.08, dano: { magia: 0.1 }, habilidades: { juizo: { dano: 0.6 }, mar_aberto: { recarga: 0.2 } } } },
       ],
     },
     {
@@ -548,13 +548,13 @@ const TALENTOS = {
     {
       id: "matilha", nome: "Matilha", foco: "O cão pastor",
       talentos: [
-        { id: "pa_faro", nome: "Faro", tier: 1, graus: 3, efeito: { aliados: 0.04 } },
+        { id: "pa_faro", nome: "Faro", tier: 1, graus: 3, efeito: { aliados: 0.06 } },
         { id: "pa_assobio", nome: "Assobio", tier: 1, graus: 3, efeito: { habilidades: { chamar_o_cao: { recarga: 0.08 } } } },
         { id: "pa_presas", nome: "Presas", tier: 2, graus: 3, efeito: { habilidades: { mordida: { dano: 0.12 } } } },
-        { id: "pa_adestramento", nome: "Adestramento", tier: 2, graus: 3, efeito: { aliados: 0.03 } },
-        { id: "pa_ataque_em_dupla", nome: "Ataque em dupla", tier: 3, graus: 3, requer: "pa_presas", efeito: { aliados: 0.03, habilidades: { mordida: { recarga: 0.08 } } } },
+        { id: "pa_adestramento", nome: "Adestramento", tier: 2, graus: 3, efeito: { aliados: 0.05 } },
+        { id: "pa_ataque_em_dupla", nome: "Ataque em dupla", tier: 3, graus: 3, requer: "pa_presas", efeito: { aliados: 0.05, habilidades: { mordida: { recarga: 0.1 } } } },
         { id: "pa_cao_fiel", nome: "Cão fiel", tier: 4, graus: 1, apice: true, requer: "pa_ataque_em_dupla", texto: "Nem um cão moverá a língua contra o rebanho (Êx 11:7).",
-          efeito: { aliados: 0.15, habilidades: { matilha_fiel: { recarga: 0.2 } } } },
+          efeito: { aliados: 0.25, habilidades: { matilha_fiel: { recarga: 0.2 } } } },
       ],
     },
     {

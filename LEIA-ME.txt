@@ -464,6 +464,14 @@ Para desenvolvedores
   efeitos (passivosDe já os inclui), recargaHabilidade(p, habilidadeId) dá a recarga com os talentos e
   textoEfeitoTalento(efeito, graus) o texto da interface. Os testes 64 a 64d conferem os dados, as regras
   (fileira, requisito, ápice, pontos e reset pago), a troca de vocação, o save e cada tipo de efeito no combate.
+  O teste 64e (equilíbrio, JGB-46) luta com cada vocação × cada ramo (build focado: o ramo até o ápice, o resto
+  nas fileiras de cima dos outros) contra as elites de cada região, no nível de chegada e no nível 25 com as
+  elites reforçadas (4× vida, 3,5× dano, +15 de defesa: o conteúdo vai até o nível 12 e o ápice só fecha no 23).
+  Regras: os primeiros pontos nunca atrapalham; todo build vence o que a vocação sem talentos vence e ajuda no
+  seu foco (−10% de tempo, −15% de dano por segundo ou +10 pontos de vida mínima) sem cair abaixo de 45% do
+  tempo; nenhum ramo perde em tudo para outro da mesma vocação; e o ramo defensivo (Baluarte, Ligeireza, Guarda
+  da Tenda, Deserto, Aprisco) é o que recebe menos dano por segundo. Ao mudar valores dos talentos, rode
+  node tests/logica.test.js 64e e veja a tabela.
 - Status: aplicarStatus(alvo, { tipo, ...ajustes }, agora), statusAtivo(alvo, tipo, agora),
   passoDosStatus(alvo, agora) e combinacoesNoGolpe(alvo, agora) são puras e valem para o jogador e para
   qualquer criatura; Mundo.aplicarStatusNaCriatura(id, inimigoId, ef) aplica numa criatura viva. Os testes
