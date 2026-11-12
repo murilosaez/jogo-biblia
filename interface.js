@@ -604,6 +604,22 @@
   // ------------------------------------------------------------------
   let assinaturaBatalha = "";
   const ehChefe = (id) => temArte() && Arte.CHEFES && Arte.CHEFES.has && Arte.CHEFES.has(id);
+  // Ficha da criatura (nome de campeão, tier, comportamento e status) e a vida máxima efetiva.
+  const ficha = (id) => (typeof Mundo !== "undefined" && Mundo.fichaInimigo ? Mundo.fichaInimigo(ID, id) : null);
+  const vidaMax = (e) => (typeof Mundo !== "undefined" && Mundo.vidaMaximaInimigo ? Mundo.vidaMaximaInimigo(ID, e.id) : e.vidaMaxima);
+  const nomeDaCriatura = (e) => ficha(e.id)?.nome || nomeCurto(e.nome);
+  function textoFicha(f) {
+    if (!f) return "";
+    const tier = f.campeao ? `Campeão (${f.modificadores.length} modificador${f.modificadores.length > 1 ? "es" : ""})` : f.tier !== "normal" && typeof TIERS_CRIATURAS !== "undefined" ? TIERS_CRIATURAS[f.tier].nome : "";
+    return [tier, f.titulo, `Nível ${f.nivel}`, f.familia, ...f.comportamentos, f.status ? `Causa ${f.status.toLowerCase()}` : ""].filter(Boolean).join(" · ");
+  }
+  function marcasDaCriatura(f) {
+    if (!f) return "";
+    if (f.campeao) return '<span class="marca-tier campeao" title="Campeão">CAMPEÃO</span>';
+    if (f.nomeado) return '<span class="marca-tier raro" title="Raro nomeado">RARO</span>';
+    if (f.tier === "elite") return '<span class="marca-tier elite" title="Elite">ELITE</span>';
+    return "";
+  }
   const alvoAtual = () => (window.Jogo && typeof Jogo.alvoAtual === "function" ? Jogo.alvoAtual() : window.gameScene?.alvoId) || null;
 
   function inimigosVivos(p) {
@@ -615,7 +631,7 @@
     const alvo = alvoAtual();
     const vivos = inimigosVivos(p);
     const cacadas = cacadasAtivas(p).map((t) => [t.id, t.progresso, t.estado]);
-    const ass = JSON.stringify([alvo, vivos.map((e) => [e.id, Mundo.obterVidaInimigo(ID, e.id)]), cacadas]);
+    const ass = JSON.stringify([alvo, vivos.map((e) => [e.id, Mundo.obterVidaInimigo(ID, e.id), ficha(e.id)?.nome]), cacadas]);
     if (ass === assinaturaBatalha) return;
     assinaturaBatalha = ass;
     const caixa = $("#linhasBatalha");
@@ -624,19 +640,22 @@
     } else {
       caixa.innerHTML = vivos.map((e) => {
         const vida = Mundo.obterVidaInimigo(ID, e.id);
-        const pct = Math.max(0, Math.min(100, (100 * vida) / e.vidaMaxima));
-        const curto = nomeCurto(e.nome);
+        const max = vidaMax(e);
+        const pct = Math.max(0, Math.min(100, (100 * vida) / max));
+        const f = ficha(e.id);
+        const curto = nomeDaCriatura(e);
         const mini = retratoURL(visualDe(e.id), { escala: 2, recorte: "busto" });
         // Caçadas para as quais este abate conta: glifo de contagem, com uma linha por caçada no title.
         const conta = typeof tarefasDoInimigo === "function" ? tarefasDoInimigo(p, e.id) : [];
         const titulo = conta.map((t) => `Conta para: ${t.nome} (${t.progresso}/${t.meta})`).join("\n");
         const marcaCacada = conta.length ? `<span class="marca-cacada" title="${esc(titulo)}">${imgGlifo("ui_cacada", "px g16", "conta para caçada")}</span>` : "";
-        const marcas = (ehChefe(e.id) ? imgGlifo("ui_estrela_chefe", "px g16", "chefe") : "") + (e.veneno ? imgGlifo("ui_gota", "px g16", "venenoso") : "") + marcaCacada;
-        const rotulo = `${curto}, vida ${vida} de ${e.vidaMaxima}${ehChefe(e.id) ? ", chefe" : ""}${conta.length ? `, conta para ${conta.map((t) => t.nome).join(" e ")}` : ""}`;
-        return `<button type="button" role="listitem" class="linha-inimigo${alvo === e.id ? " selecionada" : ""}" data-alvo="${esc(e.id)}" aria-pressed="${alvo === e.id}" aria-label="${esc(rotulo)}">
+        const marcas = marcasDaCriatura(f) + (ehChefe(e.id) ? imgGlifo("ui_estrela_chefe", "px g16", "chefe") : "") + (e.veneno ? imgGlifo("ui_gota", "px g16", "venenoso") : "") + marcaCacada;
+        const rotulo = `${curto}, vida ${vida} de ${max}${ehChefe(e.id) ? ", chefe" : ""}${f?.campeao ? ", campeão" : ""}${conta.length ? `, conta para ${conta.map((t) => t.nome).join(" e ")}` : ""}`;
+        const classe = f?.campeao ? " campeao" : f?.nomeado ? " nomeado" : "";
+        return `<button type="button" role="listitem" class="linha-inimigo${classe}${alvo === e.id ? " selecionada" : ""}" data-alvo="${esc(e.id)}" aria-pressed="${alvo === e.id}" aria-label="${esc(rotulo)}" title="${esc(textoFicha(f))}">
           <span class="mini">${mini ? `<img class="px" src="${mini}" alt="">` : ""}</span>
           <span class="nome"><span class="nome-txt">${esc(curto)}</span>${marcas}</span>
-          <span class="vida"><span class="mini-barra"><i style="width:${pct}%"></i></span><b>${vida}/${e.vidaMaxima}</b></span></button>`;
+          <span class="vida"><span class="mini-barra"><i style="width:${pct}%"></i></span><b>${vida}/${max}</b></span></button>`;
       }).join("");
     }
     desenharQuadroAlvo(alvo);
@@ -653,11 +672,11 @@
         if (!e) { c.innerHTML = ""; c.classList.remove("ativo"); continue; }
         const mini = retratoURL(visualDe(e.id), { escala: 2, recorte: "busto" });
         c.innerHTML = `<span class="mini">${mini ? `<img class="px" src="${mini}" alt="">` : ""}</span>
-          <span class="alvo-info"><strong>${ehChefe(e.id) ? imgGlifo("ui_estrela_chefe", "px g16") : ""}${esc(nomeCurto(e.nome))}</strong>
+          <span class="alvo-info"><strong title="${esc(textoFicha(ficha(e.id)))}">${ehChefe(e.id) ? imgGlifo("ui_estrela_chefe", "px g16") : ""}${marcasDaCriatura(ficha(e.id))}${esc(nomeDaCriatura(e))}</strong>
           <span class="alvo-barra"><i></i></span><span class="alvo-recarga" title="Recarga do autoataque"><i></i></span></span>
           <span class="alvo-vida"></span>`;
         c.classList.add("ativo");
-        c.setAttribute("aria-label", `Alvo: ${nomeCurto(e.nome)}`);
+        c.setAttribute("aria-label", `Alvo: ${nomeDaCriatura(e)}. ${textoFicha(ficha(e.id))}`);
       }
     }
     document.body.classList.toggle("com-alvo", !!e);
@@ -669,8 +688,8 @@
     for (const c of [$("#quadroAlvo"), $("#hudAlvo")]) {
       if (!c || !c.classList.contains("ativo")) continue;
       const i = c.querySelector(".alvo-barra i"), t = c.querySelector(".alvo-vida");
-      if (i) i.style.width = `${Math.max(0, Math.min(100, (100 * vida) / e.vidaMaxima))}%`;
-      if (t) t.textContent = `${vida}/${e.vidaMaxima}`;
+      if (i) i.style.width = `${Math.max(0, Math.min(100, (100 * vida) / vidaMax(e)))}%`;
+      if (t) t.textContent = `${vida}/${vidaMax(e)}`;
     }
   }
 
@@ -1418,6 +1437,10 @@
         atalaia e troque os pontos de tarefa por melhorias.</p>
       <p>Saques: cada criatura tem a sua tabela, com itens comuns e drops raros (1%) e muito raros (0,1%). A cor e o brilho no chão
         mostram a raridade (comum, incomum, raro, épico, relíquia); equipamentos raros ou melhores trazem atributos aleatórios.</p>
+      <p>Criaturas: cada região tem feras, pragas e inimigos com comportamentos próprios — matilha, fuga, ataque à distância,
+        investida (o "!" avisa: saia da linha) e fúria — e alguns causam veneno, sangramento ou atordoamento. Às vezes uma
+        criatura renasce campeã (nome dourado, 1 ou 2 modificadores, saque reforçado), e cada região tem um raro nomeado que
+        aparece algumas vezes por dia, com anúncio no Registro.</p>
       <p>Viagem rápida: fale com Micael em Canaã ou Tamar no Deserto. A trilha no extremo sul liga as regiões a pé. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. Azarias, no Deserto, vende provisões e compra recursos. No mar, pesque nos pontos com ondulação.</p>
       <div class="acoes-modal">
         <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${comToque}">${comToque ? "Ocultar" : "Mostrar"} controles de toque</button>

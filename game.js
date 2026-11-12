@@ -29,6 +29,9 @@ const ESTILO_NUM = {
   bloqueio: ["#b9c6d6", 11], errou: ["#b9a27a", 11], tarefa: ["#e6cf9c", 12],
 };
 
+// Nome do campeão e aura dele.
+const COR_CAMPEAO = "#f2c94c";
+
 // Vizinhos da grade em ordem de ângulo (0°, 45°… com y para baixo), para o joystick analógico.
 const DIRECOES_8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
 
@@ -148,7 +151,7 @@ class Cena extends Phaser.Scene {
     this.criarNpcs();
     for (const e of Object.values(inimigos).filter((e) => e.area === this.areaAtual)) {
       if (Mundo.obterVidaInimigo(MEU_ID, e.id) > 0) this.criarInimigo(e);
-      else this.agendarRespawn(e.id);
+      else if (!e.nomeado) this.agendarRespawn(e.id); // o raro nomeado volta pela janela (eventoNomeado)
     }
     this.criarJogador();
     this.criarEfeitosDeMundo();
@@ -538,17 +541,29 @@ class Cena extends Phaser.Scene {
 
   criarEntidade(tipo, dados, chave) {
     const def = PIXEL_PATTERNS[chave];
-    const quadrupede = def && def.w === 20;
+    const quadrupede = !!def && !def.humano;
     const x = centroX(dados.x), y = baseY(dados.y);
     const sombra = this.add.image(x + 3, y - 1, quadrupede ? "fx_sombra_lobo" : Arte.CHEFES.has(dados.id) ? "fx_sombra_g" : "fx_sombra").setDepth(PROF.sombra);
     const sprite = this.add.sprite(x, y, chave, 0).setOrigin(0.5, 1).setDepth(PROF.entidade + y);
     sprite.setInteractive({ useHandCursor: true });
-    const nome = Arte.nomeCurto(dados.nome);
+    // Criatura: nome com os modificadores de campeão (dourado), elite prateado e raro nomeado lilás,
+    // maior e tingido (escala e tinta dos dados).
+    const ficha = tipo === "inimigo" ? Mundo.fichaInimigo(MEU_ID, dados.id) : null;
+    const nome = ficha ? ficha.nome : Arte.nomeCurto(dados.nome);
+    const corTier = ficha && typeof TIERS_CRIATURAS !== "undefined" ? TIERS_CRIATURAS[ficha.tier]?.cor : null;
+    const corNome = ficha?.campeao ? COR_CAMPEAO : corTier || (tipo === "inimigo" ? COR.hostil : COR.amigo);
+    const escala = dados.escala || 1;
+    if (escala !== 1) sprite.setScale(escala);
+    if (dados.tinta) sprite.setTint(hexNum(dados.tinta));
+    if (ficha?.campeao || ficha?.nomeado) {
+      sprite.auraCampeao = this.add.image(x, y - 2, "fx_aura").setDepth(PROF.sombra + 1).setTint(hexNum(ficha.campeao ? COR_CAMPEAO : corTier)).setAlpha(0.55).setScale(1.2);
+      if (!reduzMovimento()) this.tweens.add({ targets: sprite.auraCampeao, alpha: 0.25, duration: 800, yoyo: true, repeat: -1 });
+    }
     const ent = {
       id: dados.id, tipo, dados, chave, sprite, sombra, quadrupede,
-      rotulo: this.textoRotulo(nome, tipo === "inimigo" ? COR.hostil : COR.amigo),
+      rotulo: this.textoRotulo(nome, corNome),
       fase: Math.random() * 1200, acaoAte: 0, andandoAte: 0, feridoAte: 0,
-      alturaCabeca: quadrupede ? 22 : def.h * Arte.PX - 8,
+      alturaCabeca: Math.round((quadrupede ? def.h * Arte.PX - 6 : def.h * Arte.PX - 8) * escala),
       vidaFantasma: tipo === "inimigo" ? Mundo.obterVidaInimigo(MEU_ID, dados.id) : 0,
       fantasmaDesde: 0,
     };
@@ -577,6 +592,8 @@ class Cena extends Phaser.Scene {
   destruirEntidade(id) {
     const ent = this.entidades[id];
     if (!ent) return;
+    ent.sprite?.auraCampeao?.destroy();
+    ent.alerta?.destroy();
     for (const k of ["sprite", "sombra", "rotulo", "balao"]) ent[k]?.destroy();
     delete this.entidades[id];
     if (this.hoverId === id) this.hoverId = null;
@@ -981,6 +998,7 @@ class Cena extends Phaser.Scene {
         this.time.delayedCall(450 + i * 250, () => this.numero(centroX(e.x), baseY(e.y) - 28, `${t.progresso}/${t.meta}`, "tarefa"));
       });
       if (e && r.saquesRaros?.length) this.time.delayedCall(300, () => this.anunciarSaqueRaro(r.saquesRaros, e));
+      if (r.explosao) this.marcarExplosao(r.explosao);
       for (const texto of r.anuncios || []) this.time.delayedCall(320, () => this.mensagem(texto, "anuncio"));
     }
     this.p = Mundo.jogadores[MEU_ID];
@@ -998,6 +1016,8 @@ class Cena extends Phaser.Scene {
     delete this.entidades[id];
     const { sprite, sombra, rotulo } = ent;
     rotulo?.destroy();
+    ent.alerta?.destroy();
+    sprite.auraCampeao?.destroy();
     sprite.disableInteractive();
     const cor = this.bio.chao.escuro;
     let n = 0;
@@ -1015,7 +1035,12 @@ class Cena extends Phaser.Scene {
         const ent = this.criarInimigo(e);
         ent.sprite.setAlpha(0); ent.sombra.setAlpha(0);
         this.tweens.add({ targets: [ent.sprite, ent.sombra], alpha: 1, duration: 400 });
-        this.mensagem(`${e.nome} reapareceu.`);
+        const ficha = Mundo.fichaInimigo(MEU_ID, id);
+        if (ficha?.campeao) {
+          this.mensagem(`Um campeão surgiu: ${ficha.nome}! Mais forte, rende o triplo de XP e saque reforçado.`, "anuncio");
+          Som.saque("raro");
+          this.particulasSimples(ent.sprite.x, ent.sprite.y - 12, COR_CAMPEAO, 14, { subir: true, dur: 800, espalha: 16 });
+        } else this.mensagem(`${e.nome} reapareceu.`);
         window.atualizarInterface?.();
       }
     });
@@ -1032,7 +1057,8 @@ class Cena extends Phaser.Scene {
       this.tweens.add({ targets: this.anel, scale: 1, duration: 120 });
     }
     window.atualizarInterface?.();
-    this.mensagem(`${inimigos[id].nome} selecionado; autoataque a cada 2 segundos.`);
+    const alvo = inimigos[id];
+    this.mensagem(`${Mundo.nomeInimigo(MEU_ID, id) || alvo.nome} ${alvo.genero === "f" ? "selecionada" : "selecionado"}; autoataque a cada 2 segundos.`);
   }
   usarPocao() {
     const r = Mundo.executar(MEU_ID, { tipo: "usarPocao" });
@@ -1181,7 +1207,12 @@ class Cena extends Phaser.Scene {
       if (x.tipo === "inimigoMoveu") this.moverInimigo(x.id);
       else if (x.tipo === "jogadorAtingido") this.jogadorAtingido(x);
       else if (x.tipo === "veneno") this.mensagem(x.mensagem, "perigo");
-      else if (x.tipo === "venenoTerminou") this.mensagem(x.mensagem);
+      else if (x.tipo === "venenoTerminou" || x.tipo === "sangramentoTerminou") this.mensagem(x.mensagem);
+      else if (x.tipo === "sangramento") this.mensagem(x.mensagem, "perigo");
+      else if (x.tipo === "atordoado") this.jogadorAtordoado(x);
+      else if (x.tipo === "furia" || x.tipo === "fuga" || x.tipo === "investidaPreparo" || x.tipo === "investidaErrou") this.comportamentoInimigo(x);
+      else if (x.tipo === "explosao") this.explosao(x);
+      else if (x.tipo === "nomeadoApareceu" || x.tipo === "nomeadoSumiu") this.eventoNomeado(x);
       else if (x.tipo === "saqueExpirou") for (const id of x.ids || []) { this.spritesItens[id]?.destroy(); delete this.spritesItens[id]; }
       else if (x.tipo === "renasceu") {
         this.alvoId = null;
@@ -1276,6 +1307,15 @@ class Cena extends Phaser.Scene {
 
   jogadorAtingido(x) {
     const jx = this.jogador.x, jy = this.jogador.y - 46;
+    if (x.sangramento) {
+      this.numero(jx, jy, `−${x.dano}`, "recebido");
+      this.particulasSimples(jx, this.jogador.y - 20, "#c2452d", 3, { dur: 500, espalha: 5 });
+      return;
+    }
+    if (x.distancia) this.projetil(x.inimigoId, x.projetil);
+    if (x.investida && !reduzMovimento()) this.cameras.main.shake(120, 0.004);
+    const atacante = x.inimigoId && this.entidades[x.inimigoId];
+    if (atacante?.alerta) { atacante.alerta.destroy(); atacante.alerta = null; }
     if (x.veneno) {
       this.numero(jx, jy, `−${x.dano}`, "veneno");
       this.jogador.setTint(0xa8c84a);
@@ -1308,6 +1348,90 @@ class Cena extends Phaser.Scene {
     }
   }
 
+  // Flecha, pedra ou feitiço voando da criatura até o jogador.
+  projetil(inimigoId, tipo) {
+    const ent = this.entidades[inimigoId];
+    if (!ent || reduzMovimento()) return;
+    const cor = tipo === "magia" ? "#9ad0ff" : tipo === "pedra" ? "#8a8478" : "#eadcb6";
+    const p = this.add.image(ent.sprite.x, ent.sprite.y - 18, "fx_pixel").setScale(tipo === "flecha" ? 6 : 4, tipo === "flecha" ? 2 : 4)
+      .setTint(hexNum(cor)).setDepth(PROF.numero - 1);
+    p.setRotation(Math.atan2(this.jogador.y - ent.sprite.y, this.jogador.x - ent.sprite.x));
+    this.tweens.add({ targets: p, x: this.jogador.x, y: this.jogador.y - 22, duration: 160, onComplete: () => {
+      if (tipo === "magia") this.particulasSimples(this.jogador.x, this.jogador.y - 22, cor, 6, { dur: 400, espalha: 8 });
+      p.destroy();
+    } });
+  }
+
+  jogadorAtordoado(x) {
+    this.mensagem(x.mensagem, "perigo");
+    this.numero(this.jogador.x, this.jogador.y - 50, "ATORDOADO", "bloqueio");
+    if (reduzMovimento()) return;
+    const ate = this.time.now + Math.max(300, x.ate - Date.now());
+    const estrelas = [0, 1, 2].map(() => this.add.sprite(0, 0, "fx_brilho", 1).setTint(0xffe08a).setDepth(PROF.numero - 2));
+    const ev = this.time.addEvent({ delay: 40, loop: true, callback: () => {
+      const t = this.time.now / 200;
+      estrelas.forEach((s, i) => s.setPosition(this.jogador.x + Math.cos(t + (i * Math.PI * 2) / 3) * 10, this.jogador.y - 44 + Math.sin(t + (i * Math.PI * 2) / 3) * 3));
+      if (this.time.now >= ate) { ev.remove(false); for (const s of estrelas) s.destroy(); }
+    } });
+  }
+
+  // Fúria, fuga e investida: avisos sobre a criatura (a investida mostra "!" durante o preparo).
+  comportamentoInimigo(x) {
+    const ent = this.entidades[x.id];
+    if (x.mensagem) this.mensagem(x.mensagem, x.tipo === "investidaErrou" ? "combate" : "perigo");
+    if (!ent) return;
+    const s = ent.sprite, y = s.y - ent.alturaCabeca - 8;
+    if (x.tipo === "furia") {
+      this.numero(s.x, y, "FÚRIA!", "critico");
+      if (!ent.dados.tinta) s.setTint(0xff9a8a);
+      this.particulasSimples(s.x, s.y - 14, "#c2452d", 10, { subir: true, dur: 700 });
+    } else if (x.tipo === "fuga") this.numero(s.x, y, "FOGE!", "errou");
+    else if (x.tipo === "investidaErrou") this.numero(s.x, y, "ERROU", "errou");
+    else if (x.tipo === "investidaPreparo") {
+      ent.alerta?.destroy();
+      ent.alerta = this.add.text(s.x, y, "!", { fontFamily: FONTE_PIXEL, fontSize: "18px", color: "#ffd24a", stroke: COR.tinta, strokeThickness: 4, resolution: 2 })
+        .setOrigin(0.5, 1).setDepth(PROF.numero);
+      if (!reduzMovimento()) this.tweens.add({ targets: s, x: s.x + 2, duration: 60, yoyo: true, repeat: 6 });
+      this.time.delayedCall(Math.max(200, x.ate - Date.now()) + 200, () => { ent.alerta?.destroy(); ent.alerta = null; });
+    }
+  }
+
+  // Campeão explosivo: marca o chão ao morrer e explode depois (o dano vem da lógica).
+  marcarExplosao(ex) {
+    if (!ex) return;
+    const x = centroX(ex.x), y = baseY(ex.y) - 4;
+    const anel = this.add.image(x, y, "fx_aura").setTint(0xff6a2a).setDepth(PROF.sombra + 2).setScale(2.4).setAlpha(0.5);
+    if (!reduzMovimento()) this.tweens.add({ targets: anel, alpha: 0.95, scale: 2.8, duration: 200, yoyo: true, repeat: -1 });
+    this.time.delayedCall(Math.max(200, ex.em - Date.now()) + 150, () => anel.destroy());
+    this.mensagem("O campeão vai explodir! Afaste-se!", "perigo");
+  }
+  explosao(x) {
+    if (x.area !== this.areaAtual) return;
+    const px = centroX(x.x), py = baseY(x.y) - 8;
+    this.particulasSimples(px, py, "#ff8a3a", 24, { dur: 600, espalha: 40 });
+    this.particulasSimples(px, py, "#ffe08a", 12, { subir: true, dur: 700, espalha: 20 });
+    if (!reduzMovimento()) this.cameras.main.shake(220, 0.008);
+    if (x.dano) this.numero(this.jogador.x, this.jogador.y - 46, `−${x.dano}`, "recebido");
+    this.mensagem(x.mensagem, x.dano ? "perigo" : "combate");
+  }
+
+  // Raro nomeado: aparece (anúncio no Registro e, na área, o sprite) e some quando a janela fecha.
+  eventoNomeado(x) {
+    if (x.mensagem) this.mensagem(x.mensagem, "anuncio");
+    const e = inimigos[x.id];
+    if (x.tipo === "nomeadoApareceu") {
+      Som.saque("epico");
+      if (e && x.area === this.areaAtual && !this.entidades[x.id]) {
+        const ent = this.criarInimigo(e);
+        ent.sprite.setAlpha(0);
+        this.tweens.add({ targets: ent.sprite, alpha: 1, duration: 600 });
+      }
+    } else if (this.entidades[x.id]) {
+      if (this.alvoId === x.id) this.alvoId = null;
+      this.destruirEntidade(x.id);
+    }
+  }
+
   // Quadros, rótulos, barras, anel, copas e dica — tudo por quadro, sem alocação.
   animar(time) {
     const reduz = reduzMovimento();
@@ -1332,6 +1456,8 @@ class Cena extends Phaser.Scene {
       s.setFrame(q);
       if (s.depth !== PROF.entidade + s.y) s.setDepth(PROF.entidade + s.y);
       ent.sombra.setPosition(s.x + 3, s.y - 1);
+      if (s.auraCampeao) s.auraCampeao.setPosition(s.x, s.y - 2);
+      if (ent.alerta) ent.alerta.setPosition(s.x, s.y - ent.alturaCabeca - 6 - (reduz ? 0 : Math.floor(time / 120) % 2));
       if (ent.tipo === "npc" && ent.acaoAte < time && this.p.x !== ent.dados.x && cheb(this.p, ent.dados) <= 3) s.setFlipX(this.p.x < ent.dados.x);
       if (ent.balao && ent.balao.visible) this.posicionarBalao(ent, reduz ? 0 : Math.floor(time / 500) % 2 ? -2 : 0);
     }
@@ -1404,7 +1530,7 @@ class Cena extends Phaser.Scene {
 
     for (const ent of Object.values(this.entidades)) {
       if (ent.tipo !== "inimigo") continue;
-      const vida = Mundo.obterVidaInimigo(MEU_ID, ent.id), max = ent.dados.vidaMaxima;
+      const vida = Mundo.obterVidaInimigo(MEU_ID, ent.id), max = Mundo.vidaMaximaInimigo(MEU_ID, ent.id) || ent.dados.vidaMaxima;
       // fantasma: segmento que encolhe em 400 ms
       if (vida < ent.vidaFantasma) {
         if (!ent.fantasmaDesde) ent.fantasmaDesde = time;

@@ -895,6 +895,281 @@
     },
   });
 
+
+  // ----- Criaturas novas (JGB-7): cada uma com o seu sprite -----
+  // Quadrúpede genérico (5 quadros: parado, respiração, passo, passo, bote). o: cores e formas.
+  function quadrupede(chave, o) {
+    const W = o.w || 20, H = o.h || 14;
+    return registrar(chave, {
+      w: W, h: H, quadros: 5, contorno: "hostil",
+      desenhar(g, q) {
+        const [A, B, C] = o.pelo, V = o.ventre || C, N = "#2a1a14";
+        const resp = q === 1 ? 0.3 : 0, bote = q === 4 ? 2 : 0;
+        const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
+        const chao = H - 2, perna = o.perna || 3;
+        const cy = chao - perna - o.ry + 1; // centro do corpo
+        const cx = o.cx || W / 2 - 1;
+        const pata = (x, cor, d) => { g.lin(x + d, cy + o.ry - 1, x + d, chao - 1, cor); g.p(x + d, chao, o.casco || cor); };
+        const tras = cx - o.rx + 1.5, frente = cx + o.rx - 1.5;
+        pata(tras + 1, A, -passo); pata(frente, A, passo);
+        // cauda
+        const tx = cx - o.rx;
+        if (o.cauda === "tufo") { g.lin(tx, cy - 1, tx - 3, cy + 1, B); g.ret(tx - 4, cy + 1, 2, 2, o.tufo || A); }
+        else if (o.cauda === "longa") { g.lin(tx, cy, tx - 3, cy - 1, B); g.lin(tx - 3, cy - 1, tx - 4, cy - 3, B); g.p(tx - 4, cy - 4, A); }
+        else if (o.cauda === "peluda") { g.lin(tx, cy - 1, tx - 2, cy + 1, B); g.ret(tx - 3, cy + 1, 2, 2, B); g.p(tx - 3, cy + 3, C); }
+        else if (o.cauda === "curta") { g.p(tx, cy - 1, B); g.p(tx - 1, cy - 2, A); }
+        // corpo
+        g.elip(cx, cy + resp, o.rx, o.ry, (nx, ny) => (ny > 0.55 ? V : tom([A, B, C], -(0.4 * nx + 0.9 * ny) + (o.corcunda ? nx * 0.3 : 0))));
+        if (o.manchas) for (const [x, y] of o.manchas) g.p(cx + x, cy + y, o.corMancha || N);
+        if (o.listras) for (const x of o.listras) g.lin(cx + x, cy - o.ry + 1, cx + x, cy, o.corMancha || A);
+        pata(tras, B, passo); pata(frente - 1, B, -passo);
+        // cabeça
+        const hx = cx + o.rx + (o.pescoco || 0) + bote, hy = cy - (o.alturaCabeca || 2);
+        if (o.juba) g.elip(hx - 1, hy + 0.5, o.cabeca + 1.6, o.cabeca + 1.6, esfera(o.juba));
+        g.elip(hx, hy, o.cabeca, o.cabeca * 0.9, esfera([A, B, C]));
+        const fl = o.focinho || 2;
+        g.ret(hx + 1, hy, fl, 2, o.corFocinho || B);
+        g.p(hx + fl + 0.5, hy, N); // nariz
+        g.p(hx + 0.5, hy - 1, o.olho || "#e8b94a");
+        if (o.presas) { g.p(hx + fl, hy + 2, "#f6efdc"); g.p(hx + fl - 1, hy + 2, "#f6efdc"); }
+        if (o.barbicha) { g.p(hx + 1, hy + 2, o.barbicha); g.p(hx + 1, hy + 3, o.barbicha); }
+        // orelhas
+        if (o.orelhas === "pontudas") { g.p(hx - 1, hy - 3, B); g.p(hx - 1, hy - 4, C); g.p(hx + 0.5, hy - 3, B); g.p(hx + 0.5, hy - 4, B); }
+        else if (o.orelhas === "grandes") { g.ret(hx - 1.5, hy - 5, 1, 3, B); g.ret(hx + 0.5, hy - 5, 1, 3, C); g.p(hx - 1.5, hy - 5, A); }
+        else if (o.orelhas === "redondas") { g.ret(hx - 1.5, hy - 3, 2, 1, A); g.ret(hx + 0.5, hy - 3, 2, 1, A); }
+        if (o.chifres) {
+          const ch = o.chifres;
+          g.lin(hx - 1, hy - 2, hx - 3, hy - 5, ch); g.p(hx - 4, hy - 4, ch); g.p(hx - 4, hy - 3, ch);
+          g.lin(hx + 0.5, hy - 2, hx - 1, hy - 5, ch);
+        }
+      },
+    });
+  }
+  quadrupede("in_chacal", {
+    w: 20, h: 14, pelo: ["#9a6a34", "#c08a48", "#dcae6c"], ventre: "#ecd4a4", rx: 4.6, ry: 2.2, cabeca: 2, focinho: 3,
+    orelhas: "grandes", cauda: "peluda", perna: 4,
+  });
+  quadrupede("in_javali", {
+    w: 20, h: 14, pelo: ["#3e2a1e", "#5a3e2a", "#7a5a3e"], ventre: "#6a5040", rx: 5.6, ry: 3, cabeca: 2.4, focinho: 2,
+    corFocinho: "#8a6a5a", orelhas: "pontudas", cauda: "curta", perna: 2, presas: true, olho: "#c2452d",
+    listras: [-3, -1, 1], corMancha: "#2e1e14", corcunda: true,
+  });
+  quadrupede("in_urso", {
+    w: 22, h: 16, pelo: ["#3a2418", "#5a3a24", "#7a5636"], ventre: "#6a4a32", rx: 6.2, ry: 3.8, cabeca: 3, focinho: 2,
+    corFocinho: "#a07a52", orelhas: "redondas", cauda: "curta", perna: 3, alturaCabeca: 2, corcunda: true,
+  });
+  quadrupede("in_leao", {
+    w: 22, h: 16, pelo: ["#a0702e", "#c8963e", "#e4be6a"], ventre: "#f0d89a", rx: 5.8, ry: 2.8, cabeca: 2.4, focinho: 2,
+    juba: ["#5e3818", "#8a5222", "#a8682e"], cauda: "tufo", tufo: "#5e3818", perna: 4, orelhas: "redondas",
+  });
+  quadrupede("in_hiena", {
+    w: 20, h: 14, pelo: ["#7a6a52", "#a08e6e", "#c4b08a"], ventre: "#d8c8a4", rx: 4.8, ry: 2.6, cabeca: 2.2, focinho: 2,
+    corFocinho: "#3e3428", orelhas: "redondas", cauda: "peluda", perna: 4, corcunda: true,
+    manchas: [[-3, -1], [-1, 0], [1, -1], [2, 1], [-2, 1], [3, -1]], corMancha: "#3e3428",
+  });
+  quadrupede("in_cabra", {
+    w: 20, h: 16, pelo: ["#8a8478", "#b4ae9e", "#dcd6c6"], ventre: "#ece6d6", rx: 4.6, ry: 2.6, cabeca: 2, focinho: 2,
+    orelhas: "pontudas", chifres: "#5a4a3a", barbicha: "#6a6458", cauda: "curta", perna: 5, alturaCabeca: 3, casco: "#3a3028",
+  });
+  quadrupede("in_leopardo", {
+    w: 22, h: 14, pelo: ["#b0782a", "#d8a040", "#f0c868"], ventre: "#f4e2b0", rx: 5.8, ry: 2.4, cabeca: 2, focinho: 1,
+    orelhas: "redondas", cauda: "longa", perna: 4, olho: "#9ad06a",
+    manchas: [[-4, -1], [-2, 0], [0, -1], [2, 0], [3, -1], [-3, 1], [1, 1], [4, 1], [-1, -2]], corMancha: "#3a2414",
+  });
+  registrar("in_crocodilo", {
+    w: 26, h: 13, quadros: 5, contorno: "hostil",
+    desenhar(g, q) {
+      const A = "#34502a", B = "#4e7238", C = "#729450", V = "#c8c890";
+      const passo = q === 2 ? 1 : q === 3 ? -1 : 0, boca = q === 4 ? 2 : q === 1 ? 1 : 0;
+      // cauda grossa que afina, com cristas
+      for (let i = 0; i < 8; i++) { const h = i < 3 ? 1 : i < 6 ? 2 : 3; g.ret(i, 9 - h, 1, h, i % 2 ? A : B); if (i % 2) g.p(i, 8 - h, C); }
+      // patas curtas, abertas para os lados
+      for (const [x, d] of [[9, passo], [16, -passo]]) { g.ret(x + d, 10, 2, 2, A); g.p(x + d - 1, 11, A); }
+      // corpo baixo e largo
+      g.elip(13, 7.5, 6.4, 3, (nx, ny) => (ny > 0.45 ? V : tom([A, B, C], -(0.3 * nx + 0.9 * ny))));
+      for (const x of [9, 11, 13, 15, 17]) { g.p(x, 5, C); g.p(x, 6, A); }
+      for (const [x, d] of [[10, -passo], [17, passo]]) g.ret(x + d, 10, 2, 2, B);
+      // cabeça larga e focinho comprido
+      g.ret(18, 5, 4, 4, B); g.p(19, 4, C); g.p(20, 4, C); g.p(20, 5, "#e8b94a");
+      g.ret(22, 6 - boca, 4, 2, B); g.p(25, 6 - boca, A);
+      g.ret(22, 8 + boca, 4, 1, A);
+      g.p(23, 8 - boca, "#f6efdc"); g.p(25, 8 - boca, "#f6efdc");
+      if (boca) g.ret(22, 8 - boca + 1, 4, boca, "#a83a3a");
+    },
+  });
+  function serpente(chave, o) {
+    return registrar(chave, {
+      w: 20, h: 14, quadros: 5, contorno: "hostil",
+      desenhar(g, q) {
+        const [A, B, C] = o.cores, V = o.ventre;
+        const fase = q * 1.2, bote = q === 4 ? 2 : 0, resp = q === 1 ? 1 : 0;
+        // corpo ondulado rente ao chão (onda em S), afinando para a cauda
+        const fimCorpo = o.capuz ? 11 : 14;
+        for (let x = 1; x <= fimCorpo; x++) {
+          const y = Math.round(10 + Math.sin((x + fase) * 0.75) * 1.4);
+          const grosso = x < 4 ? 1 : 2;
+          g.p(x, y, B); if (grosso > 1) { g.p(x, y + 1, V); g.p(x, y - 1, x % 3 === 0 && o.padrao ? o.padrao : C); }
+          if (o.padrao && x % 3 === 1) g.p(x, y, o.padrao);
+        }
+        if (o.capuz) {
+          // naja: a frente do corpo se ergue, com o capuz aberto (largo) e a cabeça no alto
+          const bx = 12 + bote / 2, topo = 2 - resp;
+          for (let y = topo + 3; y <= 10; y++) g.ret(bx, y, 2, 1, y % 2 ? B : A);
+          g.elip(bx + 1, topo + 4, 3.2, 3, (nx, ny) => tom([A, B, C], -(0.4 * nx + 0.8 * ny)));
+          g.p(bx, topo + 4, o.capuz); g.p(bx + 2, topo + 4, o.capuz); g.p(bx + 1, topo + 5, o.capuz);
+          g.ret(bx, topo, 3, 2, B); g.p(bx + 3, topo + 1, B); g.p(bx + 2, topo, o.olho);
+          if (q === 4 || q === 1) { g.p(bx + 4, topo + 1, "#c2452d"); g.p(bx + 5, topo, "#c2452d"); }
+          return;
+        }
+        // víbora: cabeça triangular baixa, um pouco erguida
+        const hx = 15 + bote, hy = 8 - resp;
+        g.ret(hx, hy, 3, 2, B); g.p(hx + 3, hy + 1, B); g.p(hx, hy + 2, A); g.p(hx + 1, hy + 2, A);
+        g.p(hx, hy - 1, C); g.p(hx + 1, hy, C); g.p(hx + 2, hy, o.olho || "#e8b94a");
+        g.p(14, 9, B); g.p(14, 10, B);
+        if (q === 4 || q === 1) { g.p(hx + 4, hy + 1, "#c2452d"); g.p(hx + 5, hy, "#c2452d"); g.p(hx + 5, hy + 2, "#c2452d"); }
+      },
+    });
+  }
+  serpente("in_vibora", { cores: ["#8a6a3e", "#b4925a", "#d6b882"], ventre: "#e8d8b0", padrao: "#4f3a22", ponta: "#4f3a22" });
+  serpente("in_naja", { cores: ["#24221e", "#3e3a30", "#5e584a"], ventre: "#c8b88a", capuz: "#c8b88a", olho: "#e2774f" });
+  function ave(chave, o) {
+    return registrar(chave, {
+      w: 20, h: 16, quadros: 5, contorno: "hostil",
+      desenhar(g, q) {
+        const [A, B, C] = o.penas, N = "#2a1a14";
+        const asa = q === 1 || q === 3 ? -3 : q === 2 ? 2 : 0, voo = q === 2 || q === 3 ? -1 : 0, bico = q === 4 ? 1 : 0;
+        // sombra do voo fica no chão (o corpo paira)
+        const cy = 8 + voo;
+        // asa de trás
+        g.lin(6, cy, 2, cy + asa - 1, A); g.lin(7, cy, 3, cy + asa, A);
+        // corpo
+        g.elip(9, cy + 1, 4.2, 2.6, (nx, ny) => (ny > 0.5 ? (o.peito || B) : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
+        g.ret(4, cy + 1, 2, 2, A); g.p(3, cy + 2, A); // cauda
+        // asa da frente
+        for (let i = 0; i < 6; i++) g.lin(8 - i, cy + Math.round((asa * i) / 5), 9 - i, cy + 1 + Math.round((asa * i) / 5), i % 2 ? B : C);
+        // pescoço e cabeça
+        g.elip(14, cy - 2 + (o.curvado ? 1 : 0), 2, 1.8, esfera(o.cabeca || [A, B, C]));
+        if (o.colar) { g.p(13, cy, o.colar); g.p(12, cy, o.colar); }
+        g.p(14.5, cy - 3 + (o.curvado ? 1 : 0), o.olho || "#e8b94a");
+        g.ret(16, cy - 2 + (o.curvado ? 1 : 0) + bico, 2, 1, o.bico); g.p(17, cy - 1 + (o.curvado ? 1 : 0) + bico, o.bico);
+        // garras
+        g.p(9, cy + 4, o.pes || "#e8b94a"); g.p(11, cy + 4, o.pes || "#e8b94a");
+        g.p(9, 14, comAlfa(N, 0.3)); g.p(10, 14, comAlfa(N, 0.3)); g.p(11, 14, comAlfa(N, 0.3));
+      },
+    });
+  }
+  ave("in_abutre", { penas: ["#2e2420", "#4a3a30", "#6a5646"], peito: "#8a7462", cabeca: ["#b0605a", "#d88a7a", "#f0b0a0"], colar: "#e8dcc0", bico: "#d8c8a0", curvado: true });
+  ave("in_aguia", { penas: ["#4a2e18", "#6e4a28", "#946a3e"], peito: "#7a5230", cabeca: ["#c8c0b0", "#ece6da", "#ffffff"], bico: "#e8b94a" });
+  ave("in_corvo", { penas: ["#121018", "#24202e", "#3a3448"], peito: "#2a2636", bico: "#3a3438", olho: "#c2452d", pes: "#3a3438" });
+  function enxame(chave, o) {
+    return registrar(chave, {
+      w: 20, h: 18, quadros: 5, contorno: null,
+      desenhar(g, q) {
+        // insetos de 3 px (corpo, cabeça escura e asa clara) que mudam de lugar a cada quadro (zumbido);
+        // no bote, o enxame se adensa à frente. Uma nuvem leve marca a área do enxame.
+        g.elip(10, 10, 8.5, 6.5, comAlfa(o.nuvem, 0.22));
+        const pts = o.pontos;
+        for (let i = 0; i < pts.length; i++) {
+          const [x0, y0] = pts[i];
+          const dx = Math.round(Math.sin(i * 2.1 + q * 1.7) * 1.4) + (q === 4 ? 2 : 0), dy = Math.round(Math.cos(i * 1.3 + q * 2.3) * 1.2);
+          const x = x0 + dx, y = y0 + dy;
+          g.p(x, y, o.cores[0]); g.p(x + 1, y, o.cores[1]); g.p(x - 1, y, "#1c1210");
+          g.p(x, y - 1, comAlfa("#ffffff", (i + q) % 2 ? 0.85 : 0.45));
+        }
+      },
+    });
+  }
+  enxame("in_gafanhotos", {
+    cores: ["#5a7a1e", "#a8b848"], nuvem: "#c8c070",
+    pontos: [[4, 6], [7, 4], [10, 6], [13, 4], [16, 7], [5, 10], [9, 9], [12, 11], [7, 14], [15, 13], [3, 13], [11, 15], [17, 10], [8, 7], [14, 9], [6, 12]],
+  });
+  enxame("in_vespas", {
+    cores: ["#f0c040", "#2a1a14"], nuvem: "#f0d880",
+    pontos: [[4, 6], [8, 4], [11, 7], [15, 5], [5, 10], [10, 11], [14, 10], [7, 14], [16, 13], [3, 13], [12, 15], [17, 8], [9, 8]],
+  });
+  registrar("in_ra", {
+    w: 16, h: 12, quadros: 5, contorno: "hostil",
+    desenhar(g, q) {
+      const A = "#2e5a22", B = "#4a8a32", C = "#7ab84a", V = "#d8e0a0";
+      const salto = q === 2 ? -2 : q === 4 ? -1 : 0, papo = q === 1 ? 1 : 0;
+      g.ret(2, 9 + Math.min(0, salto + 1), 3, 2, A); g.ret(11, 9 + Math.min(0, salto + 1), 3, 2, A); // patas de trás
+      g.elip(8, 7 + salto, 4.5, 3, (nx, ny) => (ny > 0.5 ? V : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
+      for (const [x, y] of [[6, 6], [9, 5], [7, 8]]) g.p(x, y + salto, A);
+      g.ret(9, 10 + Math.min(0, salto + 1), 2, 1, B); g.ret(5, 10 + Math.min(0, salto + 1), 2, 1, B);
+      g.elip(10, 4 + salto, 1.4, 1.4, esfera([A, C, "#c8e070"])); g.p(10, 4 + salto, "#2a1a14");
+      g.elip(6, 4 + salto, 1.4, 1.4, esfera([A, C, "#c8e070"])); g.p(6, 4 + salto, "#2a1a14");
+      if (papo) g.elip(8, 9 + salto, 1.6, 1, "#f0f0c0");
+      if (q === 4) g.lin(9, 8 + salto, 14, 7 + salto, "#d86a7a");
+    },
+  });
+  registrar("in_caranguejo", {
+    w: 20, h: 12, quadros: 5, contorno: "hostil",
+    desenhar(g, q) {
+      const A = "#8a2a1a", B = "#c2452d", C = "#e8784a", N = "#2a1a14";
+      const lado = q === 2 ? 1 : q === 3 ? -1 : 0, pinca = q === 4 ? 0 : 1, resp = q === 1 ? 1 : 0;
+      for (const x of [5, 7, 12, 14]) { g.lin(x + lado, 8, x + lado + (x < 10 ? -2 : 2), 10, A); }
+      g.elip(10 + lado, 7, 5, 2.6, (nx, ny) => (ny > 0.5 ? A : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
+      g.p(8 + lado, 4 - resp, N); g.p(12 + lado, 4 - resp, N); g.p(8 + lado, 5, B); g.p(12 + lado, 5, B);
+      // pinças erguidas
+      for (const [x, s] of [[3, -1], [17, 1]]) {
+        g.lin(x + lado - s, 6, x + lado, 4, B);
+        g.ret(x + lado - 1, 2 - pinca, 3, 2, C); g.p(x + lado + s, 1 - pinca, C); g.p(x + lado, 3 - pinca, A);
+      }
+    },
+  });
+  // Humanos hostis novos.
+  humano("in_arqueiro_bando", {
+    molde: "curta", hostil: true,
+    cores: { H: "#3e2a1a", S: "#a86e44", s: "#86542e", B: "#3e2a1a", R: "#8a6a3e", r: "#6a5030", d: "#4a3822", A: "#6a2a2a", F: "#2a1a14" },
+    acessorios: [["turbante", ["#6a2a2a"]], ["arco_costas", ["#6e4a28", "#eadcb6"]], ["saco", ["#8a6a3e", "#a88a5a"]]],
+    extra: (g, q) => { g.lin(13, 8, 13, 15, "#6e4a28"); g.p(14, 9, "#eadcb6"); g.p(14, 14, "#eadcb6"); if (q === 4) g.lin(9, 11, 14, 11, "#c8b48a"); },
+  });
+  humano("in_feiticeiro", {
+    molde: "manto", hostil: true, barba: false,
+    cores: { H: "#1e1a2a", S: "#a86e44", s: "#86542e", B: "#1e1a2a", R: "#2a3a6a", r: "#1e2a4e", d: "#141c36", A: "#e8b94a", F: "#2a1a14" },
+    ajustar: (l) => l.map((s, y) => (y === 5 ? s.replace(/[Rrd]/g, "A") : s)),
+    acessorios: [["cajado_curto", ["#e8b94a"]]],
+    extra: (g, q) => {
+      // toucado listrado e brilho do feitiço na mão
+      g.ret(4, 2, 8, 2, "#3b5a9a"); g.p(5, 2, "#e8b94a"); g.p(7, 2, "#e8b94a"); g.p(9, 2, "#e8b94a"); g.ret(3, 4, 1, 4, "#3b5a9a"); g.ret(12, 4, 1, 4, "#3b5a9a");
+      if (q === 4 || q === 1) { g.p(14, 4, "#9ad0ff"); g.p(15, 3, "#d0f0ff"); g.p(13, 3, "#9ad0ff"); }
+    },
+  });
+  humano("in_arqueiro_egipcio", {
+    molde: "curta", hostil: true, barba: false,
+    cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", B: "#1e1a1a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#3b5a9a", F: "#4f3220" },
+    acessorios: [["arco_costas", ["#8a5a32", "#eadcb6"]], ["peitoral", ["#3b5a9a"]]],
+    extra: (g, q) => { g.ret(4, 2, 8, 1, "#3b5a9a"); g.lin(13, 7, 13, 16, "#8a5a32"); g.p(14, 8, "#eadcb6"); g.p(14, 15, "#eadcb6"); if (q === 4) g.lin(8, 11, 14, 11, "#e8dcc0"); },
+  });
+  humano("in_pirata", {
+    molde: "curta", hostil: true,
+    cores: { H: "#1e1a1a", S: "#a86e44", s: "#86542e", B: "#2a2420", R: "#c8b48a", r: "#a8916a", d: "#7d6a4a", A: "#c2452d", F: "#2a1a14" },
+    ajustar: (l) => l.map((s, y) => (y >= 6 && y <= 9 ? s.replace(/r/g, "A") : s)),
+    acessorios: [["espada_curva", ["#a8b4bc", "#e4ecf0", "#5a3a24"]], ["corda", ["#a8916a", "#7d6a4a"]]],
+    extra: (g) => { g.ret(4, 2, 8, 2, "#c2452d"); g.p(12, 3, "#c2452d"); g.p(13, 4, "#c2452d"); g.p(6, 5, "#1e1a1a"); },
+  });
+  humano("in_auriga", {
+    molde: "curta", hostil: true, barba: false,
+    cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", R: "#e8dcc0", r: "#c8b48a", d: "#a8916a", A: "#e8b94a", F: "#4f3220" },
+    acessorios: [["capa_larga", ["#6a1f1f", "#4a1416"]], ["elmo", ["#b07a38", "#e8b94a"]], ["lanca_longa", ["#4a3222", "#e8b94a"]], ["escudo_alto", ["#b07a38", "#f2d27a", "#5e3c1c"]]],
+    extra: (g, q) => { const r = q % 2; g.elip(8, 19, 3, 1.2, "#6b4a2e"); g.p(5 + r, 19, "#e8b94a"); g.p(11 - r, 19, "#e8b94a"); },
+  });
+  humano("in_fundibulario", {
+    molde: "manto", hostil: true,
+    cores: { H: "#1e1a1a", S: "#a86e44", s: "#86542e", B: "#1e1a1a", R: "#6a5a3a", r: "#4e422a", d: "#36301e", A: "#8a3a2a", F: "#2a1a14" },
+    acessorios: [["turbante", ["#8a3a2a"]], ["saco", ["#6a5a3a", "#8a7a5a"]]],
+    extra: (g, q) => {
+      // funda girando sobre a cabeça
+      const pos = [[14, 1], [12, -0], [10, 1], [12, 2], [15, 0]][q];
+      g.lin(12, 7, pos[0], pos[1] + 1, "#a8916a"); g.p(pos[0], pos[1], "#8a8478");
+    },
+  });
+  humano("in_mercenario", {
+    molde: "curta", hostil: true, alargar: true,
+    cores: { H: "#3a2a1e", S: "#b97a4c", s: "#93603a", B: "#3a2a1e", R: "#5a5450", r: "#3e3a36", d: "#2a2624", A: "#8a1f1f", F: "#2a1a14" },
+    acessorios: [["elmo", ["#7a828a", "#c8d0d6"]], ["capa", ["#8a1f1f", "#5a1414"]], ["espada", ["#c8d0d6", "#f0f4f8", "#7a4a24"]], ["escudo_redondo", ["#8a1f1f", "#5a1414", "#c8d0d6"]]],
+  });
+
   // -------------------------------------------------------------------
   // Itens (§6.6): célula 16×16, arte de até 12×12 apoiada na linha 14
   // -------------------------------------------------------------------
@@ -1060,6 +1335,26 @@
     g.elip(8, 10, 5, 3.6, esfera(["#7a3a1a", "#b8642b", "#e89a5a"]));
     for (let y = 8; y <= 12; y++) for (let x = 4; x <= 12; x++) if (((x + 0.5 - 8) / 3) ** 2 + ((y + 0.5 - 10) / 1.8) ** 2 < 1) g.apagar(x, y);
     g.p(8, 7, "#3fa66a"); g.p(5, 9, "#f0c080");
+  });
+  item("pena_ave", (g) => {
+    for (let i = 0; i < 9; i++) { const x = 4 + i, y = 12 - i; g.p(x, y, "#e8dcc0"); }
+    for (let i = 1; i < 8; i++) { const x = 4 + i, y = 12 - i; g.p(x - 1, y - 1, i % 2 ? "#6e4a28" : "#946a3e"); g.p(x + 1, y + 1, i % 2 ? "#4a2e18" : "#6e4a28"); }
+    g.p(12, 3, "#2a1a14"); g.p(11, 4, "#4a2e18");
+  });
+  item("couro_grosso", (g) => {
+    g.ret(3, 6, 10, 7, (x, y) => tom(["#4a3022", "#6e4a32", "#8e6a4a"], -((x - 8) * 0.12 + (y - 9) * 0.4)));
+    for (const [x, y] of [[3, 6], [12, 6], [3, 12], [12, 12]]) g.apagar(x, y);
+    g.lin(4, 8, 11, 8, "#3a2418"); g.p(6, 10, "#a8866a"); g.p(9, 11, "#a8866a"); g.p(2, 9, "#6e4a32"); g.p(13, 9, "#6e4a32");
+  });
+  item("carapaca", (g) => {
+    g.elip(8, 9.5, 5, 3.6, esfera(["#6a4a1e", "#9a7032", "#c89a52"]));
+    g.lin(8, 6, 8, 13, "#4a3214"); g.lin(4, 9, 12, 9, "#4a3214");
+    g.p(6, 7, "#e8c890"); g.p(10, 11, "#4a3214");
+  });
+  item("amuleto_faianca", (g) => {
+    g.lin(4, 3, 8, 7, "#c8b48a"); g.lin(12, 3, 8, 7, "#c8b48a");
+    g.elip(8, 10, 3.2, 3.4, esfera(["#1e6a7a", "#2fa0a8", "#8ad8d0"]));
+    g.p(8, 10, "#1c3a4a"); g.p(7, 10, "#f6efdc"); g.p(9, 10, "#f6efdc"); g.p(8, 12, "#1c3a4a");
   });
   // Pedras do peitoral: a mesma lapidação, na cor de cada pedra (campo "pedra" em dados/itens.js).
   for (const [chave, d] of Object.entries(typeof ITENS !== "undefined" ? ITENS : {})) {
@@ -1442,6 +1737,7 @@
     soldadoEgito1: "in_guarda_egipcio", perseguidorMar1: "in_perseguidor", guardiaoSinai1: "in_amalequita",
     "ameaçaGalileia1": "in_salteador",
   };
+  // Sem entrada aqui, a aparencia "x" usa o sprite "in_x" (criaturas novas: in_chacal, in_javali…).
   const VISUAL_POR_APARENCIA = { lobo: "in_lobo", escorpiao: "in_escorpiao", bandido: "in_salteador", soldado: "in_guarda_egipcio", guerreiro: "in_amalequita" };
   const CHEFES = new Set(["bandido1"]);
   // NPCs sem visual próprio que compartilham um visual pelo papel (os 6 atalaias são o mesmo vigia).
@@ -1454,7 +1750,7 @@
     if (n && VISUAL_POR_PAPEL[n.papel]) return VISUAL_POR_PAPEL[n.papel];
     if (VISUAL_INIMIGO[id]) return VISUAL_INIMIGO[id];
     const ini = typeof inimigos !== "undefined" ? inimigos[id] : null;
-    if (ini) return VISUAL_POR_APARENCIA[ini.aparencia] || "in_salteador";
+    if (ini) return VISUAL_POR_APARENCIA[ini.aparencia] || (PIXEL_PATTERNS["in_" + ini.aparencia] ? "in_" + ini.aparencia : "in_salteador");
     return "pj_viajante";
   }
   const nomeCurto = (nome) => String(nome || "").split(/[,·]/)[0].trim();
