@@ -822,7 +822,8 @@
     dlg.texto = corpo;
     dlg.npc = typeof npcs !== "undefined" ? npcs[id] : null;
     $("#dlgNome").textContent = nomeCurto(nome || dlg.npc?.nome || "");
-    const reserva = papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : papel === "mural" ? "vigia · mural de caçadas" : "";
+    const reserva = papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : papel === "mural" ? "vigia · mural de caçadas"
+      : papel === "ambiente" ? String(nome || dlg.npc?.nome || "").split(",").slice(1).join(",").trim() : "";
     $("#dlgPapel").textContent = PAPEIS[id] || reserva;
     const url = retratoURL(visualDe(id), { escala: 3, recorte: "busto" });
     const img = $("#dlgRetrato");

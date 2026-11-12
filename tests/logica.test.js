@@ -13,6 +13,7 @@ const assert = require("assert");
 const RAIZ = path.resolve(__dirname, "..");
 const ARQUIVOS_DADOS = [
   "dados/itens.js",
+  "dados/mapas.js",
   "dados/mundo.js",
   "dados/npcs.js",
   "dados/criaturas.js",
@@ -1508,6 +1509,7 @@ function carregarComMissaoDeTeste() {
   const j = carregarJogo();
   j.g("registrarNpc")({ id: "anciaoTeste", nome: "Ancião", area: "canaan", x: 20, y: 8, papel: "missao" });
   const missao = (dados) => j.g("registrarMissao")(json(dados));
+  const viagem = j.g("areas").deserto.chegadaViagem; // a viagem rápida deixa o jogador perto de Tamar
   missao({
     id: "teste",
     npc: "anciaoTeste",
@@ -1521,7 +1523,7 @@ function carregarComMissaoDeTeste() {
         falas: { andamento: "Micael espera você.", concluir: "Bom. Etapa {etapa}/{etapas} feita." },
       },
       {
-        objetivos: [{ tipo: "chegar", area: "deserto", x: 66, y: 12, raio: 2, aviso: "Você achou Tamar." }],
+        objetivos: [{ tipo: "chegar", area: "deserto", x: viagem.x - 1, y: viagem.y - 1, raio: 2, aviso: "Você achou Tamar." }],
         recompensa: { xp: 5, moedas: 0, itens: [] },
         painel: { andamento: "Vá até Tamar." },
         falas: { andamento: "Procure Tamar no Deserto.", concluir: "Viu Tamar." },
@@ -2369,10 +2371,10 @@ teste("37. troca de pontos: recusas sem mudar nada, itens, alforjes e estados da
   igual(possui(), [0, 2, 0, 0]);
 });
 
-teste("38. migração para a v8: saves v5, v6 e v7 ganham caçadas vazias; v8 recarrega igual; corrompido é normalizado", () => {
+teste("38. migração para a v8 e a v9: saves v5, v6 e v7 ganham caçadas vazias; v9 recarrega igual; corrompido é normalizado", () => {
   const vazio = (p, onde) => {
     igual([p.tarefas, p.pontosTarefa, p.pontosTarefaTotal, p.trocas], [{}, 0, 0, {}], onde);
-    assert.strictEqual(p.versao, 8, onde);
+    assert.strictEqual(p.versao, 9, onde);
   };
   const avisos8 = (p) => p.avisosPendentes.filter((a) => a.id === "atualizacao_8").length;
   const recarregar = (j, ms) => {
@@ -2416,7 +2418,7 @@ teste("38. migração para a v8: saves v5, v6 e v7 ganham caçadas vazias; v8 re
   const novo = carregarJogo();
   vazio(novo.entrar(), "novo");
   assert.strictEqual(avisos8(novo.p), 0, "personagem novo não recebe o aviso");
-  // v8 com caçadas em andamento, pontos e trocas: recarrega idêntico.
+  // v9 com caçadas em andamento, pontos e trocas: recarrega idêntico.
   j = carregarJogo();
   j.entrar();
   concluirMissoes(j);
@@ -2442,7 +2444,7 @@ teste("38. migração para a v8: saves v5, v6 e v7 ganham caçadas vazias; v8 re
   assert.strictEqual(j2.g("capacidadeCarga")(p2), cargaSalva, "o alforje continua valendo");
   igual(j2.g("tarefasDoJogador")(p2).map((v) => [v.id, v.estado, v.progresso]), [["canaa_lobos", "ativa", 1], ["deserto_rotas", "guardada", 12]]);
   assert.strictEqual(j2.g("estadoTarefa")(p2, "deserto_ferroes"), "espera");
-  // Save v8 corrompido.
+  // Save v9 corrompido.
   const corrompido = json(p2);
   const agora = INICIO_RELOGIO + 1_000_000;
   corrompido.tarefas = {
@@ -2760,6 +2762,212 @@ teste("42. grupos de criaturas, renascimento e coleta em lugar aleatório, flech
   assert.ok(tiro(6, 0) && tiro(4, 4), "alcance de 6 casas em círculo");
   assert.ok(!tiro(5, 5), "fora do círculo de 6 casas");
   assert.ok(!tiro(4, 2, [32, 31]), "obstáculo no caminho bloqueia");
+});
+
+// ---------------------------------------------------------------------
+// Mapas ampliados (JGB-43)
+// ---------------------------------------------------------------------
+teste("43. mapas: tamanho e desenho vêm de dados/, sem bolsões fechados nem coordenadas fixas no código", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const [mapas, pisos, areas, tam, MAPAS, PISO] = ["mapas", "pisos", "areas", "DADOS_TAMANHO_MAPA", "DADOS_MAPAS", "PISO"].map(j.g);
+  const COLS = j.g("COLS");
+  const ROWS = j.g("ROWS");
+  igual([COLS, ROWS], [tam.colunas, tam.linhas], "COLS e ROWS vêm de dados/mapas.js");
+  assert.ok(COLS >= 160 && ROWS >= 120, "mapas ampliados");
+  for (const area of Object.keys(areas)) {
+    assert.ok(MAPAS[area], `${area}: desenho em dados/mapas.js`);
+    assert.strictEqual(mapas[area].length, ROWS, area);
+    assert.ok(mapas[area].every((l, y) => l.length === COLS && pisos[area][y].length === COLS), `${area}: grade ${COLS}×${ROWS}`);
+    // Toda casa livre se alcança a partir do início (os bolsões fechados viraram obstáculo).
+    const mapa = mapas[area];
+    const inicio = areas[area].inicio;
+    const visto = new Set([`${inicio.x},${inicio.y}`]);
+    const fila = [[inicio.x, inicio.y]];
+    while (fila.length) {
+      const [x, y] = fila.pop();
+      for (const [dx, dy] of VIZINHOS.slice(0, 4)) {
+        const k = `${x + dx},${y + dy}`;
+        if (mapa[y + dy]?.[x + dx] === 0 && !visto.has(k)) {
+          visto.add(k);
+          fila.push([x + dx, y + dy]);
+        }
+      }
+    }
+    const livres = mapa.flat().filter((v) => v === 0).length;
+    assert.strictEqual(visto.size, livres, `${area}: ${livres - visto.size} casas livres inalcançáveis`);
+    // Caminhos e água ficam no piso; água bloqueia, caminho é livre.
+    for (let y = 0; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++) {
+        if (pisos[area][y][x] === PISO.AGUA) assert.strictEqual(mapa[y][x], 1, `${area}: água livre em ${x},${y}`);
+        if (pisos[area][y][x] === PISO.CAMINHO) assert.strictEqual(mapa[y][x], 0, `${area}: caminho bloqueado em ${x},${y}`);
+      }
+  }
+  // O mapa é sempre o mesmo (o desenho é determinístico).
+  igual(carregarJogo().g("mapas"), mapas, "duas cargas geram o mesmo mapa");
+  // Nenhuma coordenada de mapa escrita no código: trilhas, vilas, tendas, marcos e decoração vêm de dados/.
+  for (const arquivo of ["logica.js", "game.js", "sprites.js"]) {
+    const fonte = fs.readFileSync(path.join(RAIZ, arquivo), "utf8");
+    assert.doesNotMatch(fonte, /mapas\.\w+\[\d/, `${arquivo}: linha de mapa escrita no código`);
+    assert.doesNotMatch(fonte, /\b[xy] === \d+ && [xy] === \d+/, `${arquivo}: casa fixa no código`);
+    assert.doesNotMatch(fonte, /plano\("dc_\w+", \d/, `${arquivo}: decoração em posição fixa`);
+    assert.doesNotMatch(fonte, /\bhubs\b|\btrilhas:/, `${arquivo}: vilas e trilhas fixas no bioma`);
+  }
+});
+
+teste("44. mapas: tendas e bancas dos comerciantes, estruturas com colisão, vilas com moradores e zonas", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const [mapas, pisos, areas, npcs, inimigos, PISO, ESTRUTURAS, MAPAS, estruturasPorArea] = [
+    "mapas", "pisos", "areas", "npcs", "inimigos", "PISO", "DADOS_ESTRUTURAS", "DADOS_MAPAS", "estruturasPorArea",
+  ].map(j.g);
+  const dentro = (v, pt) => pt.x >= v.x && pt.y >= v.y && pt.x < v.x + v.largura && pt.y < v.y + v.altura;
+  for (const area of Object.keys(areas)) {
+    const ocupadas = new Set();
+    const pontos = [
+      ...Object.values(npcs).filter((n) => n.area === area),
+      ...j.g("PORTAIS").filter((t) => t.area === area),
+      ...["inicio", "passagem", "chegada", "cais", "chegadaViagem"].map((k) => areas[area][k]).filter(Boolean),
+    ];
+    for (const e of estruturasPorArea[area]) {
+      const modelo = ESTRUTURAS[e.tipo];
+      assert.ok(modelo, `${area}: estrutura de tipo desconhecido "${e.tipo}"`);
+      igual([e.largura, e.altura], [modelo.largura, modelo.altura], `${area}: pegada de ${e.tipo}`);
+      for (let y = e.y; y < e.y + e.altura; y++)
+        for (let x = e.x; x < e.x + e.largura; x++) {
+          const k = `${x},${y}`;
+          assert.ok(x > 0 && y > 0 && x < j.g("COLS") - 1 && y < j.g("ROWS") - 1, `${area}: ${e.tipo} fora do mapa`);
+          assert.ok(!ocupadas.has(k), `${area}: estruturas sobrepostas em ${k}`);
+          ocupadas.add(k);
+          assert.strictEqual(mapas[area][y][x], 1, `${area}: ${e.tipo} sem colisão em ${k}`);
+          assert.strictEqual(pisos[area][y][x], PISO.ESTRUTURA, `${area}: piso de ${e.tipo} em ${k}`);
+          assert.ok(!pontos.some((pt) => pt.x === x && pt.y === y), `${area}: ${e.tipo} sobre um NPC ou ponto da área em ${k}`);
+        }
+      if (e.npc) {
+        const n = npcs[e.npc];
+        assert.ok(n && n.area === area, `${area}: ${e.tipo} atendida por "${e.npc}", que não está na área`);
+        igual([n.x, n.y], [e.x + (e.largura >> 1), e.y + e.altura], `${e.npc} atende logo à frente da ${e.tipo}`);
+      }
+      if (e.reservada) assert.ok(e.tipo === "banca" && e.variante === 1 && !e.npc, `${area}: banca reservada fica vazia`);
+    }
+    // Comerciantes, guias e atalaias atendem numa tenda ou banca própria.
+    for (const n of Object.values(npcs).filter((n) => n.area === area && ["loja", "guia", "mural"].includes(n.papel))) {
+      const e = estruturasPorArea[area].find((x) => x.npc === n.id);
+      assert.ok(e && ["tenda", "banca"].includes(e.tipo), `${n.id} (${n.papel}) sem tenda ou banca`);
+    }
+    // Toda vila tem moradores; todo NPC mora numa vila; zonas de caça não invadem vilas.
+    const vilas = MAPAS[area].vilas;
+    for (const v of vilas) {
+      const moradores = Object.values(npcs).filter((n) => n.area === area && n.papel === "ambiente" && dentro(v, n));
+      assert.ok(moradores.length >= 2, `${v.nome}: só ${moradores.length} morador(es)`);
+    }
+    for (const n of Object.values(npcs).filter((n) => n.area === area))
+      assert.ok(vilas.some((v) => dentro(v, n)), `${n.id} fora das vilas de ${area}`);
+    for (const e of Object.values(inimigos).filter((e) => e.area === area && !e.base)) {
+      const r = e.grupo.raio + e.raioPercepcao;
+      for (const v of vilas) {
+        const longe = e.x + r < v.x || e.x - r >= v.x + v.largura || e.y + r < v.y || e.y - r >= v.y + v.altura;
+        assert.ok(longe, `zona de ${e.id} invade ${v.nome}`);
+      }
+    }
+  }
+  // Os tipos de obstáculo citados nos mapas existem na arte (sprites.js).
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  const Arte = j.ctx.Arte;
+  for (const [area, d] of Object.entries(MAPAS)) {
+    const tipos = [...d.regioes.map((r) => r.tipo), ...d.vilas.map((v) => v.muro), ...d.marcos.map((m) => m.tipo)].filter(Boolean);
+    for (const tipo of tipos) {
+      const marco = ["fogueira", "estandarte", "tenda"].includes(tipo);
+      assert.ok(Arte.PIXEL_PATTERNS[`ob_${area}_${tipo}`] || marco, `${area}: obstáculo "${tipo}" sem desenho`);
+    }
+    // A casa de um marco usa o desenho do tipo fixo, não o sorteio do bioma.
+    for (const m of d.marcos) assert.ok(Arte.tipoObstaculo(area, m.x, m.y).chave.endsWith(m.tipo), `${area}: marco ${m.tipo}`);
+    for (const e of d.estruturas) {
+      const def = Arte.PIXEL_PATTERNS[`es_${e.tipo}`];
+      assert.ok(def && (e.variante || 0) < def.quadros, `${area}: es_${e.tipo} variante ${e.variante}`);
+    }
+    for (const dec of d.decoracoes) assert.ok(Arte.PIXEL_PATTERNS[dec.chave], `${area}: decoração ${dec.chave}`);
+  }
+  for (const n of Object.values(npcs).filter((n) => n.papel === "ambiente"))
+    assert.ok(Arte.PIXEL_PATTERNS[Arte.visualDe(n.id)] && Arte.visualDe(n.id).startsWith("pj_morador_"), `${n.id}: visual do morador`);
+});
+
+teste("45. mapas: moradores conversam em rodízio, coleta brota nas zonas e o barco sai do cais certo", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const npcs = j.g("npcs");
+  // Morador: uma fala de cada vez, voltando ao começo; não abre loja nem mexe em missões.
+  const zila = npcs.zila_canaa;
+  const falas = [1, 2, 3].map(() => falar(j, "zila_canaa"));
+  assert.ok(falas.every((r) => !r.abrirLoja && !r.abrirViagem && !r.abrirMural));
+  igual(falas.map((r) => r.mensagem), [...zila.falas.linhas, zila.falas.linhas[0]].map((l) => `Zila: ${l}`));
+  assert.strictEqual(j.g("estadoMissaoNpc")(j.p, "zila_canaa"), null, "morador sem balão de missão");
+  // Coleta: depois de pega, a erva brota de novo numa casa livre de uma zona de coleta.
+  const zonas = j.g("DADOS_MAPAS").canaan.zonasColeta;
+  const ervas = j.g("ervas");
+  const p = j.p;
+  for (let i = 0; i < 8; i++) {
+    const erva = ervas[i % ervas.length];
+    p.ervasRespawn[erva.id] = 0;
+    p.inventario = [];
+    const r = pisarEm(j, "canaan", erva);
+    assert.strictEqual(r.itemColetado, erva.id, r.mensagem);
+    const naZona = zonas.some((z) => Math.max(Math.abs(erva.x - z.x), Math.abs(erva.y - z.y)) <= z.raio);
+    assert.ok(naZona, `${erva.id} brotou fora das zonas (${erva.x},${erva.y})`);
+    assert.strictEqual(j.g("mapas").canaan[erva.y][erva.x], 0, "brota em casa livre");
+  }
+  // Cais: embarca no ponto de embarque do mar e desembarca ao lado do cais de origem.
+  const areas = j.g("areas");
+  for (const [origem, embarque] of [["canaan", "embarqueCanaa"], ["deserto", "embarqueDeserto"]]) {
+    const cais = areas[origem].cais;
+    Object.assign(p, { area: origem, x: cais.x, y: cais.y + 1 });
+    const r = j.exec({ tipo: "mover", dx: 0, dy: -1 });
+    assert.ok(r.areaAlterada, `${origem}: embarque`);
+    igual([p.area, p.x, p.y], ["mar", areas.mar[embarque].x, areas.mar[embarque].y], `${origem}: barco no ${embarque}`);
+  }
+});
+
+teste("46. migração para a v9: posição e saques dos mapas de 80×60 vão para o mapa novo, sempre em casa livre", () => {
+  const base = carregarJogo();
+  base.entrar();
+  base.g("Storage").flush();
+  const v8 = JSON.parse(base.store.save_jogador1);
+  const npcs = base.g("npcs");
+  // Jogador no Deserto, ao lado do antigo acampamento (Noemi ficava em 68,8), e saques espalhados.
+  Object.assign(v8, { versao: 8, area: "deserto", x: 70, y: 9, avisosPendentes: [] });
+  v8.saqueNoChao = [
+    { id: "s_ok", area: "deserto", x: 20, y: 50, item: "pele_lobo", criadoEm: INICIO_RELOGIO },
+    { id: "s_borda", area: "canaan", x: 79, y: 59, moedas: 3, criadoEm: INICIO_RELOGIO },
+  ];
+  let j = carregarJogo({ store: { save_jogador1: JSON.stringify(v8) }, inicio: INICIO_RELOGIO + 60_000 });
+  let p = j.entrar();
+  const mapas = j.g("mapas");
+  const livre = (area, pt) => mapas[area][pt.y][pt.x] === 0 && !Object.values(npcs).some((n) => n.area === area && n.x === pt.x && n.y === pt.y);
+  assert.strictEqual(p.versao, 9);
+  assert.strictEqual(p.area, "deserto");
+  assert.ok(livre("deserto", p), "jogador em casa livre");
+  assert.ok(Math.max(Math.abs(p.x - 140), Math.abs(p.y - 18)) <= 4, `perto do ponto equivalente (140,18): ${p.x},${p.y}`);
+  assert.ok(Math.max(Math.abs(p.x - npcs.noemi1.x), Math.abs(p.y - npcs.noemi1.y)) <= 8, "continua no acampamento de Noemi");
+  for (const s of p.saqueNoChao) assert.ok(livre(s.area, s), `saque ${s.id} em casa livre (${s.x},${s.y})`);
+  const ok = p.saqueNoChao.find((s) => s.id === "s_ok");
+  assert.ok(Math.max(Math.abs(ok.x - 40), Math.abs(ok.y - 100)) <= 4, "saque no ponto equivalente");
+  assert.strictEqual(p.avisosPendentes.filter((a) => a.id === "atualizacao_9").length, 1, "aviso da atualização");
+  // Recarregar a v9 não mexe na posição nem repete o aviso.
+  const pos = [p.x, p.y];
+  base.g("Storage").flush();
+  j.g("Storage").flush();
+  const j2 = carregarJogo({ store: j.store, inicio: j.agora + 60_000 });
+  igual([j2.entrar().x, j2.p.y], pos, "v9 recarrega no mesmo lugar");
+  assert.strictEqual(j2.p.avisosPendentes.filter((a) => a.id === "atualizacao_9").length, 1);
+  // Save v9 com posição que não existe mais (fora do mapa, sobre estrutura ou NPC): casa livre mais próxima.
+  const tenda = j.g("estruturasPorArea").deserto.find((e) => e.npc === "noemi1");
+  for (const [x, y, onde] of [[500, -3, "fora do mapa"], [tenda.x + 1, tenda.y, "sobre a tenda"], [npcs.noemi1.x, npcs.noemi1.y, "sobre Noemi"]]) {
+    const salvo = { ...JSON.parse(j.store.save_jogador1), area: "deserto", x, y };
+    j = carregarJogo({ store: { save_jogador1: JSON.stringify(salvo) } });
+    p = j.entrar();
+    assert.ok(livre("deserto", p), `${onde}: ${p.x},${p.y}`);
+    if (onde !== "fora do mapa") assert.ok(Math.max(Math.abs(p.x - x), Math.abs(p.y - y)) <= 3, `${onde}: vai para perto`);
+  }
 });
 
 // ---------------------------------------------------------------------

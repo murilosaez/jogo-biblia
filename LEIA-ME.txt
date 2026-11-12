@@ -2,8 +2,17 @@ JORNADA — RPG BÍBLICO
 
 Conteúdo do jogo (pasta dados/)
 - dados/itens.js: itens, preços da loja e valores de venda.
-- dados/mundo.js: áreas, regiões dos capítulos, ervas, odres, pontos de pesca e portais.
-- dados/npcs.js: personagens, posições, papéis e falas próprias.
+- dados/mapas.js: tamanho dos mapas (160×120 casas) e o desenho de cada região: terreno de fundo,
+  regiões (bosques, pedregais, clareiras, com o tipo de obstáculo), águas (lagos e rios), vilas (com
+  muro opcional), caminhos (estradas e ruas), estruturas (casas, tendas, bancas e poços, com colisão),
+  marcos (fogueira, estandarte, barcos, jarros), decoração do chão e zonas de coleta. Nenhuma
+  coordenada fica no código: o gerador (gerarMapa, em logica.js) monta o mapa a partir daqui, e as
+  casas livres que não se alcançam a partir do início da área viram obstáculo.
+- dados/mundo.js: áreas (início, trilha, cais, chegada da viagem e embarque no mar), regiões dos
+  capítulos, ervas, odres, pontos de pesca e portais.
+- dados/npcs.js: personagens, posições, papéis e falas próprias. Comerciantes, guias e atalaias
+  atendem à frente de uma tenda ou banca (estruturas com npc em dados/mapas.js); os moradores
+  (papel "ambiente") só conversam, dizendo as suas falas em rodízio.
 - dados/criaturas.js: inimigos, atributos, saque e veneno; especie e familia de cada criatura (as
   caçadas contam por elas) e os nomes das famílias.
 - dados/capitulos.js: capítulos em ordem, a missão de cada um e o Mestre que ensina a Oração.
@@ -15,12 +24,14 @@ Conteúdo do jogo (pasta dados/)
   tipo e espera), regras (limite de caçadas ativas e bônus da 1ª entrega), falas dos atalaias e a
   troca de pontos de tarefa. Os ids das caçadas são permanentes (ficam no save): para tirar uma
   caçada do mural, use oculta: true.
-O progresso fica no save (save versão 8): missoes[id] = { status, etapa, progresso },
+O progresso fica no save (save versão 9): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo) e trocas
 (ofertas já trocadas). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
-o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, e o teste 39 mede
-o ritmo de cada caçada (minutos de caça e pontos por minuto).
+o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
+o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
+(sem bolsões fechados, tendas e bancas dos comerciantes, moradores em toda vila, zonas de caça longe
+das vilas, coleta nas zonas e migração das posições antigas).
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
@@ -29,7 +40,9 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 8, sem perder itens, moedas, nível ou progresso. O jogo grava no máximo 1 vez por
+   para a versão 9, sem perder itens, moedas, nível ou progresso. Na versão 9 os mapas dobraram de
+   tamanho: a posição antiga (e os saques no chão) vai para o ponto equivalente do mapa novo e, se ali
+   houver obstáculo, estrutura ou NPC, para a casa livre mais próxima. O jogo grava no máximo 1 vez por
    segundo e grava na hora ao fechar, ocultar ou trocar de aba.
 
 Controles — teclado e mouse
@@ -93,7 +106,15 @@ Canaã → Deserto → Egito → Mar Vermelho → Monte Sinai → Galileia → O
 - Galileia (Pedro): vença o salteador da estrada; depois converse com Jesus para aprender a Oração.
 Cada rota a leste só abre depois que o capítulo anterior é concluído. As missões exigem que os itens
 pedidos (ervas, odres, venenos, insígnia) estejam na mochila no momento da entrega.
-Ervas existem só em Canaã e odres só no Deserto; ambos reaparecem 18 s depois de coletados.
+Ervas existem só em Canaã e odres só no Deserto; ambos reaparecem 18 s depois de coletados, num lugar
+aleatório das zonas de coleta da região.
+
+Mapas e vilas
+Cada região tem 160×120 casas, com vilas e acampamentos (Vila de Canaã, Acampamento de Noemi, Gósen,
+Acampamento à beira-mar, Refidim e Cafarnaum), estradas, áreas de caça, lagos e rios. Azarias atende
+na banca dele; Micael, Tamar e os atalaias, em tendas. As bancas vazias de Canaã e do Deserto estão
+reservadas para lojas futuras (ferreiro e curandeiro). Cada vila tem moradores para conversar.
+O minimapa mostra 80×60 casas em volta do jogador.
 
 Combate
 - Dano corpo a corpo = 6 + 3 × (nível − 1) + bônus da arma + ⌊habilidade corpo ÷ 4⌋.
