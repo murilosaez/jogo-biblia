@@ -14,7 +14,7 @@
 const TILE = 32;
 const COLS = DADOS_TAMANHO_MAPA.colunas; // dados/mapas.js
 const ROWS = DADOS_TAMANHO_MAPA.linhas;
-const VERSAO_SAVE = 11;
+const VERSAO_SAVE = 12;
 const ESCALA_MAPAS_V8 = 2; // os mapas passaram de 80×60 (save v8) para 160×120 (save v9)
 
 const VIDA_BASE = 100;
@@ -83,7 +83,6 @@ const CUSTO_ORACAO = { vida: 20, veneno: 40, area: 60, milagre: 100 };
 const NIVEL_ORACAO = { vida: 0, veneno: 25, area: 50, milagre: 100 };
 const NOMES_ORACAO = { vida: "Cura de vida", veneno: "Remover veneno", area: "Cura em área", milagre: "Milagre" };
 
-const VENENO_PADRAO = { duracao: 15000, dano: 3, intervalo: 3000 };
 
 // Regra de morte (aplicada em um único lugar: Mundo.aplicarMorte).
 const REGRAS_MORTE = [
@@ -820,6 +819,145 @@ function zerarComportamento(e) {
   e.chamadoAte = 0;
   e.slotMatilha = null;
   e.proximaCura = 0;
+  e.status = {};
+  e.imune = {};
+  e.assustadaPor = null;
+}
+
+// ---------------------------------------------------------------------
+// Status (JGB-16) — um motor só para o jogador e para as criaturas
+// ---------------------------------------------------------------------
+// STATUS_CRIATURAS e COMBINACOES_STATUS vêm de dados/criaturas.js. Quem tem status (o jogador ou uma criatura)
+// guarda alvo.status[tipo] = { ate, pilhas, dano, intervalo, proximo } (dano, intervalo e proximo só nos que
+// machucam aos poucos) e alvo.imune[tipo] = até quando o status não pega de novo. No jogador, os dois vão para
+// o save; nas criaturas, ficam na memória e zeram ao renascer.
+const TIPOS_STATUS = Object.keys(STATUS_CRIATURAS);
+const STATUS_PERIODICOS = TIPOS_STATUS.filter((t) => STATUS_CRIATURAS[t].intervalo > 0);
+
+// O status ativo agora (ou null).
+function statusAtivo(alvo, tipo, agora) {
+  const s = alvo?.status?.[tipo];
+  return s && s.ate > agora ? s : null;
+}
+
+// Tipos de status ativos agora, na ordem de STATUS_CRIATURAS.
+function statusAtivos(alvo, agora) {
+  return TIPOS_STATUS.filter((t) => statusAtivo(alvo, t, agora));
+}
+
+// Aplica um status (ef = { tipo, ...ajustes }, com os padrões de STATUS_CRIATURAS). Devolve null quando não pega
+// (imune, ou acumulo "nenhum" com o status ainda ativo) ou { novo, pilhas, ate }.
+function aplicarStatus(alvo, ef, agora) {
+  const base = registroDe(STATUS_CRIATURAS, ef?.tipo);
+  if (!base || !alvo) return null;
+  const cfg = { ...base, ...ef };
+  if (!objetoValido(alvo.status)) alvo.status = {};
+  if (!objetoValido(alvo.imune)) alvo.imune = {};
+  if ((alvo.imune[cfg.tipo] || 0) > agora) return null;
+  const atual = statusAtivo(alvo, cfg.tipo, agora);
+  if (atual) {
+    if (cfg.acumulo === "nenhum") return null;
+    if (cfg.acumulo === "pilhas") atual.pilhas = Math.min(cfg.pilhasMax || 1, atual.pilhas + 1);
+    if (cfg.intervalo) atual.dano = Math.max(atual.dano, cfg.dano);
+    atual.ate = agora + cfg.duracao;
+    return { novo: false, pilhas: atual.pilhas, ate: atual.ate };
+  }
+  const s = { ate: agora + cfg.duracao, pilhas: 1 };
+  if (cfg.intervalo) Object.assign(s, { dano: cfg.dano, intervalo: cfg.intervalo, proximo: agora + cfg.intervalo });
+  alvo.status[cfg.tipo] = s;
+  if (cfg.imunidade) alvo.imune[cfg.tipo] = s.ate + cfg.imunidade;
+  return { novo: true, pilhas: 1, ate: s.ate };
+}
+
+function curarStatus(alvo, tipo) {
+  if (objetoValido(alvo?.status)) delete alvo.status[tipo];
+}
+
+// Um passo do relógio dos status: no máximo um tique por status por chamada (o laço roda muitas vezes por
+// segundo). Os tiques seguem a grade da aplicação (t + intervalo, t + 2·intervalo…) e o que coincide com o fim
+// ainda vale: 15 s / 3 s = 5 tiques. Devolve { tiques: [{ tipo, dano, pilhas }], terminados: [tipo] }.
+function passoDosStatus(alvo, agora) {
+  const tiques = [];
+  const terminados = [];
+  if (!objetoValido(alvo?.status)) return { tiques, terminados };
+  const infeccao = Object.values(COMBINACOES_STATUS).find(
+    (c) => c.danoTiques && c.requer.every((t) => alvo.status[t] && alvo.status[t].ate >= agora),
+  );
+  for (const tipo of TIPOS_STATUS) {
+    const s = alvo.status[tipo];
+    if (!s) continue;
+    const pendente = s.intervalo > 0 && agora >= s.proximo && s.proximo <= s.ate;
+    if (pendente) {
+      s.proximo += s.intervalo;
+      const fator = infeccao?.requer.includes(tipo) ? infeccao.danoTiques : 1;
+      tiques.push({ tipo, dano: Math.max(1, Math.round(s.dano * s.pilhas * fator)), pilhas: s.pilhas, infeccao: fator > 1 });
+    } else if (agora >= s.ate) {
+      delete alvo.status[tipo];
+      terminados.push(tipo);
+    }
+  }
+  return { tiques, terminados };
+}
+
+// Combinações que valem num golpe contra quem tem estes status: { critico, multiplicador, nomes }.
+function combinacoesNoGolpe(alvo, agora) {
+  let critico = false;
+  let multiplicador = 1;
+  const nomes = [];
+  for (const c of Object.values(COMBINACOES_STATUS)) {
+    if (!(c.critico || c.danoRecebido) || !c.requer.every((t) => statusAtivo(alvo, t, agora))) continue;
+    if (c.critico) critico = true;
+    if (c.danoRecebido) multiplicador *= c.danoRecebido;
+    nomes.push(c.nome);
+  }
+  return { critico, multiplicador, nomes };
+}
+
+// Visão dos status para a interface (pura): [{ tipo, nome, restanteMs, pilhas }].
+function visaoStatus(alvo, agora) {
+  return statusAtivos(alvo, agora).map((tipo) => ({
+    tipo,
+    nome: STATUS_CRIATURAS[tipo].nome,
+    restanteMs: alvo.status[tipo].ate - agora,
+    pilhas: alvo.status[tipo].pilhas,
+  }));
+}
+
+// Garante p.status e p.imune coerentes. Saves até a v11 guardavam cada status num campo próprio
+// (envenenadoAte, venenoAtual, sangrandoAte…): o que ainda estiver valendo vira p.status.
+function normalizarStatus(p, agora) {
+  const antigo = objetoValido(p.status) ? p.status : {};
+  p.status = {};
+  for (const tipo of TIPOS_STATUS) {
+    const s = antigo[tipo];
+    if (!objetoValido(s) || !(Number.isFinite(s.ate) && s.ate > agora)) continue;
+    const base = STATUS_CRIATURAS[tipo];
+    const n = { ate: s.ate, pilhas: Number.isInteger(s.pilhas) ? Math.max(1, Math.min(base.pilhasMax || 1, s.pilhas)) : 1 };
+    if (base.intervalo) {
+      n.dano = Number.isFinite(s.dano) && s.dano > 0 ? s.dano : base.dano;
+      n.intervalo = Number.isFinite(s.intervalo) && s.intervalo > 0 ? s.intervalo : base.intervalo;
+      n.proximo = Number.isFinite(s.proximo) ? s.proximo : agora + n.intervalo;
+    }
+    p.status[tipo] = n;
+  }
+  const campos = [
+    ["veneno", "envenenadoAte", "venenoAtual", "proximoDanoVeneno"],
+    ["sangramento", "sangrandoAte", "sangramentoAtual", "proximoDanoSangue"],
+  ];
+  for (const [tipo, ate, atual, proximo] of campos) {
+    if (!p.status[tipo] && Number.isFinite(p[ate]) && p[ate] > agora) {
+      const base = STATUS_CRIATURAS[tipo];
+      const dano = objetoValido(p[atual]) && p[atual].dano > 0 ? p[atual].dano : base.dano;
+      const intervalo = objetoValido(p[atual]) && p[atual].intervalo > 0 ? p[atual].intervalo : base.intervalo;
+      p.status[tipo] = { ate: p[ate], pilhas: 1, dano, intervalo, proximo: Number.isFinite(p[proximo]) && p[proximo] > 0 ? p[proximo] : agora + intervalo };
+    }
+    for (const campo of [ate, atual, proximo]) delete p[campo];
+  }
+  // O atordoamento e o medo são curtos: não sobrevivem a recarregar (nem a imunidade deles).
+  delete p.status.atordoamento;
+  delete p.status.medo;
+  for (const campo of ["atordoadoAte", "imuneAtordoamentoAte"]) delete p[campo];
+  p.imune = {};
 }
 
 // ---------------------------------------------------------------------
@@ -1060,6 +1198,8 @@ function fraquezasDaEspecie(e) {
     lista.push(preencherTexto(e.efeito.fraqueza, {
       chance: `${Math.round((e.efeito.chance ?? 1) * 100)}%`,
       imunidade: `${String((e.efeito.imunidade || 0) / 1000).replace(".", ",")} s`,
+      duracao: `${String((e.efeito.duracao || 0) / 1000).replace(".", ",")} s`,
+      pilhas: String(e.efeito.pilhasMax || 1),
     }));
   }
   if ((e.defesa || 0) <= REGRAS_BESTIARIO.defesaBaixa) lista.push(REGRAS_BESTIARIO.fraquezaDefesaBaixa);
@@ -2178,18 +2318,11 @@ const Mundo = {
     normalizarMana(p, agora);
     normalizarDescanso(p, agora);
 
-    // Fé, Oração e veneno.
+    // Fé e Oração.
     p.oracaoDesbloqueada = !!p.oracaoDesbloqueada;
     p.fe = Number.isFinite(p.fe) ? Math.max(0, Math.min(FE_MAXIMA, Math.floor(p.fe))) : FE_MAXIMA;
-    p.envenenadoAte = Number.isFinite(p.envenenadoAte) && p.envenenadoAte > agora ? p.envenenadoAte : 0;
-    p.proximoDanoVeneno = p.envenenadoAte && Number.isFinite(p.proximoDanoVeneno) ? p.proximoDanoVeneno : 0;
-    if (!p.envenenadoAte) p.venenoAtual = null;
-    // Sangramento (como o veneno) e atordoamento (curto: não sobrevive a recarregar).
-    p.sangrandoAte = Number.isFinite(p.sangrandoAte) && p.sangrandoAte > agora ? p.sangrandoAte : 0;
-    p.proximoDanoSangue = p.sangrandoAte && Number.isFinite(p.proximoDanoSangue) ? p.proximoDanoSangue : 0;
-    if (!p.sangrandoAte || !objetoValido(p.sangramentoAtual)) p.sangramentoAtual = p.sangrandoAte ? { dano: STATUS_CRIATURAS.sangramento.dano, intervalo: STATUS_CRIATURAS.sangramento.intervalo } : null;
-    p.atordoadoAte = 0;
-    p.imuneAtordoamentoAte = 0;
+    // Status (save v12): veneno, sangramento, atordoamento e medo num motor só (p.status e p.imune).
+    normalizarStatus(p, agora);
     delete p.proximaRegenFe;
 
     // Avisos pendentes para a UI (exibidos uma vez via Mundo.consumirAviso).
@@ -3122,7 +3255,7 @@ const Mundo = {
       };
     }
     const agora = Date.now();
-    const envenenado = p.envenenadoAte > agora || p.sangrandoAte > agora;
+    const envenenado = !!(statusAtivo(p, "veneno", agora) || statusAtivo(p, "sangramento", agora));
     const vidaCheia = p.vida >= vidaMaxima(p);
     if ((acao === "vida" || acao === "area") && vidaCheia) return { ok: false, mensagem: "Sua vida já está cheia." };
     if (acao === "veneno" && !envenenado) return { ok: false, mensagem: "Você não está envenenado nem sangrando." };
@@ -3141,19 +3274,18 @@ const Mundo = {
       p.vida = Math.min(vidaMaxima(p), p.vida + 20 + Math.floor(nivel / 2));
       mensagem = `Oração: recuperou ${p.vida - antes} de vida.`;
     } else if (acao === "veneno") {
-      const sangrava = p.sangrandoAte > agora;
-      const envenenadoAgora = p.envenenadoAte > agora;
-      this.curarVeneno(p);
-      this.curarSangramento(p);
+      const sangrava = !!statusAtivo(p, "sangramento", agora);
+      const envenenadoAgora = !!statusAtivo(p, "veneno", agora);
+      curarStatus(p, "veneno");
+      curarStatus(p, "sangramento");
       mensagem = envenenadoAgora && sangrava ? "O veneno e o sangramento foram removidos pela Oração." : sangrava ? "O sangramento foi estancado pela Oração." : "O veneno foi removido pela Oração.";
     } else if (acao === "area") {
       p.vida = Math.min(vidaMaxima(p), p.vida + 30 + Math.floor(nivel / 2));
       mensagem = `Oração em área 3×3: você recuperou ${p.vida - antes} de vida. Aliados próximos serão curados quando houver companheiros no jogo.`;
     } else {
       p.vida = vidaMaxima(p);
-      this.curarVeneno(p);
-      this.curarSangramento(p);
-      mensagem = "Milagre: vida restaurada por completo, veneno e sangramento removidos.";
+      for (const tipo of TIPOS_STATUS) curarStatus(p, tipo);
+      mensagem = "Milagre: vida restaurada por completo e todos os status removidos.";
     }
     const subiu = ganharHabilidade(p, "oracao", XP_HABILIDADE_POR_USO.oracao);
     if (subiu) mensagem += ` Oração: nível ${p.habilidades.oracao}.`;
@@ -3161,21 +3293,9 @@ const Mundo = {
     return { ok: true, cura: p.vida - antes, mensagem: `${mensagem} Fé ${p.fe}/${FE_MAXIMA}.` };
   },
 
-  curarVeneno(p) {
-    p.envenenadoAte = 0;
-    p.proximoDanoVeneno = 0;
-    p.venenoAtual = null;
-  },
-
-  curarSangramento(p) {
-    p.sangrandoAte = 0;
-    p.proximoDanoSangue = 0;
-    p.sangramentoAtual = null;
-  },
-
-  // Atordoado: não anda nem ataca até atordoadoAte (poções e Oração continuam valendo).
+  // Atordoado: não anda nem ataca (poções e Oração continuam valendo).
   atordoado(p, agora = Date.now()) {
-    return p.atordoadoAte > agora;
+    return !!statusAtivo(p, "atordoamento", agora);
   },
 
   // ----- Conversas -----
@@ -3635,6 +3755,7 @@ const Mundo = {
       if (!p.inventario.includes("flecha")) return { ok: false, mensagem: "Você não tem flechas." };
     }
     if (this.atordoado(p, agora)) return { ok: false, atordoado: true, mensagem: "Você está atordoado e não consegue atacar." };
+    if (statusAtivo(p, "medo", agora)) return { ok: false, medo: true, mensagem: "Você está com medo e não consegue atacar: recue, beba a poção ou espere passar." };
     const alvo = distancia ? this.alvoDistancia(p, alvoId) : this.alvoCorpo(p, alvoId);
     if (alvo.erro) return { ok: false, mensagem: alvo.erro };
     const e = alvo.inimigo;
@@ -3658,7 +3779,9 @@ const Mundo = {
     }
 
     const bonus = bonusAmuleto(p, e);
-    const golpe = calcularGolpe(p, tipo, at.defesa, Math.random(), 1 + bonus);
+    // Combinações: criatura atordoada leva crítico garantido; com medo, leva mais dano.
+    const combo = combinacoesNoGolpe(e, agora);
+    const golpe = calcularGolpe(p, tipo, at.defesa, combo.critico ? -1 : Math.random(), (1 + bonus) * combo.multiplicador);
     // Atingida, a criatura de matilha chama as outras (mesmo de longe, com a flecha).
     if (e.comportamentos.includes("matilha")) this.alertarMatilha(p, e, agora);
     const chaveHabilidade = distancia ? "distancia" : "corpo";
@@ -3678,6 +3801,7 @@ const Mundo = {
       tipoAtaque: tipo,
       skillLevel: p.habilidades[chaveHabilidade],
       amuleto: bonus,
+      combinacoes: combo.nomes.length ? combo.nomes : undefined,
     };
     if (p.vidaInimigos[e.id] === 0) {
       const morte = this.derrotarInimigo(p, e);
@@ -3712,6 +3836,8 @@ const Mundo = {
     const nome = nomeInimigo(p, e);
     if (!p.inimigosDerrotados.includes(e.id)) p.inimigosDerrotados.push(e.id);
     p.vidaInimigos[e.id] = 0;
+    e.status = {};
+    e.imune = {};
     const aviso = this.registrarAbate(p, e.id);
     const objetivo = aviso ? ` ${aviso}` : "";
     const tarefas = this.registrarAbateTarefas(p, e);
@@ -3825,8 +3951,19 @@ const Mundo = {
     const at = atributosInimigo(p, e);
     const tem = (c) => e.comportamentos.includes(c);
     const distancia = distanciaChebyshev(p, e);
-    const vida = p.vidaInimigos[e.id];
     const nome = nomeInimigo(p, e);
+
+    // Status da criatura (JGB-16): tiques de dano, atordoada parada, com medo foge de quem a assustou.
+    if (this.passoStatusCriatura(p, e, agora, eventos) === "derrotada") return null;
+    if (statusAtivo(e, "atordoamento", agora)) return null;
+    if (statusAtivo(e, "medo", agora)) {
+      if (agora >= e.proximoMovimento) {
+        e.proximoMovimento = agora + at.intervaloMovimento;
+        if (this.passoParaLonge(e, p)) eventos.push({ tipo: "inimigoMoveu", id: e.id });
+      }
+      return null;
+    }
+    const vida = p.vidaInimigos[e.id];
 
     if (tem("furia") && !e.furioso && vida <= at.vidaMaxima * COMPORTAMENTOS.furia.vidaLimite) {
       e.furioso = true;
@@ -3970,7 +4107,10 @@ const Mundo = {
     const furia = e.furioso ? COMPORTAMENTOS.furia : null;
     e.proximoAtaque = agora + Math.round(at.intervaloAtaque * (furia ? furia.intervalo : 1));
     estado.ultimoCombate = agora;
-    const bruto = Math.round(at.dano * (furia ? furia.dano : 1) * multiplicador);
+    // Combinações: golpe no atordoado é crítico; com medo, leva mais dano.
+    const combo = combinacoesNoGolpe(p, agora);
+    const fatorCombo = combo.multiplicador * (combo.critico ? MULTIPLICADOR_CRITICO : 1);
+    const bruto = Math.round(at.dano * (furia ? furia.dano : 1) * multiplicador * fatorCombo);
     const dano = mitigarDano(bruto, defesaTotal(p));
     p.vida = Math.max(0, p.vida - dano);
     const subiu = ganharHabilidade(p, "defesa", XP_HABILIDADE_POR_USO.defesa);
@@ -3989,26 +4129,53 @@ const Mundo = {
       investida,
       projetil: distancia ? e.projetil || "flecha" : null,
       roubo: at.rouboVida ? true : undefined,
+      critico: combo.critico || undefined,
+      combinacoes: combo.nomes.length ? combo.nomes : undefined,
       defesaBloqueada: Math.max(0, bruto - dano),
-      mensagem: `${nome} ${verbo} você por ${dano} de dano! Vida: ${p.vida}/${vidaMaxima(p)}.${subiu ? ` Defesa: nível ${p.habilidades.defesa}.` : ""}`,
+      mensagem:
+        `${combo.critico ? "CRÍTICO! " : ""}${nome} ${verbo} você por ${dano} de dano${combo.nomes.length ? ` (${combo.nomes.join(", ")})` : ""}! ` +
+        `Vida: ${p.vida}/${vidaMaxima(p)}.${subiu ? ` Defesa: nível ${p.habilidades.defesa}.` : ""}`,
     });
     const ef = e.efeito;
     if (ef && (ef.chance >= 1 || Math.random() < ef.chance)) {
-      if (ef.tipo === "veneno" && this.aplicarVeneno(p, ef, agora)) {
-        eventos.push({
-          tipo: "veneno",
-          mensagem: `${nome} envenenou você (${ef.dano} de dano a cada ${ef.intervalo / 1000} s por ${ef.duracao / 1000} s). A Oração remove veneno a partir do nível ${NIVEL_ORACAO.veneno}.`,
-        });
-      } else if (ef.tipo === "sangramento" && this.aplicarSangramento(p, ef, agora)) {
-        eventos.push({
-          tipo: "sangramento",
-          mensagem: `${nome} feriu você: sangramento de ${ef.dano} a cada ${ef.intervalo / 1000} s por ${ef.duracao / 1000} s.`,
-        });
-      } else if (ef.tipo === "atordoamento" && this.aplicarAtordoamento(p, ef, agora)) {
-        eventos.push({ tipo: "atordoado", ate: p.atordoadoAte, mensagem: `${nome} atordoou você por ${String(ef.duracao / 1000).replace(".", ",")} s!` });
-      }
+      const r = aplicarStatus(p, ef, agora);
+      const ev = r && this.eventoStatusNoJogador(nome, ef, r);
+      if (ev) eventos.push(ev);
     }
     this.salvar(p);
+    return null;
+  },
+
+  // Aplica um status numa criatura (ef = { tipo, ...ajustes }): pela habilidade de uma vocação ou por um teste.
+  // Devolve { ok, novo, pilhas, ate } ou { ok: false, mensagem } (imune ou sem acúmulo).
+  aplicarStatusNaCriatura(id, inimigoId, ef, agora = Date.now()) {
+    const p = this.jogadores[id];
+    const e = registroDe(inimigos, inimigoId);
+    const base = registroDe(STATUS_CRIATURAS, ef?.tipo);
+    if (!p || !e || !base || !this.inimigoVivo(p, e.id)) return { ok: false, mensagem: "Alvo inválido." };
+    const r = aplicarStatus(e, ef, agora);
+    const nome = nomeInimigo(p, e);
+    if (!r) return { ok: false, mensagem: `${nome} resiste: ${base.nome.toLowerCase()} não pega agora.` };
+    return { ok: true, ...r, inimigoId: e.id, status: ef.tipo, mensagem: `${nome}: ${base.nome.toLowerCase()}${r.pilhas > 1 ? ` (${r.pilhas}×)` : ""}.` };
+  },
+
+  // Um passo dos status de uma criatura viva da área: tiques de dano (que podem derrotá-la, com XP e saque
+  // como num golpe) e fim de cada status. Devolve "derrotada" quando o tique a derrota.
+  passoStatusCriatura(p, e, agora, eventos) {
+    if (!objetoValido(e.status) || !Object.keys(e.status).length) return null;
+    const passo = passoDosStatus(e, agora);
+    for (const t of passo.tiques) {
+      p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - t.dano);
+      const nomeStatus = STATUS_CRIATURAS[t.tipo].nome.toLowerCase();
+      if (p.vidaInimigos[e.id] === 0) {
+        const morte = this.derrotarInimigo(p, e);
+        eventos.push({ tipo: "inimigoDerrotado", inimigoId: e.id, status: t.tipo, dano: t.dano, ...morte, derrotado: true, mensagem: `O ${nomeStatus} venceu: ${morte.mensagem}` });
+        return "derrotada";
+      }
+      eventos.push({ tipo: "statusInimigo", inimigoId: e.id, status: t.tipo, dano: t.dano, pilhas: t.pilhas, infeccao: t.infeccao });
+    }
+    for (const tipo of passo.terminados) eventos.push({ tipo: "statusInimigoTerminou", inimigoId: e.id, status: tipo });
+    if (passo.tiques.length) this.salvar(p);
     return null;
   },
 
@@ -4167,30 +4334,26 @@ const Mundo = {
     }
   },
 
-  aplicarSangramento(p, ef, agora) {
-    if (p.sangrandoAte > agora) return false;
-    p.sangrandoAte = agora + ef.duracao;
-    p.proximoDanoSangue = agora + ef.intervalo;
-    p.sangramentoAtual = { dano: ef.dano, intervalo: ef.intervalo };
-    return true;
+  // Evento do status que acabou de pegar no jogador (null quando só renovou sem mudar nada que valha avisar).
+  eventoStatusNoJogador(nome, ef, r) {
+    const s = (ms) => `${String(ms / 1000).replace(".", ",")} s`;
+    if (ef.tipo === "veneno") {
+      if (!r.novo) return null;
+      return {
+        tipo: "veneno",
+        mensagem: `${nome} envenenou você (${ef.dano} de dano a cada ${s(ef.intervalo)} por ${s(ef.duracao)}). A Oração remove veneno a partir do nível ${NIVEL_ORACAO.veneno}.`,
+      };
+    }
+    if (ef.tipo === "sangramento") {
+      const pilhas = r.pilhas > 1 ? ` As feridas somam: ${r.pilhas}× (${ef.dano * r.pilhas} a cada ${s(ef.intervalo)}).` : "";
+      return { tipo: "sangramento", pilhas: r.pilhas, mensagem: `${nome} feriu você: sangramento de ${ef.dano} a cada ${s(ef.intervalo)} por ${s(ef.duracao)}.${pilhas}` };
+    }
+    if (ef.tipo === "atordoamento") return { tipo: "atordoado", ate: r.ate, mensagem: `${nome} atordoou você por ${s(ef.duracao)}! O próximo golpe nele é crítico.` };
+    if (ef.tipo === "medo") return { tipo: "medo", ate: r.ate, mensagem: `${nome} assustou você: ${s(ef.duracao)} sem atacar, levando +25% de dano. Recue ou beba a poção.` };
+    return null;
   },
 
-  aplicarAtordoamento(p, ef, agora) {
-    if (p.atordoadoAte > agora || p.imuneAtordoamentoAte > agora) return false;
-    p.atordoadoAte = agora + ef.duracao;
-    p.imuneAtordoamentoAte = p.atordoadoAte + (ef.imunidade || 0);
-    return true;
-  },
-
-  aplicarVeneno(p, veneno, agora) {
-    if (p.envenenadoAte > agora) return false;
-    p.envenenadoAte = agora + veneno.duracao;
-    p.proximoDanoVeneno = agora + veneno.intervalo;
-    p.venenoAtual = { dano: veneno.dano, intervalo: veneno.intervalo };
-    return true;
-  },
-
-  // ----- Morte (regra única) -----
+  // ----- Morte (regra única) -----  // ----- Morte (regra única) -----
   aplicarMorte(id, causa, agora = Date.now()) {
     const p = this.jogadores[id];
     const estado = this.estado[id];
@@ -4231,9 +4394,8 @@ const Mundo = {
       a.mortes += 1;
       a.perdas += moedasPerdidas;
     }
-    this.curarVeneno(p);
-    this.curarSangramento(p);
-    p.atordoadoAte = 0;
+    p.status = {};
+    p.imune = {};
     p.area = "canaan";
     p.x = areas.canaan.inicio.x;
     p.y = areas.canaan.inicio.y;
@@ -4311,61 +4473,36 @@ const Mundo = {
       }
     }
 
-    // Sangramento: como o veneno, com a sua própria grade de ticks.
-    if (p.sangrandoAte) {
-      const sangue = p.sangramentoAtual || STATUS_CRIATURAS.sangramento;
-      const tickPendente = agora >= p.proximoDanoSangue && p.proximoDanoSangue <= p.sangrandoAte;
-      if (!tickPendente && agora >= p.sangrandoAte) {
-        this.curarSangramento(p);
-        this.salvar(p);
-        eventos.push({ tipo: "sangramentoTerminou", mensagem: "O sangramento parou." });
-      } else if (tickPendente) {
-        p.proximoDanoSangue += sangue.intervalo;
-        p.vida = Math.max(0, p.vida - sangue.dano);
-        estado.ultimoCombate = agora;
-        if (p.vida === 0) {
-          eventos.push(this.aplicarMorte(id, "sangramento", agora));
-          return eventos;
-        }
-        this.salvar(p);
-        eventos.push({
-          tipo: "jogadorAtingido",
-          dano: sangue.dano,
-          defesaBloqueada: 0,
-          sangramento: true,
-          mensagem: `O sangramento causa ${sangue.dano} de dano. Vida: ${p.vida}/${vidaMaxima(p)}.`,
-        });
+    // Status do jogador (veneno, sangramento, atordoamento, medo): tiques de dano e fim de cada um.
+    const passo = passoDosStatus(p, agora);
+    for (const t of passo.tiques) {
+      p.vida = Math.max(0, p.vida - t.dano);
+      estado.ultimoCombate = agora;
+      if (p.vida === 0) {
+        eventos.push(this.aplicarMorte(id, t.tipo, agora));
+        return eventos;
       }
+      const extra = [t.pilhas > 1 ? `${t.pilhas} feridas` : "", t.infeccao ? "ferida infeccionada" : ""].filter(Boolean).join(", ");
+      eventos.push({
+        tipo: "jogadorAtingido",
+        dano: t.dano,
+        defesaBloqueada: 0,
+        [t.tipo]: true,
+        status: t.tipo,
+        mensagem: `O ${STATUS_CRIATURAS[t.tipo].nome.toLowerCase()} causa ${t.dano} de dano${extra ? ` (${extra})` : ""}. Vida: ${p.vida}/${vidaMaxima(p)}.`,
+      });
     }
-
-    // Veneno: dano periódico; ao expirar, o estado é zerado para poder ser reaplicado.
-    // Os ticks seguem a grade do envenenamento (t+3 s, t+6 s, … t+15 s) e o
-    // tick que coincide com o fim ainda é aplicado: 15 s / 3 s = 5 ticks.
-    if (p.envenenadoAte) {
-      const veneno = p.venenoAtual || VENENO_PADRAO;
-      const tickPendente = agora >= p.proximoDanoVeneno && p.proximoDanoVeneno <= p.envenenadoAte;
-      if (!tickPendente && agora >= p.envenenadoAte) {
-        this.curarVeneno(p);
-        this.salvar(p);
-        eventos.push({ tipo: "venenoTerminou", mensagem: "O veneno perdeu o efeito." });
-      } else if (tickPendente) {
-        p.proximoDanoVeneno += veneno.intervalo;
-        p.vida = Math.max(0, p.vida - veneno.dano);
-        estado.ultimoCombate = agora;
-        if (p.vida === 0) {
-          eventos.push(this.aplicarMorte(id, "veneno", agora));
-          return eventos;
-        }
-        this.salvar(p);
-        eventos.push({
-          tipo: "jogadorAtingido",
-          dano: veneno.dano,
-          defesaBloqueada: 0,
-          veneno: true,
-          mensagem: `O veneno causa ${veneno.dano} de dano. Vida: ${p.vida}/${vidaMaxima(p)}.`,
-        });
-      }
+    const FIM_STATUS = {
+      veneno: ["venenoTerminou", "O veneno perdeu o efeito."],
+      sangramento: ["sangramentoTerminou", "O sangramento parou."],
+      atordoamento: ["atordoamentoTerminou", ""],
+      medo: ["medoTerminou", "O medo passou: você pode atacar de novo."],
+    };
+    for (const tipo of passo.terminados) {
+      const [evento, mensagem] = FIM_STATUS[tipo];
+      eventos.push({ tipo: evento, mensagem });
     }
+    if (passo.tiques.length || passo.terminados.length) this.salvar(p);
 
     // Fé: +1 a cada FE_REGEN_MS depois de aprender a Oração.
     if (p.oracaoDesbloqueada && p.fe < FE_MAXIMA) {

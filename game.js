@@ -1241,6 +1241,10 @@ class Cena extends Phaser.Scene {
       else if (x.tipo === "manaEstragou") this.mensagem(x.mensagem);
       else if (x.tipo === "sangramento") this.mensagem(x.mensagem, "perigo");
       else if (x.tipo === "atordoado") this.jogadorAtordoado(x);
+      else if (x.tipo === "medo") this.jogadorComMedo(x);
+      else if (x.tipo === "medoTerminou") this.mensagem(x.mensagem);
+      else if (x.tipo === "statusInimigo") this.statusNaCriatura(x);
+      else if (x.tipo === "inimigoDerrotado") { this.mensagem(x.mensagem, "combate"); this.aposAtaque(x); }
       else if (x.tipo === "furia" || x.tipo === "fuga" || x.tipo === "investidaPreparo" || x.tipo === "investidaErrou" || x.tipo === "retorno") this.comportamentoInimigo(x);
       else if (x.tipo === "cura") this.curaInimiga(x);
       else if (x.tipo === "explosao") this.explosao(x);
@@ -1534,6 +1538,24 @@ class Cena extends Phaser.Scene {
       if (tipo === "magia") this.particulasSimples(this.jogador.x, this.jogador.y - 22, cor, 6, { dur: 400, espalha: 8 });
       p.destroy();
     } });
+  }
+
+  // Medo (JGB-16): aviso e "MEDO" sobre o jogador (sem prender: ele pode recuar).
+  jogadorComMedo(x) {
+    this.mensagem(x.mensagem, "perigo");
+    this.numero(this.jogador.x, this.jogador.y - 50, "MEDO", "bloqueio");
+    if (reduzMovimento()) return;
+    this.jogador.setTint(0xb9a2d6);
+    this.time.delayedCall(Math.max(300, x.ate - Date.now()), () => this.jogador.active && this.jogador.clearTint());
+  }
+
+  // Tique de status numa criatura (veneno, sangramento): número com a cor do status sobre ela.
+  statusNaCriatura(x) {
+    const e = inimigos[x.inimigoId];
+    const ent = this.entidades[x.inimigoId];
+    if (!e || !ent?.sprite?.active) return;
+    this.numero(centroX(e.x), baseY(e.y) - 34, `−${x.dano}`, x.status === "veneno" ? "veneno" : "recebido");
+    if (!reduzMovimento()) this.particulasSimples(centroX(e.x), baseY(e.y) - 16, x.status === "veneno" ? "#a8c84a" : "#c2452d", 2, { dur: 450, espalha: 4 });
   }
 
   jogadorAtordoado(x) {

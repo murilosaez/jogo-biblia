@@ -519,6 +519,14 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .teclas td:first-child{white-space:nowrap;width:1%}
 .teclas kbd{margin:1px 2px}
 .acoes-modal{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:12px}
+/* Status do jogador (JGB-16): um selo por status ativo, com o tempo que falta e as pilhas. */
+.status-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.status-chips:empty{display:none}
+.status-chip{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border:1px solid var(--tinta);border-left:4px solid var(--st);background:#1a0f0a;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--texto)}
+.status-chip[data-status="veneno"]{--st:#a8c84a}
+.status-chip[data-status="sangramento"]{--st:#c2452d}
+.status-chip[data-status="atordoamento"]{--st:#ffe08a}
+.status-chip[data-status="medo"]{--st:#b9a2d6}
 /* Maná e descanso (JGB-11): o botão do topo acende quando o maná do dia caiu; o número é o que há no jarro. */
 .mana-btn{position:relative}
 .mana-qtd{position:absolute;right:-5px;bottom:-5px;min-width:16px;height:16px;padding:0 3px;display:grid;place-items:center;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--tinta);background:var(--perg-100);border:1px solid var(--tinta)}
@@ -623,12 +631,13 @@ body.dialogo-aberto #toque{visibility:hidden}
  #missaoLinha[aria-expanded="true"] .txt{white-space:normal}
  #missaoLinha .prog{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--perg-100);background:var(--fe-2);padding:2px 5px;border:1px solid var(--tinta)}
  #missaoLinha .prog:empty{display:none}
- #avisos{top:160px;left:8px;right:8px;max-width:none}
+ /* --status-hud: altura dos selos de status no HUD (medida em interface.js), que empurra os avisos */
+ #avisos{top:calc(160px + var(--status-hud,0px));left:8px;right:8px;max-width:none}
  #avisos .aviso:nth-last-child(n+3){display:none}
- body:not(.com-alvo) #avisos{top:124px}
+ body:not(.com-alvo) #avisos{top:calc(124px + var(--status-hud,0px))}
  /* minimapa do celular: 96×72 (guia §9.10); com ele aberto, os avisos descem para baixo dele */
  #miniMap{width:96px;height:72px}
- body.mapa-visivel-cel:not(.com-alvo) #avisos{top:136px}
+ body.mapa-visivel-cel:not(.com-alvo) #avisos{top:calc(136px + var(--status-hud,0px))}
  /* folha inferior aberta: só o aviso mais novo, logo acima da borda da folha e
     nunca acima do fim do HUD (--avisos-topo, medido em interface.js); se não
     couber nessa faixa, fica oculto (o texto está no Registro) */
@@ -716,6 +725,7 @@ body.toque-forcado #dpad{display:block}
           <div class="linha-barra"><img class="px g16" data-glifo="ui_coracao" alt="Vida"><div class="barra vida" id="hudVida"><i></i><b></b></div><span class="val" id="hudVidaTxt"></span></div>
           <div class="linha-barra"><img class="px g16" data-glifo="ui_candeia" alt="Fé"><div class="barra fe" id="hudFe"><i></i><b></b></div><span class="val" id="hudFeTxt"></span></div>
           <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="hudXp"><i></i><b></b></div><span class="val" id="hudXpTxt"></span></div>
+          <div class="status-chips" id="statusHud" aria-live="polite"></div>
           <div class="quadro-alvo" id="hudAlvo"></div>
         </div>
         <div id="avisos" role="status" aria-live="polite"></div>
@@ -805,6 +815,7 @@ body.toque-forcado #dpad{display:block}
           <div class="linha-barra"><img class="px g16" data-glifo="ui_coracao" alt="Vida"><div class="barra vida" id="barraVida" role="meter" aria-label="Vida"><i></i><b></b></div></div>
           <div class="linha-barra"><img class="px g16" data-glifo="ui_candeia" alt="Fé"><div class="barra fe" id="barraFe" role="meter" aria-label="Fé"><i></i><b></b></div></div>
           <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="barraXp" role="meter" aria-label="Experiência"><i></i><b></b></div></div>
+          <div class="status-chips" id="statusFicha" aria-live="polite"></div>
         </div>
       </div>
       <p class="habilidades" id="habilidades"></p>

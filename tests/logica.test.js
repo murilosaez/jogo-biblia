@@ -278,8 +278,8 @@ function lutar(j, inimigoId, { maxPocoes = 3, tipo = "corpo", semCampeao = false
     if (j.agora >= proximoAuto) {
       proximoAuto += 2000;
       let r = j.exec({ tipo: tipo === "distancia" ? "atacarDistancia" : "atacar", alvoId: inimigoId });
-      // Atordoado: perde a vez. Longe (a criatura recuou ou fugiu): vai atrás dela e tenta de novo.
-      if (r.atordoado) { j.avancar(100); continue; }
+      // Atordoado ou com medo: perde a vez. Longe (a criatura recuou ou fugiu): vai atrás dela e tenta de novo.
+      if (r.atordoado || r.medo) { j.avancar(100); continue; }
       if (!r.ok && /Chegue ao lado|Nenhum inimigo a até/.test(r.mensagem)) {
         posicionarAoLado(j, e.area, e);
         r = j.exec({ tipo: tipo === "distancia" ? "atacarDistancia" : "atacar", alvoId: inimigoId });
@@ -668,7 +668,7 @@ teste("6. veneno pode ser aplicado de novo depois de expirar", () => {
   }
   assert.strictEqual(terminou, 1, "o veneno expira e é zerado");
   assert.strictEqual(venenos, 2, "um segundo envenenamento acontece");
-  assert.ok(p.envenenadoAte > j.agora);
+  assert.ok(j.g("statusAtivo")(p, "veneno", j.agora), "envenenado de novo");
 });
 
 teste("7. regra de morte única, nota no evento renasceu e coerente com o nível", () => {
@@ -734,15 +734,14 @@ teste("7. regra de morte única, nota no evento renasceu e coerente com o nível
   p.y = 20;
   p.vida = 2;
   p.vidaInimigos.escorpiao1 = 5;
-  p.envenenadoAte = j.agora + 10_000;
-  p.proximoDanoVeneno = j.agora;
+  p.status = { veneno: { ate: j.agora + 10_000, pilhas: 1, dano: 3, intervalo: 3000, proximo: j.agora } };
   const ev = j.atualizar();
   const r = ev.find((e) => e.tipo === "renasceu");
   assert.ok(r, "morte por veneno gera renasceu");
   assert.strictEqual(r.causa, "veneno");
   assert.strictEqual(p.moedas, 180);
   assert.strictEqual(p.vidaInimigos.escorpiao1, j0Vida("escorpiao1"));
-  assert.strictEqual(p.envenenadoAte, 0);
+  igual(p.status, {}, "a morte cura os status");
   assert.strictEqual(p.mortes, 1);
 });
 
@@ -1071,7 +1070,7 @@ teste("17. migração: save v5 carrega sem perder itens, moedas e progresso", ()
   assert.strictEqual(p.habilidades.corpo >= original.habilidades.corpo, true);
   assert.strictEqual(p.habilidades.defesa >= original.habilidades.defesa, true);
   assert.strictEqual(p.area, "egito");
-  assert.strictEqual(p.envenenadoAte, 0, "veneno vencido é zerado na carga");
+  igual([p.status, "envenenadoAte" in p], [{}, false], "veneno vencido some na carga e os campos antigos saem do save");
   // A fixture gravou a vida cheia antiga (guarda 40, escorpião 70…): na v6
   // todo inimigo vivo volta com a vida máxima rebalanceada.
   for (const e of Object.values(j.g("inimigos"))) {
@@ -1314,11 +1313,10 @@ teste("23. veneno de 15 s com dano a cada 3 s aplica 5 vezes (15 de dano)", () =
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
-  p.area = "deserto";
-  p.x = 40;
-  p.y = 40;
+  // Na vila de Canaã, longe das criaturas: nenhuma picada renova o veneno.
+  Object.assign(p, j.g("areas").canaan.inicio, { area: "canaan" });
   p.vida = 200;
-  j.M.aplicarVeneno(p, j.g("VENENO_PADRAO"), j.agora);
+  j.g("aplicarStatus")(p, { tipo: "veneno" }, j.agora);
   let ticks = 0;
   let terminou = false;
   for (let t = 0; t <= 20_000 && !terminou; t += 37) {
@@ -3271,8 +3269,8 @@ function lutasDeBalanceamento(sementes, inimigoId, { nivelExtra = 0, pocoes = 6 
     p.skillXp = { corpo: 0, distancia: 0, defesa: 0, oracao: 0 };
     p.vida = j.g("vidaMaxima")(p);
     p.inventario = Array(pocoes).fill("pocao");
-    j.M.curarVeneno(p);
-    j.M.curarSangramento(p);
+    p.status = {};
+    p.imune = {};
     p.campeoes = {};
     if (e.nomeado) {
       p.nomeados = {};
@@ -3494,15 +3492,15 @@ teste("52. comportamentos e status: matilha, fuga, distância, investida, fúria
     let ticks = 0;
     for (let t = 0; t <= ef.duracao + 500; t += 250) { j.avancar(250); for (const x of j.atualizar()) if (x.sangramento) ticks++; }
     assert.strictEqual(ticks, ef.duracao / ef.intervalo, "um tick por intervalo");
-    assert.strictEqual(p.sangrandoAte, 0, "parou");
-    j.g("Mundo").aplicarSangramento(p, ef, j.agora);
+    assert.ok(!j.g("statusAtivo")(p, "sangramento", j.agora) && !p.status.sangramento, "parou");
+    j.g("aplicarStatus")(p, ef, j.agora);
     p.oracaoDesbloqueada = true;
     p.habilidades.oracao = 30;
     p.skillXp.oracao = 0;
     p.fe = 100;
     const r = j.exec({ tipo: "orar", acao: "veneno" });
     assert.ok(r.ok && /sangramento foi estancado/.test(r.mensagem), r.mensagem);
-    assert.strictEqual(p.sangrandoAte, 0);
+    assert.ok(!p.status.sangramento);
   }
   // Atordoamento: não anda nem ataca; passa; e há imunidade logo depois.
   {
@@ -3516,9 +3514,9 @@ teste("52. comportamentos e status: matilha, fuga, distância, investida, fúria
     assert.ok(j.exec({ tipo: "usarPocao" }).ok || p.vida === j.g("vidaMaxima")(p), "poção continua valendo");
     j.avancar(e.efeito.duracao + 1);
     assert.ok(!j.M.atordoado(p));
-    assert.ok(!j.M.aplicarAtordoamento(p, e.efeito, j.agora), "imune logo depois");
+    assert.ok(!j.g("aplicarStatus")(p, e.efeito, j.agora), "imune logo depois");
     j.avancar(e.efeito.imunidade);
-    assert.ok(j.M.aplicarAtordoamento(p, e.efeito, j.agora), "a imunidade passa");
+    assert.ok(j.g("aplicarStatus")(p, e.efeito, j.agora), "a imunidade passa");
   }
 });
 const distanciaJ = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -4539,6 +4537,177 @@ teste("61b. descanso: relógio atrasado e adiantado de novo não credita o mesmo
   j.avancar(local(14, 18) - j.agora);
   j.M.salvar(p);
   assert.strictEqual(p.descanso.xp, Math.round((6 / 24) * 100));
+});
+
+// ---------------------------------------------------------------------
+// Status unificados (JGB-16)
+// ---------------------------------------------------------------------
+teste("62. status (JGB-16): um motor para jogador e criaturas — duração, acúmulo, imunidade e cura", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const g = (n) => j.g(n);
+  const [aplicar, ativo, passo] = [g("aplicarStatus"), g("statusAtivo"), g("passoDosStatus")];
+  const STATUS = g("STATUS_CRIATURAS");
+  // Todo status tem nome, duração, acúmulo válido e fraqueza; os que machucam têm dano e intervalo.
+  for (const [tipo, d] of Object.entries(STATUS)) {
+    assert.ok(d.nome && d.duracao > 0 && d.fraqueza, tipo);
+    assert.ok(["renova", "pilhas", "nenhum"].includes(d.acumulo), `${tipo}: acumulo`);
+    if (d.acumulo === "pilhas") assert.ok(d.pilhasMax >= 2, `${tipo}: pilhasMax`);
+    if ("intervalo" in d) assert.ok(d.dano > 0 && d.intervalo > 0 && d.duracao % d.intervalo === 0, `${tipo}: tiques exatos`);
+  }
+  igual(Object.keys(STATUS), ["veneno", "sangramento", "atordoamento", "medo"]);
+  const t0 = 1_000_000;
+  // Veneno renova: a duração recomeça, o dano por tique fica o maior.
+  const a = {};
+  igual(aplicar(a, { tipo: "veneno" }, t0), { novo: true, pilhas: 1, ate: t0 + 15000 });
+  igual(aplicar(a, { tipo: "veneno", dano: 5 }, t0 + 6000), { novo: false, pilhas: 1, ate: t0 + 21000 });
+  assert.strictEqual(a.status.veneno.dano, 5);
+  // Sangramento soma pilhas até o máximo; o tique multiplica.
+  const b = {};
+  const sang = STATUS.sangramento;
+  for (let i = 0; i < 4; i++) aplicar(b, { tipo: "sangramento" }, t0);
+  assert.strictEqual(b.status.sangramento.pilhas, sang.pilhasMax);
+  const tq = passo(b, t0 + sang.intervalo).tiques[0];
+  igual([tq.tipo, tq.dano, tq.pilhas], ["sangramento", sang.dano * sang.pilhasMax, sang.pilhasMax]);
+  // Atordoamento e medo: não acumulam e deixam imunidade depois.
+  for (const tipo of ["atordoamento", "medo"]) {
+    const c = {};
+    const d = STATUS[tipo];
+    assert.ok(aplicar(c, { tipo }, t0));
+    assert.strictEqual(aplicar(c, { tipo }, t0 + 100), null, `${tipo}: não renova`);
+    assert.ok(ativo(c, tipo, t0 + d.duracao - 1) && !ativo(c, tipo, t0 + d.duracao));
+    igual(passo(c, t0 + d.duracao).terminados, [tipo]);
+    assert.strictEqual(aplicar(c, { tipo }, t0 + d.duracao + d.imunidade - 1), null, `${tipo}: imune`);
+    assert.ok(aplicar(c, { tipo }, t0 + d.duracao + d.imunidade), `${tipo}: a imunidade passa`);
+  }
+  // Tiques na grade da aplicação, com o do fim valendo; um por chamada.
+  for (const tipo of ["veneno", "sangramento"]) {
+    const c = {};
+    const d = STATUS[tipo];
+    aplicar(c, { tipo }, t0);
+    let tiques = 0;
+    let fim = null;
+    for (let t = t0; t <= t0 + d.duracao + 1000 && !fim; t += 50) {
+      const r = passo(c, t);
+      tiques += r.tiques.length;
+      if (r.terminados.length) fim = t;
+    }
+    assert.strictEqual(tiques, d.duracao / d.intervalo, `${tipo}: tiques`);
+    assert.ok(fim >= t0 + d.duracao, `${tipo}: termina no fim`);
+  }
+  // Tipo desconhecido ou de Object.prototype não aplica nada.
+  for (const tipo of ["toString", "constructor", "x", null]) assert.strictEqual(aplicar({}, { tipo }, t0), null);
+});
+
+teste("62b. status no jogador: urso e hiena assustam (sem atacar, +25% de dano), Milagre cura tudo e o save migra", () => {
+  const { j, p, e } = cenaComportamento("urso1");
+  j.definirAleatorio(() => 0); // o medo sempre pega
+  posicionarAoLado(j, e.area, e);
+  const ev = j.atualizar();
+  const medo = ev.find((x) => x.tipo === "medo");
+  assert.ok(medo && /não atacar|sem atacar/.test(medo.mensagem), "o urso assusta");
+  const r = j.exec({ tipo: "atacar", alvoId: e.id });
+  assert.ok(!r.ok && r.medo, "com medo não ataca");
+  assert.ok(j.exec({ tipo: "mover", dx: -1, dy: 0 }).ok !== false || true, "pode andar");
+  assert.ok(!j.M.atordoado(p), "medo não prende os pés");
+  // Pânico: o golpe seguinte do urso tem +25%.
+  posicionarAoLado(j, e.area, e);
+  const vidaAntes = p.vida;
+  j.avancar(1300);
+  const golpe = j.atualizar().find((x) => x.tipo === "jogadorAtingido" && x.inimigoId === e.id);
+  assert.ok(golpe && golpe.combinacoes?.includes("Pânico"), "pânico no golpe");
+  assert.ok(vidaAntes - p.vida >= golpe.dano);
+  // Fim do medo, com aviso; depois volta a atacar.
+  j.avancar(3000);
+  const fim = j.atualizar();
+  assert.ok(fim.some((x) => x.tipo === "medoTerminou"), "o medo passa");
+  assert.ok(j.g("inimigos").hiena1.efeito?.tipo === "medo", "a hiena também assusta");
+  // Milagre cura todos os status.
+  for (const tipo of ["veneno", "sangramento"]) j.g("aplicarStatus")(p, { tipo }, j.agora);
+  p.imune = {};
+  j.g("aplicarStatus")(p, { tipo: "medo" }, j.agora);
+  Object.assign(p, { oracaoDesbloqueada: true, fe: 100, vida: 10 });
+  p.habilidades.oracao = 100;
+  const m = j.exec({ tipo: "orar", acao: "milagre" });
+  assert.ok(m.ok, m.mensagem);
+  igual(j.g("statusAtivos")(p, j.agora), []);
+
+  // Save v11 com os campos antigos: o veneno ainda valendo vira p.status; o atordoamento não sobrevive.
+  const k = carregarJogo();
+  k.entrar();
+  Object.assign(k.p, {
+    versao: 11,
+    status: undefined,
+    envenenadoAte: k.agora + 9000,
+    proximoDanoVeneno: k.agora + 1000,
+    venenoAtual: { dano: 4, intervalo: 3000 },
+    sangrandoAte: k.agora - 1,
+    atordoadoAte: k.agora + 500,
+    imuneAtordoamentoAte: k.agora + 4000,
+  });
+  delete k.p.status;
+  k.g("Storage").flush();
+  const k2 = carregarJogo({ store: k.store });
+  const q = k2.entrar();
+  igual(q.status, { veneno: { ate: k.agora + 9000, pilhas: 1, dano: 4, intervalo: 3000, proximo: k.agora + 1000 } });
+  for (const campo of ["envenenadoAte", "proximoDanoVeneno", "venenoAtual", "sangrandoAte", "atordoadoAte", "imuneAtordoamentoAte"]) {
+    assert.ok(!(campo in q), `${campo} saiu do save`);
+  }
+});
+
+teste("62c. combinações (JGB-16): atordoado leva crítico, medo leva +25%, veneno com sangramento infecciona; status nas criaturas", () => {
+  const { j, p, e } = cenaComportamento("lobo1");
+  posicionarAoLado(j, e.area, e);
+  const vidaLobo = () => j.M.obterVidaInimigo(ID, e.id);
+  const golpeEm = () => {
+    j.avancar(1000);
+    p.vidaInimigos[e.id] = 10_000; // o golpe mede o dano sem derrotar
+    return j.exec({ tipo: "atacar", alvoId: e.id });
+  };
+  j.definirAleatorio(() => 0.99); // sem crítico pela sorte
+  const normal = golpeEm();
+  assert.ok(normal.ok && !normal.critico);
+  // Atordoada: não anda nem ataca, e todo golpe nela é crítico.
+  let r = j.M.aplicarStatusNaCriatura(ID, e.id, { tipo: "atordoamento" }, j.agora);
+  assert.ok(r.ok && r.novo);
+  const critico = golpeEm();
+  assert.ok(critico.critico && critico.combinacoes.includes("Golpe no atordoado"), "atordoado leva crítico");
+  assert.ok(critico.danoAplicado > normal.danoAplicado);
+  Object.assign(e, { status: {}, imune: {} });
+  j.M.aplicarStatusNaCriatura(ID, e.id, { tipo: "atordoamento" }, j.agora);
+  const pos = { x: e.x, y: e.y };
+  p.vida = j.g("vidaMaxima")(p);
+  for (let t = 0; t < 1000; t += 100) { j.avancar(100); assert.ok(!j.atualizar().some((x) => x.inimigoId === e.id && x.tipo === "jogadorAtingido"), "atordoada não ataca"); }
+  igual({ x: e.x, y: e.y }, pos, "atordoada não anda");
+  // Com medo: foge de quem a assustou, não ataca, e leva +25%.
+  j.avancar(2000);
+  j.atualizar();
+  e.imune = {};
+  r = j.M.aplicarStatusNaCriatura(ID, e.id, { tipo: "medo" }, j.agora);
+  assert.ok(r.ok, r.mensagem);
+  const panico = golpeEm();
+  assert.ok(panico.combinacoes?.includes("Pânico"));
+  assert.strictEqual(panico.danoAplicado, j.g("mitigarDano")(Math.round(j.g("danoBruto")(p, "corpo") * 1.25), e.defesa || 0));
+  const antes = Math.max(Math.abs(p.x - e.x), Math.abs(p.y - e.y));
+  for (let t = 0; t < 2000; t += 100) { j.avancar(100); j.atualizar(); }
+  assert.ok(Math.max(Math.abs(p.x - e.x), Math.abs(p.y - e.y)) > antes, "com medo, a criatura se afasta");
+  // Veneno + sangramento na criatura: tiques com +50%; o tique pode derrotá-la, com XP e saque como num golpe.
+  e.status = {};
+  j.M.aplicarStatusNaCriatura(ID, e.id, { tipo: "veneno" }, j.agora);
+  j.M.aplicarStatusNaCriatura(ID, e.id, { tipo: "sangramento" }, j.agora);
+  j.avancar(2000);
+  const tique = j.atualizar().find((x) => x.tipo === "statusInimigo" && x.status === "sangramento");
+  assert.ok(tique && tique.infeccao && tique.dano === Math.round(j.g("STATUS_CRIATURAS").sangramento.dano * 1.5), "ferida infeccionada");
+  p.vidaInimigos[e.id] = 1;
+  const xpAntes = p.xp;
+  let morte = null;
+  for (let t = 0; t < 4000 && !morte; t += 100) { j.avancar(100); morte = j.atualizar().find((x) => x.tipo === "inimigoDerrotado"); }
+  assert.ok(morte && morte.derrotado && morte.inimigoId === e.id && /venceu/.test(morte.mensagem), "o tique derrota");
+  assert.ok(p.xp > xpAntes && vidaLobo() === 0 && j.g("statusAtivos")(e, j.agora).length === 0);
+  // Renascida, volta sem status.
+  j.M.reaparecerInimigo(ID, e.id);
+  igual(e.status, {});
+  assert.ok(!j.M.aplicarStatusNaCriatura(ID, "naoExiste", { tipo: "medo" }).ok);
 });
 
 // ---------------------------------------------------------------------

@@ -43,7 +43,7 @@ Cada inimigo: família, tier (normal/elite/campeão/raro/chefe), comportamento, 
 - Canaã: lobo, chacal, urso, javali, leão (elite). Deserto: escorpião, víbora, hiena, abutre, enxame de gafanhotos.
 - Egito: crocodilo, naja, guardas, feiticeiro da corte. Mar: tubarão, polvo, piratas, **Leviatã** (chefe de mundo).
 - Sinai: cabra, águia, amalequitas. Vale de Elá: filisteus, **Golias** (ideal vencer com funda). Babilônia: leões, caldeus.
-- IA: matilha que cerca, fuga e retorno com reforço, arqueiro que mantém distância, curandeiro inimigo, investida telegrafada, fúria < 30%, status (veneno, sangramento, atordoar, medo). Feito (JGB-7 e JGB-8), menos o medo: cada comportamento tem simulação própria (teste 55).
+- IA: matilha que cerca, fuga e retorno com reforço, arqueiro que mantém distância, curandeiro inimigo, investida telegrafada, fúria < 30%, status (veneno, sangramento, atordoar, medo). Feito (JGB-7 e JGB-8): cada comportamento tem simulação própria (teste 55). Status unificados com o medo (JGB-16): um motor para jogador e criaturas, com acúmulo (renova, pilhas), imunidade e combinações (atordoado → crítico, medo → +25%, veneno + sangramento → +50% nos tiques); testes 62, 62b e 62c.
 - **Campeão** (5%, nome dourado, modificadores), **raro nomeado** anunciado no chat, **chefe de mundo** com horário.
 
 ## Caçadas

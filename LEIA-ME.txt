@@ -31,10 +31,11 @@ Conteúdo do jogo (pasta dados/)
   tipo e espera), regras (limite de caçadas ativas e bônus da 1ª entrega), falas dos atalaias e a
   troca de pontos de tarefa. Os ids das caçadas são permanentes (ficam no save): para tirar uma
   caçada do mural, use oculta: true.
-O progresso fica no save (save versão 11): missoes[id] = { status, etapa, progresso },
+O progresso fica no save (save versão 12): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
-mana = { porcao, estragaEm, proximaEm } e descanso = { xp, vistoEm, creditadoAte }. Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte } e status[tipo] =
+{ ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -48,7 +49,8 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 11, sem perder itens, moedas, nível ou progresso. A versão 11 traz o maná diário (o jarro
+   para a versão 12, sem perder itens, moedas, nível ou progresso. A versão 12 junta os status num motor só
+   (o veneno ou sangramento que ainda estiver valendo continua; o atordoamento não sobrevive). A versão 11 trouxe o maná diário (o jarro
    começa vazio) e o descanso do Sábado (a ausência conta a partir da primeira carga). A versão 10 trouxe o
    bestiário, que começou do zero (os saves antigos não contavam abates por espécie). Na versão 9 os mapas dobraram de
    tamanho: a posição antiga (e os saques no chão) vai para o ponto equivalente do mapa novo e, se ali
@@ -191,8 +193,8 @@ Inimigos obrigatórios (vida / defesa / dano por golpe antes da sua defesa)
 Com o autoataque, cada luta da campanha leva de 11 a 35 segundos e as últimas pedem 1 ou 2 poções.
 
 Criaturas (33 espécies e 6 raros nomeados; cada uma com sprite próprio)
-- Canaã: lobo, chacal (matilha), javali (investida), urso (elite, fúria), leão (elite, investida, sangramento).
-- Deserto: escorpião (veneno), chefe dos saqueadores (chefe), víbora (veneno), hiena (matilha e fuga),
+- Canaã: lobo, chacal (matilha), javali (investida), urso (elite, fúria, medo), leão (elite, investida, sangramento).
+- Deserto: escorpião (veneno), chefe dos saqueadores (chefe), víbora (veneno), hiena (matilha, fuga e medo),
   abutre (rápido, foge), enxame de gafanhotos (ataque muito rápido), arqueiro do bando (à distância),
   curandeiro do bando (cura as aliadas, junto dos arqueiros).
 - Egito: guarda egípcio, crocodilo do Nilo (elite, investida, atordoa), naja (veneno), feiticeiro da corte
@@ -218,9 +220,21 @@ Criaturas (33 espécies e 6 raros nomeados; cada uma com sprite próprio)
   investida — entre 2 e 4 casas, marca no chão (em vermelho) a linha até onde você está e, 1 s depois, avança
     por ela batendo 1,6×; saia da área marcada e ela erra; recarga de 7 s;
   fúria — com 30% da vida, bate 1,4× mais forte e 25% mais rápido.
-- Status: veneno; sangramento (3 de dano a cada 2 s por 8 s, 30% de chance por golpe); atordoamento
-  (1,2 s sem andar nem atacar, 15–30% de chance; depois, 4 s de imunidade). Poções valem atordoado.
-  A Oração "Remover veneno" também estanca o sangramento, e o Milagre remove os dois.
+- Status (STATUS_CRIATURAS em dados/criaturas.js): um motor só, com as mesmas regras para você e para as
+  criaturas (as habilidades das vocações vão aplicá-los nelas). Cada status tem duração e uma regra de
+  acúmulo para quando pega de novo enquanto dura:
+    Veneno ......... 3 de dano a cada 3 s por 15 s; renova (recomeça a duração, não soma)
+    Sangramento .... 2 de dano a cada 2 s por 8 s; soma pilhas (até 2: 4 de dano por tique)
+    Atordoamento ... 1,2 s sem andar nem atacar; não renova; depois, 4 s de imunidade
+    Medo ........... 2,5 s sem atacar (pode andar e beber poção); não renova; depois, 6 s de imunidade
+  Poções valem com qualquer status. A Oração "Remover veneno" cura veneno e sangramento; o Milagre cura
+  todos. A morte também cura todos. Os status ativos aparecem como selos na ficha e no HUD do celular.
+- Combinações de status (COMBINACOES_STATUS), para você e para as criaturas:
+    Golpe no atordoado ..... todo golpe em quem está atordoado é crítico (×1,5)
+    Pânico ................. quem está com medo leva +25% de dano dos golpes
+    Ferida infeccionada .... veneno e sangramento juntos: os tiques dos dois causam +50%
+  Na criatura, o atordoamento a para, o medo a faz fugir de você (sem atacar) e o tique de veneno ou
+  sangramento pode derrotá-la, com XP, saque e caçadas como num golpe.
 - Campeões: toda criatura normal ou elite tem 5% de chance de renascer campeã, com 1 ou 2 modificadores no
   nome, em dourado ("Hiena Rápida e Vampírica"): Rápido (ataca e anda mais rápido), Vampírico (recupera
   metade do dano que causa), Explosivo (ao morrer, marca o chão e explode 1,2 s depois em quem ficou ao
@@ -246,7 +260,7 @@ Vida, poções e veneno
 - Vida máxima = 100 + 10 por nível acima do 1º.
 - Poção de vida: recupera 25% da vida máxima (mínimo 30). Poção de fé: +40 de fé.
 - Fora de combate (8 s sem golpes), a vida regenera 2% da vida máxima a cada 3 s.
-- Veneno do escorpião: 3 de dano a cada 3 s por 15 s (5 vezes, 15 de dano). Quando passa, você pode ser envenenado de novo.
+- Veneno do escorpião: 3 de dano a cada 3 s por 15 s (5 vezes, 15 de dano). Cada nova picada recomeça os 15 s.
 
 Habilidades
 Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
@@ -261,10 +275,10 @@ Oração e fé
 - Cura de vida: custo 20 de fé, cura 20 + ⌊Oração ÷ 2⌋.
 - Remover veneno: Oração nível 25, custo 40.
 - Cura em área: Oração nível 50, custo 60, cura 30 + ⌊Oração ÷ 2⌋ (aliados quando houver grupo).
-- Milagre: Oração nível 100, custo 100 — vida cheia e veneno removido.
+- Milagre: Oração nível 100, custo 100 — vida cheia e todos os status removidos.
 
-Regra de morte (vale para morte por inimigo ou por veneno)
-Você volta a Canaã com a vida cheia; o veneno é curado e os inimigos vivos voltam ao início com a
+Regra de morte (vale para morte por inimigo, veneno ou sangramento)
+Você volta a Canaã com a vida cheia; os status são curados e os inimigos vivos voltam ao início com a
 vida restaurada. Nível, equipamento e missões são preservados. Penalidade conforme o nível:
 - Até o nível 10: nenhuma perda.
 - Nível 11–25: perde 10% das moedas.
@@ -373,15 +387,20 @@ Para desenvolvedores
   atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
-  estadoDescanso(p, agora), infoItem(id) (item com raridade,
+  estadoDescanso(p, agora), visaoStatus(alvo, agora), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
   som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
   são puras; o teste 49 simula 60 mil abates por criatura e confere a frequência de cada linha da tabela.
+- Status: aplicarStatus(alvo, { tipo, ...ajustes }, agora), statusAtivo(alvo, tipo, agora),
+  passoDosStatus(alvo, agora) e combinacoesNoGolpe(alvo, agora) são puras e valem para o jogador e para
+  qualquer criatura; Mundo.aplicarStatusNaCriatura(id, inimigoId, ef) aplica numa criatura viva. Os testes
+  62, 62b e 62c simulam cada status, as combinações, os status nas criaturas e a migração do save.
 - Criaturas: Mundo.fichaInimigo(id, inimigoId) (nome com modificadores, tier, campeão, família,
   comportamentos e status), Mundo.vidaMaximaInimigo(id, inimigoId) e Mundo.nomeInimigo(id, inimigoId).
   O laço de tempo (Mundo.atualizar) devolve também furia, fuga, investidaPreparo, investidaErrou,
-  sangramento, atordoado, explosao, nomeadoApareceu, nomeadoSumiu, retorno (fim da fuga, com reforcos) e
+  sangramento, atordoado, medo, medoTerminou, statusInimigo (tique numa criatura), inimigoDerrotado (o tique
+  a derrotou, com os mesmos campos de um ataque que derrota), explosao, nomeadoApareceu, nomeadoSumiu, retorno (fim da fuga, com reforcos) e
   cura (id do curandeiro, alvo, cura); investidaPreparo traz as casas marcadas. O teste 55 simula cada
   comportamento (cerco, fuga com reforço, distância dos disparos, curandeiro e ordem de abate, desvio da
   investida e fúria). O teste 51 simula a luta contra cada

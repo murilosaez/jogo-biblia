@@ -422,8 +422,30 @@
     $("#hudVidaTxt").textContent = vidaTxt;
     $("#hudFeTxt").textContent = travada ? "—" : `${p.fe || 0}`;
     $("#hudXpTxt").textContent = `Nv ${p.nivel}`;
-    const env = (p.envenenadoAte || 0) > Date.now();
+    const env = (p.status?.veneno?.ate || 0) > Date.now();
     document.body.classList.toggle("envenenado", env);
+    atualizarStatus(p);
+  }
+
+  // Status ativos do jogador (JGB-16), na ficha e no HUD do celular. Só lê, por visaoStatus.
+  let htmlStatus = "";
+  function atualizarStatus(p) {
+    if (typeof visaoStatus !== "function") return;
+    const html = visaoStatus(p, Date.now())
+      .map((s) => {
+        const seg = Math.ceil(s.restanteMs / 1000);
+        const pilhas = s.pilhas > 1 ? ` ${s.pilhas}×` : "";
+        return `<span class="status-chip" data-status="${esc(s.tipo)}" title="${esc(s.nome)}: ${seg} s">${esc(s.nome)}${pilhas} ${seg}s</span>`;
+      })
+      .join("");
+    if (html === htmlStatus) return;
+    htmlStatus = html;
+    for (const id of ["#statusFicha", "#statusHud"]) if ($(id)) $(id).innerHTML = html;
+    // No celular, os selos aumentam o HUD: os avisos descem a mesma altura.
+    const hud = $("#statusHud");
+    const altura = hud && hud.offsetParent && html ? hud.offsetHeight + 4 : 0;
+    $("#palco")?.style.setProperty("--status-hud", `${altura}px`);
+    posicionarAvisos();
   }
 
   // ------------------------------------------------------------------
@@ -1561,7 +1583,7 @@
   let assinaturaOracao = "";
   function estadoOracao(p) {
     const nivelOr = typeof estatisticasCombate === "function" ? estatisticasCombate(p).habilidades.oracao?.nivel || 0 : 0;
-    return { nivelOr, ass: JSON.stringify([p.fe, nivelOr, p.vida, p.envenenadoAte > Date.now()]) };
+    return { nivelOr, ass: JSON.stringify([p.fe, nivelOr, p.vida, (p.status?.veneno?.ate || 0) > Date.now(), (p.status?.sangramento?.ate || 0) > Date.now()]) };
   }
   // Os cartões são montados uma vez por nível de oração (o nível muda quais
   // ficam travados); depois o tique() só atualiza no lugar a fé, os custos,
@@ -1685,7 +1707,9 @@
         mostram a raridade (comum, incomum, raro, épico, relíquia); equipamentos raros ou melhores trazem atributos aleatórios.</p>
       <p>Criaturas: cada região tem feras, pragas e inimigos com comportamentos próprios — matilhas que cercam, fuga com
         reforço, arqueiros que mantêm distância, curandeiros (marca CURA: derrube-os primeiro), investida (o chão fica
-        vermelho na linha dela: saia da área marcada) e fúria — e alguns causam veneno, sangramento ou atordoamento. Às vezes uma
+        vermelho na linha dela: saia da área marcada) e fúria — e alguns causam veneno, sangramento, atordoamento ou medo
+        (sem atacar por 2,5 s). Golpe em quem está atordoado é sempre crítico; com medo, leva +25%; veneno e sangramento
+        juntos infeccionam (+50% nos tiques). Os status ativos aparecem como selos na ficha. Às vezes uma
         criatura renasce campeã (nome dourado, 1 ou 2 modificadores, saque reforçado), e cada região tem um raro nomeado que
         aparece algumas vezes por dia, com anúncio no Registro.</p>
       <p>Bestiário: cada abate conta para a espécie. Com 10, 100 e 1000 abates ela chega aos estágios Avistada (ficha),
