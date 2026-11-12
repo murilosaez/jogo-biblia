@@ -18,6 +18,7 @@ const ARQUIVOS_DADOS = [
   "dados/criaturas.js",
   "dados/capitulos.js",
   "dados/missoes.js",
+  "dados/tarefas.js",
 ];
 const ARQUIVOS = ["storage.js", ...ARQUIVOS_DADOS, "logica.js"];
 const FONTES = ARQUIVOS.map((f) => fs.readFileSync(path.join(RAIZ, f), "utf8"));
@@ -1119,6 +1120,17 @@ teste("18. API usada por game.js continua disponível", () => {
     "textoMissaoAtual",
     "Storage",
     "Mundo",
+    "TAREFAS",
+    "REGRAS_TAREFAS",
+    "TIPOS_TAREFA",
+    "FAMILIAS_CRIATURAS",
+    "OFERTAS_TROCA",
+    "visaoTarefa",
+    "tarefasDoMural",
+    "tarefasDoJogador",
+    "tarefasDoInimigo",
+    "ofertasDeTroca",
+    "textoEspera",
   ];
   for (const nome of globais) assert.notStrictEqual(j.g(nome), undefined, nome);
   for (const f of [
@@ -1154,6 +1166,9 @@ teste("18. API usada por game.js continua disponível", () => {
     "usarPocaoFe",
     "orar",
     "alternarEquipamento",
+    "aceitarTarefa",
+    "guardarTarefa",
+    "trocarPontos",
   ]) {
     const r = j.exec({ tipo });
     assert.strictEqual(typeof r.ok, "boolean", tipo);
@@ -1170,6 +1185,48 @@ teste("18. API usada por game.js continua disponível", () => {
   j.p.x = ponto.x + 1;
   j.p.y = ponto.y;
   assert.ok(j.exec({ tipo: "pescar" }).ok);
+  // Ids que vêm de fora só valem como chaves próprias das tabelas. "constructor", "toString" e
+  // "__proto__" são recusados sem mudar nada (antes: saldo, moedas ou fé em NaN, função na mochila).
+  const k = carregarJogo();
+  k.entrar();
+  concluirMissoes(k);
+  Object.assign(k.p, { pontosTarefa: 200, pontosTarefaTotal: 200, moedas: 500, oracaoDesbloqueada: true, fe: 50 });
+  const comandos = [
+    ["comprar", "item"],
+    ["vender", "item"],
+    ["interagir", "alvoId"],
+    ["atacar", "alvoId"],
+    ["atacarDistancia", "alvoId"],
+    ["coletarSaque", "saqueId"],
+    ["viajar", "areaDestino"],
+    ["orar", "acao"],
+    ["alternarEquipamento", "slot"],
+    ["aceitarTarefa", "tarefaId"],
+    ["guardarTarefa", "tarefaId"],
+    ["trocarPontos", "ofertaId"],
+  ];
+  for (const npcId of ["mercador1", "atalaia_deserto", "guia_deserto"]) {
+    const npc = k.g("npcs")[npcId];
+    posicionarAoLado(k, npc.area, npc);
+    for (const chave of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const antes = json(k.p);
+      for (const [tipo, campo] of comandos) {
+        assert.strictEqual(k.exec({ tipo, [campo]: chave }).ok, false, `${tipo} com ${campo} "${chave}"`);
+      }
+      assert.strictEqual(k.M.equiparItem(ID, chave, "arma").ok, false);
+      assert.strictEqual(k.M.equiparItem(ID, "espada_ferro", chave).ok, false);
+      assert.strictEqual(k.M.desequiparItem(ID, chave).ok, false);
+      assert.strictEqual(k.M.atribuirHotkey(ID, 0, chave).ok, false);
+      igual(k.p, antes, `"${chave}" não muda o save (ao lado de ${npcId})`);
+    }
+  }
+  assert.strictEqual(k.exec({ tipo: "trocarPontos", ofertaId: "constructor" }).mensagem, "Essa troca não existe.");
+  posicionarAoLado(k, "deserto", k.g("npcs").mercador1);
+  assert.strictEqual(k.exec({ tipo: "comprar", item: "constructor" }).mensagem, "Esse item não está à venda.");
+  k.g("Storage").flush();
+  const recarregado = carregarJogo({ store: k.store });
+  recarregado.entrar();
+  assert.deepStrictEqual([recarregado.p.pontosTarefa, recarregado.p.moedas, recarregado.p.fe], [200, 500, 50]);
 });
 
 teste("19. personagem novo começa com o equipamento inicial vestido e vence o lobo sem ajustes", () => {
@@ -1402,6 +1459,42 @@ teste("27. dados/: conteúdo puro e todas as referências apontam para algo que 
     area(p.area, "portal");
     area(p.destino, "portal");
     if (p.capitulo) assert.ok(CAPITULOS[p.capitulo], `portal: capítulo ${p.capitulo}`);
+  }
+  // Criaturas: espécie e família (as caçadas contam por elas).
+  const FAMILIAS = j.g("FAMILIAS_CRIATURAS");
+  for (const e of Object.values(inimigos)) {
+    assert.ok(typeof e.especie === "string" && /^[a-z_]+$/.test(e.especie), `criatura ${e.id}: especie "${e.especie}"`);
+    assert.ok(FAMILIAS[e.familia], `criatura ${e.id}: família inexistente "${e.familia}"`);
+  }
+  // dados/tarefas.js (dados crus): caçadas, atalaias e troca de pontos apontam para algo que existe.
+  const especies = new Set(Object.values(inimigos).map((e) => e.especie));
+  const inteiroPositivo = (v) => Number.isInteger(v) && v > 0;
+  for (const t of j.g("DADOS_TAREFAS")) {
+    const onde = `caçada ${t.id}`;
+    assert.strictEqual(npcs[t.mural]?.papel, "mural", `${onde}: o mural ${t.mural} precisa ser um atalaia (papel "mural")`);
+    assert.ok(j.g("TIPOS_TAREFA")[t.tipo], `${onde}: tipo ${t.tipo}`);
+    for (const c of t.alvo?.criaturas || []) assert.ok(inimigos[c], `${onde}: criatura ${c}`);
+    for (const es of t.alvo?.especies || []) assert.ok(especies.has(es), `${onde}: nenhuma criatura da espécie ${es}`);
+    for (const f of t.alvo?.familias || []) assert.ok(FAMILIAS[f], `${onde}: família ${f}`);
+    if (t.alvo?.area) area(t.alvo.area, onde);
+    if (t.requer?.missao) assert.ok(MISSOES[t.requer.missao], `${onde}: missão ${t.requer.missao}`);
+    assert.ok(inteiroPositivo(t.total), `${onde}: total`);
+    const { xp, moedas, pontos } = t.recompensa || {};
+    assert.ok(Number.isInteger(xp) && xp >= 0 && Number.isInteger(moedas) && moedas >= 0, `${onde}: xp e moedas`);
+    assert.ok(inteiroPositivo(pontos), `${onde}: pontos`);
+    assert.ok(!("itens" in t.recompensa), `${onde}: caçada nunca dá itens (a entrega não pode travar por peso)`);
+  }
+  for (const n of Object.values(npcs).filter((n) => n.papel === "mural")) {
+    assert.ok(MISSOES[n.requer?.missao], `atalaia ${n.id}: requer.missao ${n.requer?.missao}`);
+  }
+  const ofertas = j.g("DADOS_TROCA_PONTOS");
+  for (const o of ofertas) {
+    const onde = `troca ${o.id}`;
+    if (o.item) item(o.item, onde);
+    if (o.requer?.missao) assert.ok(MISSOES[o.requer.missao], `${onde}: missão ${o.requer.missao}`);
+    if (o.requer?.troca) assert.ok(ofertas.some((x) => x.id === o.requer.troca), `${onde}: troca ${o.requer.troca}`);
+    assert.ok(inteiroPositivo(o.preco), `${onde}: preço`);
+    if (o.quantidade !== undefined) assert.ok(inteiroPositivo(o.quantidade), `${onde}: quantidade`);
   }
   const ids = [...Object.keys(npcs), ...Object.keys(inimigos)];
   assert.strictEqual(new Set(ids).size, ids.length, "ids de NPCs e criaturas são únicos");
@@ -1636,7 +1729,7 @@ teste("30. migração v6 → v7 no meio das etapas, sem perder progresso", () =>
     missaoErvas: { status: "bloqueada", recompensaRecebida: false, ervasMissaoColetadas: [] },
   }));
   let p = j.entrar();
-  assert.strictEqual(p.versao, 7);
+  assert.strictEqual(p.versao, j.g("VERSAO_SAVE"));
   igual(p.missoes.lobo, { status: "em_andamento", etapa: 0, progresso: [1] });
   igual(p.missoes.ervas, { status: "nao_iniciada", etapa: 0, progresso: [[], 0] });
   for (const campo of ["missaoEliabe", "missaoErvas", "missaoDeserto", "capitulos"]) assert.ok(!(campo in p), campo);
@@ -1717,7 +1810,7 @@ teste("30. migração v6 → v7 no meio das etapas, sem perder progresso", () =>
   assert.strictEqual(p.missoes.ervas.status, "nao_iniciada");
   igual(p.missoes.egito, { status: "nao_iniciada", etapa: 0, progresso: [0] });
 
-  // Recarregar o save v7 não muda nada.
+  // Recarregar o save migrado não muda nada.
   j.g("Storage").flush();
   const j2 = carregarJogo({ store: j.store, inicio: INICIO_RELOGIO + 120_000 });
   igual(j2.entrar().missoes, p.missoes);
@@ -1746,6 +1839,7 @@ teste("31. balões vêm de estadoMissaoNpc e nenhuma missão está escrita como 
     assert.doesNotMatch(fonte, /\b(missaoEliabe|missaoErvas|missaoDeserto)\b|\.capitulos\b|QUANTIDADE_(ERVAS|ODRES|VENENOS)/);
   }
   assert.doesNotMatch(FONTE_LOGICA, /interagirEliabe|interagirNoemi|"viajante1"|"noemi1"|"lobo1"|"veneno_escorpiao"/);
+  assert.doesNotMatch(FONTE_LOGICA, /"atalaia_|"canaa_lobos"|"deserto_ferroes"|"escorpiao"|"soldados_farao"|"alforje_couro"|"escudo_ferro"/);
 });
 
 teste("32. LEIA-ME: versão do save e funções da interface batem com o código", () => {
@@ -1774,6 +1868,814 @@ teste("32. LEIA-ME: versão do save e funções da interface batem com o código
     listadas.some((f) => f.nome === "estadoMissaoNpc" && f.params === 2),
     "estadoMissaoNpc(p, npcId) listada entre as funções para a interface",
   );
+  // Caçadas: a interface usa estas funções puras (nenhuma com parâmetro de valor padrão, que muda fn.length).
+  const cacadas = { tarefasDoMural: 2, tarefasDoJogador: 1, tarefasDoInimigo: 2, ofertasDeTroca: 1, visaoTarefa: 2, textoEspera: 1 };
+  for (const [nome, params] of Object.entries(cacadas)) {
+    assert.ok(listadas.some((f) => f.nome === nome && f.params === params), `${nome} listada no LEIA-ME com ${params} parâmetro(s)`);
+  }
+});
+
+// ---------------------------------------------------------------------
+// Caçadas dos atalaias e troca de pontos de tarefa (JGB-3)
+// ---------------------------------------------------------------------
+const HORA = 3_600_000;
+
+// Abre todos os murais (cada atalaia exige a missão principal da região).
+function concluirMissoes(j) {
+  for (const id of Object.keys(j.g("MISSOES"))) j.p.missoes[id].status = "concluida";
+}
+
+// Aceita uma caçada ao lado do atalaia do mural dela.
+function aceitarCacada(j, tarefaId) {
+  const mural = j.g("npcs")[j.g("TAREFAS")[tarefaId].mural];
+  posicionarAoLado(j, mural.area, mural);
+  return j.exec({ tipo: "aceitarTarefa", tarefaId });
+}
+
+const guardarCacada = (j, tarefaId) => j.exec({ tipo: "guardarTarefa", tarefaId });
+const progressoCacada = (j, tarefaId) => j.p.tarefas[tarefaId]?.progresso ?? null;
+const estadoCacada = (j, tarefaId) => j.g("estadoTarefa")(j.p, tarefaId);
+
+// Abate num golpe (vida 1), com espada ou flecha, e limpa o saque do chão.
+function abater(j, inimigoId, tipo = "atacar") {
+  const p = j.p;
+  const e = j.g("inimigos")[inimigoId];
+  if (j.M.obterVidaInimigo(ID, inimigoId) <= 0) j.M.reaparecerInimigo(ID, inimigoId);
+  e.x = e.inicioX;
+  e.y = e.inicioY;
+  p.vidaInimigos[inimigoId] = 1;
+  posicionarAoLado(j, e.area, e);
+  j.avancar(1000);
+  const r = j.exec({ tipo, alvoId: inimigoId });
+  assert.ok(r.derrotado, `abate de ${inimigoId}: ${r.mensagem}`);
+  p.saqueNoChao = [];
+  return r;
+}
+
+// Mural de teste sem requisito, em Canaã, e caçadas de teste nele (registradas antes de entrar).
+function registrarMuralDeTeste(j) {
+  j.g("registrarNpc")({ id: "muralTeste", nome: "Vigia de teste", area: "canaan", x: 20, y: 8, papel: "mural" });
+}
+function registrarCacadaDeTeste(j, dados) {
+  const base = { mural: "muralTeste", tipo: "ronda", curto: "Teste", descricao: "Derrote {total}.", total: 5 };
+  return j.g("registrarTarefa")(json({ ...base, recompensa: { xp: 1, moedas: 1, pontos: 1 }, ...dados }));
+}
+
+teste("33. caçadas e troca: dados coerentes, todo mural completo e invariantes de economia", () => {
+  const j = carregarJogo();
+  const [npcs, inimigos, ITENS, MISSOES] = ["npcs", "inimigos", "ITENS", "MISSOES"].map((n) => j.g(n));
+  const TAREFAS = j.g("TAREFAS");
+  const REGRAS = j.g("REGRAS_TAREFAS");
+  const casaAlvo = j.g("casaAlvo");
+  const brutos = j.g("DADOS_TAREFAS");
+  // Caçadas (as referências a criaturas, famílias, áreas, NPCs e missões ficam no teste 27).
+  const ids = brutos.map((t) => t.id);
+  assert.strictEqual(new Set(ids).size, ids.length, "ids de caçada únicos");
+  for (const t of brutos) {
+    const onde = `caçada ${t.id}`;
+    assert.match(t.id, /^[a-z_]+$/, `${onde}: id`);
+    const listas = ["criaturas", "especies", "familias"].filter((k) => (t.alvo?.[k] || []).length);
+    assert.ok(listas.length, `${onde}: o alvo precisa de ao menos uma lista não vazia`);
+    for (const k of Object.keys(t.alvo)) assert.ok(["criaturas", "especies", "familias", "area"].includes(k), `${onde}: alvo.${k}`);
+    const casam = Object.values(inimigos).filter((e) => casaAlvo(TAREFAS[t.id].alvo, e));
+    assert.ok(casam.length, `${onde}: nenhuma criatura conta para esta caçada`);
+    for (const k of ["nome", "curto", "descricao"]) assert.strictEqual(typeof t[k], "string", `${onde}: ${k}`);
+    for (const [, nome] of t.descricao.matchAll(/\{(\w+)\}/g)) assert.strictEqual(nome, "total", `${onde}: variável {${nome}}`);
+    if (t.requer?.nivel !== undefined) assert.ok(Number.isInteger(t.requer.nivel) && t.requer.nivel >= 1, `${onde}: nivel`);
+    if (t.esperaHoras !== undefined) assert.ok(t.esperaHoras > 0, `${onde}: esperaHoras`);
+    if (t.oculta !== undefined) assert.strictEqual(typeof t.oculta, "boolean", `${onde}: oculta`);
+    assert.ok(TAREFAS[t.id].esperaHoras > 0, `${onde}: espera do tipo`);
+  }
+  for (const [tipo, d] of Object.entries(j.g("TIPOS_TAREFA"))) assert.ok(d.nome && d.esperaHoras > 0, `tipo ${tipo}`);
+  // Murais: toda área com criaturas tem um atalaia com ao menos uma ronda e uma grande caçada.
+  const murais = Object.values(npcs).filter((n) => n.papel === "mural");
+  for (const area of new Set(Object.values(inimigos).map((e) => e.area))) {
+    const atalaia = murais.find((n) => n.area === area);
+    assert.ok(atalaia, `${area} tem criaturas e precisa de um atalaia`);
+    const tipos = brutos.filter((t) => t.mural === atalaia.id && !t.oculta).map((t) => t.tipo);
+    assert.ok(tipos.includes("ronda") && tipos.includes("grande"), `${atalaia.id}: ronda e grande caçada`);
+  }
+  const FALAS = j.g("FALAS_MURAL");
+  for (const k of ["saudacao", "entrega", "bloqueado", "subiuNivel"]) assert.strictEqual(typeof FALAS[k], "string", `FALAS_MURAL.${k}`);
+  for (const texto of Object.values(FALAS)) {
+    for (const [, nome] of texto.matchAll(/\{(\w+)\}/g)) assert.ok(["recompensa", "requisito", "nivel"].includes(nome), `FALAS_MURAL: {${nome}}`);
+  }
+  // Troca de pontos.
+  const ofertas = j.g("DADOS_TROCA_PONTOS");
+  assert.strictEqual(new Set(ofertas.map((o) => o.id)).size, ofertas.length, "ids de troca únicos");
+  for (const o of ofertas) {
+    const onde = `troca ${o.id}`;
+    assert.ok(!!o.item !== !!o.melhoria, `${onde}: exatamente um de item e melhoria`);
+    if (o.melhoria) {
+      assert.deepStrictEqual(Object.keys(o.melhoria), ["carga"], `${onde}: melhoria só de carga`);
+      assert.ok(Number.isInteger(o.melhoria.carga) && o.melhoria.carga > 0, `${onde}: carga`);
+      assert.strictEqual(typeof o.nome, "string", `${onde}: nome da melhoria`);
+    } else {
+      assert.ok(ITENS[o.item], `${onde}: item`);
+      assert.ok(!(o.item in j.g("PRECOS_LOJA")) && !(o.item in j.g("VALORES_VENDA")), `${onde}: pontos nunca viram moedas`);
+    }
+    if (o.requer?.missao) assert.ok(MISSOES[o.requer.missao], `${onde}: missão`);
+  }
+  assert.ok(Number.isInteger(REGRAS.limiteAtivas) && REGRAS.limiteAtivas >= 1, "limiteAtivas");
+  assert.ok(REGRAS.bonusPrimeiraVez >= 0, "bonusPrimeiraVez");
+  // Economia: pontos não caem de um mural para o seguinte (por tipo), a grande vale ao menos 4 rondas
+  // e a troca inteira custa mais que uma volta completa com o bônus de primeira vez.
+  const ordemAreas = ["canaan", "deserto", ...j.g("ORDEM_CAPITULOS")];
+  const visiveis = brutos.filter((t) => !t.oculta);
+  const pontosDe = (mural, tipo) => visiveis.filter((t) => t.mural === mural && t.tipo === tipo).map((t) => t.recompensa.pontos);
+  const muraisEmOrdem = ordemAreas.map((a) => murais.find((n) => n.area === a)).filter(Boolean);
+  for (const tipo of Object.keys(j.g("TIPOS_TAREFA"))) {
+    let maiorAnterior = 0;
+    for (const n of muraisEmOrdem) {
+      const pts = pontosDe(n.id, tipo);
+      if (!pts.length) continue;
+      assert.ok(Math.min(...pts) >= maiorAnterior, `${tipo} de ${n.id} (${Math.min(...pts)}) vale menos que no mural anterior`);
+      maiorAnterior = Math.max(...pts);
+    }
+  }
+  for (const n of muraisEmOrdem) {
+    const ronda = Math.max(...pontosDe(n.id, "ronda"));
+    assert.ok(Math.min(...pontosDe(n.id, "grande")) >= 4 * ronda, `${n.id}: a grande caçada vale ao menos 4 rondas`);
+  }
+  const somaTroca = ofertas.reduce((s, o) => s + o.preco, 0);
+  const volta = visiveis.reduce((s, t) => s + t.recompensa.pontos, 0) * (1 + REGRAS.bonusPrimeiraVez);
+  assert.ok(somaTroca > volta, `troca inteira (${somaTroca}) precisa custar mais que uma volta com bônus (${volta})`);
+});
+
+teste("34. caçadas: cada abate conta para todas as ativas que casam (golpe, flecha e missão juntos)", () => {
+  const j = carregarJogo();
+  registrarMuralDeTeste(j);
+  registrarCacadaDeTeste(j, { id: "t_farao", nome: "Faraó", alvo: { familias: ["soldados_farao"] } });
+  registrarCacadaDeTeste(j, { id: "t_farao_mar", nome: "Faraó no mar", alvo: { familias: ["soldados_farao"], area: "marVermelho" } });
+  registrarCacadaDeTeste(j, { id: "t_lobo", nome: "Lobo e missão", alvo: { criaturas: ["lobo1"] } });
+  j.entrar();
+  concluirMissoes(j);
+  const p = j.p;
+  for (const id of ["deserto_ferroes", "deserto_rotas", "deserto_bando"]) assert.ok(aceitarCacada(j, id).ok, id);
+  // 1 escorpião: as duas caçadas de escorpião avançam; a do bando, não. Sem "Caçada" na mensagem.
+  const r1 = abater(j, "escorpiao1");
+  igual(r1.tarefas, [
+    { id: "deserto_ferroes", nome: "Ferrões no caminho", curto: "Escorpiões", progresso: 1, meta: 40, cumpridaAgora: false },
+    { id: "deserto_rotas", nome: "As rotas das caravanas", curto: "Escorpiões", progresso: 1, meta: 150, cumpridaAgora: false },
+  ]);
+  assert.doesNotMatch(r1.mensagem, /Caçada/);
+  assert.strictEqual(progressoCacada(j, "deserto_bando"), 0);
+  // O chefe do bando (alvo por instância) só conta para a caçada dele.
+  const r2 = abater(j, "bandido1");
+  igual(r2.tarefas.map((t) => [t.id, t.progresso]), [["deserto_bando", 1]]);
+  assert.strictEqual(progressoCacada(j, "deserto_ferroes"), 1);
+  // Flecha também conta.
+  p.equipamento.arma = null;
+  p.equipamento.arco = "arco_madeira";
+  p.inventario.push("flecha", "flecha");
+  const r3 = abater(j, "escorpiao1", "atacarDistancia");
+  assert.strictEqual(r3.tipoAtaque, "distancia");
+  igual(r3.tarefas.map((t) => [t.id, t.progresso]), [["deserto_ferroes", 2], ["deserto_rotas", 2]]);
+  // Meta − 1: o abate seguinte cumpre a caçada; um abate a mais não passa da meta.
+  p.tarefas.deserto_ferroes.progresso = 39;
+  const r4 = abater(j, "escorpiao1");
+  igual(r4.tarefas[0], { id: "deserto_ferroes", nome: "Ferrões no caminho", curto: "Escorpiões", progresso: 40, meta: 40, cumpridaAgora: true });
+  assert.match(r4.mensagem, /\+60 XP\..* Caçada cumprida: Ferrões no caminho \(40\/40\)! Entregue a qualquer atalaia\. /);
+  assert.strictEqual(estadoCacada(j, "deserto_ferroes"), "cumprida");
+  const r5 = abater(j, "escorpiao1");
+  igual(r5.tarefas.map((t) => t.id), ["deserto_rotas"]);
+  assert.strictEqual(progressoCacada(j, "deserto_ferroes"), 40);
+  assert.doesNotMatch(r5.mensagem, /Caçada/);
+  // Não contam: abate antes de aceitar, caçada guardada e caçada em espera.
+  abater(j, "lobo1");
+  assert.strictEqual(p.tarefas.canaa_lobos, undefined, "abate antes de aceitar não cria progresso");
+  assert.strictEqual(progressoCacada(j, "deserto_rotas"), 4);
+  assert.ok(guardarCacada(j, "deserto_rotas").ok);
+  falar(j, "atalaia_deserto"); // entrega Ferrões: fica em espera
+  assert.strictEqual(estadoCacada(j, "deserto_ferroes"), "espera");
+  const r6 = abater(j, "escorpiao1");
+  igual(r6.tarefas, []);
+  assert.strictEqual(progressoCacada(j, "deserto_rotas"), 4, "guardada não conta");
+  assert.strictEqual(progressoCacada(j, "deserto_ferroes"), 0, "em espera não conta");
+  // Família: soldados de Faraó contam no Egito e no Mar Vermelho; com area, só no Mar Vermelho.
+  assert.ok(aceitarCacada(j, "t_farao").ok);
+  assert.ok(aceitarCacada(j, "t_farao_mar").ok);
+  igual(abater(j, "soldadoEgito1").tarefas.map((t) => t.id), ["t_farao"]);
+  igual(abater(j, "perseguidorMar1").tarefas.map((t) => t.id), ["t_farao", "t_farao_mar"]);
+  assert.deepStrictEqual([progressoCacada(j, "t_farao"), progressoCacada(j, "t_farao_mar")], [2, 1]);
+  // O mesmo abate cumpre o objetivo da missão e avança a caçada.
+  assert.ok(guardarCacada(j, "t_farao_mar").ok);
+  assert.ok(aceitarCacada(j, "t_lobo").ok);
+  assert.strictEqual(progressoCacada(j, "t_lobo"), 0, "o lobo abatido antes de aceitar não conta");
+  p.missoes.lobo = { status: "em_andamento", etapa: 0, progresso: [0] };
+  const r7 = abater(j, "lobo1");
+  igual(p.missoes.lobo.progresso, [1]);
+  igual(r7.tarefas.map((t) => [t.id, t.progresso]), [["t_lobo", 1]]);
+  assert.match(r7.mensagem, /Volte a Eliabe\./);
+});
+
+teste("35. caçadas: aceitar, guardar, limite de 3, visões e balões dos atalaias", () => {
+  const j = carregarJogo();
+  const descricao = "Derrote {total}.";
+  const recompensa = { xp: 1, moedas: 1, pontos: 1 };
+  const antiga = { id: "t_oculta", mural: "atalaia_canaa", tipo: "ronda", nome: "Antiga", curto: "Antiga", descricao, recompensa };
+  j.g("registrarTarefa")(json({ ...antiga, alvo: { especies: ["lobo"] }, total: 5, oculta: true }));
+  j.entrar();
+  const p = j.p;
+  const npcs = j.g("npcs");
+  const balao = (id) => j.g("estadoMissaoNpc")(p, id);
+  const aceitar = (tarefaId) => j.exec({ tipo: "aceitarTarefa", tarefaId });
+  // 1. Personagem novo: mural de Canaã fechado.
+  assert.strictEqual(balao("atalaia_canaa"), null);
+  const fechado = falar(j, "atalaia_canaa");
+  assert.ok(!("abrirMural" in fechado));
+  assert.strictEqual(fechado.mensagem, "Atalaia: Ainda não posso pôr seu nome no rol. Volte depois de concluir a missão “Ervas para os feridos”.");
+  // 2. Com as ervas entregues: "!" e o mural abre.
+  p.missoes.lobo.status = "concluida";
+  p.missoes.ervas.status = "concluida";
+  assert.strictEqual(balao("atalaia_canaa"), "missao");
+  const aberto = falar(j, "atalaia_canaa");
+  igual(aberto, { ok: true, mensagem: `Atalaia: ${j.g("FALAS_MURAL").saudacao}`, abrirMural: "atalaia_canaa" });
+  // 3. Aceitar: longe, mural de outra região, desconhecida, válida, repetida e bloqueada.
+  p.x = 2;
+  p.y = 2;
+  assert.strictEqual(aceitar("canaa_lobos").mensagem, "Fale com o atalaia (Canaã) para aceitar esta caçada.");
+  posicionarAoLado(j, "canaan", npcs.atalaia_canaa);
+  const r1 = aceitar("deserto_ferroes");
+  assert.strictEqual(r1.ok, false);
+  assert.strictEqual(r1.mensagem, "Fale com o atalaia (Deserto) para aceitar esta caçada.");
+  assert.strictEqual(aceitar("nada").mensagem, "Caçada desconhecida.");
+  igual(p.tarefas, {}, "recusas não mudam o save");
+  const inicio = j.agora;
+  igual(aceitar("canaa_lobos"), { ok: true, tarefaId: "canaa_lobos", retomada: false, mensagem: "Caçada aceita: Lobos na estrada (0/30)." });
+  igual(p.tarefas.canaa_lobos, { ativa: true, progresso: 0, meta: 30, concluidas: 0, disponivelEm: 0, aceitaEm: inicio });
+  assert.strictEqual(balao("atalaia_canaa"), "mural");
+  assert.strictEqual(aceitar("canaa_lobos").mensagem, "Você já acompanha esta caçada.");
+  assert.strictEqual(aceitarCacada(j, "deserto_ferroes").mensagem, "Para aceitar, é preciso concluir a missão “A caravana do deserto”.");
+  assert.strictEqual(balao("atalaia_deserto"), null);
+  // 4. Limite de 3 (contando as cumpridas).
+  concluirMissoes(j);
+  j.avancar(1000);
+  assert.ok(aceitarCacada(j, "canaa_matilha").ok);
+  j.avancar(1000);
+  assert.ok(aceitarCacada(j, "deserto_ferroes").ok);
+  const antes = json(p.tarefas);
+  assert.strictEqual(aceitarCacada(j, "deserto_rotas").mensagem, "Você já acompanha 3 caçadas. Guarde uma para aceitar outra.");
+  igual(p.tarefas, antes);
+  // 5. Guardar (de qualquer lugar) mantém o progresso e libera a vaga; retomar só no mural certo.
+  p.tarefas.deserto_ferroes.progresso = 27;
+  posicionarAoLado(j, "canaan", npcs.atalaia_canaa);
+  igual(guardarCacada(j, "deserto_ferroes"), {
+    ok: true,
+    tarefaId: "deserto_ferroes",
+    mensagem: "Caçada guardada com 27/40. Para retomar, fale com o atalaia (Deserto).",
+  });
+  assert.strictEqual(estadoCacada(j, "deserto_ferroes"), "guardada");
+  assert.ok(aceitarCacada(j, "deserto_rotas").ok, "a vaga foi liberada");
+  posicionarAoLado(j, "canaan", npcs.atalaia_canaa);
+  assert.strictEqual(aceitar("deserto_ferroes").mensagem, "Fale com o atalaia (Deserto) para aceitar esta caçada.");
+  // Guardar sem progresso não promete um "retomar": a caçada só volta a ficar disponível no mural.
+  igual(guardarCacada(j, "deserto_rotas"), {
+    ok: true,
+    tarefaId: "deserto_rotas",
+    mensagem: "Caçada devolvida ao mural: As rotas das caravanas. Para aceitar de novo, fale com o atalaia (Deserto).",
+  });
+  assert.strictEqual(estadoCacada(j, "deserto_rotas"), "disponivel");
+  j.avancar(1000);
+  const retomada = aceitarCacada(j, "deserto_ferroes");
+  igual(retomada, { ok: true, tarefaId: "deserto_ferroes", retomada: true, mensagem: "Caçada retomada: Ferrões no caminho (27/40)." });
+  assert.strictEqual(p.tarefas.deserto_ferroes.progresso, 27);
+  p.tarefas.canaa_lobos.progresso = 30;
+  assert.strictEqual(guardarCacada(j, "canaa_lobos").mensagem, "Esta caçada já foi cumprida: entregue-a a qualquer atalaia.");
+  assert.strictEqual(guardarCacada(j, "deserto_rotas").mensagem, "Esta caçada não está ativa.");
+  assert.strictEqual(guardarCacada(j, "nada").mensagem, "Caçada desconhecida.");
+  // 6. "?" em todo atalaia quando há caçada cumprida, até num de mural fechado.
+  assert.strictEqual(balao("atalaia_egito"), "entregar");
+  p.missoes.egito = { status: "nao_iniciada", etapa: 0, progresso: [0] };
+  assert.strictEqual(balao("atalaia_egito"), "entregar");
+  p.tarefas.canaa_lobos.progresso = 29;
+  assert.strictEqual(balao("atalaia_egito"), null);
+  assert.strictEqual(balao("atalaia_sinai"), "missao");
+  p.tarefas.canaa_lobos.progresso = 30;
+  // 7. Visões. Ferrões guardada, Bando em espera, Rotas disponível; Egito bloqueado.
+  assert.ok(guardarCacada(j, "deserto_ferroes").ok);
+  p.tarefas.deserto_bando = { ativa: false, progresso: 0, meta: 15, concluidas: 1, disponivelEm: j.agora + 5 * HORA, aceitaEm: 1 };
+  const mural = (npcId) => j.g("tarefasDoMural")(p, npcId).map((v) => [v.id, v.estado]);
+  igual(mural("atalaia_canaa"), [["canaa_lobos", "cumprida"], ["canaa_matilha", "ativa"]], "a oculta não aparece");
+  igual(mural("atalaia_deserto"), [["deserto_ferroes", "guardada"], ["deserto_bando", "espera"], ["deserto_rotas", "disponivel"]]);
+  for (const v of j.g("tarefasDoMural")(p, "atalaia_egito")) {
+    assert.strictEqual(v.estado, "bloqueada");
+    assert.strictEqual(v.motivo, "concluir a missão “A saída do Egito”");
+  }
+  const visao = (id) => j.g("visaoTarefa")(p, id);
+  assert.strictEqual(visao("deserto_bando").esperaMs, 5 * HORA);
+  assert.strictEqual(visao("deserto_bando").pontosNaEntrega, 8, "sem bônus depois da 1ª entrega");
+  igual(visao("deserto_ferroes"), {
+    id: "deserto_ferroes",
+    nome: "Ferrões no caminho",
+    curto: "Escorpiões",
+    tipo: "ronda",
+    tipoNome: "Ronda",
+    mural: "atalaia_deserto",
+    area: "deserto",
+    nomeArea: "Deserto",
+    descricao: "Derrote 40 escorpiões nas pedras a oeste do acampamento.",
+    valem: ["Escorpião"],
+    retrato: "escorpiao1",
+    meta: 40,
+    progresso: 27,
+    estado: "guardada",
+    esperaMs: 0,
+    motivo: "",
+    recompensa: { xp: 360, moedas: 80, pontos: 10 },
+    pontosNaEntrega: 15,
+    primeiraVez: true,
+    concluidas: 0,
+    aceitaEm: p.tarefas.deserto_ferroes.aceitaEm,
+  });
+  igual(visao("egito_farao").valem, ["Guarda egípcio", "Soldado perseguidor"]);
+  assert.strictEqual(visao("egito_farao").tipoNome, "Grande caçada");
+  // tarefasDoJogador: ativas e cumpridas por aceitaEm, depois as guardadas.
+  p.tarefas.canaa_lobos.aceitaEm = j.agora + 5;
+  p.tarefas.deserto_ferroes.aceitaEm = 0;
+  igual(j.g("tarefasDoJogador")(p).map((v) => v.id), ["canaa_matilha", "canaa_lobos", "deserto_ferroes"]);
+  // tarefasDoInimigo: só as ativas ainda não cumpridas.
+  assert.ok(aceitarCacada(j, "deserto_rotas").ok);
+  igual(j.g("tarefasDoInimigo")(p, "escorpiao1").map((v) => v.id), ["deserto_rotas"]);
+  igual(j.g("tarefasDoInimigo")(p, "lobo1").map((v) => v.id), ["canaa_matilha"]);
+  igual(j.g("tarefasDoInimigo")(p, "nada"), []);
+  // oculta: fora do mural e não aceita; quem já a acompanha continua vendo.
+  assert.strictEqual(aceitarCacada(j, "t_oculta").mensagem, "Esta caçada não está mais no mural.");
+  p.tarefas.t_oculta = { ativa: true, progresso: 2, meta: 5, concluidas: 0, disponivelEm: 0, aceitaEm: j.agora };
+  assert.ok(mural("atalaia_canaa").some(([id]) => id === "t_oculta"));
+  assert.ok(j.g("tarefasDoJogador")(p).some((v) => v.id === "t_oculta"));
+});
+
+teste("36. caçadas: entrega em qualquer atalaia, espera contada da entrega e a morte não mexe em nada", () => {
+  const j = carregarJogo();
+  j.entrar();
+  concluirMissoes(j);
+  const p = j.p;
+  const limiar = j.g("limiarNivel");
+  p.nivel = 20;
+  p.xp = limiar(19); // os 420 XP (abate + entrega) não sobem de nível
+  assert.ok(aceitarCacada(j, "deserto_ferroes").ok);
+  const aceitaEm = j.agora;
+  p.tarefas.deserto_ferroes.progresso = 39;
+  abater(j, "escorpiao1");
+  // 1 e 2. Entrega noutra região, com a mochila acima da capacidade.
+  while (j.g("pesoCarregado")(p) <= j.g("capacidadeCarga")(p) + 5) p.inventario.push("espada_ferro");
+  const moedas = p.moedas;
+  const r = falar(j, "atalaia_egito");
+  igual(r, {
+    ok: true,
+    mensagem: "Atalaia: Bom trabalho! Anotei no rol: Ferrões no caminho (+360 XP, 80 moedas, 15 pontos de tarefa).",
+    abrirMural: "atalaia_egito",
+    tarefasEntregues: [{ id: "deserto_ferroes", nome: "Ferrões no caminho", xp: 360, moedas: 80, pontos: 15, primeiraVez: true }],
+    niveis: [],
+  });
+  assert.strictEqual(p.moedas, moedas + 80);
+  assert.strictEqual(p.xp, limiar(19) + 60 + 360);
+  assert.deepStrictEqual([p.pontosTarefa, p.pontosTarefaTotal], [15, 15]);
+  igual(p.tarefas.deserto_ferroes, { ativa: false, progresso: 0, meta: 40, concluidas: 1, disponivelEm: j.agora + 20 * HORA, aceitaEm });
+  assert.strictEqual(j.g("estadoMissaoNpc")(p, "atalaia_egito"), "missao", "o ? some depois da entrega");
+  const deNovo = falar(j, "atalaia_egito");
+  assert.ok(!("tarefasEntregues" in deNovo), "nada a entregar");
+  // 3 e 4. Espera de 20 h a partir da entrega.
+  j.avancar(20 * HORA - 60_000);
+  assert.strictEqual(estadoCacada(j, "deserto_ferroes"), "espera");
+  assert.strictEqual(aceitarCacada(j, "deserto_ferroes").mensagem, "Esta caçada volta ao mural em 1 min.");
+  j.avancar(60_000);
+  assert.strictEqual(estadoCacada(j, "deserto_ferroes"), "disponivel");
+  assert.ok(aceitarCacada(j, "deserto_ferroes").ok);
+  p.tarefas.deserto_ferroes.progresso = 39;
+  abater(j, "escorpiao1");
+  const segunda = falar(j, "atalaia_deserto");
+  igual(segunda.tarefasEntregues.map((t) => [t.pontos, t.primeiraVez]), [[10, false]], "a 2ª entrega não tem bônus");
+  assert.deepStrictEqual([p.pontosTarefa, p.pontosTarefaTotal], [25, 25]);
+  assert.strictEqual(p.tarefas.deserto_ferroes.concluidas, 2);
+  // 5 e 6. Grande caçada: 164 h de espera; subir de nível na entrega aparece na fala.
+  assert.ok(aceitarCacada(j, "deserto_rotas").ok);
+  p.tarefas.deserto_rotas.progresso = 149;
+  abater(j, "escorpiao1");
+  p.xp = limiar(p.nivel) - 1; // 1800 XP depois do limiar: 3 níveis de 650 XP
+  const nivel = p.nivel;
+  const grande = falar(j, "atalaia_deserto");
+  igual(grande.niveis, [nivel + 1, nivel + 2, nivel + 3]);
+  assert.strictEqual(
+    grande.mensagem,
+    `Atalaia: Bom trabalho! Anotei no rol: As rotas das caravanas (+1800 XP, 300 moedas, 75 pontos de tarefa). Você subiu para o nível ${nivel + 3}!`,
+  );
+  const visao = j.g("visaoTarefa")(p, "deserto_rotas");
+  assert.strictEqual(visao.esperaMs, 164 * HORA);
+  assert.strictEqual(j.g("textoEspera")(visao.esperaMs), "6 d 20 h");
+  j.avancar(164 * HORA - 1);
+  assert.strictEqual(estadoCacada(j, "deserto_rotas"), "espera");
+  j.avancar(1);
+  assert.strictEqual(estadoCacada(j, "deserto_rotas"), "disponivel");
+  // 7. textoEspera.
+  const texto = j.g("textoEspera");
+  const exemplos = [[0, "agora"], [30_000, "1 min"], [45 * 60_000, "45 min"], [19 * HORA + 59 * 60_000, "19 h 59 min"]];
+  exemplos.push([20 * HORA, "20 h"], [164 * HORA, "6 d 20 h"], [48 * HORA + 30 * 60_000, "2 d"], [-5, "agora"]);
+  for (const [ms, esperado] of exemplos) assert.strictEqual(texto(ms), esperado, `textoEspera(${ms})`);
+  // 8. A morte (com a penalidade mais dura) não toca em caçadas, pontos nem trocas.
+  assert.ok(aceitarCacada(j, "canaa_lobos").ok);
+  p.tarefas.canaa_lobos.progresso = 7;
+  p.trocas.alforje_couro = 1;
+  const antes = json({ tarefas: p.tarefas, pontos: p.pontosTarefa, total: p.pontosTarefaTotal, trocas: p.trocas });
+  p.nivel = 60;
+  j.definirAleatorio(() => 0.01);
+  const morte = j.M.aplicarMorte(ID, "inimigo");
+  assert.ok(morte.penalidade.moedas > 0 && morte.penalidade.item, "a morte aplicou a penalidade");
+  igual({ tarefas: p.tarefas, pontos: p.pontosTarefa, total: p.pontosTarefaTotal, trocas: p.trocas }, antes);
+});
+
+teste("37. troca de pontos: recusas sem mudar nada, itens, alforjes e estados das ofertas", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const npcs = j.g("npcs");
+  const carga = () => j.g("capacidadeCarga")(p);
+  const trocar = (ofertaId) => j.exec({ tipo: "trocarPontos", ofertaId });
+  const recusa = (ofertaId, mensagem) => {
+    const antes = json(p);
+    const r = trocar(ofertaId);
+    assert.strictEqual(r.ok, false, ofertaId);
+    if (mensagem instanceof RegExp) assert.match(r.mensagem, mensagem);
+    else assert.strictEqual(r.mensagem, mensagem);
+    igual(p, antes, `a recusa de ${ofertaId} não muda o save`);
+  };
+  recusa("nada", "Essa troca não existe.");
+  recusa("alforje_couro", "Aproxime-se de um atalaia para trocar pontos.");
+  posicionarAoLado(j, "canaan", npcs.atalaia_canaa);
+  recusa("alforje_couro", "Aproxime-se de um atalaia para trocar pontos."); // mural ainda fechado
+  p.missoes.lobo.status = "concluida";
+  p.missoes.ervas.status = "concluida";
+  recusa("alforje_couro", "Faltam 60 pontos de tarefa.");
+  p.pontosTarefa = 59;
+  recusa("alforje_couro", "Falta 1 ponto de tarefa.");
+  p.pontosTarefa = 500;
+  p.pontosTarefaTotal = 800;
+  recusa("escudo_ferro", "Para trocar, é preciso concluir a missão “A saída do Egito”.");
+  recusa("alforje_viagem", "Para trocar, é preciso ter Alforje de couro.");
+  p.missoes.deserto.status = "concluida";
+  p.missoes.egito.status = "concluida";
+  while (j.g("pesoCarregado")(p) + 8 <= carga()) p.inventario.push("pocao");
+  recusa("escudo_ferro", /^Mochila cheia \([\d.]+\/\d+ kg\)\. Libere espaço para receber Escudo de ferro\.$/);
+  j.M.removerItens(p, "pocao", 999);
+  // Item: desconta o saldo (o total da vida não muda) e entra na mochila; pode repetir.
+  igual(trocar("escudo_ferro"), { ok: true, ofertaId: "escudo_ferro", pontos: 350, mensagem: "Troca feita: Escudo de ferro por 150 pontos de tarefa. Saldo: 350." });
+  assert.strictEqual(j.M.contarItem(ID, "escudo_ferro"), 1);
+  assert.strictEqual(p.pontosTarefaTotal, 800);
+  igual(p.trocas, { escudo_ferro: 1 });
+  // Alforjes: +10 kg cada, uma vez; o de viagem exige o de couro.
+  const cargaAntes = carga();
+  const couro = trocar("alforje_couro");
+  assert.strictEqual(couro.mensagem, "Troca feita: Alforje de couro (+10 kg de carga) por 60 pontos de tarefa. Saldo: 290.");
+  assert.strictEqual(carga(), cargaAntes + 10);
+  recusa("alforje_couro", "Você já tem Alforje de couro.");
+  assert.ok(trocar("alforje_viagem").ok);
+  assert.strictEqual(carga(), cargaAntes + 20);
+  assert.strictEqual(p.pontosTarefa, 110);
+  // O Azarias não compra (nem vende) itens da troca.
+  posicionarAoLado(j, "deserto", npcs.mercador1);
+  assert.strictEqual(j.exec({ tipo: "vender", item: "escudo_ferro" }).ok, false);
+  assert.strictEqual(j.exec({ tipo: "comprar", item: "couraca_escamas" }).ok, false);
+  assert.strictEqual(j.M.contarItem(ID, "escudo_ferro"), 1);
+  // ofertasDeTroca: os quatro estados.
+  const estados = () => j.g("ofertasDeTroca")(p).map((o) => [o.id, o.estado]);
+  igual(estados(), [["alforje_couro", "comprada"], ["escudo_ferro", "semPontos"], ["alforje_viagem", "comprada"], ["couraca_escamas", "bloqueada"]]);
+  const [alforje, escudo, , couraca] = j.g("ofertasDeTroca")(p);
+  igual(escudo, {
+    id: "escudo_ferro",
+    nome: "Escudo de ferro",
+    icone: null,
+    item: "escudo_ferro",
+    quantidade: 1,
+    efeito: "Defesa 7",
+    preco: 150,
+    estado: "semPontos",
+    motivo: "",
+    falta: 40,
+    possui: 1,
+  });
+  assert.deepStrictEqual([alforje.icone, alforje.item, alforje.efeito], ["ui_alforje", null, "+10 kg de carga, para sempre"]);
+  assert.strictEqual(couraca.motivo, "concluir a missão “A batalha de Refidim”");
+  p.pontosTarefa = 150;
+  igual(estados()[1], ["escudo_ferro", "disponivel"]);
+  // possui: unidades do item na mochila e equipadas (a interface confirma antes de trocar outro).
+  const possui = () => j.g("ofertasDeTroca")(p).map((o) => o.possui);
+  igual(possui(), [0, 1, 0, 0]);
+  assert.ok(j.M.equiparItem(ID, "escudo_ferro", "escudo").ok);
+  igual(possui(), [0, 1, 0, 0], "o escudo equipado conta");
+  p.inventario.push("escudo_ferro");
+  igual(possui(), [0, 2, 0, 0]);
+});
+
+teste("38. migração para a v8: saves v5, v6 e v7 ganham caçadas vazias; v8 recarrega igual; corrompido é normalizado", () => {
+  const vazio = (p, onde) => {
+    igual([p.tarefas, p.pontosTarefa, p.pontosTarefaTotal, p.trocas], [{}, 0, 0, {}], onde);
+    assert.strictEqual(p.versao, 8, onde);
+  };
+  const avisos8 = (p) => p.avisosPendentes.filter((a) => a.id === "atualizacao_8").length;
+  const recarregar = (j, ms) => {
+    j.g("Storage").flush();
+    const j2 = carregarJogo({ store: j.store, inicio: j.agora + ms });
+    j2.entrar();
+    return j2;
+  };
+  // v5 (fixture) e v6.
+  const v5 = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "save_v5.json"), "utf8"));
+  let j = carregarJogo({ store: { save_jogador1: JSON.stringify(v5) }, inicio: INICIO_RELOGIO + 60_000 });
+  let p = j.entrar();
+  vazio(p, "v5");
+  assert.deepStrictEqual([p.moedas, p.nivel, p.xp], [v5.moedas, v5.nivel, v5.xp]);
+  assert.strictEqual(avisos8(p), 1);
+  j = saveV6(() => ({}));
+  p = j.entrar();
+  vazio(p, "v6");
+  assert.strictEqual(p.missoes.ervas.status, "concluida");
+  assert.strictEqual(avisos8(p), 1);
+  // v7 sintético: um personagem com progresso, gravado sem os campos novos.
+  const base = carregarJogo();
+  base.entrar();
+  Object.assign(base.p, { nivel: 6, xp: 1100, moedas: 321 });
+  base.p.missoes.lobo.status = "concluida";
+  base.p.missoes.deserto = { status: "em_andamento", etapa: 1, progresso: [["saque_a"], 0] };
+  base.p.inventario.push("pele_lobo", "espada_ferro", "veneno_escorpiao");
+  base.g("Storage").flush();
+  const v7 = JSON.parse(base.store.save_jogador1);
+  for (const campo of ["tarefas", "pontosTarefa", "pontosTarefaTotal", "trocas"]) delete v7[campo];
+  Object.assign(v7, { versao: 7, avisosPendentes: [] });
+  j = carregarJogo({ store: { save_jogador1: JSON.stringify(v7) }, inicio: INICIO_RELOGIO + 60_000 });
+  p = j.entrar();
+  vazio(p, "v7");
+  for (const campo of ["inventario", "moedas", "missoes", "equipamento", "nivel", "xp"]) igual(p[campo], v7[campo], campo);
+  assert.strictEqual(avisos8(p), 1);
+  let j2 = recarregar(j, 60_000);
+  assert.strictEqual(avisos8(j2.p), 1, "recarregar antes de ler o aviso não o duplica");
+  while (j2.M.consumirAviso(ID));
+  assert.strictEqual(avisos8(recarregar(j2, 60_000).p), 0, "o aviso aparece uma vez");
+  const novo = carregarJogo();
+  vazio(novo.entrar(), "novo");
+  assert.strictEqual(avisos8(novo.p), 0, "personagem novo não recebe o aviso");
+  // v8 com caçadas em andamento, pontos e trocas: recarrega idêntico.
+  j = carregarJogo();
+  j.entrar();
+  concluirMissoes(j);
+  p = j.p;
+  assert.ok(aceitarCacada(j, "canaa_lobos").ok);
+  assert.ok(aceitarCacada(j, "deserto_ferroes").ok);
+  p.tarefas.deserto_ferroes.progresso = 39;
+  abater(j, "escorpiao1");
+  abater(j, "lobo1");
+  falar(j, "atalaia_canaa"); // entrega Ferrões
+  assert.ok(aceitarCacada(j, "deserto_rotas").ok);
+  p.tarefas.deserto_rotas.progresso = 12;
+  assert.ok(guardarCacada(j, "deserto_rotas").ok);
+  p.pontosTarefa = 200;
+  p.pontosTarefaTotal = 215;
+  posicionarAoLado(j, "canaan", j.g("npcs").atalaia_canaa);
+  assert.ok(j.exec({ tipo: "trocarPontos", ofertaId: "alforje_couro" }).ok);
+  const salvo = json({ tarefas: p.tarefas, pontos: p.pontosTarefa, total: p.pontosTarefaTotal, trocas: p.trocas });
+  const cargaSalva = j.g("capacidadeCarga")(p);
+  j2 = recarregar(j, 30 * 60_000);
+  const p2 = j2.p;
+  igual({ tarefas: p2.tarefas, pontos: p2.pontosTarefa, total: p2.pontosTarefaTotal, trocas: p2.trocas }, salvo);
+  assert.strictEqual(j2.g("capacidadeCarga")(p2), cargaSalva, "o alforje continua valendo");
+  igual(j2.g("tarefasDoJogador")(p2).map((v) => [v.id, v.estado, v.progresso]), [["canaa_lobos", "ativa", 1], ["deserto_rotas", "guardada", 12]]);
+  assert.strictEqual(j2.g("estadoTarefa")(p2, "deserto_ferroes"), "espera");
+  // Save v8 corrompido.
+  const corrompido = json(p2);
+  const agora = INICIO_RELOGIO + 1_000_000;
+  corrompido.tarefas = {
+    canaa_lobos: { ativa: true, progresso: -5, meta: 30, concluidas: 1, disponivelEm: 0, aceitaEm: 10, extra: "fica" },
+    canaa_matilha: { ativa: "sim", progresso: 5, meta: 0, concluidas: -1, disponivelEm: 1e15, aceitaEm: "x" },
+    deserto_ferroes: { ativa: true, progresso: 999, meta: 40, concluidas: 2, disponivelEm: 5, aceitaEm: 20 },
+    deserto_bando: "x",
+    cacada_antiga: { ativa: true, progresso: 3, meta: 9 },
+    constructor: { ativa: true, progresso: 3, meta: 9 },
+  };
+  Object.assign(corrompido, { pontosTarefa: "muitos", pontosTarefaTotal: 2, trocas: { alforje_couro: 1, lixo: "a", outra: 2.5 } });
+  j = carregarJogo({ store: { save_jogador1: JSON.stringify(corrompido) }, inicio: agora });
+  p = j.entrar();
+  igual(p.tarefas.canaa_lobos, { ativa: true, progresso: 0, meta: 30, concluidas: 1, disponivelEm: 0, aceitaEm: 10, extra: "fica" });
+  igual(p.tarefas.canaa_matilha, { ativa: false, progresso: 5, meta: 300, concluidas: 0, disponivelEm: agora + 164 * HORA, aceitaEm: 0 });
+  igual(p.tarefas.deserto_ferroes, { ativa: true, progresso: 40, meta: 40, concluidas: 2, disponivelEm: 5, aceitaEm: 20 });
+  assert.ok(!("deserto_bando" in p.tarefas), "entrada inválida de caçada conhecida é removida");
+  igual(p.tarefas.cacada_antiga, { ativa: true, progresso: 3, meta: 9 }, "caçada que saiu dos dados fica intocada");
+  igual(p.tarefas.constructor, { ativa: true, progresso: 3, meta: 9 }, "id herdado de Object.prototype não é caçada");
+  assert.strictEqual(j.g("visaoTarefa")(p, "constructor"), null, "a lista \"Voltam ao mural\" percorre as chaves do save");
+  assert.deepStrictEqual([p.pontosTarefa, p.pontosTarefaTotal], [0, 2]);
+  igual(p.trocas, { alforje_couro: 1 });
+  // A caçada desconhecida não ocupa vaga: com 2 ativas conhecidas, a 3ª é aceita.
+  igual(j.g("tarefasDoJogador")(p).map((v) => v.id), ["canaa_lobos", "deserto_ferroes", "canaa_matilha"]);
+  assert.ok(aceitarCacada(j, "deserto_rotas").ok);
+  // NaN, saldo maior que o total e mais ativas que o limite (nada é desativado).
+  const normalizar = j.g("normalizarTarefas");
+  const ativa = { ativa: true, progresso: 1, meta: 5, concluidas: 0, disponivelEm: 0, aceitaEm: 0 };
+  const q = { tarefas: { canaa_lobos: { ...ativa, progresso: NaN } }, pontosTarefa: NaN, pontosTarefaTotal: NaN };
+  for (const id of ["deserto_ferroes", "egito_guardas", "mar_retaguarda"]) q.tarefas[id] = { ...ativa };
+  normalizar(q, agora);
+  assert.strictEqual(q.tarefas.canaa_lobos.progresso, 0);
+  assert.strictEqual(Object.values(q.tarefas).filter((s) => s.ativa).length, 4);
+  assert.deepStrictEqual([q.pontosTarefa, q.pontosTarefaTotal], [0, 0]);
+  const r = { pontosTarefa: 50.7, pontosTarefaTotal: 20 };
+  normalizar(r, agora);
+  igual([r.pontosTarefa, r.pontosTarefaTotal, r.tarefas, r.trocas], [50, 50, {}, {}]);
+});
+
+// Perfil de quem chega à região do mural (nível, equipamento e habilidades da campanha).
+const PERFIS_CHEGADA = {
+  canaan: { nivel: 3, arma: "espada_ferro", escudo: "escudo_madeira", armadura: "tunica_pano", corpo: 4, defesa: 2 },
+  deserto: { nivel: 5, arma: "espada_ferro", escudo: "escudo_madeira", armadura: "armadura_couro", corpo: 7, defesa: 5 },
+  egito: { nivel: 6, arma: "espada_ferro", escudo: "escudo_bronze", armadura: "armadura_couro", corpo: 8, defesa: 6 },
+  marVermelho: { nivel: 7, arma: "espada_temperada", escudo: "escudo_bronze", armadura: "armadura_couro", corpo: 10, defesa: 8 },
+  sinai: { nivel: 8, arma: "espada_temperada", escudo: "escudo_bronze", armadura: "armadura_couro", corpo: 11, defesa: 9 },
+  galileia: { nivel: 9, arma: "espada_temperada", escudo: "escudo_bronze", armadura: "armadura_couro", corpo: 12, defesa: 10 },
+};
+
+teste("39. ritmo das caçadas: rondas de 5–30 min, grandes de 30–90, recompensa na faixa e sem mortes", () => {
+  const linhas = [];
+  const referencia = carregarJogo();
+  for (const id of referencia.g("ORDEM_TAREFAS")) {
+    const j = carregarJogo({ semente: 3 });
+    j.entrar();
+    concluirMissoes(j);
+    const t = j.g("TAREFAS")[id];
+    if (t.oculta) continue;
+    const p = j.p;
+    // Criatura de referência: a mais fraca que conta; n = quantas contam na mesma área.
+    const casam = Object.values(j.g("inimigos")).filter((e) => j.g("casaAlvo")(t.alvo, e));
+    const ref = casam.reduce((a, b) => (b.vidaMaxima < a.vidaMaxima ? b : a));
+    const n = casam.filter((e) => e.area === ref.area).length;
+    const area = j.g("npcs")[t.mural].area;
+    const perfil = PERFIS_CHEGADA[area];
+    assert.ok(perfil, `${id}: falta o perfil de chegada de ${area}`);
+    p.nivel = perfil.nivel;
+    p.xp = j.g("limiarNivel")(perfil.nivel - 1);
+    p.vida = j.g("vidaMaxima")(p);
+    p.equipamento = { arma: perfil.arma, arco: null, escudo: perfil.escudo, armadura: perfil.armadura };
+    p.habilidades = { corpo: perfil.corpo, distancia: 0, defesa: perfil.defesa, oracao: 0 };
+    assert.ok(aceitarCacada(j, id).ok, id);
+    const meta = p.tarefas[id].meta;
+    const inicio = j.agora;
+    while (p.tarefas[id].progresso < meta) {
+      p.inventario = Array(20).fill("pocao");
+      const r = lutar(j, ref.id, { maxPocoes: 99 });
+      assert.ok(r.vitoria, `${id}: derrota contra ${ref.id} (${r.mensagem})`);
+      p.saqueNoChao = [];
+      j.avancar(Math.max(1500, j.g("TEMPO_RESPAWN_INIMIGO") / n));
+    }
+    const minutos = ((j.agora - inicio) / 60_000) * 1.5; // tempo prático: cliques, saque e distração
+    const nivelFinal = p.nivel;
+    const r = falar(j, t.mural);
+    igual(r.tarefasEntregues?.map((x) => x.id), [id], `${id}: entrega`);
+    linhas.push({
+      id,
+      tipo: t.tipo,
+      meta,
+      minutos,
+      niveis: `${perfil.nivel}→${nivelFinal}`,
+      xp: t.recompensa.xp / (meta * ref.xpRecompensa),
+      moedas: t.recompensa.moedas / (meta * ref.saque.moedas),
+      ptsMin: t.recompensa.pontos / minutos,
+    });
+  }
+  const larguras = [20, 8, 10, 8, 7, 9, 8];
+  const linha = (cols) => "    " + cols.map((c, i) => String(c).padEnd(larguras[i])).join("");
+  console.log("\n    Ritmo das caçadas (perfil de chegada, autoataque, poção abaixo de 30%; minutos práticos = simulados × 1,5):");
+  console.log(linha(["Caçada", "Abates", "Min", "Nível", "XP%", "Moedas%", "Pts/min"]));
+  for (const l of linhas) {
+    const pct = (v) => `${Math.round(v * 100)}%`;
+    console.log(linha([l.id, l.meta, l.minutos.toFixed(1), l.niveis, pct(l.xp), pct(l.moedas), l.ptsMin.toFixed(2)]));
+  }
+  console.log("");
+  for (const l of linhas) {
+    const [min, max] = l.tipo === "ronda" ? [5, 30] : [30, 90];
+    assert.ok(l.minutos >= min && l.minutos <= max, `${l.id}: ${l.minutos.toFixed(1)} min fora de ${min}–${max}`);
+    assert.ok(l.xp >= 0.1 && l.xp <= 0.3, `${l.id}: XP = ${(l.xp * 100).toFixed(0)}% do XP dos abates`);
+    assert.ok(l.moedas <= 0.4, `${l.id}: moedas = ${(l.moedas * 100).toFixed(0)}% do saque`);
+    assert.ok(l.ptsMin >= 0.5 && l.ptsMin <= 2, `${l.id}: ${l.ptsMin.toFixed(2)} pontos por minuto`);
+  }
+});
+
+// Usos de p.tarefas, p.trocas, p.pontosTarefa e p.pontosTarefaTotal num código de interface que não
+// são leitura com valor padrão ("p.pontosTarefa || 0", "Object.keys(p.tarefas || {})"). Atribuição,
+// delete, Object.assign, alias (p.tarefas[id] guardado numa variável), desestruturação e acesso por
+// string entram na lista. Comentários de linha inteira e de bloco são ignorados.
+const CAMPOS_CACADA = "tarefas|trocas|pontosTarefa|pontosTarefaTotal";
+function usosQueNaoSaoLeitura(fonte) {
+  const codigo = fonte.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const problemas = [];
+  const trecho = (i) => codigo.slice(Math.max(0, i - 30), i + 50).replace(/\s+/g, " ");
+  for (const m of codigo.matchAll(new RegExp(`\\??\\.(${CAMPOS_CACADA})\\b(?!\\s*\\|\\|)`, "g"))) problemas.push(trecho(m.index));
+  const outros = [
+    new RegExp(`\\[\\s*["'\`](${CAMPOS_CACADA})["'\`]\\s*\\]`, "g"),
+    new RegExp(`\\{[^{}]*\\b(${CAMPOS_CACADA})\\b[^{}]*\\}\\s*=(?!=)`, "g"),
+    new RegExp(`Object\\.(assign|defineProperty|defineProperties|setPrototypeOf)\\([^)]*\\b(${CAMPOS_CACADA})\\b`, "g"),
+    new RegExp(`\\bdelete\\b[^;]*\\b(${CAMPOS_CACADA})\\b`, "g"),
+  ];
+  for (const re of outros) for (const m of codigo.matchAll(re)) problemas.push(trecho(m.index));
+  return [...new Set(problemas)];
+}
+
+// Fotografia de p que distingue o que JSON.stringify esconde: undefined, NaN, Infinity e funções.
+function fotografia(v) {
+  return JSON.stringify(v, (_, x) => {
+    if (x === undefined) return "<undefined>";
+    if (typeof x === "function") return "<função>";
+    if (typeof x === "number" && !Number.isFinite(x)) return `<${x}>`;
+    return x;
+  });
+}
+
+teste("40. a interface só lê o estado das caçadas: código sem escrita nele e funções puras que não mudam p", () => {
+  const FONTE_UI = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  const FONTE_ARTE = fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8");
+  const HTML = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  // game.js abre o mural pedido pela lógica e mostra a contagem dos abates.
+  assert.match(FONTE_GAME, /abrirMural/);
+  assert.match(FONTE_GAME, /r\.tarefas/);
+  // interface.js monta o mural e as listas só com as funções puras do contrato.
+  assert.match(FONTE_UI, /function abrirMural\(/);
+  for (const fn of ["tarefasDoJogador(", "tarefasDoMural(", "ofertasDeTroca(", "tarefasDoInimigo("]) {
+    assert.ok(FONTE_UI.includes(fn), `interface.js usa ${fn})`);
+  }
+  // A interface só lê p.tarefas, p.pontosTarefa e p.trocas: toda mudança passa por executar().
+  // O verificador pega cada forma de escrita (amostras abaixo) e deixa passar as leituras com padrão.
+  const escritas = [
+    "p.pontosTarefa = 300;",
+    "p.tarefas[id].progresso = 5;",
+    "p.pontosTarefa += 10;",
+    "delete p.tarefas[id];",
+    "Object.assign(p.trocas, { alforje_couro: 1 });",
+    "const s = p.tarefas[t.id]; s.ativa = true;",
+    'p["pontosTarefa"] = 300;',
+    "const { tarefas } = p; tarefas.x = {};",
+    "p.trocas?.alforje_couro;",
+  ];
+  for (const amostra of escritas) assert.ok(usosQueNaoSaoLeitura(amostra).length, `o verificador deixou passar: ${amostra}`);
+  const leituras = "const n = p.pontosTarefa || 0;\n  // p.tarefas[id] = 1\nconst ids = Object.keys(p.tarefas || {}); /* p.trocas = {} */";
+  igual(usosQueNaoSaoLeitura(leituras), [], "leituras com valor padrão e comentários passam");
+  for (const [nome, fonte] of [["interface.js", FONTE_UI], ["game.js", FONTE_GAME]]) {
+    igual(usosQueNaoSaoLeitura(fonte), [], `${nome} só lê o estado das caçadas (com "|| padrão") e muda tudo por executar()`);
+  }
+  // Em tempo de execução: as funções puras que a interface chama não mudam p em nada, em todos os
+  // estados (ativa, cumprida, guardada, espera, bloqueada), com caçada antiga e chave herdada no save.
+  const jr = carregarJogo();
+  jr.entrar();
+  const pr = jr.p;
+  pr.missoes.lobo.status = "concluida";
+  pr.missoes.ervas.status = "concluida";
+  pr.missoes.deserto.status = "concluida";
+  assert.ok(aceitarCacada(jr, "canaa_lobos").ok);
+  assert.ok(aceitarCacada(jr, "deserto_ferroes").ok);
+  assert.ok(aceitarCacada(jr, "deserto_rotas").ok);
+  pr.tarefas.deserto_ferroes.progresso = 40;
+  pr.tarefas.deserto_rotas.progresso = 12;
+  assert.ok(guardarCacada(jr, "deserto_rotas").ok);
+  pr.tarefas.deserto_bando = { ativa: false, progresso: 0, meta: 15, concluidas: 1, disponivelEm: jr.agora + HORA, aceitaEm: 1 };
+  pr.tarefas.cacada_antiga = { ativa: true, progresso: 3, meta: 9 };
+  Object.defineProperty(pr.tarefas, "constructor", { value: { ativa: true, progresso: 1, meta: 2 }, enumerable: true, writable: true });
+  Object.assign(pr, { pontosTarefa: 170, pontosTarefaTotal: 230, trocas: { alforje_couro: 1 } });
+  pr.inventario.push("escudo_ferro");
+  const g = (nome) => jr.g(nome);
+  const ids = [...g("ORDEM_TAREFAS"), "cacada_antiga", "constructor", "nada"];
+  const antes = fotografia(pr);
+  for (const id of ids) {
+    g("visaoTarefa")(pr, id);
+    g("estadoTarefa")(pr, id);
+  }
+  for (const npcId of Object.keys(g("npcs"))) {
+    g("tarefasDoMural")(pr, npcId);
+    g("estadoMissaoNpc")(pr, npcId);
+  }
+  for (const inimigoId of [...Object.keys(g("inimigos")), "constructor"]) g("tarefasDoInimigo")(pr, inimigoId);
+  g("tarefasDoJogador")(pr);
+  g("ofertasDeTroca")(pr);
+  g("textoMissaoAtual")(pr);
+  g("estatisticasCombate")(pr);
+  g("capacidadeCarga")(pr);
+  g("pesoCarregado")(pr);
+  assert.strictEqual(fotografia(pr), antes, "as funções puras da interface não mudam p");
+  igual(g("tarefasDoMural")(pr, "atalaia_deserto").map((v) => [v.id, v.estado]), [
+    ["deserto_ferroes", "cumprida"],
+    ["deserto_bando", "espera"],
+    ["deserto_rotas", "guardada"],
+  ]);
+  // index.html carrega dados/tarefas.js antes de logica.js e tem o modal e a lista do painel Missão.
+  const scripts = [...HTML.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+  const iTarefas = scripts.indexOf("dados/tarefas.js");
+  assert.ok(iTarefas >= 0 && iTarefas < scripts.indexOf("logica.js"), "dados/tarefas.js antes de logica.js");
+  assert.match(HTML, /id="modalMural"/);
+  assert.match(HTML, /id="missaoCacadas"/);
+  // game.js monta a textura "mk_balao_" + estadoMissaoNpc: todo estado possível tem o seu balão.
+  for (const estado of ["missao", "andamento", "entregar", "mural"]) {
+    assert.match(FONTE_ARTE, new RegExp(`balao\\("mk_balao_${estado}"`), `falta o balão mk_balao_${estado}`);
+  }
+  // Os atalaias têm visual próprio, e os itens da troca têm ícone.
+  assert.match(FONTE_ARTE, /VISUAL_POR_PAPEL = \{ mural: "pj_atalaia" \}/);
+  const j = carregarJogo();
+  for (const o of Object.values(j.g("OFERTAS_TROCA"))) {
+    if (o.item) assert.match(FONTE_ARTE, new RegExp(`item\\("${o.item}"`), `falta o ícone de ${o.item}`);
+    else assert.match(FONTE_ARTE, new RegExp(`glifo\\("${o.icone}"`), `falta o glifo ${o.icone}`);
+  }
 });
 
 // ---------------------------------------------------------------------

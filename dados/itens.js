@@ -15,8 +15,10 @@ const ITENS = {
   espada_temperada: { nome: "Espada temperada", peso: 9, tipo: "arma", bonus: 17 },
   escudo_madeira: { nome: "Escudo de madeira", peso: 5, tipo: "escudo", defesa: 3 },
   escudo_bronze: { nome: "Escudo de bronze", peso: 7, tipo: "escudo", defesa: 5 },
+  escudo_ferro: { nome: "Escudo de ferro", peso: 8, tipo: "escudo", defesa: 7 }, // só na troca de pontos de tarefa
   tunica_pano: { nome: "Túnica de pano", peso: 4, tipo: "armadura", defesa: 2 },
   armadura_couro: { nome: "Armadura de couro", peso: 8, tipo: "armadura", defesa: 5 },
+  couraca_escamas: { nome: "Couraça de escamas", peso: 11, tipo: "armadura", defesa: 8 }, // só na troca de pontos
   arco_madeira: { nome: "Arco de madeira", peso: 7, tipo: "arma_distancia", bonus: 10 },
   arco_composto: { nome: "Arco composto", peso: 7, tipo: "arma_distancia", bonus: 15 },
   flecha: { nome: "Flecha", peso: 0.1, tipo: "municao" },
@@ -26,7 +28,8 @@ const ITENS = {
   peixe: { nome: "Peixe fresco", peso: 1, tipo: "recurso" },
 };
 
-// Loja do Azarias: preço de compra ("flechas" é um pacote de FLECHAS_POR_PACOTE).
+// Loja do Azarias: preço de compra ("flechas" é um pacote de FLECHAS_POR_PACOTE). Os itens da troca de pontos
+// de tarefa (dados/tarefas.js) ficam fora desta lista e de VALORES_VENDA: pontos nunca viram moedas.
 const PRECOS_LOJA = { pocao: 12, pocao_fe: 18, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
 const FLECHAS_POR_PACOTE = 5;
 const VALORES_VENDA = { pele_lobo: 5, erva: 2, odre_agua: 3, peixe: 6, veneno_escorpiao: 4, insignia_bandido: 6  };

@@ -4,16 +4,23 @@ Conteúdo do jogo (pasta dados/)
 - dados/itens.js: itens, preços da loja e valores de venda.
 - dados/mundo.js: áreas, regiões dos capítulos, ervas, odres, pontos de pesca e portais.
 - dados/npcs.js: personagens, posições, papéis e falas próprias.
-- dados/criaturas.js: inimigos, atributos, saque e veneno.
+- dados/criaturas.js: inimigos, atributos, saque e veneno; especie e familia de cada criatura (as
+  caçadas contam por elas) e os nomes das famílias.
 - dados/capitulos.js: capítulos em ordem, a missão de cada um e o Mestre que ensina a Oração.
 - dados/missoes.js: todas as missões (Eliabe, Noemi e capítulos): quem dá e recebe, missão
   anterior exigida, etapas com objetivos (derrotar, coletar, entregar, falar com alguém, chegar a
   um local), falas, textos do painel e recompensa (XP, moedas, itens). As falas aceitam variáveis
   como {coletados}, {total}, {naMochila} e {nivel}; a lista completa está no topo do arquivo.
-  O progresso fica no save em missoes[id] = { status, etapa, progresso } (save versão 7; saves
-  antigos são convertidos sozinhos, sem perder o que já foi feito).
+- dados/tarefas.js: caçadas de cada atalaia (alvo por criatura, espécie ou família, total, recompensa,
+  tipo e espera), regras (limite de caçadas ativas e bônus da 1ª entrega), falas dos atalaias e a
+  troca de pontos de tarefa. Os ids das caçadas são permanentes (ficam no save): para tirar uma
+  caçada do mural, use oculta: true.
+O progresso fica no save (save versão 8): missoes[id] = { status, etapa, progresso },
+tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo) e trocas
+(ofertas já trocadas). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
-o teste 27 confere se todo item, área, NPC, criatura e missão citado existe.
+o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, e o teste 39 mede
+o ritmo de cada caçada (minutos de caça e pontos por minuto).
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
@@ -22,19 +29,22 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 7, sem perder itens, moedas, nível ou progresso. O jogo grava no máximo 1 vez por
+   para a versão 8, sem perder itens, moedas, nível ou progresso. O jogo grava no máximo 1 vez por
    segundo e grava na hora ao fechar, ocultar ou trocar de aba.
 
 Controles — teclado e mouse
 - WASD ou setas: andar. Q / E / Z / C: diagonais.
 - F: ação ao lado — conversar com o NPC, embarcar/desembarcar no cais ou seguir a rota do portal
-  (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo.
+  (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo; ao lado
+  de um atalaia ele mostra "F · Caçadas" e abre o mural (o clique no atalaia faz o mesmo).
 - Clique num inimigo (no mundo ou na lista Batalha): seleciona e ativa o autoataque a cada 2 segundos
   (usa o arco se ele estiver equipado, houver flechas e o alvo estiver alinhado no alcance).
 - Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s. O anel em
   volta do alvo mostra o tempo até o próximo autoataque (2 s).
 - H: poção de vida. 1–6: atalhos. Botão direito num atalho o esvazia.
 - P: pescar (no barco, ao lado de um ponto de pesca).
+- T: suas caçadas (consulta em qualquer lugar; aceitar e trocar só ao lado de um atalaia). O saldo
+  de pontos de tarefa, no topo, e as caçadas do painel Missão também abrem a consulta.
 - F1: Oração (depois de aprendê-la). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
   bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
 - Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
@@ -45,7 +55,7 @@ Controles — toque (celular e tablet)
 - Aparecem sozinhos em telas de toque (ou pelo botão "Mostrar controles de toque" na ajuda).
 - Direcional à esquerda (8 direções, segure para continuar andando).
 - À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
-  (falar, cais, pesca, rota). Toque num inimigo para escolher o alvo.
+  (falar, caçadas, cais, pesca, rota). Toque num inimigo para escolher o alvo.
 - Barra inferior: Mochila, Equipamento, Batalha, Missão e Registro abrem em folhas recolhíveis.
   Toque num item e depois no espaço de equipamento ou no atalho; toque longo mostra a descrição.
 
@@ -57,9 +67,14 @@ Interface e visual
   (textos) e Pixelify Sans (números, rótulos e textos do mundo). Os dígitos 0–9 da Pixelify são
   substituídos por dígitos em pixel 5×7 gerados pelo interface.js (a Pixelify desenha o 2 como Z e o
   5 como S); as teclas usam Alegreya Sans negrito.
-- Painéis: Missão (texto de textoMissaoAtual), Personagem (barras de vida, fé e XP com números,
-  habilidades e estatísticas de estatisticasCombate), Equipamento, Mochila, Bolsa, Batalha (inimigos
-  da área, alvo destacado), Registro (últimas 30 mensagens com horário) e minimapa.
+- Painéis: Missão (texto de textoMissaoAtual e as caçadas em andamento, com "27/40"), Personagem
+  (barras de vida, fé e XP com números, habilidades, estatísticas de estatisticasCombate e pontos de
+  tarefa), Equipamento, Mochila, Bolsa, Batalha (inimigos da área, alvo destacado; o glifo de contagem
+  marca quem conta para uma caçada ativa), Registro (últimas 30 mensagens com horário) e minimapa.
+- Mural de caçadas (atalaia): fala do atalaia, saldo, abas Caçadas (cartões com progresso, espera
+  "Volta em 19 h 59 min" e Aceitar, Retomar ou Guardar) e Troca de pontos. Cada abate que conta mostra
+  "27/40" sobre a criatura, e a caçada cumprida mostra o cartão "CAÇADA CUMPRIDA". O atalaia tem um
+  visual só, igual em todas as regiões, com o balão de riscos de contagem depois da 1ª caçada aceita.
 - Avisos curtos aparecem no topo do mundo e também ficam no Registro. Conversas abrem um quadro de
   diálogo com o retrato do personagem. Clique na caixa ou aperte F (perto do personagem) para
   completar o texto; de novo, para fechar. F só volta a falar com ele depois de a caixa fechar.
@@ -137,12 +152,45 @@ Poção de vida 12 · Poção de fé 18 · 5 flechas 8 · Escudo de madeira 35 �
 Arco de madeira 80. Ele compra pele de lobo (5), erva (2), odre (3) e peixe (6).
 Micael (Canaã) e Tamar (Deserto) fazem a viagem rápida gratuita entre as duas regiões.
 
+Caçadas (tarefas de caça)
+Cada região com criaturas tem um atalaia (vigia) com o mural de caçadas da região. O mural abre
+quando a missão principal da região é concluída.
+- Rondas (cerca de 8 a 15 min de caça) e grandes caçadas (40 a 60 min, podem ocupar várias sessões).
+  Aceite ao lado do atalaia do mural; acompanhe até 3 ao mesmo tempo. Caçada aceita nunca expira.
+- Cada abate (golpe ou flecha) conta para todas as caçadas ativas que pedem aquela criatura, por
+  criatura, espécie ou família (os "Soldados de Faraó" valem no Egito e no Mar Vermelho), junto com
+  os objetivos de missão. Abates feitos antes de aceitar não contam.
+- Cumprida a meta, fale com qualquer atalaia (mesmo um de mural ainda fechado): todas as caçadas
+  cumpridas são entregues de uma vez. A recompensa é XP, moedas e pontos de tarefa, nunca itens, então
+  a mochila cheia não bloqueia a entrega. A 1ª entrega de cada caçada dá +50% de pontos.
+- Guardar (de qualquer lugar) tira a caçada das ativas sem perder o progresso e libera a vaga; para
+  retomar, fale com o atalaia do mural dela. Não existe abandono que apague o progresso.
+- Sem sequência diária, bônus de login, prazo ou sorteio. Depois da entrega, a caçada volta ao mural
+  quando a espera acaba (o tempo corre com o jogo fechado):
+    Ronda ........... 20 h (dá para jogar mais cedo no dia seguinte)
+    Grande caçada ... 164 h = 6 d 20 h (uma por semana, com folga)
+- Troca de pontos de tarefa, em qualquer atalaia com o mural aberto:
+    Alforje de couro (+10 kg de carga, para sempre; uma vez) ......... 60 pontos
+    Escudo de ferro (defesa 7; requer a missão do Egito) ............. 150 pontos
+    Alforje de viagem (+10 kg de carga; requer o Alforje de couro) ... 180 pontos
+    Couraça de escamas (defesa 8; requer a missão do Monte Sinai) .... 300 pontos
+  Os pontos não expiram nem se perdem na morte; pontos e moedas nunca se convertem, e o Azarias não
+  compra itens da troca. Trocar de novo um item que você já tem (na mochila ou equipado) pede
+  confirmação, e um duplo clique no mural vale como um clique só.
+
 Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
   com a tabela de duração das lutas.
 - Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p),
-  estadoMissaoNpc(p, npcId) (balão sobre o NPC: "missao", "andamento", "entregar" ou null),
-  coletaveisDaArea(areaId), Mundo.consumirAviso(id), Mundo.recargaAtaque(id); constante ALCANCE_ARCO.
+  estadoMissaoNpc(p, npcId) (balão sobre o NPC: "missao", "andamento", "entregar", "mural" para o
+  atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
+  Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
+  tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p); constante ALCANCE_ARCO.
+- Caçadas: comandos { tipo: "aceitarTarefa", tarefaId }, { tipo: "guardarTarefa", tarefaId } e
+  { tipo: "trocarPontos", ofertaId } de Mundo.executar. Falar com um atalaia devolve abrirMural (mural
+  aberto) e, se houve entrega, tarefasEntregues e niveis; os ataques que derrotam devolvem tarefas
+  (só as caçadas que avançaram). A interface só lê p.tarefas, p.pontosTarefa e p.trocas.
 - Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
-  interface.js (window.UI: painéis, modais, atalhos, toque). Os nomes antigos continuam valendo:
-  atualizarInterface(), mostrarMensagem(), abrirLoja(), abrirViagem(), abrirOracao().
+  interface.js (window.UI: painéis, modais, atalhos, toque; window.UI.abrirMural(npcId) abre o mural de
+  um atalaia, ou a consulta com null). Os nomes antigos continuam valendo: atualizarInterface(),
+  mostrarMensagem(), abrirLoja(), abrirViagem(), abrirOracao(), abrirMural().

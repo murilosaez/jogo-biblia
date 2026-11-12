@@ -92,7 +92,7 @@ Retenção D1 40% / D7 20% / D30 8%; sessão 25–40 min; 1º nível < 2 min; 1�
 2. Raridades + atributos aleatórios + brilho/cor do saque no chão.
 3. Tabela de saque por inimigo com chances (comum/raro/muito raro) e anúncio de raro.
 4. Campeões (5%, modificadores) e mais 2–3 criaturas por região existente com comportamentos novos (matilha, fuga, à distância).
-5. Mural de tarefas de caça + pontos de tarefa.
+5. ~~Mural de tarefas de caça + pontos de tarefa~~ — feito (JGB-3): um atalaia por região com rondas (20 h) e grandes caçadas (164 h), alvo por criatura, espécie ou família (`dados/tarefas.js`), entrega em qualquer atalaia e troca de pontos por alforjes, escudo de ferro e couraça; save v8.
 6. Bestiário com estágios e amuletos.
 7. Analisador de caçada (painel XP/h, saque/h).
 8. Maná diário e XP de descanso.
