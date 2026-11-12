@@ -1448,6 +1448,7 @@
   glifo("ui_registro", [".....kkk", "....kWWk", "...kWWwk", "..kWWwk.", ".kWwwk..", ".kNkk...", "kNk.....", "kYYYYYk."], { W: "#f3e4c0", w: "#c9b48a", N: "#b07a38", Y: "#e8b94a" });
   glifo("ui_rosa", ["...k....", "..kRk...", ".kkRkk..", "kDDYddk.", ".kkDkk..", "..kDk...", "...k....", "........"], { R: "#c2452d", Y: "#e8b94a", D: "#e6cf9c", d: "#c9ad78" });
   glifo("ui_tela_cheia", ["YYY..YYY", "Y......Y", "Y......Y", "........", "........", "Y......Y", "Y......Y", "YYY..YYY"], { Y: "#e6cf9c" });
+  glifo("ui_talentos", ["..kGGk..", ".kGgGGk.", "kGGkGgGk", "kGgGGGGk", ".kkTTkk.", "..kTTk..", "..kTTk..", ".kkkkkk."], { G: "#5f8a3a", g: "#8fbf5a", T: "#7a4a30" });
   glifo("ui_ajuda", ["..kkkk..", ".kYYYYk.", "kYkkkYYk", "kYYYkYYk", "kYYkYYYk", "kYYYYYYk", ".kYkYYk.", "..kkkk.."], { Y: "#e8b94a" });
   glifo("ui_fechar", ["DD....DD", "DDD..DDD", ".DDDDDD.", "..DDDD..", "..DDDD..", ".DDDDDD.", "DDD..DDD", "DD....DD"], { D: "#e6cf9c" });
   glifo("ui_menu", ["........", "DDDDDDDD", "DDDDDDDD", "........", "DDDDDDDD", "DDDDDDDD", "........", "DDDDDDDD"], { D: "#e6cf9c" });

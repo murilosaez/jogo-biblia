@@ -5086,6 +5086,280 @@ teste("63e. simulação de cada vocação: vence as elites de cada região, mais
   for (const v of vocacoes) assert.ok(lutaComVocacao("mercenario1", v, { nivelExtra: 14 }).vitoria, `${v} no nível 25`);
 });
 
+// Põe pontos num talento direto pelo comando (falha o teste se recusar).
+function aprender(j, talento, vezes = 1) {
+  for (let i = 0; i < vezes; i++) {
+    const r = j.exec({ tipo: "aprenderTalento", talento });
+    assert.ok(r.ok, `${talento}: ${r.mensagem}`);
+  }
+}
+
+teste("64. talentos (JGB-21): 3 ramos por vocação, fileiras, requisitos, um ápice por ramo e textos claros", () => {
+  const j = carregarJogo();
+  const T = j.g("TALENTOS");
+  const R = j.g("REGRAS_TALENTOS");
+  const VOC = j.g("VOCACOES");
+  const textoEf = j.g("textoEfeitoTalento");
+  igual(Object.keys(T), Object.keys(VOC));
+  igual(R.tiers.length, 4);
+  const ids = new Set();
+  const camposEfeito = ["vida", "defesa", "dano", "critico", "cura", "aliados", "reducao", "recarga", "habilidades"];
+  for (const [vid, ramos] of Object.entries(T)) {
+    const v = VOC[vid];
+    const habs = new Set([...v.habilidades, ...Object.values(v.especializacoes).map((e) => e.habilidade)]);
+    assert.strictEqual(ramos.length, 3, `${vid}: 3 ramos`);
+    for (const ramo of ramos) {
+      assert.ok(ramo.id && ramo.nome && ramo.foco, `${vid}/${ramo.id}: textos do ramo`);
+      const porTier = [1, 2, 3, 4].map((t) => ramo.talentos.filter((x) => x.tier === t));
+      assert.ok(porTier.every((l) => l.length), `${ramo.id}: as 4 fileiras têm talento`);
+      const apices = ramo.talentos.filter((x) => x.apice);
+      assert.ok(apices.length === 1 && apices[0].tier === 4 && apices[0].graus === 1 && apices[0].texto, `${ramo.id}: um ápice na fileira 4`);
+      // Pontos das fileiras 1 a 3 bastam para abrir o ápice.
+      const antesDoApice = ramo.talentos.filter((x) => x.tier < 4).reduce((s, x) => s + x.graus, 0);
+      assert.ok(antesDoApice >= R.tiers[3], `${ramo.id}: ápice alcançável`);
+      for (let t = 2; t <= 4; t++) {
+        const acima = ramo.talentos.filter((x) => x.tier < t).reduce((s, x) => s + x.graus, 0);
+        assert.ok(acima >= R.tiers[t - 1], `${ramo.id}: fileira ${t} alcançável`);
+      }
+      for (const t of ramo.talentos) {
+        assert.ok(!ids.has(t.id) && /^[a-z_]+$/.test(t.id), `${t.id}: id único`);
+        ids.add(t.id);
+        assert.ok(t.nome && Number.isInteger(t.graus) && t.graus >= 1 && t.graus <= 5, `${t.id}: nome e graus`);
+        if (t.requer) {
+          const req = ramo.talentos.find((x) => x.id === t.requer);
+          assert.ok(req && req.tier < t.tier, `${t.id}: requisito no mesmo ramo, acima`);
+        }
+        if (t.tier >= 3) assert.ok(t.requer, `${t.id}: fileira ${t.tier} pede um talento de cima`);
+        assert.ok(Object.keys(t.efeito).length && Object.keys(t.efeito).every((k) => camposEfeito.includes(k)), `${t.id}: efeito conhecido`);
+        for (const k of Object.keys(t.efeito.dano || {})) assert.ok(["corpo", "distancia", "magia"].includes(k), `${t.id}: dano.${k}`);
+        for (const k of Object.keys(t.efeito.critico || {})) assert.ok(["corpo", "distancia"].includes(k), `${t.id}: critico.${k}`);
+        for (const [h, m] of Object.entries(t.efeito.habilidades || {})) {
+          assert.ok(habs.has(h), `${t.id}: ${h} é do ${v.nome}`);
+          assert.ok(Object.keys(m).every((k) => ["dano", "cura", "recarga"].includes(k)), `${t.id}: ${h}`);
+          if (m.dano) assert.ok(j.g("HABILIDADES_VOCACAO")[h].dano || j.g("HABILIDADES_VOCACAO")[h].cao, `${t.id}: ${h} causa dano`);
+          if (m.cura) assert.ok(j.g("HABILIDADES_VOCACAO")[h].cura || j.g("HABILIDADES_VOCACAO")[h].buff?.regen, `${t.id}: ${h} cura`);
+        }
+        // Texto claro: sem "undefined"/"NaN", com número e, com mais graus, o valor do grau final.
+        const um = textoEf(t.efeito, 1);
+        const todos = textoEf(t.efeito, t.graus);
+        assert.ok(um && !/undefined|NaN/.test(um + todos) && /\d/.test(um), `${t.id}: texto "${um}"`);
+        if (t.graus > 1) assert.notStrictEqual(um, todos, `${t.id}: o texto acompanha os graus`);
+      }
+    }
+    // Teto por ramo cheio: nada passa de +40% de dano, 20% de redução, 25% de recarga ou 30% de vida.
+    for (const ramo of ramos) {
+      const p = { vocacao: { id: vid }, nivel: 200, talentos: Object.fromEntries(ramo.talentos.map((t) => [t.id, t.graus])) };
+      const ef = j.g("efeitosTalentos")(p);
+      assert.ok(Math.max(...Object.values(ef.dano)) <= 0.4 && ef.reducao <= 0.2 && ef.recarga <= 0.25 && ef.vida <= 0.3, `${ramo.id}: teto`);
+    }
+  }
+  // Texto: porcentagem com vírgula e listas com "e".
+  igual(textoEf({ dano: { corpo: 0.03 }, defesa: 1 }, 3), "+3 de defesa e +9% de dano corpo a corpo");
+  igual(textoEf({ reducao: 0.015 }, 3), "4,5% menos dano recebido");
+  igual(textoEf({ habilidades: { golpe_firme: { dano: 0.12 } } }, 2), "Golpe firme: +24% de dano");
+});
+
+teste("64b. talentos: 1 ponto por nível, fileira, requisito, um ápice, reset pago, troca de vocação e save", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const g = (n) => j.g(n);
+  const visao = () => g("visaoTalentos")(p);
+  // Sem vocação: nada.
+  p.nivel = 20;
+  igual([visao().totais, visao().ramos.length], [0, 0]);
+  assert.ok(!j.exec({ tipo: "aprenderTalento", talento: "gu_pele_de_couro" }).ok);
+  // No nível 8, 1 ponto; fileira 2 ainda fechada.
+  comVocacao(j, "guerreiro", 8);
+  igual([visao().totais, visao().livres, visao().ramos.map((r) => r.id)], [1, 1, ["baluarte", "valentia", "comando"]]);
+  let r = j.exec({ tipo: "aprenderTalento", talento: "gu_firmeza" });
+  assert.ok(!r.ok && /Requer 3 pontos em Baluarte/.test(r.mensagem), r.mensagem);
+  assert.ok(!j.exec({ tipo: "aprenderTalento", talento: "fu_mao_firme" }).ok, "talento de outra vocação");
+  assert.ok(!j.exec({ tipo: "aprenderTalento", talento: "constructor" }).ok, "id estranho");
+  const def = g("defesaTotal")(p);
+  r = j.exec({ tipo: "aprenderTalento", talento: "gu_pele_de_couro" });
+  assert.ok(r.ok && r.graus === 1 && r.livres === 0 && /\+1 de defesa/.test(r.mensagem), r.mensagem);
+  assert.strictEqual(g("defesaTotal")(p), def + 1, "defesa do talento");
+  r = j.exec({ tipo: "aprenderTalento", talento: "gu_pele_de_couro" });
+  assert.ok(!r.ok && /Sem pontos livres/.test(r.mensagem) && /nível 9/.test(r.mensagem), r.mensagem);
+  // Nível 30: 23 pontos.
+  p.nivel = 30;
+  igual([visao().totais, visao().livres], [23, 22]);
+  aprender(j, "gu_pele_de_couro", 2);
+  assert.ok(!j.exec({ tipo: "aprenderTalento", talento: "gu_pele_de_couro" }).ok, "graus no máximo");
+  aprender(j, "gu_firmeza", 2);
+  // Fileira 3 pede 6 pontos no ramo e Firmeza completa.
+  r = j.exec({ tipo: "aprenderTalento", talento: "gu_ultimo_folego" });
+  assert.ok(!r.ok && /Requer 6 pontos/.test(r.mensagem), r.mensagem);
+  aprender(j, "gu_folego", 1);
+  r = j.exec({ tipo: "aprenderTalento", talento: "gu_ultimo_folego" });
+  assert.ok(!r.ok && /Requer Firmeza completo/.test(r.mensagem), r.mensagem);
+  aprender(j, "gu_firmeza", 1);
+  aprender(j, "gu_ultimo_folego", 3);
+  // 10 no ramo para o ápice (aqui: 3 + 1 + 3 + 3 = 10).
+  aprender(j, "gu_torre_de_davi", 1);
+  const v1 = visao();
+  igual([v1.gastos, v1.ramos[0].pontos, v1.ramos[0].talentos.find((t) => t.id === "gu_torre_de_davi").graus], [11, 11, 1]);
+  // Um ápice só: Valentia cheia até a fileira 3, mas o ápice recusa (o motivo é o ápice, não os pontos).
+  aprender(j, "gu_braco_forte", 3);
+  aprender(j, "gu_olho_no_golpe", 3);
+  aprender(j, "gu_golpe_pesado", 3);
+  aprender(j, "gu_sede_de_batalha", 3);
+  assert.strictEqual(visao().livres, 0, "23 − 11 − 12");
+  r = j.exec({ tipo: "aprenderTalento", talento: "gu_tres_valentes" });
+  assert.ok(!r.ok && /um ápice/.test(r.mensagem) && /Torre de Davi/.test(r.mensagem), r.mensagem);
+  const tal = visao().ramos[1].talentos.find((t) => t.id === "gu_tres_valentes");
+  assert.ok(!tal.pode && tal.motivo, "a interface recebe o motivo");
+  assert.ok(/redu|vida|defesa/.test(visao().resumo), `resumo: ${visao().resumo}`);
+  // Vida máxima com os talentos de vida; reset pago devolve tudo (e a vida cabe no novo máximo).
+  const vidaCom = g("vidaMaxima")(p);
+  p.vida = vidaCom;
+  const gastos = visao().gastos;
+  const preco = 50 + 5 * gastos;
+  assert.strictEqual(visao().precoReset, preco);
+  p.moedas = preco - 1;
+  r = j.exec({ tipo: "resetarTalentos" });
+  assert.ok(!r.ok && new RegExp(String(preco)).test(r.mensagem) && visao().gastos === gastos, "sem moedas, sem reset");
+  p.moedas = preco + 7;
+  r = j.exec({ tipo: "resetarTalentos" });
+  assert.ok(r.ok && r.moedasGastas === preco && p.moedas === 7 && visao().gastos === 0 && visao().livres === 23, r.mensagem);
+  assert.ok(g("vidaMaxima")(p) < vidaCom && p.vida === g("vidaMaxima")(p), "vida ajustada ao novo máximo");
+  assert.ok(!j.exec({ tipo: "resetarTalentos" }).ok, "nada a devolver");
+  // Trocar de vocação com o mestre devolve os pontos de graça.
+  aprender(j, "gu_braco_forte", 3);
+  const mestre = Object.values(g("npcs")).find((n) => n.papel === "vocacao");
+  posicionarAoLado(j, mestre.area, mestre);
+  r = j.exec({ tipo: "escolherVocacao", vocacao: "levita" });
+  assert.ok(r.ok && /3 pontos de talento voltaram/.test(r.mensagem) && Object.keys(p.talentos).length === 0, r.mensagem);
+  igual([visao().livres, visao().ramos[0].id], [23, "santuario"]);
+  // Aviso de pontos livres: uma vez.
+  p.avisosPendentes = [];
+  p.vocacao.avisadaTalentos = false;
+  j.M.salvar(p);
+  j.M.salvar(p);
+  assert.strictEqual(p.avisosPendentes.filter((a) => a.id === "talentos").length, 1, "aviso de talentos");
+  // Save: recarrega igual.
+  aprender(j, "le_maos_que_curam", 3);
+  aprender(j, "le_bencao_ampla", 2);
+  g("Storage").flush();
+  const q = carregarJogo({ store: j.store, inicio: j.agora }).entrar();
+  igual(q.talentos, { le_maos_que_curam: 3, le_bencao_ampla: 2 });
+});
+
+teste("64c. talentos no save: árvore inválida devolve os pontos, ids estranhos somem e a v13 recebe o aviso", () => {
+  const salvarCom = (talentos, nivel = 30, vocacao = "levita", versao) => {
+    const j = carregarJogo();
+    j.entrar();
+    comVocacao(j, vocacao, nivel);
+    j.p.talentos = talentos;
+    j.g("Storage").flush();
+    if (versao) {
+      const chave = Object.keys(j.store).find((k) => k.startsWith("save_"));
+      const dados = JSON.parse(j.store[chave]);
+      dados.versao = versao;
+      j.store[chave] = JSON.stringify(dados);
+    }
+    const k = carregarJogo({ store: j.store, inicio: j.agora });
+    const q = k.entrar();
+    return { q, avisos: q.avisosPendentes.map((a) => a.id) };
+  };
+  // Válida: fica igual.
+  let r = salvarCom({ le_maos_que_curam: 3, le_ministerio: 1, le_bencao_pronta: 3 });
+  igual([r.q.talentos, r.avisos.includes("talentos_devolvidos")], [{ le_maos_que_curam: 3, le_ministerio: 1, le_bencao_pronta: 3 }, false]);
+  // Ids estranhos e de outra vocação somem sem mexer no resto.
+  r = salvarCom({ le_maos_que_curam: 2, constructor: 3, gu_firmeza: 3, toString: 1 });
+  igual(r.q.talentos, { le_maos_que_curam: 2 });
+  // Mais pontos que o nível dá, fileira sem pontos, requisito faltando, graus a mais, dois ápices: tudo volta.
+  for (const [nome, talentos, nivel] of [
+    ["pontos a mais", { le_maos_que_curam: 3, le_bencao_pronta: 3 }, 10],
+    ["fileira fechada", { le_incenso_suave: 1 }, 30],
+    ["requisito", { le_maos_que_curam: 2, le_bencao_pronta: 3, le_incenso_suave: 1, le_ministerio: 1 }, 30],
+    ["graus a mais", { le_maos_que_curam: 9 }, 30],
+    ["grau não inteiro", { le_maos_que_curam: 1.5 }, 30],
+  ]) {
+    r = salvarCom(talentos, nivel);
+    assert.ok(Object.keys(r.q.talentos).length === 0 && r.avisos.includes("talentos_devolvidos"), `${nome}: ${JSON.stringify(r.q.talentos)}`);
+  }
+  const doisApices = { le_maos_que_curam: 3, le_bencao_pronta: 3, le_incenso_suave: 3, le_bencao_ampla: 3, le_ministerio: 3, le_oleo_da_uncao: 1,
+    le_chama_acesa: 3, le_pavio_limpo: 3, le_brilho: 3, le_som_do_shofar: 3, le_azeite_puro: 3, le_sete_lampadas: 1 };
+  r = salvarCom(doisApices, 100);
+  assert.ok(Object.keys(r.q.talentos).length === 0, "dois ápices");
+  // Sem vocação, os talentos somem.
+  const j = carregarJogo();
+  j.entrar();
+  j.p.talentos = { gu_pele_de_couro: 1 };
+  j.g("Storage").flush();
+  igual(carregarJogo({ store: j.store }).entrar().talentos, {});
+  // Save v13 com vocação: aviso da novidade (uma vez), árvore vazia.
+  r = salvarCom(undefined, 20, "profeta", 13);
+  assert.ok(r.avisos.includes("atualizacao_14") && !r.avisos.includes("talentos"), r.avisos.join(","));
+  igual(r.q.talentos, {});
+});
+
+teste("64d. efeitos dos talentos no combate: dano, crítico, defesa, redução, recarga (com teto), cura e aliados", () => {
+  const { j, p, e } = cenaComportamento("urso1");
+  const g = (n) => j.g(n);
+  comVocacao(j, "guerreiro", 40);
+  p.equipamento.arma = "espada_ferro";
+  p.vidaInimigos[e.id] = 100_000;
+  posicionarAoLado(j, e.area, e);
+  j.definirAleatorio(() => 0.99); // sem crítico pela sorte
+  let r = usar(j, "golpe_firme", e.id);
+  const semTalento = r.alvos[0].dano;
+  assert.strictEqual(p.recargas.golpe_firme - j.agora, 6000, "recarga base");
+  // Golpe pesado 3/3 (+36%) e Braço forte 3/3 (+9% corpo a corpo).
+  p.talentos = { gu_braco_forte: 3, gu_olho_no_golpe: 3, gu_golpe_pesado: 3 };
+  igual(Math.round(g("fatorDano")(p, "corpo", j.agora) * 1000), 1090);
+  j.avancar(7000);
+  r = usar(j, "golpe_firme", e.id);
+  assert.ok(r.alvos[0].dano > semTalento * 1.3, `golpe com talentos: ${r.alvos[0].dano} contra ${semTalento}`);
+  const critSem = (() => { const t = p.talentos; p.talentos = {}; const c = g("chanceCritico")(p, "corpo"); p.talentos = t; return c; })();
+  assert.strictEqual(g("chanceCritico")(p, "corpo"), critSem + 3, "crítico");
+  // Recarga: Disciplina 3/3 (−9%) em todas; a soma com a da habilidade para no teto de 40%.
+  p.talentos = { gu_disciplina: 3 };
+  j.avancar(7000);
+  r = usar(j, "golpe_firme", e.id);
+  assert.strictEqual(p.recargas.golpe_firme - j.agora, Math.round(6000 * 0.91), "recarga com talento");
+  assert.strictEqual(g("barraHabilidades")(p, j.agora)[0].recarga, Math.round(6000 * 0.91), "a barra mostra a recarga com talento");
+  p.talentos = { gu_disciplina: 3, gu_capitao_de_mil: 3, gu_espada_de_gideao: 1, gu_escudo_treinado: 3 };
+  assert.strictEqual(g("recargaHabilidade")(p, "escudo_erguido"), Math.round(15000 * 0.6), "teto de 40%");
+  // Redução e defesa: Firmeza 3/3 (6% a menos) e Torre de Davi (+8%, +3 de defesa, +10% de vida).
+  p.talentos = { gu_firmeza: 3 };
+  igual(j.M.absorverDano(p, 100, j.agora).dano, 94);
+  const vidaSem = (() => { const t = p.talentos; p.talentos = {}; const v = g("vidaMaxima")(p); p.talentos = t; return v; })();
+  p.talentos = { gu_firmeza: 3, gu_torre_de_davi: 1 };
+  igual(j.M.absorverDano(p, 100, j.agora).dano, 86);
+  assert.ok(g("vidaMaxima")(p) > vidaSem, "ápice dá vida");
+
+  // Levita: Mãos que curam 3/3 (+12% em todas as curas) e Bênção ampla 3/3 (+30% na Bênção sacerdotal).
+  comVocacao(j, "levita", 40);
+  p.talentos = {};
+  const vidaMax = g("vidaMaxima")(p);
+  p.vida = 1;
+  j.avancar(60_000);
+  const curaSem = usar(j, "bencao_sacerdotal").cura;
+  p.talentos = { le_maos_que_curam: 3, le_bencao_ampla: 3 };
+  p.vida = 1;
+  j.avancar(60_000);
+  const curaCom = usar(j, "bencao_sacerdotal").cura;
+  assert.strictEqual(curaCom, Math.round(vidaMax * 0.35 * 1.2 * 1.12 * 1.3), `cura com talentos: ${curaCom} (sem: ${curaSem})`);
+  // Incenso suave: a regeneração do Incenso leva o bônus da habilidade.
+  p.talentos = { le_incenso_suave: 3 };
+  p.vida = 1;
+  j.avancar(60_000);
+  assert.ok(usar(j, "incenso").ok);
+  igual(p.buffs.incenso.fatorCura, 1.3);
+
+  // Pastor: Faro 3/3 (+12% no dano dos aliados) e Presas (+36% na Mordida).
+  comVocacao(j, "pastor", 40);
+  p.talentos = { pa_faro: 3, pa_presas: 3 };
+  igual(Math.round(g("passivosDe")(p).aliados * 1000), Math.round(1.2 * 1.12 * 1000));
+  igual(Math.round(g("fatorTalentoHabilidade")(p, "mordida", "dano") * 100), 136);
+  // Talentos de outra vocação que sobraram não valem.
+  p.talentos = { gu_firmeza: 3 };
+  igual(g("passivosDe")(p).reducao, 0);
+});
+
 // ---------------------------------------------------------------------
 // Execução
 // ---------------------------------------------------------------------

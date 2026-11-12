@@ -1273,6 +1273,9 @@
   // Só lê a vocação pelas funções puras (barraHabilidades, visaoVocacao); escolher e usar são comandos.
   const temVocacao = (p) => typeof barraHabilidades === "function" && !!p?.vocacao?.id;
   let htmlBarraHab = "", vocacaoNpc = null, confirmaVocacao = null, htmlVocacao = "";
+  // Talentos (JGB-21): aba da janela Vocação; aprender e refazer são comandos, a árvore vem de visaoTalentos.
+  let abaVocacao = "vocacao", retornoTalento = null;
+  const temTalentos = () => typeof visaoTalentos === "function";
   function atualizarBarraHab(p) {
     const caixa = $("#barraHab");
     if (!caixa) return;
@@ -1295,12 +1298,20 @@
     const b = $("#btnVocacao");
     if (!b || typeof visaoVocacao !== "function") return;
     const v = visaoVocacao(p);
-    b.classList.toggle("escolher", (!v.atual && v.podeEscolher) || v.podeEspecializar);
+    const livres = temTalentos() && v.atual ? visaoTalentos(p).livres : 0;
+    b.classList.toggle("escolher", (!v.atual && v.podeEscolher) || v.podeEspecializar || livres > 0);
+    const rotulo = `Vocação, habilidades e talentos (V)${livres ? ` · ${livres} ponto${livres > 1 ? "s" : ""} de talento livre${livres > 1 ? "s" : ""}` : ""}`;
+    if (b.title !== rotulo) { b.title = rotulo; b.setAttribute("aria-label", rotulo); }
   }
-  function abrirVocacao(npcId) {
+  function abrirVocacao(npcId, aba) {
     if (!jogador() || typeof visaoVocacao !== "function") return;
     vocacaoNpc = typeof npcId === "string" ? npcId : null;
     confirmaVocacao = null;
+    retornoTalento = null;
+    // Com o mestre, abre na vocação; com pontos livres (e sem escolha pendente), nos talentos.
+    if (aba === "talentos" || aba === "vocacao") abaVocacao = aba;
+    else if (vocacaoNpc) abaVocacao = "vocacao";
+    else if (temTalentos() && jogador().vocacao?.id && visaoTalentos(jogador()).livres > 0 && !visaoVocacao(jogador()).podeEspecializar) abaVocacao = "talentos";
     desenharVocacao(true);
     abrirModal("modalVocacao");
   }
@@ -1311,12 +1322,90 @@
     const html = montarVocacao(p);
     if (!forcar && html === htmlVocacao) return;
     htmlVocacao = html;
-    const foco = document.activeElement && corpo.contains(document.activeElement) ? document.activeElement.dataset.vocacao || document.activeElement.dataset.especializacao : null;
+    const ativo = document.activeElement && corpo.contains(document.activeElement) ? document.activeElement : null;
+    const chaves = ["vocacao", "especializacao", "talento", "abaVocacao", "resetTalentos"];
+    const chave = ativo ? chaves.find((k) => ativo.dataset[k] !== undefined) : null;
+    const rolagem = corpo.scrollTop;
     corpo.innerHTML = html;
     preencherGlifos(corpo);
-    if (foco) $(`[data-vocacao="${foco}"],[data-especializacao="${foco}"]`, corpo)?.focus({ preventScroll: true });
+    corpo.scrollTop = rolagem;
+    if (chave) {
+      const attr = chave.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+      const alvo = $(`[data-${attr}="${ativo.dataset[chave]}"]`, corpo);
+      // Talento que acabou de completar some o botão: o foco vai para o retorno.
+      (alvo && !alvo.disabled ? alvo : $("[data-retorno]", corpo))?.focus({ preventScroll: true });
+    }
   }
   function montarVocacao(p) {
+    const v = visaoVocacao(p);
+    if (!v.atual || !temTalentos()) return montarVocacaoPrincipal(p);
+    const t = visaoTalentos(p);
+    const abas = [["vocacao", "hb_escudo", "Vocação"], ["talentos", "ui_talentos", `Talentos${t.livres ? ` (${t.livres})` : ""}`]];
+    const painel = abaVocacao === "talentos" ? montarTalentos(t) : montarVocacaoPrincipal(p);
+    return `<div class="abas-modal" role="tablist" aria-label="Vocação">${abas.map(([k, g, rot]) => `<button type="button" class="aba-modal" role="tab"
+        id="abaVocacao-${k}" data-aba-vocacao="${k}" aria-selected="${abaVocacao === k}" aria-controls="painelVocacao">${imgGlifo(g)}${rot}</button>`).join("")}</div>
+      <div id="painelVocacao" role="tabpanel" aria-labelledby="abaVocacao-${abaVocacao}">${painel}</div>`;
+  }
+  function montarTalentos(t) {
+    const r = retornoTalento;
+    const retorno = r ? `<p class="retorno${r.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(r.mensagem)}</p>` : "";
+    const pts = (n) => `${n} ponto${n === 1 ? "" : "s"}`;
+    const topo = `<p class="tal-topo"><strong>${t.livres ? `${pts(t.livres)} livre${t.livres === 1 ? "" : "s"}` : "Nenhum ponto livre"}</strong> · ${t.gastos} de ${t.totais} gastos.
+      Você ganha 1 ponto por nível desde o ${t.nivelInicial}. Cada fileira abre com pontos no ramo; o último talento de cada ramo é um ápice, e só ${t.apicesPorPersonagem === 1 ? "um ápice" : `${t.apicesPorPersonagem} ápices`} vale${t.apicesPorPersonagem === 1 ? "" : "m"} por vez.</p>`;
+    const resumo = t.resumo ? `<p class="tal-resumo"><strong>Seus talentos somam:</strong> ${esc(t.resumo)}.</p>` : "";
+    const reset = t.gastos
+      ? `<div class="acoes-modal tal-reset"><button type="button" class="btn ${confirmaVocacao === "reset" ? "primario" : "secundario"}" data-reset-talentos="1">${confirmaVocacao === "reset" ? `Confirmar: refazer por ${t.precoReset} moedas` : `Refazer talentos (${t.precoReset} moedas)`}</button></div>`
+      : "";
+    const ramos = t.ramos.map((ramo) => {
+      const fileiras = [1, 2, 3, 4].map((tier) => {
+        const ts = ramo.talentos.filter((x) => x.tier === tier);
+        if (!ts.length) return "";
+        const aberta = ramo.pontos >= ts[0].precisa;
+        return `<div class="tal-fileira${aberta ? "" : " fechada"}"><p class="tal-req">Fileira ${tier}${ts[0].precisa ? ` · ${ts[0].precisa} pontos no ramo` : ""}</p>${ts.map(htmlTalento).join("")}</div>`;
+      }).join("");
+      return `<section class="tal-ramo" aria-label="Ramo ${esc(ramo.nome)}"><h3>${esc(ramo.nome)} <small>${esc(ramo.foco)} · ${pts(ramo.pontos)}</small></h3>${fileiras}</section>`;
+    }).join("");
+    return `${retorno}${topo}${resumo}<div class="tal-ramos">${ramos}</div>${reset}`;
+  }
+  function htmlTalento(x) {
+    const cheio = x.graus >= x.maximo;
+    const classes = ["tal", x.graus ? "tem" : "", cheio ? "cheio" : "", x.apice ? "apice" : ""].filter(Boolean).join(" ");
+    const efeito = x.maximo > 1 ? `<p class="tal-ef">Cada ponto: ${esc(x.porGrau)}.</p>` : `<p class="tal-ef">${esc(x.porGrau)}.</p>`;
+    const agora = x.graus && x.maximo > 1 ? `<p class="tal-agora">Agora: ${esc(x.atual)}.</p>` : "";
+    const sabor = x.texto ? `<p class="tal-sabor">${esc(x.texto)}</p>` : "";
+    const requer = x.requer ? `<p class="tal-req-t">Requer ${esc(x.requer)} completo.</p>` : "";
+    let acao = "";
+    if (!cheio && x.pode) {
+      const confirmar = confirmaVocacao === "tal:" + x.id;
+      const rot = x.apice ? (confirmar ? `Confirmar ápice: ${esc(x.nome)}` : "Aprender ápice") : x.graus ? `+1 ponto (${x.graus + 1}/${x.maximo})` : "Aprender (1 ponto)";
+      acao = `<button type="button" class="btn ${confirmar ? "primario" : "secundario"} tal-btn" data-talento="${x.id}" aria-label="${esc(x.nome)}: ${rot}">${rot}</button>`;
+    } else if (!cheio) acao = `<p class="tal-motivo">${esc(x.motivo)}</p>`;
+    return `<div class="${classes}"><div class="tal-cab"><strong>${x.apice ? "Ápice · " : ""}${esc(x.nome)}</strong><span class="tal-graus" aria-label="${x.graus} de ${x.maximo} pontos">${x.graus}/${x.maximo}</span></div>
+      ${efeito}${agora}${sabor}${requer}${acao}</div>`;
+  }
+  function acaoTalento(botao) {
+    if (botao.dataset.abaVocacao) {
+      abaVocacao = botao.dataset.abaVocacao;
+      confirmaVocacao = null;
+      retornoTalento = null;
+      desenharVocacao(true);
+      $(`#vocacaoCorpo [data-aba-vocacao="${abaVocacao}"]`)?.focus();
+      return;
+    }
+    const talento = botao.dataset.talento;
+    const chave = talento ? "tal:" + talento : "reset";
+    const apice = talento && /Ápice|ápice/.test(botao.textContent);
+    if ((!talento || apice) && confirmaVocacao !== chave) {
+      confirmaVocacao = chave;
+      desenharVocacao(true);
+      return;
+    }
+    confirmaVocacao = null;
+    retornoTalento = talento ? executar({ tipo: "aprenderTalento", talento }) : executar({ tipo: "resetarTalentos" });
+    desenharVocacao(true);
+    atualizar();
+  }
+  function montarVocacaoPrincipal(p) {
     const v = visaoVocacao(p);
     const nivel = p.nivel || 1;
     const atual = v.vocacoes.find((x) => x.id === v.atual);
@@ -1772,7 +1861,7 @@
       [k("T"), "Suas caçadas (aceitar e trocar só ao lado de um atalaia)"],
       [k("B"), "Bestiário: abates, ficha, fraquezas, saque e amuletos"],
       [k("N"), "Maná do dia (colher e comer) e reserva de descanso do Sábado"],
-      [k("V"), "Vocação: escolher (nível 8), especialização (nível 50) e habilidades"],
+      [k("V"), "Vocação: escolher (nível 8), especialização (nível 50), habilidades e talentos (1 ponto por nível)"],
       [k("1", "–", "8"), "Habilidades da vocação (com vocação; os itens passam para Shift + 1 a 6)"],
       [k("X"), "Mostrar ou ocultar o analisador de caçada (XP/h, saque/h, lucro)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
@@ -2417,6 +2506,11 @@
         const voc = e.target.closest("[data-vocacao], [data-especializacao]");
         if (voc) {
           if (!voc.disabled) acaoVocacao(voc);
+          return;
+        }
+        const tal = e.target.closest("[data-talento], [data-reset-talentos], [data-aba-vocacao]");
+        if (tal) {
+          if (!tal.disabled) acaoTalento(tal);
           return;
         }
         const mana = e.target.closest("[data-acao-mana]");
