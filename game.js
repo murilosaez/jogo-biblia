@@ -2153,7 +2153,7 @@ window.Jogo = {
       case "flecha": return s.atacarAlvo(true);
       case "interagir": return s.acaoContextual();
       case "pescar": return s.pescar();
-      case "orar": return (window.UI?.abrirOracao || window.abrirOracao)?.();
+      case "orar": return (window.UI?.orar || window.orar)?.("oracao");
       case "pocao": return s.usarPocao();
       case "pocaoFe": return s.usarPocaoFe();
       default: return null;

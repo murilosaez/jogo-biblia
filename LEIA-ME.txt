@@ -107,7 +107,8 @@ Controles — teclado e mouse
   no topo). X: mostrar/ocultar o analisador de caçada.
 - N: maná e descanso (colher o maná do dia, comer uma porção e ver a reserva de descanso; também pelo
   botão Maná, no topo, que acende quando o maná do dia caiu e mostra quantas porções há no jarro).
-- F1: Oração (depois de aprendê-la). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
+- F1: Oração na hora (cura; do nível 25 de Oração em diante também tira veneno e sangramento).
+  Shift + F1: Milagre (Oração nível 100). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
   bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
 - Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
   de volta para a mochila para guardar. Duplo clique equipa armas e usa poções. Também funciona
@@ -255,8 +256,8 @@ Criaturas (33 espécies e 6 raros nomeados; cada uma com sprite próprio)
     Sangramento .... 2 de dano a cada 2 s por 8 s; soma pilhas (até 2: 4 de dano por tique)
     Atordoamento ... 1,2 s sem andar nem atacar; não renova; depois, 4 s de imunidade
     Medo ........... 2,5 s sem atacar (pode andar e beber poção); não renova; depois, 6 s de imunidade
-  Poções valem com qualquer status. A Oração "Remover veneno" cura veneno e sangramento; o Milagre cura
-  todos. A morte também cura todos. Os status ativos aparecem como selos na ficha e no HUD do celular.
+  Poções valem com qualquer status. A Oração (F1), do nível 25 em diante, tira veneno e sangramento; o Milagre
+  (Shift + F1) cura todos. A morte também cura todos. Os status ativos aparecem como selos na ficha e no HUD do celular.
 - Combinações de status (COMBINACOES_STATUS), para você e para as criaturas:
     Golpe no atordoado ..... todo golpe em quem está atordoado é crítico (×1,5)
     Pânico ................. quem está com medo leva +25% de dano dos golpes
@@ -300,10 +301,12 @@ Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
 Oração e fé
 - Aprendida com Jesus, na Galileia, depois de concluir a missão de Pedro. A fé vai de 0 a 100 e
   regenera 1 ponto a cada 2 s.
-- Cura de vida: custo 20 de fé, cura 20 + ⌊Oração ÷ 2⌋.
-- Remover veneno: Oração nível 25, custo 40.
-- Cura em área: Oração nível 50, custo 60, cura 30 + ⌊Oração ÷ 2⌋ (aliados quando houver grupo).
-- Milagre: Oração nível 100, custo 100 — vida cheia e todos os status removidos.
+- Oração (F1 ou o botão Orar no celular): age na hora, sem janela. Custo 20 de fé, cura 20 + ⌊Oração ÷ 2⌋.
+  Do nível 25 de Oração em diante, a mesma oração também tira veneno e sangramento, sempre (envenenado
+  ou não). Com a vida cheia, só vale se houver veneno ou sangramento para tirar (e no nível 25 ou mais).
+- Milagre (Shift + F1): Oração nível 100, custo 100 — vida cheia e todos os status removidos.
+- Curar aliados ou o grupo não é da Oração: é dom do Levita (Bênção, Bênção sacerdotal e Expiação curam
+  também o cão e as ovelhas, e curarão os companheiros quando houver grupo).
 
 Regra de morte (vale para morte por inimigo, veneno ou sangramento)
 Você volta a Canaã com a vida cheia; os status são curados e os inimigos vivos voltam ao início com a

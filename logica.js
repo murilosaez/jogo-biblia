@@ -79,9 +79,14 @@ const XP_HABILIDADE_POR_USO = { corpo: 2, distancia: 2, defesa: 1, oracao: 3 };
 // Fé e Oração
 const FE_MAXIMA = 100;
 const FE_REGEN_MS = 2000;
-const CUSTO_ORACAO = { vida: 20, veneno: 40, area: 60, milagre: 100 };
-const NIVEL_ORACAO = { vida: 0, veneno: 25, area: 50, milagre: 100 };
-const NOMES_ORACAO = { vida: "Cura de vida", veneno: "Remover veneno", area: "Cura em área", milagre: "Milagre" };
+// Oração (F1): cura na hora; a partir do nível NIVEL_ORACAO.purificar, a mesma oração também tira veneno e
+// sangramento (sempre, envenenado ou não). Milagre (Shift + F1): vida cheia e todos os status.
+// A cura de aliados e de grupo é só do Levita (dados/vocacoes.js).
+const CUSTO_ORACAO = { oracao: 20, milagre: 100 };
+const NIVEL_ORACAO = { oracao: 0, purificar: 25, milagre: 100 };
+const NOMES_ORACAO = { oracao: "Oração", milagre: "Milagre" };
+// Nomes antigos dos comandos (save e atalhos antigos) que hoje são a mesma Oração.
+const ACOES_ORACAO_ANTIGAS = { vida: "oracao", veneno: "oracao" };
 
 
 // Regra de morte (aplicada em um único lugar: Mundo.aplicarMorte).
@@ -326,6 +331,11 @@ function pesoCarregado(p) {
 
 function defesaEquipamento(p) {
   return Object.values(p.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.defesa || 0 : 0), 0);
+}
+
+// Vida que a Oração cura: 20 + metade do nível de Oração.
+function curaOracao(p) {
+  return 20 + Math.floor(nivelHabilidade(p, "oracao") / 2);
 }
 
 function curaPocao(p) {
@@ -3924,64 +3934,56 @@ const Mundo = {
     return { ok: true, cura, fe, mensagem: `Você comeu o maná, com gosto de bolo de mel (Êx 16:31): ${ganhos}. ${restam}` };
   },
 
-  orar(id, acao) {
+  // Oração rápida (F1) ou Milagre (Shift + F1). Sem janela: cura na hora.
+  orar(id, acao = "oracao") {
     const p = this.jogadores[id];
     if (!p.oracaoDesbloqueada) {
       return { ok: false, mensagem: "A Oração ainda não foi aprendida. Avance até a Galileia e converse com Jesus." };
     }
-    if (acao === "aliado") {
-      return {
-        ok: false,
-        mensagem:
-          "Ainda não há grupo ou companheiros. A cura de aliados será habilitada quando o sistema de grupo existir.",
-      };
+    if (acao === "area" || acao === "aliado" || acao === "grupo") {
+      return { ok: false, mensagem: "Curar aliados e o grupo é dom do Levita (Bênção e Bênção sacerdotal). A Oração cura você." };
     }
-    const custo = registroDe(CUSTO_ORACAO, acao);
-    if (custo === undefined) return { ok: false, mensagem: "Escolha uma forma de Oração." };
+    const tipo = registroDe(ACOES_ORACAO_ANTIGAS, acao) || (acao ?? "oracao");
+    const custo = registroDe(CUSTO_ORACAO, tipo);
+    if (custo === undefined) return { ok: false, mensagem: "Oração desconhecida." };
     const nivel = nivelHabilidade(p, "oracao");
-    if (nivel < NIVEL_ORACAO[acao]) {
-      return {
-        ok: false,
-        mensagem: `${NOMES_ORACAO[acao]} desbloqueia no nível ${NIVEL_ORACAO[acao]} de Oração (atual: ${nivel}).`,
-      };
+    if (nivel < NIVEL_ORACAO[tipo]) {
+      return { ok: false, mensagem: `${NOMES_ORACAO[tipo]} desbloqueia no nível ${NIVEL_ORACAO[tipo]} de Oração (atual: ${nivel}).` };
     }
     const agora = Date.now();
-    const envenenado = !!(statusAtivo(p, "veneno", agora) || statusAtivo(p, "sangramento", agora));
+    const purifica = tipo === "milagre" || nivel >= NIVEL_ORACAO.purificar;
+    const veneno = !!statusAtivo(p, "veneno", agora);
+    const sangramento = !!statusAtivo(p, "sangramento", agora);
+    const outros = tipo === "milagre" && statusAtivos(p, agora).length > 0;
     const vidaCheia = p.vida >= vidaMaxima(p);
-    if ((acao === "vida" || acao === "area") && vidaCheia) return { ok: false, mensagem: "Sua vida já está cheia." };
-    if (acao === "veneno" && !envenenado) return { ok: false, mensagem: "Você não está envenenado nem sangrando." };
-    if (acao === "milagre" && vidaCheia && !envenenado)
-      return { ok: false, mensagem: "Você não precisa de um milagre agora." };
+    if (vidaCheia && !(purifica && (veneno || sangramento || outros))) {
+      return { ok: false, mensagem: tipo === "milagre" ? "Você não precisa de um milagre agora." : "Sua vida já está cheia." };
+    }
     if (p.fe < custo) {
-      return {
-        ok: false,
-        mensagem: `Fé insuficiente (${p.fe}/${custo}). Use uma poção de fé ou aguarde a regeneração.`,
-      };
+      return { ok: false, mensagem: `Fé insuficiente (${p.fe}/${custo}). Use uma poção de fé ou espere a fé voltar.` };
     }
     p.fe -= custo;
     const antes = p.vida;
     let mensagem;
-    if (acao === "vida") {
-      p.vida = Math.min(vidaMaxima(p), p.vida + 20 + Math.floor(nivel / 2));
-      mensagem = `Oração: recuperou ${p.vida - antes} de vida.`;
-    } else if (acao === "veneno") {
-      const sangrava = !!statusAtivo(p, "sangramento", agora);
-      const envenenadoAgora = !!statusAtivo(p, "veneno", agora);
-      curarStatus(p, "veneno");
-      curarStatus(p, "sangramento");
-      mensagem = envenenadoAgora && sangrava ? "O veneno e o sangramento foram removidos pela Oração." : sangrava ? "O sangramento foi estancado pela Oração." : "O veneno foi removido pela Oração.";
-    } else if (acao === "area") {
-      p.vida = Math.min(vidaMaxima(p), p.vida + 30 + Math.floor(nivel / 2));
-      mensagem = `Oração em área 3×3: você recuperou ${p.vida - antes} de vida. Aliados próximos serão curados quando houver companheiros no jogo.`;
-    } else {
+    if (tipo === "milagre") {
       p.vida = vidaMaxima(p);
-      for (const tipo of TIPOS_STATUS) curarStatus(p, tipo);
+      for (const t of TIPOS_STATUS) curarStatus(p, t);
       mensagem = "Milagre: vida restaurada por completo e todos os status removidos.";
+    } else {
+      p.vida = Math.min(vidaMaxima(p), p.vida + curaOracao(p));
+      // Do nível de purificar em diante, a Oração sempre tira veneno e sangramento.
+      if (purifica) for (const t of ["veneno", "sangramento"]) curarStatus(p, t);
+      const tirou = [veneno && "o veneno foi removido", sangramento && "o sangramento foi estancado"].filter(Boolean);
+      mensagem = `Oração: +${p.vida - antes} de vida.${tirou.length ? ` ${tirou.join(" e ").replace(/^o/, "O")}.` : ""}`;
     }
     const subiu = ganharHabilidade(p, "oracao", XP_HABILIDADE_POR_USO.oracao);
-    if (subiu) mensagem += ` Oração: nível ${p.habilidades.oracao}.`;
+    if (subiu) {
+      mensagem += ` Oração: nível ${p.habilidades.oracao}.`;
+      if (p.habilidades.oracao === NIVEL_ORACAO.purificar) mensagem += " Agora a Oração também tira veneno e sangramento.";
+      if (p.habilidades.oracao === NIVEL_ORACAO.milagre) mensagem += " Milagre liberado: Shift + F1.";
+    }
     this.salvar(p);
-    return { ok: true, cura: p.vida - antes, mensagem: `${mensagem} Fé ${p.fe}/${FE_MAXIMA}.` };
+    return { ok: true, acao: tipo, cura: p.vida - antes, purificou: purifica, mensagem: `${mensagem} Fé ${p.fe}/${FE_MAXIMA}.` };
   },
 
   // Atordoado: não anda nem ataca (poções e Oração continuam valendo).
@@ -5051,7 +5053,7 @@ const Mundo = {
       if (!r.novo) return null;
       return {
         tipo: "veneno",
-        mensagem: `${nome} envenenou você (${ef.dano} de dano a cada ${s(ef.intervalo)} por ${s(ef.duracao)}). A Oração remove veneno a partir do nível ${NIVEL_ORACAO.veneno}.`,
+        mensagem: `${nome} envenenou você (${ef.dano} de dano a cada ${s(ef.intervalo)} por ${s(ef.duracao)}). A Oração (F1) tira veneno a partir do nível ${NIVEL_ORACAO.purificar}.`,
       };
     }
     if (ef.tipo === "sangramento") {
