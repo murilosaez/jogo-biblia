@@ -17,7 +17,8 @@ Conteúdo do jogo (pasta dados/)
   (papel "ambiente") só conversam, dizendo as suas falas em rodízio.
 - dados/criaturas.js: inimigos (tier, comportamento, status, atributos e tabela de saque), as regras de
   tiers, comportamentos, status e campeões, e os raros nomeados com a janela de aparição; especie e familia de cada criatura (as
-  caçadas contam por elas) e os nomes das famílias.
+  caçadas contam por elas) e os nomes das famílias; as regras do bestiário (REGRAS_BESTIARIO: abates de cada
+  estágio, o que cada um revela e o amuleto) e o texto de fraqueza de cada comportamento e status.
 - dados/capitulos.js: capítulos em ordem, a missão de cada um e o Mestre que ensina a Oração.
 - dados/missoes.js: todas as missões (Eliabe, Noemi e capítulos): quem dá e recebe, missão
   anterior exigida, etapas com objetivos (derrotar, coletar, entregar, falar com alguém, chegar a
@@ -27,9 +28,9 @@ Conteúdo do jogo (pasta dados/)
   tipo e espera), regras (limite de caçadas ativas e bônus da 1ª entrega), falas dos atalaias e a
   troca de pontos de tarefa. Os ids das caçadas são permanentes (ficam no save): para tirar uma
   caçada do mural, use oculta: true.
-O progresso fica no save (save versão 9): missoes[id] = { status, etapa, progresso },
-tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo) e trocas
-(ofertas já trocadas). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+O progresso fica no save (save versão 10): missoes[id] = { status, etapa, progresso },
+tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
+(ofertas já trocadas) e bestiario[especie] = abates (os estágios e os amuletos saem da contagem). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -43,7 +44,8 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 9, sem perder itens, moedas, nível ou progresso. Na versão 9 os mapas dobraram de
+   para a versão 10, sem perder itens, moedas, nível ou progresso. A versão 10 traz o bestiário, que começa do
+   zero (os saves antigos não contavam abates por espécie). Na versão 9 os mapas dobraram de
    tamanho: a posição antiga (e os saques no chão) vai para o ponto equivalente do mapa novo e, se ali
    houver obstáculo, estrutura ou NPC, para a casa livre mais próxima. O jogo grava no máximo 1 vez por
    segundo e grava na hora ao fechar, ocultar ou trocar de aba.
@@ -61,6 +63,8 @@ Controles — teclado e mouse
 - P: pescar (no barco, ao lado de um ponto de pesca).
 - T: suas caçadas (consulta em qualquer lugar; aceitar e trocar só ao lado de um atalaia). O saldo
   de pontos de tarefa, no topo, e as caçadas do painel Missão também abrem a consulta.
+- B: bestiário (abates de cada espécie, ficha, fraquezas, saque e amuletos; também pelo botão Bestiário,
+  no topo). X: mostrar/ocultar o analisador de caçada.
 - F1: Oração (depois de aprendê-la). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
   bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
 - Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
@@ -75,7 +79,8 @@ Controles — toque (celular e tablet)
   obstáculo, deslizando para o lado em que o dedo está. Segure para continuar andando.
 - À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
   (falar, caçadas, cais, pesca, rota). Toque num inimigo para escolher o alvo.
-- Barra inferior: Mochila, Equipamento, Batalha, Missão e Registro abrem em folhas recolhíveis.
+- Barra inferior: Mochila, Equipamento, Batalha, Missão e Registro abrem em folhas recolhíveis (o
+  analisador de caçada fica na folha Batalha).
   Toque num item e depois no espaço de equipamento ou no atalho; toque longo mostra a descrição.
 
 Interface e visual
@@ -89,7 +94,8 @@ Interface e visual
 - Painéis: Missão (texto de textoMissaoAtual e as caçadas em andamento, com "27/40"), Personagem
   (barras de vida, fé e XP com números, habilidades, estatísticas de estatisticasCombate e pontos de
   tarefa), Equipamento, Mochila, Bolsa, Batalha (inimigos da área, alvo destacado; o glifo de contagem
-  marca quem conta para uma caçada ativa), Registro (últimas 30 mensagens com horário) e minimapa.
+  marca quem conta para uma caçada ativa), Caçada (analisador, recolhível), Registro (últimas 30 mensagens
+  com horário) e minimapa. No médio, o analisador fica na aba Batalha.
 - Mural de caçadas (atalaia): fala do atalaia, saldo, abas Caçadas (cartões com progresso, espera
   "Volta em 19 h 59 min" e Aceitar, Retomar ou Guardar) e Troca de pontos. Cada abate que conta mostra
   "27/40" sobre a criatura, e a caçada cumprida mostra o cartão "CAÇADA CUMPRIDA". O atalaia tem um
@@ -282,10 +288,37 @@ quando a missão principal da região é concluída.
   compra itens da troca. Trocar de novo um item que você já tem (na mochila ou equipado) pede
   confirmação, e um duplo clique no mural vale como um clique só.
 
+Bestiário e amuletos
+Tecla B ou o botão Bestiário, no topo. Cada abate (golpe ou flecha, campeã ou não) conta para a espécie,
+para sempre; a morte não tira nada. As espécies aparecem por família, como silhueta ("???") até o 1º abate.
+    Estágio 1, Avistada .... 10 abates: ficha (vida, dano, defesa e quanto do seu golpe passa por ela,
+                             nível, XP, comportamentos, status e o seu golpe e a sua flecha contra ela)
+    Estágio 2, Estudada .... 100 abates: fraquezas (como vencer cada comportamento e status) e os itens
+                             do saque
+    Estágio 3, Dominada .... 1000 abates: a chance de cada linha do saque e as moedas
+- Subir de estágio aparece sobre a criatura ("ESTÁGIO 2/3") e no Registro.
+- Amuleto da família: com todas as espécies dela no estágio 2 (os raros nomeados não entram na conta,
+  porque aparecem poucas vezes por dia), você ganha +5% de dano em todo golpe e flecha contra a família,
+  antes da defesa. Não ocupa espaço, não pesa e não se perde. Famílias: Feras, Peçonhentos, Saqueadores,
+  Soldados de Faraó, Amalequitas, Aves de rapina, Pragas, Répteis do Nilo, Magos de Faraó e Criaturas do mar.
+  A lista de Batalha mostra "Amuleto +5%" na ficha de quem já está coberto.
+
+Analisador de caçada
+Painel "Caçada" (coluna da esquerda no largo; aba ou folha Batalha no médio e no celular). Tecla X mostra ou
+oculta; a escolha fica no navegador.
+- O relógio começa no seu primeiro golpe e corre até você zerar (botão Zerar) ou recarregar a página;
+  trocar de área, viajar ou morrer não zeram.
+- Por sessão e por hora: XP (dos abates), saque (moedas recolhidas + valor de venda dos itens recolhidos,
+  pelo preço do Azarias; equipamento não tem preço de venda e só é contado), lucro (saque − poções e
+  flechas gastas, pelo preço da loja, − moedas perdidas na morte) e abates; também as mortes, as espécies
+  mais caçadas e o tempo até o próximo nível no ritmo atual. As taxas por hora aparecem depois de 1 minuto.
+- O item que você deixou cair ao morrer não conta como saque quando você o recolhe.
+
 Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
   com a tabela de duração das lutas.
-- Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p),
+- Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p), bestiarioPorFamilia(p),
+  resumoBestiario(p), visaoEspecie(p, especie), bonusAmuleto(p, e), Mundo.analisador(id), textoRelogio(ms),
   estadoMissaoNpc(p, npcId) (balão sobre o NPC: "missao", "andamento", "entregar", "mural" para o
   atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
@@ -306,7 +339,16 @@ Para desenvolvedores
   { tipo: "trocarPontos", ofertaId } de Mundo.executar. Falar com um atalaia devolve abrirMural (mural
   aberto) e, se houve entrega, tarefasEntregues e niveis; os ataques que derrotam devolvem tarefas
   (só as caçadas que avançaram). A interface só lê p.tarefas, p.pontosTarefa e p.trocas.
+- Bestiário: p.bestiario[especie] conta os abates; derrotarInimigo devolve bestiario ({ especie, abates,
+  estagio, subiu, amuleto }) e, ao subir de estágio ou completar um amuleto, um anúncio para o Registro.
+  visaoEspecie(p, especie) só traz o que o estágio revela (ficha, fraquezas e saque, chances); o resto vem
+  null. O amuleto entra no dano por calcularGolpe(p, tipo, defesa, aleatorio, multiplicador). O teste 56
+  confere estágios, revelação, amuleto e save.
+- Analisador de caçada: vive em Mundo.estado[id].analisador (na memória, não no save; atravessa trocas de
+  área e a morte, zera ao recarregar a página ou com o comando { tipo: "zerarAnalisador" }).
+  Mundo.analisador(id) devolve totais, taxas por hora (null no 1º minuto), lucro e tempo até o próximo
+  nível. O teste 57 confere as contas.
 - Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
   interface.js (window.UI: painéis, modais, atalhos, toque; window.UI.abrirMural(npcId) abre o mural de
-  um atalaia, ou a consulta com null). Os nomes antigos continuam valendo: atualizarInterface(),
-  mostrarMensagem(), abrirLoja(), abrirViagem(), abrirOracao(), abrirMural().
+  um atalaia, ou a consulta com null; window.UI.abrirBestiario() abre o bestiário). Os nomes antigos continuam
+  valendo: atualizarInterface(), mostrarMensagem(), abrirLoja(), abrirViagem(), abrirOracao(), abrirMural().

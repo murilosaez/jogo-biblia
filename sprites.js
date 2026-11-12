@@ -1452,6 +1452,10 @@
   glifo("ui_cacada", [".kkkkkk.", "kMWMWMyk", "kMWMWyWk", "kMWMyMWk", "kMWyWMWk", "kMyMWMWk", "kyWMWMWk", ".kkkkkk."], { W: "#d9a35c", M: "#5a3a24", y: "#f6efdc" });
   glifo("ui_selo", ["..kkkk..", ".kTtTTkk", "kTtiiiTk", "kTTimiTk", "kTTiiidk", "kTTTTddk", ".kTddkk.", "..kkk..."], { T: "#b5663a", t: "#d88a58", d: "#8e4a2a", i: "#6e3420", m: "#f0c890" });
   glifo("ui_alforje", [".kkkkkk.", "kkddddkk", "kDDkkDDk", "kDyDkDyk", "kLLLkLLk", "kLLLkLLk", "kLLdkLdk", "kkkkkkkk"], { L: "#a8703a", D: "#7a4a30", d: "#5a3624", y: "#e8b94a" });
+  // Bestiário (livro de capa de couro com a pegada dourada), amuleto da família e ampulheta do analisador.
+  glifo("ui_bestiario", [".kkkkkk.", "kYLYLYPk", "kLLLLLPk", "kLYYYLPk", "kLYYYLPk", "kLLYLLPk", "kLLLLLPk", ".kkkkkk."], { L: "#7a4a30", Y: "#e8b94a", P: "#f3e4c0" });
+  glifo("ui_amuleto", ["C......C", ".C....C.", "..C..C..", "...kk...", "..kYYk..", ".kYyGYk.", ".kYGGdk.", "..kddk.."], { C: "#c9b48a", Y: "#e8b94a", y: "#ffe08a", d: "#b8862b", G: "#3fa66a" });
+  glifo("ui_ampulheta", ["NNNNNNNN", ".kYYYYk.", "..kYYk..", "...kk...", "...kk...", "..k.Yk..", ".kYYYYk.", "NNNNNNNN"], { N: "#b07a38", Y: "#e8b94a" });
 
   // -------------------------------------------------------------------
   // Marcadores (§6.8)

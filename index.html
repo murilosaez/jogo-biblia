@@ -421,6 +421,68 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .voltam b{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta);white-space:nowrap}
 .linha-inimigo .marca-cacada{display:inline-flex}
 
+/* bestiário (JGB-9) */
+.legenda-estagios{display:flex;flex-wrap:wrap;gap:4px 12px;margin:-4px 0 10px;font:400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+.legenda-estagios b{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta)}
+.familia-bestiario{margin:0 0 12px}
+.familia-cab{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0 0 6px;padding:0 0 4px;border-bottom:1px solid var(--perg-400)}
+.modal-corpo .familia-cab h3{margin:0;flex:1 1 auto}
+.amuleto-fam{display:inline-flex;align-items:center;gap:6px;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta-suave)}
+.amuleto-fam.ativo{color:var(--fe-1)}
+.amuleto-fam img{vertical-align:-3px}
+.amuleto-fam .mini-barra i{background:var(--xp-2);box-shadow:inset 0 1px 0 var(--xp-3)}
+.lista-especies{display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none}
+.especie{border:1px solid var(--perg-400);background:#fff2}
+.especie-linha{all:unset;box-sizing:border-box;display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;padding:4px 6px;cursor:pointer;color:var(--tinta)}
+.especie-linha:hover{background:#fff3}
+.especie-linha:focus-visible{outline:2px solid var(--bronze-600);outline-offset:-2px}
+.especie .icone{width:40px;height:40px;display:grid;place-items:center;background:radial-gradient(circle at 35% 30%,#4a2e1f,#24150e);border:2px solid var(--bronze-700)}
+.especie .icone img{width:auto;height:auto;max-width:34px;max-height:32px}
+.especie .icone img.silhueta{filter:brightness(0) invert(1);opacity:.28}
+.especie-info{min-width:0;display:flex;flex-direction:column;gap:2px}
+.especie-info strong{font:700 var(--fs-14)/1.15 var(--f-texto);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.especie-info span{font:italic 400 var(--fs-13)/1.2 var(--f-texto);color:var(--tinta-suave)}
+.especie-prog{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:84px}
+.especie-prog b{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta-suave);white-space:nowrap}
+.especie-prog .mini-barra{width:72px}
+.especie-prog .mini-barra i{background:var(--xp-2);box-shadow:inset 0 1px 0 var(--xp-3)}
+.pips{display:inline-flex;gap:3px}
+.pips i{width:8px;height:8px;border:1px solid var(--perg-400);background:transparent}
+.pips i.feito{border-color:var(--tinta);background:var(--xp-2);box-shadow:inset 0 1px 0 var(--xp-3)}
+.especie-detalhe{padding:6px 8px 8px 56px;border-top:1px dotted var(--perg-400);font:400 var(--fs-13)/1.35 var(--f-texto)}
+.especie-detalhe[hidden]{display:none}
+.modal-corpo .especie-detalhe h4{margin:8px 0 4px;font:700 var(--fs-13)/1.2 var(--f-titulo);color:var(--tinta)}
+.modal-corpo .especie-detalhe h4:first-child{margin-top:0}
+.especie-detalhe p{margin:0 0 4px}
+.especie-detalhe .ficha-best{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:2px 12px;margin:0}
+.ficha-best div{display:flex;justify-content:space-between;gap:6px;border-bottom:1px dotted var(--perg-400)}
+.ficha-best dt{color:var(--tinta-suave)}
+.ficha-best dd{margin:0;font:600 var(--fs-12)/1.6 var(--f-pixel);color:var(--tinta);white-space:nowrap}
+.especie-detalhe ul{margin:0;padding:0 0 0 16px}
+.especie-detalhe li{margin:0 0 3px}
+.especie-detalhe ul.saque-best{list-style:none;padding:0;display:flex;flex-direction:column;gap:2px}
+.saque-best li{display:flex;align-items:center;gap:6px}
+.saque-best li img{width:16px;height:16px}
+.saque-best .chance{margin-left:auto;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta);white-space:nowrap}
+.especie-detalhe .trancado{display:flex;align-items:center;gap:6px;font-style:italic;color:var(--tinta-suave)}
+@media (max-width:760px){ .especie-detalhe{padding-left:8px} .especie-prog{min-width:72px} .especie-prog .mini-barra{width:60px} }
+
+/* analisador de caçada (JGB-10) */
+#pAnalisador[data-aberto="false"] .painel-corpo{display:none}
+#pAnalisador .painel-corpo{padding:6px 8px}
+.analise{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:1px 10px;margin:0;font:400 var(--fs-12)/1.5 var(--f-pixel)}
+.analise dt{font:400 var(--fs-13)/1.5 var(--f-texto);color:var(--tinta-suave)}
+.analise dd{margin:0;text-align:right;color:var(--tinta);white-space:nowrap}
+.analise dd.hora{color:var(--tinta-suave)}
+.analise .cab{font:600 var(--fs-11)/1.4 var(--f-pixel);color:var(--tinta-suave);text-transform:uppercase;letter-spacing:.04em}
+.analise .lucro-neg{color:var(--vida-1)}
+.analise-pe{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;padding-top:6px;border-top:1px solid var(--perg-400)}
+.analise-pe p{margin:0;min-width:0;font:400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+.analise-pe .btn{min-height:28px;padding:0 10px;font-size:var(--fs-12)}
+.analise-proximo{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;margin:2px 0 0;font:400 var(--fs-13)/1.5 var(--f-texto);color:var(--tinta-suave)}
+.analise-proximo b{font:400 var(--fs-12)/1.5 var(--f-pixel);color:var(--tinta)}
+.analise-nota{margin:4px 0 0;font:italic 400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+
 /* viagem */
 .mapa-antigo{position:relative;width:320px;max-width:100%;margin:0 auto 10px;aspect-ratio:16/10}
 .mapa-antigo canvas{width:100%;height:100%;display:block;image-rendering:pixelated;border:2px solid var(--tinta)}
@@ -604,6 +666,7 @@ body.toque-forcado #dpad{display:block}
     <span class="moedas" id="moedas" title="Moedas"><img class="px g16" data-glifo="ui_moeda" alt=""><b id="moedasValor">0</b><span class="sr"> moedas</span></span>
     <button class="moedas pontos" id="pontos" type="button" title="Pontos de tarefa · T: suas caçadas" hidden>
       <img class="px g16" data-glifo="ui_selo" alt=""><b id="pontosValor">0</b><span class="sr"> pontos de tarefa (abre suas caçadas)</span></button>
+    <button class="btn-icone" id="btnBestiario" type="button" aria-label="Bestiário (B)" title="Bestiário (B)"><img class="px g16" data-glifo="ui_bestiario" alt=""><span class="rotulo">Bestiário</span></button>
     <button class="btn-icone" id="btnMapa" type="button" aria-label="Mostrar ou ocultar o mapa (M)" aria-pressed="true"><img class="px g16" data-glifo="ui_rosa" alt=""><span class="rotulo">Mapa</span></button>
     <button class="btn-icone so-largo" id="btnTelaCheia" type="button" aria-label="Tela cheia"><img class="px g16" data-glifo="ui_tela_cheia" alt=""><span class="rotulo">Tela cheia</span></button>
     <button class="btn-icone so-largo" id="btnAjuda" type="button" aria-label="Controles e ajuda (?)"><img class="px g16" data-glifo="ui_ajuda" alt=""><span class="rotulo">Controles</span></button>
@@ -689,6 +752,12 @@ body.toque-forcado #dpad{display:block}
     <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeBolsa" role="list" aria-label="Consumíveis e recursos"></div><p class="nota">Duplo clique usa a poção.</p></div>
   </section>
 
+  <section class="perg" id="pAnalisador" data-aberto="true" aria-labelledby="tAnalisador">
+    <div class="painel-cab"><button class="recolher" type="button" id="btnAnalisador" aria-expanded="true" aria-controls="corpoAnalisador" title="Analisador de caçada (X)"><img class="px g16" data-glifo="ui_ampulheta" alt=""><h2 id="tAnalisador">CAÇADA</h2><span class="extra" id="analisadorRelogio">parado</span><span class="seta"></span></button></div>
+    <div class="painel-corpo" id="corpoAnalisador"><div id="analiseDados" aria-live="off"></div>
+      <div class="analise-pe"><p id="analiseEspecies">Nenhum abate ainda.</p><button type="button" class="btn secundario" data-zerar-analisador title="Zera a sessão: o relógio volta a contar no próximo golpe">Zerar</button></div></div>
+  </section>
+
   <section class="perg" id="pRegistro" data-aberto="false" aria-labelledby="tRegistro">
     <div class="painel-cab"><button class="recolher" type="button" id="btnRegistro" aria-expanded="false" aria-controls="corpoRegistro"><img class="px g16" data-glifo="ui_registro" alt=""><h2 id="tRegistro">REGISTRO</h2><span class="extra" id="registroQtd">0</span><span class="seta"></span></button></div>
     <div class="painel-corpo" id="corpoRegistro"><ol id="listaRegistro" aria-live="off"></ol></div>
@@ -751,6 +820,14 @@ body.toque-forcado #dpad{display:block}
     <div class="modal-corpo" id="muralCorpo"></div>
   </div>
 </div>
+<div class="modal" id="modalBestiario" aria-hidden="true">
+  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="bestiarioTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_bestiario" data-escala="4" alt=""></span><div><h2 id="bestiarioTitulo">Bestiário</h2>
+      <p class="sub" id="bestiarioSub">Abates, fraquezas e amuletos</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="bestiarioCorpo"></div>
+  </div>
+</div>
+
 <div class="modal" id="modalViagem" aria-hidden="true">
   <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="viagemTitulo">
     <div class="modal-cab"><span class="icone-cab"><img class="px" id="viagemRetrato" alt=""></span><div><h2 id="viagemTitulo">Viagem rápida</h2><p class="sub">guia de caravanas</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>

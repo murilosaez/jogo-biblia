@@ -14,7 +14,7 @@
 const TILE = 32;
 const COLS = DADOS_TAMANHO_MAPA.colunas; // dados/mapas.js
 const ROWS = DADOS_TAMANHO_MAPA.linhas;
-const VERSAO_SAVE = 9;
+const VERSAO_SAVE = 10;
 const ESCALA_MAPAS_V8 = 2; // os mapas passaram de 80×60 (save v8) para 160×120 (save v9)
 
 const VIDA_BASE = 100;
@@ -49,6 +49,9 @@ const TEMPO_RESPAWN_PESCA = 12000;
 const TEMPO_EXPIRACAO_SAQUE = 10 * 60 * 1000;
 const LIMITE_SAQUES_NO_CHAO = 60;
 const INTERVALO_LIMPEZA_SAQUES = 5000;
+// Analisador de caçada (JGB-10): as taxas por hora só aparecem depois deste tempo de sessão (antes, um
+// único abate viraria milhares de XP/h).
+const ANALISADOR_MINIMO_MS = 60 * 1000;
 
 const CURA_POCAO = 30; // mínimo
 const CURA_POCAO_PERCENTUAL = 0.25; // da vida máxima
@@ -461,8 +464,9 @@ function mitigarDano(dano, defesa) {
   return Math.max(1, Math.round((dano * CONSTANTE_DEFESA) / (CONSTANTE_DEFESA + d)));
 }
 
-function calcularGolpe(p, tipo, defesaAlvo, aleatorio = Math.random()) {
-  const bruto = danoBruto(p, tipo);
+// multiplicador: bônus sobre o dano bruto, antes do crítico e da defesa (o amuleto da família: 1,05).
+function calcularGolpe(p, tipo, defesaAlvo, aleatorio = Math.random(), multiplicador = 1) {
+  const bruto = Math.round(danoBruto(p, tipo) * multiplicador);
   const critico = aleatorio < chanceCritico(p, tipo) / 100;
   const comCritico = critico ? Math.round(bruto * MULTIPLICADOR_CRITICO) : bruto;
   return { bruto: comCritico, critico, dano: mitigarDano(comCritico, defesaAlvo) };
@@ -967,6 +971,189 @@ for (const criatura of DADOS_CRIATURAS) {
 }
 // Raros nomeados (o laço de tempo confere a janela deles a cada quadro).
 const NOMEADOS = Object.values(inimigos).filter((e) => e.nomeado);
+
+// ---------------------------------------------------------------------
+// Bestiário (JGB-9): estágios por espécie e amuletos por família
+// ---------------------------------------------------------------------
+// Estado no save: p.bestiario[especie] = abates (só espécies com pelo menos 1 abate). Os estágios e os
+// amuletos não são guardados: saem da contagem, com as regras de REGRAS_BESTIARIO (dados/criaturas.js).
+// As funções abaixo são puras: a interface só lê o bestiário por elas.
+const ESPECIES = {}; // especie → criatura de referência (a original dos dados)
+const ORDEM_ESPECIES = [];
+for (const criatura of DADOS_CRIATURAS) {
+  if (!criatura.especie || ESPECIES[criatura.especie]) continue;
+  ESPECIES[criatura.especie] = inimigos[criatura.id];
+  ORDEM_ESPECIES.push(criatura.especie);
+}
+const ESTAGIOS_BESTIARIO = REGRAS_BESTIARIO.estagios;
+const ESTAGIO_MAXIMO_BESTIARIO = ESTAGIOS_BESTIARIO.length;
+
+function abatesDaEspecie(p, especie) {
+  const n = p?.bestiario && registroDe(ESPECIES, especie) ? registroDe(p.bestiario, especie) : 0;
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+// 0 (nenhum estágio) até ESTAGIO_MAXIMO_BESTIARIO.
+function estagioDeAbates(abates) {
+  let estagio = 0;
+  ESTAGIOS_BESTIARIO.forEach((s, i) => {
+    if (abates >= s.abates) estagio = i + 1;
+  });
+  return estagio;
+}
+
+// O estágio revela "ficha", "fraquezas" ou "chances"? (cada estágio revela também o que os anteriores revelam)
+function estagioRevela(estagio, revela) {
+  const i = ESTAGIOS_BESTIARIO.findIndex((s) => s.revela === revela);
+  return i >= 0 && estagio >= i + 1;
+}
+
+// Espécies que contam para o amuleto da família (sem os tiers de REGRAS_BESTIARIO.amuleto.ignorarTiers).
+function especiesDoAmuleto(familia) {
+  const fora = REGRAS_BESTIARIO.amuleto.ignorarTiers || [];
+  return ORDEM_ESPECIES.filter((k) => ESPECIES[k].familia === familia && !fora.includes(ESPECIES[k].tier));
+}
+
+function progressoAmuleto(p, familia) {
+  const regra = REGRAS_BESTIARIO.amuleto;
+  const especies = especiesDoAmuleto(familia);
+  const cumpridas = especies.filter((k) => estagioDeAbates(abatesDaEspecie(p, k)) >= regra.estagio).length;
+  return {
+    familia,
+    nome: FAMILIAS_CRIATURAS[familia]?.nome || familia,
+    cumpridas,
+    total: especies.length,
+    ativo: especies.length > 0 && cumpridas === especies.length,
+    bonus: regra.bonusDano,
+    estagio: regra.estagio,
+    nomeEstagio: ESTAGIOS_BESTIARIO[regra.estagio - 1]?.nome || "",
+  };
+}
+
+// Bônus de dano (fração) do amuleto contra a criatura: 0 sem o amuleto da família dela.
+function bonusAmuleto(p, e) {
+  return e?.familia && registroDe(FAMILIAS_CRIATURAS, e.familia) && progressoAmuleto(p, e.familia).ativo ? REGRAS_BESTIARIO.amuleto.bonusDano : 0;
+}
+
+function amuletosDoJogador(p) {
+  return Object.keys(FAMILIAS_CRIATURAS).map((f) => progressoAmuleto(p, f)).filter((a) => a.ativo);
+}
+
+// Golpe esperado (sem crítico) do jogador contra a criatura: dano bruto com o amuleto, menos a defesa dela.
+function golpeContra(p, e, tipo) {
+  return mitigarDano(Math.round(danoBruto(p, tipo) * (1 + bonusAmuleto(p, e))), e.defesa || 0);
+}
+
+// Fraquezas da espécie: comportamentos, status (com a chance dela), pouca defesa e alcance menor que o do arco.
+function fraquezasDaEspecie(e) {
+  const lista = [];
+  for (const c of e.comportamentos) if (COMPORTAMENTOS[c].fraqueza) lista.push(COMPORTAMENTOS[c].fraqueza);
+  if (e.comportamentos.includes("distancia")) {
+    const alcance = e.alcance || COMPORTAMENTOS.distancia.alcance;
+    if (alcance < ALCANCE_ARCO) lista.push(preencherTexto(REGRAS_BESTIARIO.fraquezaAlcance, { arco: ALCANCE_ARCO, alcance }));
+  }
+  if (e.efeito?.fraqueza) {
+    lista.push(preencherTexto(e.efeito.fraqueza, {
+      chance: `${Math.round((e.efeito.chance ?? 1) * 100)}%`,
+      imunidade: `${String((e.efeito.imunidade || 0) / 1000).replace(".", ",")} s`,
+    }));
+  }
+  if ((e.defesa || 0) <= REGRAS_BESTIARIO.defesaBaixa) lista.push(REGRAS_BESTIARIO.fraquezaDefesaBaixa);
+  return lista;
+}
+
+// Tudo o que a tela do bestiário mostra de uma espécie, conforme o estágio (o que não foi revelado vem null).
+function visaoEspecie(p, especie) {
+  const e = registroDe(ESPECIES, especie);
+  if (!e) return null;
+  const abates = abatesDaEspecie(p, especie);
+  const estagio = estagioDeAbates(abates);
+  const proximo = ESTAGIOS_BESTIARIO[estagio] || null;
+  const anterior = estagio > 0 ? ESTAGIOS_BESTIARIO[estagio - 1].abates : 0;
+  const conhecida = abates > 0;
+  const ficha = estagioRevela(estagio, "ficha")
+    ? {
+        vida: e.vidaMaxima,
+        dano: e.danoContraJogador,
+        defesa: e.defesa || 0,
+        passa: Math.round((100 * CONSTANTE_DEFESA) / (CONSTANTE_DEFESA + (e.defesa || 0))),
+        nivel: e.nivel ?? null,
+        xp: e.xpRecompensa || 0,
+        tier: TIERS_CRIATURAS[e.tier]?.nome || "",
+        comportamentos: e.comportamentos.map((c) => COMPORTAMENTOS[c].nome),
+        status: e.efeito ? STATUS_CRIATURAS[e.efeito.tipo].nome : null,
+        golpeCorpo: golpeContra(p, e, "corpo"),
+        golpeArco: p?.equipamento?.arco ? golpeContra(p, e, "distancia") : null,
+      }
+    : null;
+  const comChances = estagioRevela(estagio, "chances");
+  const saque = estagioRevela(estagio, "fraquezas")
+    ? {
+        moedas: comChances ? e.saque?.moedas || 0 : null,
+        itens: tabelaDeSaque(e)
+          .filter((l) => registroDe(ITENS, l.item))
+          .map((l) => {
+            const raridade = registroDe(RARIDADES, l.raridade) ? l.raridade : registroDe(RARIDADES, l.raridadeMinima) ? l.raridadeMinima : ITENS[l.item].raridade || "comum";
+            const chance = chanceSaque(l.chance ?? 1);
+            return { item: l.item, nome: ITENS[l.item].nome, raridade, minima: !l.raridade && !!l.raridadeMinima, chance: comChances ? chance : null, textoChance: comChances ? textoChance(chance) : null };
+          }),
+      }
+    : null;
+  return {
+    especie,
+    inimigoId: e.id,
+    nome: conhecida ? e.nome : null,
+    titulo: conhecida ? e.titulo || null : null,
+    nomeado: !!e.nomeado,
+    area: e.area,
+    nomeArea: areas[e.area]?.nome || e.area,
+    familia: e.familia,
+    nomeFamilia: FAMILIAS_CRIATURAS[e.familia]?.nome || "",
+    contaParaAmuleto: especiesDoAmuleto(e.familia).includes(especie),
+    abates,
+    estagio,
+    nomeEstagio: estagio > 0 ? ESTAGIOS_BESTIARIO[estagio - 1].nome : "",
+    proximo: proximo ? { abates: proximo.abates, nome: proximo.nome, revela: proximo.revela, texto: proximo.texto, desde: anterior } : null,
+    ficha,
+    fraquezas: estagioRevela(estagio, "fraquezas") ? fraquezasDaEspecie(e) : null,
+    saque,
+  };
+}
+
+// Bestiário por família (ordem de FAMILIAS_CRIATURAS; dentro dela, por nível), com o amuleto de cada uma.
+function bestiarioPorFamilia(p) {
+  return Object.keys(FAMILIAS_CRIATURAS)
+    .map((familia) => ({
+      familia,
+      nome: FAMILIAS_CRIATURAS[familia].nome,
+      amuleto: progressoAmuleto(p, familia),
+      especies: ORDEM_ESPECIES.filter((k) => ESPECIES[k].familia === familia)
+        .sort((a, b) => (ESPECIES[a].nivel || 0) - (ESPECIES[b].nivel || 0) || ORDEM_ESPECIES.indexOf(a) - ORDEM_ESPECIES.indexOf(b))
+        .map((k) => visaoEspecie(p, k)),
+    }))
+    .filter((f) => f.especies.length);
+}
+
+function resumoBestiario(p) {
+  const estagios = ORDEM_ESPECIES.map((k) => estagioDeAbates(abatesDaEspecie(p, k)));
+  return {
+    especies: ORDEM_ESPECIES.length,
+    conhecidas: ORDEM_ESPECIES.filter((k) => abatesDaEspecie(p, k) > 0).length,
+    porEstagio: ESTAGIOS_BESTIARIO.map((_, i) => estagios.filter((n) => n >= i + 1).length),
+    amuletos: amuletosDoJogador(p).length,
+    familias: Object.keys(FAMILIAS_CRIATURAS).filter((f) => especiesDoAmuleto(f).length).length,
+  };
+}
+
+// Normaliza p.bestiario do save: só espécies que existem, com contagens inteiras e positivas.
+function normalizarBestiario(p) {
+  const antigo = objetoValido(p.bestiario) ? p.bestiario : {};
+  p.bestiario = {};
+  for (const especie of ORDEM_ESPECIES) {
+    const n = Object.hasOwn(antigo, especie) ? Number(antigo[especie]) : 0;
+    if (Number.isFinite(n) && n >= 1) p.bestiario[especie] = Math.floor(n);
+  }
+}
 
 // ---------------------------------------------------------------------
 // Missões (dados/missoes.js) — motor genérico, sem missões escritas como código
@@ -1567,6 +1754,79 @@ function objetoValido(v) {
 }
 
 // ---------------------------------------------------------------------
+// Analisador de caçada (JGB-10) — contas puras; o estado fica em Mundo.estado[id].analisador
+// ---------------------------------------------------------------------
+// inicio: hora do primeiro golpe da sessão (0 = parado, esperando o primeiro golpe); xp e abates: dos
+// abates; moedas: as recolhidas do chão; valorItens: valor de venda (VALORES_VENDA) dos itens recolhidos;
+// itens e equipamentos: quantos; gastos: poções e flechas pelo preço da loja; perdas: moedas da morte;
+// especies: abates por espécie.
+function analisadorNovo() {
+  return { inicio: 0, xp: 0, abates: 0, mortes: 0, moedas: 0, valorItens: 0, itens: 0, equipamentos: 0, gastos: 0, perdas: 0, especies: {} };
+}
+
+// Preço de uma flecha na loja (o pacote dividido pelas flechas dele).
+function custoFlecha() {
+  return (PRECOS_LOJA.flechas || 0) / (FLECHAS_POR_PACOTE || 1);
+}
+
+// Quanto o Azarias paga pelo item (0 para equipamento, que ele não compra).
+function valorDeVenda(item) {
+  return registroDe(VALORES_VENDA, baseItem(item)) || 0;
+}
+
+// Painel do analisador: totais, taxas por hora (null antes de ANALISADOR_MINIMO_MS) e tempo até o próximo nível.
+function resumoAnalisador(p, a, agora = Date.now()) {
+  const duracaoMs = a.inicio ? Math.max(0, agora - a.inicio) : 0;
+  const medindo = duracaoMs >= ANALISADOR_MINIMO_MS;
+  const porHora = (v) => (medindo ? Math.round((v * MS_POR_HORA) / duracaoMs) : null);
+  const saque = a.moedas + a.valorItens;
+  const gastos = Math.round(a.gastos);
+  const lucro = saque - gastos - a.perdas;
+  const nivelMaximo = (p.nivel || 1) >= NIVEL_MAXIMO;
+  const xpFalta = nivelMaximo ? 0 : Math.max(0, limiarNivel(p.nivel || 1) - (p.xp || 0));
+  const xpHora = porHora(a.xp);
+  const especies = Object.entries(a.especies || {})
+    .filter(([k, n]) => registroDe(ESPECIES, k) && n > 0)
+    .sort((x, y) => y[1] - x[1] || ORDEM_ESPECIES.indexOf(x[0]) - ORDEM_ESPECIES.indexOf(y[0]))
+    .map(([k, n]) => ({ especie: k, nome: ESPECIES[k].nome, abates: n }));
+  return {
+    ativo: !!a.inicio,
+    medindo,
+    duracaoMs,
+    xp: a.xp,
+    xpHora,
+    abates: a.abates,
+    abatesHora: porHora(a.abates),
+    mortes: a.mortes,
+    moedas: a.moedas,
+    valorItens: a.valorItens,
+    itens: a.itens,
+    equipamentos: a.equipamentos,
+    saque,
+    saqueHora: porHora(saque),
+    gastos,
+    perdas: a.perdas,
+    lucro,
+    lucroHora: porHora(lucro),
+    nivel: p.nivel || 1,
+    nivelMaximo,
+    xpFalta,
+    proximoNivelMs: !nivelMaximo && xpHora > 0 ? Math.ceil((xpFalta * MS_POR_HORA) / xpHora) : null,
+    especies,
+  };
+}
+
+// Relógio da sessão: "1:05:12" (ou "5:12" abaixo de 1 hora).
+function textoRelogio(ms) {
+  const total = Math.max(0, Math.floor((ms || 0) / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const dois = (n) => String(n).padStart(2, "0");
+  return h ? `${h}:${dois(m)}:${dois(sec)}` : `${m}:${dois(sec)}`;
+}
+
+// ---------------------------------------------------------------------
 // Mundo
 // ---------------------------------------------------------------------
 const Mundo = {
@@ -1592,7 +1852,11 @@ const Mundo = {
       zerarComportamento(e);
     }
     this.jogadores[id] = p;
+    // O analisador de caçada vive na memória (não vai ao save) e atravessa as trocas de área e a morte,
+    // que chamam entrar() de novo: só zera ao recarregar a página ou pelo comando zerarAnalisador.
+    const analisador = this.estado[id]?.analisador || analisadorNovo();
     this.estado[id] = {
+      analisador,
       proximaRegen: Date.now() + TEMPO_REGEN,
       ultimoCombate: 0,
       proximoAtaqueJogador: 0,
@@ -1698,6 +1962,8 @@ const Mundo = {
     normalizarMissoes(p);
     // Caçadas e pontos de tarefa (save v8). Saves até a v7 não têm esses campos: começam vazios.
     normalizarTarefas(p, agora);
+    // Bestiário (save v10): abates por espécie. Saves até a v9 começam do zero (não havia contagem).
+    normalizarBestiario(p);
 
     // Fé, Oração e veneno.
     p.oracaoDesbloqueada = !!p.oracaoDesbloqueada;
@@ -1749,6 +2015,15 @@ const Mundo = {
         "atualizacao_8",
         "Novidade: os atalaias de cada região têm um mural de caçadas. Ganhe XP, moedas e pontos de tarefa " +
           "e troque os pontos por melhorias. Tecla T: suas caçadas.",
+      );
+    }
+
+    if (!novo && versaoAnterior < 10) {
+      this.adicionarAviso(
+        p,
+        "atualizacao_10",
+        "Novidades: o bestiário (tecla B) registra os seus abates de cada criatura e revela ficha, fraquezas e saque; " +
+          "complete uma família e ganhe o amuleto dela (+5% de dano). O analisador de caçada (tecla X) mostra XP/h, saque/h e lucro.",
       );
     }
 
@@ -1903,6 +2178,8 @@ const Mundo = {
       status: e.efeito ? STATUS_CRIATURAS[e.efeito.tipo].nome : null,
       nivel: e.nivel,
       furioso: !!e.furioso,
+      amuleto: bonusAmuleto(p, e),
+      estagioBestiario: estagioDeAbates(abatesDaEspecie(p, e.especie)),
     };
   },
 
@@ -2147,8 +2424,12 @@ const Mundo = {
     if (!s) return { ok: false, mensagem: "Esse saque não está mais no chão." };
     if (distanciaChebyshev(p, s) > ALCANCE_INTERACAO)
       return { ok: false, mensagem: "Chegue ao lado do item para pegá-lo." };
+    // O item que caiu na morte do próprio jogador não é saque novo: não entra no analisador.
+    const analisador = this.estado[id]?.analisador;
+    const conta = analisador?.inicio && !s.id.startsWith("morte_");
     if (s.moedas) {
       p.moedas += s.moedas;
+      if (conta) analisador.moedas += s.moedas;
       p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id);
       this.salvar(p);
       return { ok: true, moedas: s.moedas, itemColetado: s.id, mensagem: `Você pegou ${s.moedas} moedas.` };
@@ -2157,6 +2438,11 @@ const Mundo = {
       return { ok: false, mensagem: this.mensagemMochilaCheia(p, "Libere espaço para pegar o item.") };
     }
     p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id);
+    if (conta) {
+      analisador.itens += 1;
+      analisador.valorItens += valorDeVenda(s.item);
+      if (TIPOS_COM_RARIDADE.has(infoItem(s.item)?.tipo)) analisador.equipamentos += 1;
+    }
     this.registrarColeta(p, s.item, s.id, "saque");
     this.salvar(p);
     return { ok: true, itemColetado: s.id, mensagem: `Você pegou: ${nomeItem(s.item)}.` };
@@ -2269,6 +2555,8 @@ const Mundo = {
         return this.guardarTarefa(id, comando.tarefaId);
       case "trocarPontos":
         return this.trocarPontos(id, comando.ofertaId);
+      case "zerarAnalisador":
+        return this.zerarAnalisador(id);
       default:
         return { ok: false };
     }
@@ -2446,12 +2734,19 @@ const Mundo = {
   },
 
   // ----- Consumíveis -----
+  // Gasto de provisão (poção) durante a sessão de caça: só conta com o relógio do analisador correndo.
+  gastoNoAnalisador(id, valor) {
+    const a = this.estado[id]?.analisador;
+    if (a?.inicio) a.gastos += valor;
+  },
+
   usarPocao(id) {
     const p = this.jogadores[id];
     const i = p.inventario.indexOf("pocao");
     if (i < 0) return { ok: false, mensagem: "Você não tem poções." };
     if (p.vida >= vidaMaxima(p)) return { ok: false, mensagem: "Sua vida já está cheia. A poção não foi consumida." };
     p.inventario.splice(i, 1);
+    this.gastoNoAnalisador(id, PRECOS_LOJA.pocao || 0);
     const antes = p.vida;
     p.vida = Math.min(vidaMaxima(p), p.vida + curaPocao(p));
     this.salvar(p);
@@ -2468,6 +2763,7 @@ const Mundo = {
     if (i < 0) return { ok: false, mensagem: "Você não tem poções de fé." };
     if (p.fe >= FE_MAXIMA) return { ok: false, mensagem: "Sua fé já está cheia; a poção não foi consumida." };
     p.inventario.splice(i, 1);
+    this.gastoNoAnalisador(id, PRECOS_LOJA.pocao_fe || 0);
     const antes = p.fe;
     p.fe = Math.min(FE_MAXIMA, p.fe + CURA_POCAO_FE);
     this.salvar(p);
@@ -2935,6 +3231,41 @@ const Mundo = {
     return avancos;
   },
 
+  // Bestiário: +1 abate na espécie. Devolve o novo total, o estágio, se subiu de estágio agora e a família
+  // cujo amuleto este abate completou (ou null).
+  registrarAbateBestiario(p, e) {
+    if (!registroDe(ESPECIES, e.especie)) return null;
+    if (!objetoValido(p.bestiario)) p.bestiario = {};
+    const antes = abatesDaEspecie(p, e.especie);
+    const tinhaAmuleto = progressoAmuleto(p, e.familia).ativo;
+    p.bestiario[e.especie] = antes + 1;
+    const estagio = estagioDeAbates(antes + 1);
+    const amuleto = !tinhaAmuleto && progressoAmuleto(p, e.familia).ativo ? e.familia : null;
+    return { especie: e.especie, abates: antes + 1, estagio, subiu: estagio > estagioDeAbates(antes), amuleto };
+  },
+
+  // ----- Analisador de caçada (JGB-10) -----
+  // O relógio começa no primeiro golpe (ou abate, ou morte) depois de zerar; dali em diante contam o XP dos
+  // abates, os abates, as mortes, o saque recolhido (moedas e valor de venda dos itens), as poções e flechas
+  // gastas (pelo preço da loja) e as moedas perdidas na morte.
+  iniciarAnalisador(id, agora = Date.now()) {
+    const estado = this.estado[id];
+    if (!estado.analisador) estado.analisador = analisadorNovo();
+    if (!estado.analisador.inicio) estado.analisador.inicio = agora;
+    return estado.analisador;
+  },
+
+  analisador(id, agora = Date.now()) {
+    const p = this.jogadores[id];
+    const a = this.estado[id]?.analisador;
+    return p && a ? resumoAnalisador(p, a, agora) : null;
+  },
+
+  zerarAnalisador(id) {
+    this.estado[id].analisador = analisadorNovo();
+    return { ok: true, analisadorZerado: true, mensagem: "Analisador de caçada zerado. O relógio volta a contar no próximo golpe." };
+  },
+
   // ----- Combate do jogador -----
   alvoCorpo(p, alvoId) {
     if (alvoId) {
@@ -2994,9 +3325,14 @@ const Mundo = {
     }
     estado.proximoAtaqueJogador = agora + RECARGA_ATAQUE;
     estado.ultimoCombate = agora;
-    if (distancia) this.removerItens(p, "flecha", 1);
+    const analisador = this.iniciarAnalisador(id, agora);
+    if (distancia) {
+      this.removerItens(p, "flecha", 1);
+      analisador.gastos += custoFlecha();
+    }
 
-    const golpe = calcularGolpe(p, tipo, at.defesa);
+    const bonus = bonusAmuleto(p, e);
+    const golpe = calcularGolpe(p, tipo, at.defesa, Math.random(), 1 + bonus);
     // Atingida, a criatura de matilha chama as outras (mesmo de longe, com a flecha).
     if (e.comportamentos.includes("matilha")) this.alertarMatilha(p, e, agora);
     const chaveHabilidade = distancia ? "distancia" : "corpo";
@@ -3015,6 +3351,7 @@ const Mundo = {
       defesaAlvo: at.defesa,
       tipoAtaque: tipo,
       skillLevel: p.habilidades[chaveHabilidade],
+      amuleto: bonus,
     };
     if (p.vidaInimigos[e.id] === 0) {
       const morte = this.derrotarInimigo(p, e);
@@ -3028,6 +3365,7 @@ const Mundo = {
         nomeado: morte.nomeado,
         explosao: morte.explosao,
         tarefas: morte.tarefas,
+        bestiario: morte.bestiario,
         xpGanho: morte.xpGanho,
         mensagem: `${prefixo}${morte.mensagem}${textoHabilidade}`,
       };
@@ -3057,6 +3395,14 @@ const Mundo = {
       .join("");
     const xpGanho = Math.round(xpDoAbate(p, e) * (at.campeao ? CAMPEAO.xp : 1));
     const niveis = adicionarXP(p, xpGanho);
+    const bestiario = this.registrarAbateBestiario(p, e);
+    const analisador = this.estado[p.id]?.analisador;
+    if (analisador) {
+      if (!analisador.inicio) analisador.inicio = agora;
+      analisador.xp += xpGanho;
+      analisador.abates += 1;
+      if (e.especie) analisador.especies[e.especie] = (Object.hasOwn(analisador.especies, e.especie) ? analisador.especies[e.especie] : 0) + 1;
+    }
     const saque = this.criarSaque(p, e, agora, at.campeao ? CAMPEAO : null);
     // Campeã explosiva: a explosão vem depois, em quem estiver ao lado (Mundo.atualizar).
     const explosao = at.explosao ? { em: agora + at.explosao.atraso, area: e.area, x: e.x, y: e.y, dano: Math.round(at.dano * at.explosao.dano), nome } : null;
@@ -3077,6 +3423,14 @@ const Mundo = {
       .map((d) => `${tituloAnuncio(d)} ${nome} deixou cair: ${nomeItem(d.item)}.`);
     if (at.campeao) anuncios.unshift(`Campeão derrotado: ${nome}! +${xpGanho} XP e saque reforçado.`);
     if (e.nomeado) anuncios.unshift(`${e.nome} foi derrotado! Ele só volta na próxima aparição.`);
+    if (bestiario?.subiu) {
+      const est = ESTAGIOS_BESTIARIO[bestiario.estagio - 1];
+      anuncios.push(`Bestiário: ${e.nome} chegou ao estágio ${bestiario.estagio} de ${ESTAGIO_MAXIMO_BESTIARIO}, ${est.nome} (${est.abates} abates). Revelado: ${est.texto}.`);
+    }
+    if (bestiario?.amuleto) {
+      const a = progressoAmuleto(p, bestiario.amuleto);
+      anuncios.push(`Amuleto conquistado: ${a.nome}! +${Math.round(a.bonus * 100)}% de dano contra ${a.nome.toLowerCase()}, para sempre.`);
+    }
     const alvoTexto = at.campeao || e.nomeado ? nome : nome.toLowerCase();
     const fraca = xpDoAbate(p, e) < e.xpRecompensa ? " (criatura fraca para o seu nível)" : "";
     const reaparece = e.nomeado ? "" : ` ${e.genero === "f" ? "Ela" : "Ele"} reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
@@ -3088,6 +3442,7 @@ const Mundo = {
       nomeado: !!e.nomeado,
       explosao: explosao ? { em: explosao.em, x: explosao.x, y: explosao.y } : null,
       tarefas,
+      bestiario,
       xpGanho,
       mensagem: `Você derrotou ${alvoTexto}! +${xpGanho} XP${fraca}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
     };
@@ -3540,6 +3895,11 @@ const Mundo = {
     }
 
     p.mortes++;
+    if (estado) {
+      const a = this.iniciarAnalisador(id, agora);
+      a.mortes += 1;
+      a.perdas += moedasPerdidas;
+    }
     this.curarVeneno(p);
     this.curarSangramento(p);
     p.atordoadoAte = 0;

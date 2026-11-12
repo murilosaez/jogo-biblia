@@ -26,7 +26,7 @@ const PROF = {
 const ESTILO_NUM = {
   dano: ["#f6e6bd", 14], critico: ["#ffd24a", 20], recebido: ["#ff7a5c", 14], cura: ["#8fd16a", 14],
   fe: ["#7fa3e0", 13], xp: ["#f2cf6a", 12], moeda: ["#e8b94a", 12], veneno: ["#a8c84a", 12],
-  bloqueio: ["#b9c6d6", 11], errou: ["#b9a27a", 11], tarefa: ["#e6cf9c", 12],
+  bloqueio: ["#b9c6d6", 11], errou: ["#b9a27a", 11], tarefa: ["#e6cf9c", 12], bestiario: ["#c9e0a0", 13],
 };
 
 // Nome do campeão e aura dele.
@@ -90,7 +90,7 @@ const Som = {
 window.Som = Som;
 
 // Números que levam um glifo à esquerda: moedas e a contagem das caçadas ("27/40").
-const ICONE_NUM = { moeda: "ui_moeda", tarefa: "ui_cacada" };
+const ICONE_NUM = { moeda: "ui_moeda", tarefa: "ui_cacada", bestiario: "ui_bestiario" };
 
 const COR = {
   amigo: "#f3e4c0", hostil: "#ef6a5e", saida: "#b98ad0", agua: "#6fd0d0", tinta: "#1c1210",
@@ -998,6 +998,13 @@ class Cena extends Phaser.Scene {
         this.time.delayedCall(450 + i * 250, () => this.numero(centroX(e.x), baseY(e.y) - 28, `${t.progresso}/${t.meta}`, "tarefa"));
       });
       if (e && r.saquesRaros?.length) this.time.delayedCall(300, () => this.anunciarSaqueRaro(r.saquesRaros, e));
+      // Bestiário: a espécie subiu de estágio ("ESTÁGIO 2/3") ou o abate completou o amuleto da família.
+      const b = r.bestiario;
+      if (e && b?.subiu) {
+        const atraso = 700 + Math.min(3, (r.tarefas || []).length) * 250;
+        this.time.delayedCall(atraso, () => this.numero(centroX(e.x), baseY(e.y) - 28, b.amuleto ? "AMULETO!" : `ESTÁGIO ${b.estagio}/${ESTAGIO_MAXIMO_BESTIARIO}`, "bestiario"));
+        if (b.amuleto) this.time.delayedCall(atraso, () => this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#c9e0a0", 14, { subir: true, dur: 900 }));
+      }
       if (r.explosao) this.marcarExplosao(r.explosao);
       for (const texto of r.anuncios || []) this.time.delayedCall(320, () => this.mensagem(texto, "anuncio"));
     }

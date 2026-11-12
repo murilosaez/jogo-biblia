@@ -22,7 +22,8 @@
 // onde elas nascem e renascem, sempre num ponto aleatório livre. As cópias se chamam <id>_2, <id>_3...
 // e contam como a original em missões e caçadas.
 // especie: grupo das instâncias da mesma criatura (escorpiao1, escorpiao2… = "escorpiao"); familia: chave de
-// FAMILIAS_CRIATURAS. As caçadas (dados/tarefas.js) e, no futuro, o bestiário contam por espécie ou família.
+// FAMILIAS_CRIATURAS. As caçadas (dados/tarefas.js) contam por espécie ou família; o bestiário (REGRAS_BESTIARIO),
+// por espécie, e o amuleto, por família.
 
 // Famílias de criaturas. nome: como o grupo aparece na interface.
 const FAMILIAS_CRIATURAS = {
@@ -36,6 +37,30 @@ const FAMILIAS_CRIATURAS = {
   repteis: { nome: "Répteis do Nilo" },
   magos: { nome: "Magos de Faraó" },
   criaturas_mar: { nome: "Criaturas do mar" },
+};
+
+// Bestiário (JGB-9). Cada espécie sobe de estágio com os abates (todo abate conta: golpe ou flecha, campeã ou
+// não). estagios, em ordem: abates (total para chegar ao estágio), nome, texto (o que revela, no anúncio e na
+// tela) e revela, o que ele mostra na tela do bestiário:
+//   ficha — vida, dano, defesa, nível, XP, comportamentos, status e quanto do seu golpe passa pela defesa;
+//   fraquezas — as fraquezas (textos "fraqueza" de COMPORTAMENTOS e STATUS_CRIATURAS) e os itens do saque;
+//   chances — a chance de cada linha da tabela de saque e as moedas.
+// Sem nenhum abate, a espécie aparece só como silhueta ("???").
+// amuleto: com todas as espécies de uma família no estágio indicado (os raros nomeados não entram na conta,
+// porque aparecem poucas vezes por dia), o jogador ganha o amuleto da família: bonusDano a mais em todo golpe
+// contra ela (antes da defesa). O amuleto não ocupa espaço nem pesa e não se perde.
+const REGRAS_BESTIARIO = {
+  estagios: [
+    { abates: 10, nome: "Avistada", revela: "ficha", texto: "a ficha: vida, dano, defesa, nível e comportamentos" },
+    { abates: 100, nome: "Estudada", revela: "fraquezas", texto: "as fraquezas e o que ela deixa cair" },
+    { abates: 1000, nome: "Dominada", revela: "chances", texto: "a chance de cada saque e as moedas" },
+  ],
+  amuleto: { estagio: 2, bonusDano: 0.05, ignorarTiers: ["raro"] },
+  // Fraqueza de quem tem pouca defesa (defesa igual ou menor que esta): o golpe passa quase inteiro.
+  defesaBaixa: 4,
+  fraquezaDefesaBaixa: "Pouca defesa: quase todo o seu golpe passa. Lute de perto e acabe rápido.",
+  // Fraqueza de quem ataca à distância contra o arco do jogador (ALCANCE_ARCO em logica.js).
+  fraquezaAlcance: "O seu arco alcança {arco} casas; o disparo dela, {alcance}. Atire de fora do alcance dela.",
 };
 
 // Tiers. cor: cor do nome no mundo (null = a de sempre). normal e elite podem nascer campeões; chefe e
@@ -64,21 +89,77 @@ const TIERS_CRIATURAS = {
 //   furia: com vidaLimite da vida ou menos, bate dano× mais forte e intervalo× mais rápido.
 const COMPORTAMENTOS = {
   padrao: { nome: "Persegue e ataca" },
-  matilha: { nome: "Caça em matilha", raioAlerta: 12, alcanceExtra: 8, duracao: 10000 },
-  fuga: { nome: "Foge ferida", vidaLimite: 0.25, duracao: 4000, curaAoVoltar: 0.15, raioReforco: 22 },
-  distancia: { nome: "Ataca à distância", alcance: 5, distanciaMinima: 3 },
-  curandeiro: { nome: "Cura as aliadas", alcance: 6, curaPercentual: 0.2, intervalo: 4000, vidaLimite: 0.75 },
-  investida: { nome: "Investida", alcanceMin: 2, alcanceMax: 4, preparo: 1000, recarga: 7000, multiplicador: 1.6 },
-  furia: { nome: "Fúria", vidaLimite: 0.3, dano: 1.4, intervalo: 0.75 },
+  matilha: {
+    nome: "Caça em matilha",
+    raioAlerta: 12,
+    alcanceExtra: 8,
+    duracao: 10000,
+    fraqueza: "Lute de costas para uma pedra, árvore ou parede: com menos casas livres em volta, o bando não consegue cercar.",
+  },
+  fuga: {
+    nome: "Foge ferida",
+    vidaLimite: 0.25,
+    duracao: 4000,
+    curaAoVoltar: 0.15,
+    raioReforco: 22,
+    fraqueza: "Foge com um quarto da vida e não se defende enquanto corre: termine com flechas antes que ela volte curada.",
+  },
+  distancia: { nome: "Ataca à distância", alcance: 5, distanciaMinima: 3, fraqueza: "De perto, recua entre um disparo e outro: cole nela e ela perde tempo fugindo." },
+  curandeiro: {
+    nome: "Cura as aliadas",
+    alcance: 6,
+    curaPercentual: 0.2,
+    intervalo: 4000,
+    vidaLimite: 0.75,
+    fraqueza: "Frágil e sem golpe forte: derrube primeiro, e as aliadas deixam de se curar.",
+  },
+  investida: {
+    nome: "Investida",
+    alcanceMin: 2,
+    alcanceMax: 4,
+    preparo: 1000,
+    recarga: 7000,
+    multiplicador: 1.6,
+    fraqueza: "A investida marca o chão 1 s antes: saia da linha vermelha e ela erra e fica 7 s sem investir. Colado nela, não há investida.",
+  },
+  furia: {
+    nome: "Fúria",
+    vidaLimite: 0.3,
+    dano: 1.4,
+    intervalo: 0.75,
+    fraqueza: "Só fica perigosa com 30% da vida: chegue a essa fase com a sua vida alta e termine a luta sem pausa.",
+  },
 };
 
 // Status que a criatura aplica ao acertar (campo status: { tipo, ...ajustes }). chance por golpe;
 // duracao, dano e intervalo em ms; imunidade: tempo sem poder ser atordoado de novo.
 // A Oração "Remover veneno" também estanca o sangramento.
+// fraqueza: o que o bestiário ensina contra quem aplica o status ({chance}: a chance da criatura, em %;
+// {imunidade}: a imunidade, em segundos).
 const STATUS_CRIATURAS = {
-  veneno: { nome: "Veneno", chance: 1, duracao: 15000, dano: 3, intervalo: 3000 },
-  sangramento: { nome: "Sangramento", chance: 0.3, duracao: 8000, dano: 3, intervalo: 2000 },
-  atordoamento: { nome: "Atordoamento", chance: 0.2, duracao: 1200, imunidade: 4000 },
+  veneno: {
+    nome: "Veneno",
+    chance: 1,
+    duracao: 15000,
+    dano: 3,
+    intervalo: 3000,
+    fraqueza: "O veneno não se acumula: enquanto dura, um novo golpe não envenena de novo. A Oração Remover veneno o cura.",
+  },
+  sangramento: {
+    nome: "Sangramento",
+    chance: 0.3,
+    duracao: 8000,
+    dano: 3,
+    intervalo: 2000,
+    fraqueza: "Faz sangrar em só {chance} dos golpes, e a Oração Remover veneno também estanca o sangue.",
+  },
+  atordoamento: {
+    nome: "Atordoamento",
+    chance: 0.2,
+    duracao: 1200,
+    imunidade: 4000,
+    fraqueza: "Atordoa em {chance} dos golpes e, depois, passa {imunidade} sem conseguir de novo: é a hora de beber a poção.",
+  },
 };
 
 // Campeões: cada criatura normal ou elite tem chance de renascer campeã, com 1 ou 2 modificadores no
