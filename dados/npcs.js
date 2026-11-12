@@ -12,7 +12,7 @@ const DADOS_NPCS = [
   { id: "viajante1", nome: "Eliabe", area: "canaan", x: 22, y: 18, papel: "missao" },
   { id: "guia_canaa", nome: "Micael, guia de caravanas", area: "canaan", x: 13, y: 17, papel: "guia" },
   // Mestre de vocações (JGB-20): troca de vocação (papel "vocacao"; a 1ª escolha vale em qualquer lugar).
-  // revisao-teologica: pendente (Jetro aconselhou Moisés a repartir o trabalho entre o povo, Êx 18)
+  // Jetro aconselhou Moisés a repartir o trabalho entre o povo (Êx 18).
   {
     id: "mestre_vocacoes",
     nome: "Jetro, mestre de vocações",
@@ -27,7 +27,6 @@ const DADOS_NPCS = [
   { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 142, y: 19, papel: "loja" },
   { id: "guia_deserto", nome: "Tamar, guia de caravanas", area: "deserto", x: 128, y: 20, papel: "guia" },
   // Mercadores e guias de caravanas das outras cidades (um de cada em toda cidade).
-  // revisao-teologica: pendente (nomes e falas novos)
   {
     id: "mercador_canaa",
     nome: "Hadassa, mercadora",

@@ -174,7 +174,6 @@ const DADOS_PORTAIS = [
 // e coma quando quiser. Nos dias comuns cai uma porção; na sexta, porção dobrada (Êx 16:22); no sábado não
 // cai (Êx 16:26-27). O que sobra estraga no próximo amanhecer em que cai maná (Êx 16:20): o da sexta dura o
 // Sábado inteiro (Êx 16:23-24). Perder um dia não tira nada: no outro cai de novo.
-// revisao-teologica: pendente
 const REGRAS_MANA = {
   amanhecer: 6, // hora local
   porcao: 3, // um ômer por dia, em 3 refeições
@@ -189,7 +188,6 @@ const REGRAS_MANA = {
 // local), vira uma reserva de XP: um Sábado inteiro vale porSabado × o XP do nível atual. Enquanto houver
 // reserva, cada abate rende XP × multiplicador (o extra sai da reserva). A reserva não expira, só para de
 // crescer no limite (limite × o XP do nível atual).
-// revisao-teologica: pendente
 const REGRAS_DESCANSO = {
   inicio: { dia: 5, hora: 18 }, // sexta, 18 h
   fim: { dia: 6, hora: 18 }, // sábado, 18 h
