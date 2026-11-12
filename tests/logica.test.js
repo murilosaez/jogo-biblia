@@ -5680,6 +5680,76 @@ teste("65d. ofícios no save: recarrega igual, v14 recebe o aviso, XP e relógio
 });
 const objetoVazio = (o) => o && typeof o === "object" && !Object.keys(o).length;
 
+teste("66. Oração rápida: F1 cura na hora, do nível 25 tira veneno e sangramento sempre, cura de grupo só do Levita", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const g = (n) => j.g(n);
+  const orar = (acao) => j.exec({ tipo: "orar", acao });
+  const vidaMax = () => g("vidaMaxima")(p);
+  // Sem aprender, nada.
+  assert.ok(!orar().ok && /Galileia/.test(orar().mensagem));
+  Object.assign(p, { oracaoDesbloqueada: true, fe: 100 });
+  p.habilidades.oracao = 0;
+  p.skillXp.oracao = 0;
+  // Vida cheia: recusa sem gastar fé.
+  p.vida = vidaMax();
+  let r = orar();
+  assert.ok(!r.ok && /cheia/.test(r.mensagem) && p.fe === 100, r.mensagem);
+  // Nível 0: cura 20 + 0 na hora, 20 de fé; o comando sem ação é a Oração.
+  p.vida = vidaMax() - 50;
+  r = orar();
+  assert.ok(r.ok && r.cura === 20 && p.fe === 80 && r.acao === "oracao" && !r.purificou, r.mensagem);
+  // Abaixo do 25, o veneno fica (e com vida cheia e envenenado, recusa: não há o que a Oração faça ainda).
+  g("aplicarStatus")(p, { tipo: "veneno" }, j.agora);
+  r = orar("vida");
+  assert.ok(r.ok && g("statusAtivo")(p, "veneno", j.agora), "nível 0 não tira veneno");
+  p.vida = vidaMax();
+  assert.ok(!orar().ok, "vida cheia e sem purificar: recusa");
+  // Nível 25: a mesma Oração cura e tira veneno e sangramento.
+  p.habilidades.oracao = 25;
+  p.fe = 100;
+  p.vida = vidaMax() - 50;
+  g("aplicarStatus")(p, { tipo: "sangramento" }, j.agora);
+  r = orar();
+  assert.ok(r.ok && r.purificou && r.cura === 20 + 12, r.mensagem);
+  assert.ok(/O veneno foi removido e o sangramento foi estancado/.test(r.mensagem), r.mensagem);
+  igual([!!g("statusAtivo")(p, "veneno", j.agora), !!g("statusAtivo")(p, "sangramento", j.agora)], [false, false]);
+  // Sem veneno também purifica (vale sempre) e só cura.
+  p.vida = vidaMax() - 10;
+  r = orar();
+  assert.ok(r.ok && r.purificou && /^Oração: \+10 de vida\. Fé/.test(r.mensagem), r.mensagem);
+  // Vida cheia e envenenado: no 25 vale (tira o veneno).
+  g("aplicarStatus")(p, { tipo: "veneno" }, j.agora);
+  p.vida = vidaMax();
+  r = orar();
+  assert.ok(r.ok && r.cura === 0 && !g("statusAtivo")(p, "veneno", j.agora), r.mensagem);
+  // O nome antigo "veneno" é a mesma Oração.
+  assert.ok(!orar("veneno").ok, "vida cheia, sem status: recusa");
+  // Fé insuficiente.
+  p.fe = 5;
+  p.vida = 10;
+  r = orar();
+  assert.ok(!r.ok && /Fé insuficiente \(5\/20\)/.test(r.mensagem), r.mensagem);
+  // Cura em área e de aliado não existem mais na Oração: é do Levita.
+  p.fe = 100;
+  for (const acao of ["area", "aliado", "grupo"]) {
+    r = orar(acao);
+    assert.ok(!r.ok && /Levita/.test(r.mensagem) && p.fe === 100, `${acao}: ${r.mensagem}`);
+  }
+  igual(Object.keys(g("CUSTO_ORACAO")), ["oracao", "milagre"]);
+  assert.ok(g("HABILIDADES_VOCACAO").bencao.cura.aliados && g("VOCACOES").levita.habilidades.includes("bencao"), "a cura de aliados está no Levita");
+  // Milagre: Shift + F1, no nível 100.
+  assert.ok(!orar("milagre").ok && /nível 100/.test(orar("milagre").mensagem));
+  p.habilidades.oracao = 100;
+  r = orar("milagre");
+  assert.ok(r.ok && p.vida === vidaMax() && p.fe === 0, r.mensagem);
+  // Interface: F1 ora direto (sem janela) e Shift + F1 é o Milagre.
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  assert.match(ui, /e\.key === "F1"\) \{ e\.preventDefault\(\); if \(!e\.repeat\) orar\(e\.shiftKey \? "milagre" : "oracao"\)/);
+  assert.doesNotMatch(ui + fs.readFileSync(path.join(RAIZ, "index.html"), "utf8"), /modalOracao|data-orar/, "a janela de cartões da Oração saiu");
+});
+
 // ---------------------------------------------------------------------
 // Execução
 // ---------------------------------------------------------------------

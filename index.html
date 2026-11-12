@@ -504,14 +504,6 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 
 /* oração */
 .cartoes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.cartao{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:104px;padding:10px;border:2px solid var(--bronze-600);background:linear-gradient(var(--perg-100),var(--perg-300));color:var(--tinta);text-align:left;font:inherit;box-shadow:0 2px 0 #0004}
-.cartao:hover:not([aria-disabled="true"]){border-color:var(--bronze-400);background:linear-gradient(#fff6e0,var(--perg-200))}
-.cartao strong{font:700 var(--fs-14)/1.15 var(--f-titulo)}
-.cartao span{font:400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
-.cartao .custo{margin-top:auto;display:flex;align-items:center;gap:4px;font:600 var(--fs-13)/1 var(--f-pixel);color:var(--fe-1)}
-.cartao[aria-disabled="true"]{cursor:not-allowed;background:#cbb489;border-color:var(--bloqueado)}
-.cartao[aria-disabled="true"] strong{color:var(--tinta-suave)}
-.cartao .trava{display:flex;align-items:center;gap:4px;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta)}
 
 /* ajuda */
 .teclas{width:100%;border-collapse:collapse}
@@ -739,7 +731,6 @@ body.dialogo-aberto #toque{visibility:hidden}
  .btn-fechar{width:44px;height:44px}
  .modal{padding:8px;align-items:flex-end}
  .modal-caixa{max-height:calc(100dvh - 16px)}
- .cartao{min-height:auto;padding:8px}
  .item-loja .btn{min-width:76px;min-height:44px}
  .item-loja.cacada{grid-template-columns:40px minmax(0,1fr)}
  .cacada-acao{grid-column:1/-1;max-width:none}
@@ -967,13 +958,6 @@ body.toque-forcado #dpad{display:block}
     <div class="modal-corpo" id="viagemCorpo"></div>
   </div>
 </div>
-<div class="modal" id="modalOracao" aria-hidden="true">
-  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="oracaoTitulo">
-    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_orar" data-escala="4" alt=""></span><div><h2 id="oracaoTitulo">Oração</h2><p class="sub" id="oracaoSub">Escolha o propósito</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
-    <div class="modal-corpo" id="oracaoCorpo"></div>
-  </div>
-</div>
-
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <script src="storage.js"></script>
 <script src="dados/itens.js"></script>

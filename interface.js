@@ -11,7 +11,7 @@
 // Contrato:
 //   consome  window.Jogo (game.js), Mundo/ITENS/... (logica.js, dados/*.js)
 //   expõe    window.UI + apelidos antigos (atualizarInterface, mostrarMensagem,
-//            abrirLoja, abrirViagem, abrirOracao, abrirMural, alternarMinimapa)
+//            abrirLoja, abrirViagem, orar, abrirMural, alternarMinimapa)
 //   caçadas  só lê p.tarefas, p.pontosTarefa e p.trocas pelas funções puras
 //            (tarefasDoMural, tarefasDoJogador, tarefasDoInimigo, ofertasDeTroca,
 //            textoEspera); aceitar, guardar e trocar passam por executar().
@@ -1818,82 +1818,16 @@
   }
 
   // ----- Oração -----
-  const ORACOES = [
-    { acao: "vida", glifo: "ui_coracao", texto: "Restaura parte da sua vida." },
-    { acao: "veneno", glifo: "ui_gota", texto: "Remove o veneno do corpo." },
-    { acao: "area", glifo: "ui_losango", texto: "Cura você e a área 3×3 ao redor." },
-    { acao: "milagre", glifo: "ui_estrela_chefe", texto: "Vida cheia e veneno removido." },
-  ];
-  function abrirOracao() {
+  // F1 ora na hora (cura; do nível 25 em diante também tira veneno e sangramento); Shift + F1 é o Milagre.
+  // A lógica valida fé, nível e vida e explica a recusa. Sem janela: no RPG a cura precisa ser rápida.
+  function orar(acao = "oracao") {
     const p = jogador();
-    if (!p) return;
+    if (!p) return null;
     if (!p.oracaoDesbloqueada) {
       mensagem("A Oração será aprendida na Galileia, em conversa com Jesus.", "missao");
-      return;
+      return null;
     }
-    desenharOracao();
-    abrirModal("modalOracao");
-  }
-  // Estado que muda o que a janela mostra (fé, nível, vida e veneno). O
-  // tique() redesenha a janela aberta quando ele muda, para os cartões
-  // liberarem sozinhos enquanto a fé regenera.
-  let assinaturaOracao = "";
-  function estadoOracao(p) {
-    const nivelOr = typeof estatisticasCombate === "function" ? estatisticasCombate(p).habilidades.oracao?.nivel || 0 : 0;
-    return { nivelOr, ass: JSON.stringify([p.fe, nivelOr, p.vida, (p.status?.veneno?.ate || 0) > Date.now(), (p.status?.sangramento?.ate || 0) > Date.now()]) };
-  }
-  // Os cartões são montados uma vez por nível de oração (o nível muda quais
-  // ficam travados); depois o tique() só atualiza no lugar a fé, os custos,
-  // o title e o aria-disabled. Recriar os botões a cada mudança de fé fazia o
-  // clique cair entre o botão antigo (mousedown) e o novo (mouseup) e sumir.
-  let nivelOracaoMontado = -1;
-  const dadosOracao = () => ({
-    nomes: typeof NOMES_ORACAO !== "undefined" ? NOMES_ORACAO : {},
-    custos: typeof CUSTO_ORACAO !== "undefined" ? CUSTO_ORACAO : {},
-    niveis: typeof NIVEL_ORACAO !== "undefined" ? NIVEL_ORACAO : {},
-    feMax: typeof FE_MAXIMA !== "undefined" ? FE_MAXIMA : 100,
-  });
-  function desenharOracao() {
-    const p = jogador();
-    if (!p) return;
-    const { nivelOr, ass } = estadoOracao(p);
-    assinaturaOracao = ass;
-    if (nivelOr !== nivelOracaoMontado || !$("#oracaoCorpo [data-orar]")) montarOracao(nivelOr);
-    atualizarOracao(p, nivelOr);
-  }
-  function montarOracao(nivelOr) {
-    nivelOracaoMontado = nivelOr;
-    const focado = document.activeElement?.closest?.("#oracaoCorpo [data-orar]")?.dataset.orar;
-    const { nomes, niveis } = dadosOracao();
-    const cartoes = ORACOES.map((o) => {
-      const req = niveis[o.acao] ?? 0;
-      const estado = nivelOr < req
-        ? `<span class="trava">${imgGlifo("ui_cadeado", "px g16")}nível ${req}</span>`
-        : `<span class="custo">${imgGlifo("ui_candeia", "px g16")}<span class="custo-txt"></span></span>`;
-      return `<button type="button" class="cartao" data-orar="${o.acao}">
-        ${imgGlifo(o.glifo, "px g24")}<strong>${esc(nomes[o.acao] || o.acao)}</strong><span>${esc(o.texto)}</span>${estado}</button>`;
-    }).join("");
-    $("#oracaoCorpo").innerHTML = `<div class="linha-barra" style="margin:0 0 10px">${imgGlifo("ui_candeia", "px g16", "Fé")}<div class="barra fe" id="oracaoFe"><i></i><b></b></div></div>
-      <div class="cartoes">${cartoes}</div>
-      <p class="nota" style="color:var(--tinta-suave)">O jogo é solo: a cura em área cura você e mostra o efeito 3×3. As poções de vida e de fé continuam disponíveis.</p>`;
-    if (focado) $(`#oracaoCorpo [data-orar="${focado}"]`)?.focus();
-  }
-  function atualizarOracao(p, nivelOr) {
-    const { nomes, custos, niveis, feMax } = dadosOracao();
-    const fe = p.fe || 0;
-    $("#oracaoSub").textContent = `Oração nível ${nivelOr} · fé ${fe}/${feMax}`;
-    $("#oracaoFe > i").style.width = `${(100 * fe) / feMax}%`;
-    $("#oracaoFe > b").textContent = `${fe}/${feMax}`;
-    for (const b of $$("#oracaoCorpo [data-orar]")) {
-      const acao = b.dataset.orar, custo = custos[acao] ?? 0, req = niveis[acao] ?? 0;
-      const travado = nivelOr < req, falta = custo - fe;
-      const motivo = travado ? `Oração nível ${req}` : falta > 0 ? `faltam ${falta} de fé` : "";
-      b.setAttribute("aria-disabled", String(travado || falta > 0));
-      if (motivo) b.title = motivo; else b.removeAttribute("title");
-      b.setAttribute("aria-label", `${nomes[acao] || acao}, custa ${custo} de fé${motivo ? `; ${motivo}` : ""}`);
-      const txt = b.querySelector(".custo-txt");
-      if (txt) txt.textContent = `${custo} de fé${falta > 0 ? ` · faltam ${falta}` : ""}`;
-    }
+    return executar({ tipo: "orar", acao });
   }
 
   // ----- Controles de toque -----
@@ -1931,7 +1865,8 @@
       [k("H"), "Usar poção de vida"],
       [k("1", "–", "6"), "Usar o atalho"],
       [k("P"), "Pescar (no mar, ao lado do ponto de pesca)"],
-      [k("F1"), "Oração (depois de aprender com Jesus, na Galileia)"],
+      [k("F1"), "Oração: cura na hora; do nível 25 de Oração em diante também tira veneno e sangramento (aprenda com Jesus, na Galileia)"],
+      [`${k("Shift")} + ${k("F1")}`, "Milagre (Oração nível 100): vida cheia e todos os status removidos"],
       [k("T"), "Suas caçadas (aceitar e trocar só ao lado de um atalaia)"],
       [k("B"), "Bestiário: abates, ficha, fraquezas, saque e amuletos"],
       [k("N"), "Maná do dia (colher e comer) e reserva de descanso do Sábado"],
@@ -2401,7 +2336,7 @@
     for (const b of $$("#acoes [data-acao]")) {
       b.addEventListener("click", () => {
         const acao = b.dataset.acao === "interagir" && b.dataset.tipo === "pesca" ? "pescar" : b.dataset.acao;
-        if (acao === "orar") return abrirOracao();
+        if (acao === "orar") return orar();
         window.Jogo?.acao(acao);
       });
     }
@@ -2489,7 +2424,6 @@
     if (modalAberto?.id === "modalMana") desenharMana();
     if (alvoDesenhado && typeof inimigos !== "undefined" && inimigos[alvoDesenhado]) atualizarVidaAlvo(inimigos[alvoDesenhado]);
     if (dlg.id && dlg.npc && Math.max(Math.abs(p.x - dlg.npc.x), Math.abs(p.y - dlg.npc.y)) > 2) fecharDialogo();
-    if (modalAberto?.id === "modalOracao" && estadoOracao(p).ass !== assinaturaOracao) desenharOracao();
     // A espera ("Volta em 19 h 59 min") muda a cada minuto: o mural só se redesenha quando o texto muda.
     if (modalAberto?.id === "modalMural") desenharMural();
   }
@@ -2616,14 +2550,6 @@
           executar({ tipo: "viajar", areaDestino: viajar.dataset.viajar });
           return;
         }
-        const orar = e.target.closest("[data-orar]");
-        if (orar) {
-          // Decide pelo estado atual (a lógica valida fé e nível e explica a
-          // recusa), não pelo aria-disabled desenhado alguns segundos antes.
-          const r = executar({ tipo: "orar", acao: orar.dataset.orar });
-          if (r && r.ok) fecharModal(); else desenharOracao();
-          return;
-        }
         if (e.target.closest("[data-alternar-toque]")) {
           alternarControlesDeToque();
           abrirAjuda();
@@ -2649,7 +2575,7 @@
         if (folhaAtual) { fecharFolha(); return; }
         return;
       }
-      if (e.key === "F1") { e.preventDefault(); if (modalAberto?.id === "modalOracao") fecharModal(); else abrirOracao(); return; }
+      if (e.key === "F1") { e.preventDefault(); if (!e.repeat) orar(e.shiftKey ? "milagre" : "oracao"); return; }
       const teclaT = (e.key === "t" || e.key === "T") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaT && modalAberto?.id === "modalMural") { e.preventDefault(); fecharModal(); return; }
       const teclaB = (e.key === "b" || e.key === "B") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
@@ -2745,7 +2671,7 @@
     avancarDialogo,
     abrirLoja,
     abrirViagem,
-    abrirOracao,
+    orar,
     abrirMural,
     abrirBestiario,
     abrirOficios,
@@ -2761,7 +2687,7 @@
   window.mostrarMensagem = (t) => UI.mensagem(t);
   window.abrirLoja = (id) => UI.abrirLoja(id);
   window.abrirViagem = (id) => UI.abrirViagem(id);
-  window.abrirOracao = () => UI.abrirOracao();
+  window.orar = (acao) => UI.orar(acao);
   window.abrirMural = (id) => UI.abrirMural(id ?? null);
   window.abrirBestiario = () => UI.abrirBestiario();
   window.alternarMinimapa = () => UI.alternarMinimapa();
