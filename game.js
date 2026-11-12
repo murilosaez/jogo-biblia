@@ -12,6 +12,24 @@ const MEU_ID = "jogador1";
 // ---------------------------------------------------------------------
 const TAM = 32; // tile em px de mundo
 const MOLDURA = 4; // tiles de cenário fora do mapa
+// Visão: a câmera mostra cerca de VISAO casas (como no Tibia, 15 × 11 na tela deitada) e cada pixel
+// da arte (16 px por casa, desenhada em dobro) ocupa um número inteiro de pixels da tela. O canvas desenha na
+// resolução real da tela (devicePixelRatio, até DPR_MAXIMO), sem o navegador esticar a imagem.
+const VISAO = { deitada: [15, 11], empe: [9, 13] };
+const PIXELS_ARTE_POR_CASA = 16;
+const DPR_MAXIMO = 3;
+const CHAVE_ZOOM = "jornada_zoom";
+// Cor da vida, como no Tibia: verde cheia, amarela pela metade, vermelha no fim (fração mínima → cor).
+const CORES_VIDA = [[0.92, 0x00c000, "#3fd23f"], [0.6, 0x60c060, "#8ad88a"], [0.3, 0xc0c000, "#e0d040"], [0.08, 0xc03030, "#e06050"], [0, 0xc00000, "#e03030"]];
+function corDaVida(frac) {
+  return CORES_VIDA.find(([min]) => frac >= min) || CORES_VIDA[CORES_VIDA.length - 1];
+} // ajuste do jogador (roda do mouse ou + e −), salvo neste navegador
+function dprAtual() {
+  return Math.max(1, Math.min(DPR_MAXIMO, window.devicePixelRatio || 1));
+}
+function ajusteZoomSalvo() {
+  try { const v = Number(localStorage.getItem(CHAVE_ZOOM)); return Number.isInteger(v) && Math.abs(v) <= 6 ? v : 0; } catch (e) { return 0; }
+}
 const BLOCO = 16; // lado (em casas) dos blocos de cenário ligados e desligados conforme a câmera
 const MINIMAPA_JANELA = { colunas: 80, linhas: 60 }; // casas mostradas no minimapa, em volta do jogador
 const FONTE_PIXEL = '"Pixelify Sans", ui-monospace, monospace';
@@ -142,6 +160,10 @@ class Cena extends Phaser.Scene {
     this.nivelAnterior = this.p.nivel;
     this.vidaBaixa = false;
 
+    // Textos do mundo (nomes, dano, avisos) na resolução do zoom: nítidos de perto.
+    const fabrica = this.add, textoOriginal = fabrica.text.bind(fabrica);
+    fabrica.text = (x, y, texto, estilo = {}) => textoOriginal(x, y, texto, { ...estilo, resolution: Math.max(estilo.resolution || 1, this.resolucaoTexto()) });
+
     Arte.registrarTexturas(this);
     this.criarTecladoEPonteiro();
     this.criarChao();
@@ -205,10 +227,12 @@ class Cena extends Phaser.Scene {
       up: "UP", down: "DOWN", left: "LEFT", right: "RIGHT", alt: "ALT",
     });
     this.input.keyboard.addCapture(["UP", "DOWN", "LEFT", "RIGHT", "SPACE", "ALT"]);
+    // Zoom do jogador: roda do mouse sobre o mapa, ou + e − no teclado.
+    this.input.on("wheel", (ptr, sobre, dx, dy) => { if (dy) this.ajustarZoom(dy < 0 ? 1 : -1); });
     // Toque ou clique curto no chão (sem arrastar: arrasto é o joystick) anda até a casa tocada.
     this.input.on("pointerup", (ptr, sobre) => {
       if (sobre.length || this.trocando || ptr.rightButtonReleased?.()) return;
-      if (Math.hypot(ptr.upX - ptr.downX, ptr.upY - ptr.downY) > 12 || ptr.upTime - ptr.downTime > 700) return;
+      if (Math.hypot(ptr.upX - ptr.downX, ptr.upY - ptr.downY) > 12 * this.escalaUI() || ptr.upTime - ptr.downTime > 700) return;
       if (window.Jogo?.joystickAtivo) return;
       this.irAteCasa(Math.floor(ptr.worldX / TAM), Math.floor(ptr.worldY / TAM));
     });
@@ -600,6 +624,8 @@ class Cena extends Phaser.Scene {
     const ent = {
       id: dados.id, tipo, dados, chave, sprite, sombra, quadrupede,
       rotulo: this.textoRotulo(nome, corNome),
+      corNome,
+      corAtual: corNome,
       fase: Math.random() * 1200, acaoAte: 0, andandoAte: 0, feridoAte: 0,
       alturaCabeca: Math.round((quadrupede ? def.h * Arte.PX - 6 : def.h * Arte.PX - 8) * escala),
       vidaFantasma: tipo === "inimigo" ? Mundo.obterVidaInimigo(MEU_ID, dados.id) : 0,
@@ -752,14 +778,40 @@ class Cena extends Phaser.Scene {
     this.scale.on("resize", this.aoRedimensionar, this);
     this.aoRedimensionar();
   }
+  // Pixels da tela por pixel de arte (inteiro), para ver cerca de VISAO casas; o ajuste do jogador soma ou
+  // tira 1 por vez. w e h em pixels do canvas (já multiplicados pelo devicePixelRatio).
+  pixelsPorPixelDeArte(w, h, ajuste = ajusteZoomSalvo()) {
+    const [cw, ch] = h > w * 1.15 ? VISAO.empe : VISAO.deitada;
+    const base = Math.floor(Math.min(w / (cw * PIXELS_ARTE_POR_CASA), h / (ch * PIXELS_ARTE_POR_CASA)));
+    const minimo = Math.max(1, Math.ceil(dprAtual()));
+    return Math.max(minimo, Math.min(16, Math.max(minimo, base) + ajuste));
+  }
   zoomIdeal(w, h) {
-    return Math.min(3, Math.max(1, Math.floor(Math.min(w / 800, h / 576) * 2) / 2));
+    return this.pixelsPorPixelDeArte(w, h) / (TAM / PIXELS_ARTE_POR_CASA);
+  }
+  // Pixels do canvas por pixel de CSS (os textos e cartões na tela usam pixels de CSS).
+  escalaUI() {
+    return 1 / (this.scale.zoom || 1);
+  }
+  resolucaoTexto() {
+    const z = this.cameras?.main?.zoom || this.zoomIdeal(this.scale.width, this.scale.height);
+    return Math.min(8, Math.max(2, Math.ceil(z)));
+  }
+  // Aproxima (+1) ou afasta (−1) a câmera e guarda a escolha.
+  ajustarZoom(passo) {
+    const w = this.scale.width, h = this.scale.height;
+    const atual = ajusteZoomSalvo();
+    const base = this.pixelsPorPixelDeArte(w, h, 0);
+    const novo = Math.max(-6, Math.min(6, atual + passo));
+    if (this.pixelsPorPixelDeArte(w, h, novo) === this.pixelsPorPixelDeArte(w, h, atual)) return;
+    try { localStorage.setItem(CHAVE_ZOOM, String(this.pixelsPorPixelDeArte(w, h, novo) - base)); } catch (e) { /* sem armazenamento */ }
+    this.aoRedimensionar();
   }
   // Converte coordenadas de tela para objetos com scrollFactor 0 (compensa o zoom).
   naTela(obj, sx, sy, escala = true) {
     const cam = this.cameras.main, z = cam.zoom;
     obj.setPosition((sx - cam.width / 2) / z + cam.width / 2, (sy - cam.height / 2) / z + cam.height / 2);
-    if (escala) obj.setScale(1 / z);
+    if (escala) obj.setScale(this.escalaUI() / z);
     return obj;
   }
   aoRedimensionar() {
@@ -1864,6 +1916,15 @@ class Cena extends Phaser.Scene {
     if (hover && hover.tipo === "npc") this.anelAmigo.setVisible(true).setPosition(hover.sprite.x, hover.sprite.y - 3);
     else this.anelAmigo.setVisible(false);
 
+    // Barra do jogador, logo acima da cabeça (como no Tibia).
+    const p = this.p, vmax = typeof vidaMaxima === "function" ? vidaMaxima(p) : 0;
+    if (vmax && this.jogador?.visible) {
+      const w = 24, h = 3, x = Math.round(this.jogador.x - w / 2), y = Math.round(this.jogador.y - this.jogador.displayHeight - 3);
+      const frac = Math.max(0, Math.min(1, p.vida / vmax));
+      g.fillStyle(0x1c1210, 1).fillRect(x - 1, y - 1, w + 2, h + 2);
+      g.fillStyle(0x3a1f1c, 1).fillRect(x, y, w, h);
+      g.fillStyle(corDaVida(frac)[1], 1).fillRect(x, y, Math.round(w * frac), h);
+    }
     for (const ent of Object.values(this.entidades)) {
       if (ent.tipo !== "inimigo") continue;
       const vida = Mundo.obterVidaInimigo(MEU_ID, ent.id), max = Mundo.vidaMaximaInimigo(MEU_ID, ent.id) || ent.dados.vidaMaxima;
@@ -1874,8 +1935,11 @@ class Cena extends Phaser.Scene {
         if (t >= 1) { ent.vidaFantasma = vida; ent.fantasmaDesde = 0; }
       } else { ent.vidaFantasma = vida; ent.fantasmaDesde = 0; }
       const chefe = Arte.CHEFES.has(ent.id);
-      const visivel = chefe || ent.id === this.alvoId || ent.id === this.hoverId || ent.feridoAte > time;
-      if (!visivel) continue;
+      if (!ent.sprite.visible || vida <= 0) continue;
+      // Nome na cor da vida (a cor do tier ou do campeão volta com a vida cheia).
+      const cor = corDaVida(vida / max);
+      const corNome = vida >= max ? ent.corNome : cor[2];
+      if (ent.rotulo && ent.corAtual !== corNome) { ent.corAtual = corNome; ent.rotulo.setColor(corNome); }
       const w = chefe ? 32 : 24, h = chefe ? 5 : 4, s = ent.sprite;
       const x = Math.round(s.x - w / 2), y = Math.round(s.y - ent.alturaCabeca - 12);
       g.fillStyle(0x1c1210, 1).fillRect(x - 1, y - 1, w + 2, h + 2);
@@ -1884,8 +1948,8 @@ class Cena extends Phaser.Scene {
       if (ent.fantasmaDesde) fantasma = ent.vidaFantasma - (ent.vidaFantasma - vida) * Math.min(1, (time - ent.fantasmaDesde) / 400);
       const wv = Math.round((w * vida) / max), wf = Math.round((w * fantasma) / max);
       if (wf > wv) g.fillStyle(0xffe08a, 1).fillRect(x + wv, y, wf - wv, h);
-      g.fillStyle(0xc2452d, 1).fillRect(x, y, wv, h);
-      g.fillStyle(0xe2774f, 1).fillRect(x, y, wv, 1);
+      g.fillStyle(cor[1], 1).fillRect(x, y, wv, h);
+      g.fillStyle(0xffffff, 0.25).fillRect(x, y, wv, 1);
       if (chefe) this.estrelaChefe.setVisible(true).setPosition(x - 10, y + 2);
     }
   }
@@ -1913,9 +1977,10 @@ class Cena extends Phaser.Scene {
     const todos = this.teclas.alt.isDown;
     const visiveis = [];
     for (const ent of Object.values(this.entidades)) {
-      const mostra = todos || ent.id === this.hoverId || ent.id === this.alvoId || cheb(this.p, ent.dados) <= 2;
+      // Criaturas mostram sempre nome e barra (como no Tibia); NPCs, de perto, no ponteiro ou com Alt.
+      const mostra = todos || ent.tipo === "inimigo" || ent.id === this.hoverId || ent.id === this.alvoId || cheb(this.p, ent.dados) <= 2;
       if (!mostra) { this.desvanecer(ent.rotulo, false); continue; }
-      const barra = ent.tipo === "inimigo" && (Arte.CHEFES.has(ent.id) || ent.id === this.alvoId || ent.id === this.hoverId || ent.feridoAte > this.time.now);
+      const barra = ent.tipo === "inimigo";
       const balao = ent.balao && ent.balao.visible;
       const y = ent.sprite.y - ent.alturaCabeca - 4 - (barra ? 14 : 0) - (balao ? 22 : 0);
       visiveis.push({ t: ent.rotulo, x: ent.sprite.x, y });
@@ -2118,18 +2183,37 @@ function iniciarJogo() {
   Promise.race([fontes, new Promise((r) => setTimeout(r, 1500))])
     .catch(() => {})
     .then(() => {
+      // O canvas tem o tamanho da área do jogo × devicePixelRatio e o CSS o mostra no tamanho da área
+      // (scale.zoom = 1 / dpr): um pixel do canvas para cada pixel da tela, sem o navegador esticar.
+      const medida = () => {
+        const dpr = dprAtual();
+        return { w: Math.max(1, Math.round((raiz?.clientWidth || window.innerWidth) * dpr)), h: Math.max(1, Math.round((raiz?.clientHeight || window.innerHeight) * dpr)), dpr };
+      };
+      const m0 = medida();
       const jogo = new Phaser.Game({
         type: Phaser.AUTO,
         parent: "game-root",
         pixelArt: true,
         roundPixels: true,
+        antialias: false,
         backgroundColor: "#1c1210",
-        scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
+        scale: { mode: Phaser.Scale.NONE, width: m0.w, height: m0.h, zoom: 1 / m0.dpr },
         scene: Cena,
       });
+      let ultima = `${m0.w}x${m0.h}@${m0.dpr}`;
+      const redimensionar = () => {
+        const m = medida(), chave = `${m.w}x${m.h}@${m.dpr}`;
+        if (chave === ultima) return;
+        ultima = chave;
+        jogo.scale.setZoom(1 / m.dpr);
+        jogo.scale.resize(m.w, m.h);
+      };
+      if (window.ResizeObserver && raiz) new ResizeObserver(redimensionar).observe(raiz);
+      window.addEventListener("resize", redimensionar);
       jogo.events.once("ready", () => {
         const c = jogo.canvas;
         if (c) { c.style.position = "absolute"; c.style.left = "0"; c.style.top = "0"; }
+        redimensionar();
       });
     });
 }
