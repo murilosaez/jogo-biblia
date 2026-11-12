@@ -611,7 +611,8 @@
   function textoFicha(f) {
     if (!f) return "";
     const tier = f.campeao ? `Campeão (${f.modificadores.length} modificador${f.modificadores.length > 1 ? "es" : ""})` : f.tier !== "normal" && typeof TIERS_CRIATURAS !== "undefined" ? TIERS_CRIATURAS[f.tier].nome : "";
-    return [tier, f.titulo, `Nível ${f.nivel}`, f.familia, ...f.comportamentos, f.status ? `Causa ${f.status.toLowerCase()}` : ""].filter(Boolean).join(" · ");
+    const amuleto = f.amuleto ? `Amuleto +${Math.round(f.amuleto * 100)}% de dano` : "";
+    return [tier, f.titulo, `Nível ${f.nivel}`, f.familia, ...f.comportamentos, f.status ? `Causa ${f.status.toLowerCase()}` : "", amuleto].filter(Boolean).join(" · ");
   }
   function marcasDaCriatura(f) {
     if (!f) return "";
@@ -1233,6 +1234,184 @@
       <p class="nota">Pontos de tarefa não expiram nem se perdem na morte. O Azarias não compra itens da troca.</p>`;
   }
 
+
+  // ----- Bestiário (JGB-9) -----
+  // Só lê o bestiário pelas funções puras de logica.js (bestiarioPorFamilia, resumoBestiario): o abate é
+  // que conta, na lógica. especieAberta: a espécie com a ficha expandida (uma por vez).
+  const temBestiario = () => typeof bestiarioPorFamilia === "function" && typeof resumoBestiario === "function";
+  const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString("pt-BR") : "—");
+  let especieAberta = null, htmlBestiario = "";
+  function abrirBestiario() {
+    if (!jogador() || !temBestiario()) return;
+    especieAberta = null;
+    desenharBestiario(true);
+    abrirModal("modalBestiario");
+  }
+  function desenharBestiario(forcar) {
+    const p = jogador();
+    const corpo = $("#bestiarioCorpo");
+    if (!p || !corpo || !temBestiario()) return;
+    const html = montarBestiario(p);
+    if (!forcar && html === htmlBestiario) return;
+    htmlBestiario = html;
+    // Mantém a rolagem e o foco na mesma espécie (a lista se redesenha a cada abate).
+    const ativo = document.activeElement;
+    const focada = ativo && corpo.contains(ativo) ? ativo.closest("[data-ver-especie]")?.dataset.verEspecie : null;
+    const rolagem = corpo.scrollTop;
+    corpo.innerHTML = html;
+    corpo.scrollTop = rolagem;
+    if (focada) $(`[data-ver-especie="${focada}"]`, corpo)?.focus({ preventScroll: true });
+  }
+  function montarBestiario(p) {
+    const r = resumoBestiario(p);
+    const estagios = typeof ESTAGIOS_BESTIARIO !== "undefined" ? ESTAGIOS_BESTIARIO : [];
+    const legenda = estagios.map((e, i) => `<span><b>${i + 1}</b> ${esc(e.nome)}: ${fmt(e.abates)} abates · revela ${esc(e.texto)}</span>`).join("");
+    const regra = typeof REGRAS_BESTIARIO !== "undefined" ? REGRAS_BESTIARIO.amuleto : null;
+    const textoAmuleto = regra
+      ? `Amuleto: com todas as espécies de uma família no estágio ${regra.estagio} (${esc(estagios[regra.estagio - 1]?.nome || "")}), você ganha +${Math.round(regra.bonusDano * 100)}% de dano contra ela, para sempre. Os raros nomeados não entram na conta.`
+      : "";
+    const familias = bestiarioPorFamilia(p).map((f) => htmlFamilia(f)).join("");
+    return `<div class="saldo">${imgGlifo("ui_bestiario", "px g16")}<span>${r.conhecidas} de ${r.especies} espécies · ${imgGlifo("ui_amuleto", "px g16")}${r.amuletos} de ${r.familias} amuletos</span></div>
+      <p class="legenda-estagios">${legenda}</p>
+      <p class="nota">${textoAmuleto}</p>${familias}`;
+  }
+  function htmlFamilia(f) {
+    const a = f.amuleto;
+    const pct = a.total ? (100 * a.cumpridas) / a.total : 0;
+    const amuleto = a.ativo
+      ? `<span class="amuleto-fam ativo">${imgGlifo("ui_amuleto", "px g16")}Amuleto: +${Math.round(a.bonus * 100)}% de dano</span>`
+      : a.total
+        ? `<span class="amuleto-fam" title="Espécies no estágio ${a.estagio} (${esc(a.nomeEstagio)}) para o amuleto">${imgGlifo("ui_amuleto", "px g16")}<span class="mini-barra"><i style="width:${pct.toFixed(1)}%"></i></span>${a.cumpridas}/${a.total}</span>`
+        : "";
+    return `<section class="familia-bestiario" aria-label="${esc(f.nome)}"><div class="familia-cab"><h3>${esc(f.nome)}</h3>${amuleto}</div>
+      <ul class="lista-especies">${f.especies.map((v) => htmlEspecie(v)).join("")}</ul></section>`;
+  }
+  function htmlEspecie(v) {
+    const aberta = especieAberta === v.especie;
+    const conhecida = v.abates > 0;
+    const url = retratoURL(visualDe(v.inimigoId), { escala: 2, recorte: "busto" });
+    const img = url ? `<img class="px${conhecida ? "" : " silhueta"}" src="${url}" alt="">` : "";
+    const nome = conhecida ? v.nome : "???";
+    const sub = [v.nomeArea, conhecida && v.ficha?.nivel ? `nível ${v.ficha.nivel}` : "", v.nomeado && conhecida ? "raro nomeado" : ""].filter(Boolean).join(" · ");
+    const total = typeof ESTAGIO_MAXIMO_BESTIARIO !== "undefined" ? ESTAGIO_MAXIMO_BESTIARIO : 3;
+    const pips = Array.from({ length: total }, (_, i) => `<i${i < v.estagio ? ' class="feito"' : ""}></i>`).join("");
+    const prox = v.proximo;
+    const pct = prox ? Math.min(100, (100 * (v.abates - prox.desde)) / Math.max(1, prox.abates - prox.desde)) : 100;
+    const contagem = prox ? `${fmt(v.abates)}/${fmt(prox.abates)}` : `${fmt(v.abates)} · completa`;
+    const estadoTxt = v.estagio ? `estágio ${v.estagio} de ${total}, ${v.nomeEstagio}` : "nenhum estágio";
+    const rotulo = `${nome}, ${v.nomeArea}: ${fmt(v.abates)} abates, ${estadoTxt}${prox ? `; ${fmt(prox.abates)} abates para ${prox.nome}` : ""}`;
+    return `<li class="especie" data-especie="${esc(v.especie)}">
+      <button type="button" class="especie-linha" data-ver-especie="${esc(v.especie)}" aria-expanded="${aberta}" aria-controls="det-${esc(v.especie)}" aria-label="${esc(rotulo)}">
+        <span class="icone">${img}</span>
+        <span class="especie-info"><strong>${esc(nome)}</strong><span>${esc(sub)}</span></span>
+        <span class="especie-prog"><span class="pips" title="${esc(estadoTxt)}">${pips}</span><span class="mini-barra"><i style="width:${pct.toFixed(1)}%"></i></span><b>${contagem}</b></span>
+      </button>
+      <div class="especie-detalhe" id="det-${esc(v.especie)}"${aberta ? "" : " hidden"}>${aberta ? htmlDetalheEspecie(v) : ""}</div></li>`;
+  }
+  function htmlDetalheEspecie(v) {
+    const est = typeof ESTAGIOS_BESTIARIO !== "undefined" ? ESTAGIOS_BESTIARIO : [];
+    const trancado = (revela) => {
+      const i = est.findIndex((e) => e.revela === revela);
+      const e = est[i];
+      return e ? `<p class="trancado">${imgGlifo("ui_cadeado")}Com ${fmt(e.abates)} abates (${esc(e.nome)}): ${esc(e.texto)}. Faltam ${fmt(Math.max(0, e.abates - v.abates))}.</p>` : "";
+    };
+    let html = "";
+    if (v.titulo) html += `<p><em>${esc(v.nome)}, ${esc(v.titulo)}</em></p>`;
+    html += "<h4>Ficha</h4>";
+    if (v.ficha) {
+      const f = v.ficha;
+      const linhas = [
+        ["Vida", fmt(f.vida)],
+        ["Dano", fmt(f.dano)],
+        ["Defesa", f.defesa],
+        ["Seu dano passa", `${f.passa}%`],
+        ["Nível", f.nivel ?? "—"],
+        ["XP", fmt(f.xp)],
+        ["Seu golpe", fmt(f.golpeCorpo)],
+        ...(f.golpeArco !== null ? [["Sua flecha", fmt(f.golpeArco)]] : []),
+      ];
+      html += `<dl class="ficha-best">${linhas.map(([k, x]) => `<div><dt>${k}</dt><dd>${esc(x)}</dd></div>`).join("")}</dl>`;
+      const tracos = [f.tier !== "Normal" ? f.tier : "", ...f.comportamentos.filter((c) => c !== "Persegue e ataca"), f.status ? `causa ${f.status.toLowerCase()}` : ""].filter(Boolean);
+      html += `<p>${esc(tracos.length ? tracos.join(" · ") : "Persegue e ataca")}.</p>`;
+    } else html += trancado("ficha");
+    html += "<h4>Fraquezas</h4>";
+    if (v.fraquezas) html += v.fraquezas.length ? `<ul>${v.fraquezas.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "<p>Nenhuma fraqueza conhecida: vença no golpe.</p>";
+    else html += trancado("fraquezas");
+    html += "<h4>Saque</h4>";
+    if (v.saque) {
+      const itens = v.saque.itens.map((l) => {
+        const cor = corRaridade(l.raridade);
+        const rar = l.raridade !== "comum" && typeof RARIDADES !== "undefined" ? ` (${RARIDADES[l.raridade].nome}${l.minima ? " ou melhor" : ""})` : "";
+        return `<li>${htmlItem(l.item, 16)}<span${cor && l.raridade !== "comum" ? ` style="color:${cor};text-shadow:1px 1px 0 #2a1a14"` : ""}>${esc(l.nome)}</span><span>${esc(rar)}</span>${l.textoChance ? `<span class="chance">${esc(l.textoChance)}</span>` : ""}</li>`;
+      }).join("");
+      html += `<ul class="saque-best">${itens}</ul>`;
+      if (v.saque.moedas !== null) html += `<p>${imgGlifo("ui_moeda")} Moedas: ${fmt(v.saque.moedas)} por abate.</p>`;
+      else html += trancado("chances");
+    } else html += trancado("fraquezas");
+    html += v.contaParaAmuleto ? `<p class="nota">Conta para o amuleto: ${esc(v.nomeFamilia)}.</p>` : `<p class="nota">Raro nomeado: não conta para o amuleto de ${esc(v.nomeFamilia)}.</p>`;
+    return html;
+  }
+
+  // ----- Analisador de caçada (JGB-10) -----
+  // Lê Mundo.analisador(ID) (contas puras em logica.js); zerar passa por executar(). Painel recolhível
+  // (tecla X); a escolha fica no navegador.
+  const CHAVE_ANALISADOR = "jornada_analisador_aberto";
+  let htmlAnalisador = "";
+  function analisadorAberto() {
+    try { return localStorage.getItem(CHAVE_ANALISADOR) !== "0"; } catch (e) { return true; }
+  }
+  function abrirAnalisador(aberto) {
+    const p = painel("pAnalisador");
+    if (!p) return;
+    p.dataset.aberto = String(aberto);
+    $("#btnAnalisador").setAttribute("aria-expanded", String(aberto));
+    try { localStorage.setItem(CHAVE_ANALISADOR, aberto ? "1" : "0"); } catch (e) { /* sem armazenamento */ }
+    if (aberto) atualizarAnalisador(true);
+  }
+  function alternarAnalisador() {
+    const aberto = painel("pAnalisador")?.dataset.aberto !== "true";
+    abrirAnalisador(aberto);
+    // No celular e no médio o painel fica dentro de Batalha: a tecla abre o lugar dele.
+    if (aberto && modo === "estreito" && folhaAtual !== "batalha") abrirFolha("batalha");
+    if (aberto && modo === "medio" && abaMedia !== "batalha") mostrarAbaMedia("batalha");
+  }
+  // Só os números se redesenham (4 vezes por segundo, com o relógio); o botão Zerar fica fixo no HTML,
+  // para o clique não se perder entre o mousedown e o mouseup.
+  function atualizarAnalisador(forcar) {
+    const corpo = $("#analiseDados");
+    if (!corpo || typeof Mundo === "undefined" || typeof Mundo.analisador !== "function") return;
+    const a = Mundo.analisador(ID);
+    if (!a) return;
+    const relogio = a.ativo ? (typeof textoRelogio === "function" ? textoRelogio(a.duracaoMs) : "") : "parado";
+    const rel = $("#analisadorRelogio");
+    if (rel && rel.textContent !== relogio) rel.textContent = relogio;
+    if (painel("pAnalisador")?.dataset.aberto === "false" && !forcar) return;
+    const hora = (v) => (v === null ? "—" : `${fmt(v)}/h`);
+    const neg = (v) => (v < 0 ? ' class="lucro-neg"' : "");
+    const tituloLucro = `Saque ${fmt(a.saque)} (moedas ${fmt(a.moedas)} + itens ${fmt(a.valorItens)}) − provisões ${fmt(a.gastos)}${a.perdas ? ` − perdas na morte ${fmt(a.perdas)}` : ""}`;
+    const proximo = a.nivelMaximo ? "nível máximo" : a.proximoNivelMs !== null ? `em ${typeof textoEspera === "function" ? textoEspera(a.proximoNivelMs) : ""}` : "—";
+    const linhas = [
+      ["XP", fmt(a.xp), hora(a.xpHora), ""],
+      ["Saque", fmt(a.saque), hora(a.saqueHora), `Moedas ${fmt(a.moedas)} + itens ${fmt(a.valorItens)} (pelo preço do Azarias)${a.equipamentos ? `; ${a.equipamentos} equipamento${a.equipamentos > 1 ? "s" : ""} sem preço de venda` : ""}`],
+      ["Lucro", `<span${neg(a.lucro)}>${fmt(a.lucro)}</span>`, a.lucroHora === null ? "—" : `<span${neg(a.lucroHora)}>${fmt(a.lucroHora)}/h</span>`, tituloLucro],
+      ["Abates", fmt(a.abates), hora(a.abatesHora), ""],
+      ["Mortes", fmt(a.mortes), "", a.perdas ? `${fmt(a.perdas)} moedas perdidas` : ""],
+    ];
+    const especies = a.especies.slice(0, 4).map((x) => `${x.nome} ${x.abates}`).join(" · ");
+    const nota = !a.ativo
+      ? '<p class="analise-nota">O relógio começa no seu próximo golpe.</p>'
+      : !a.medindo ? '<p class="analise-nota">As taxas por hora aparecem depois de 1 minuto.</p>' : "";
+    const html = `<dl class="analise"><dt class="cab"><span class="sr">Medida</span></dt><dd class="cab">Sessão</dd><dd class="cab">Por hora</dd>
+      ${linhas.map(([k, v, h, t]) => `<dt${t ? ` title="${esc(t)}"` : ""}>${k}</dt><dd${t ? ` title="${esc(t)}"` : ""}>${v}</dd><dd class="hora">${h}</dd>`).join("")}
+      </dl><p class="analise-proximo"><span>Próximo nível</span><b>${esc([a.proximoNivelMs !== null || a.nivelMaximo ? proximo : "", a.xpFalta && !a.nivelMaximo ? `faltam ${fmt(a.xpFalta)} XP` : ""].filter(Boolean).join(" · "))}</b></p>${nota}`;
+    const txtEspecies = especies || "Nenhum abate ainda.";
+    const pe = $("#analiseEspecies");
+    if (pe && pe.textContent !== txtEspecies) pe.textContent = txtEspecies;
+    if (html === htmlAnalisador && !forcar) return;
+    htmlAnalisador = html;
+    corpo.innerHTML = html;
+  }
+
   // ----- Viagem -----
   // x, y: selo no mapa (px do canvas 160×100). lado: o botão fica acima ou
   // abaixo do selo, do lado oposto à trilha, para o selo, o ponto "você está
@@ -1416,6 +1595,8 @@
       [k("P"), "Pescar (no mar, ao lado do ponto de pesca)"],
       [k("F1"), "Oração (depois de aprender com Jesus, na Galileia)"],
       [k("T"), "Suas caçadas (aceitar e trocar só ao lado de um atalaia)"],
+      [k("B"), "Bestiário: abates, ficha, fraquezas, saque e amuletos"],
+      [k("X"), "Mostrar ou ocultar o analisador de caçada (XP/h, saque/h, lucro)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
       [k("M"), "Mostrar ou ocultar o mapa"],
       [k("Alt"), "Segure para ver o nome de todos"],
@@ -1447,6 +1628,12 @@
         vermelho na linha dela: saia da área marcada) e fúria — e alguns causam veneno, sangramento ou atordoamento. Às vezes uma
         criatura renasce campeã (nome dourado, 1 ou 2 modificadores, saque reforçado), e cada região tem um raro nomeado que
         aparece algumas vezes por dia, com anúncio no Registro.</p>
+      <p>Bestiário: cada abate conta para a espécie. Com 10, 100 e 1000 abates ela chega aos estágios Avistada (ficha),
+        Estudada (fraquezas e saque) e Dominada (chances do saque). Com todas as espécies de uma família Estudadas (sem os raros
+        nomeados), você ganha o amuleto dela: +5% de dano contra a família, para sempre.</p>
+      <p>Analisador de caçada: o relógio começa no seu primeiro golpe e mostra XP, saque (moedas e o valor de venda dos itens
+        recolhidos), lucro (menos poções, flechas e perdas na morte), abates e mortes, por sessão e por hora, e quanto falta para
+        o próximo nível. Zere quando quiser; recarregar a página também zera.</p>
       <p>Viagem rápida: fale com Micael em Canaã ou Tamar no Deserto. A trilha no extremo sul liga as regiões a pé. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. Azarias, no Deserto, vende provisões e compra recursos. No mar, pesque nos pontos com ondulação.</p>
       <div class="acoes-modal">
         <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${comToque}">${comToque ? "Ocultar" : "Mostrar"} controles de toque</button>
@@ -1475,12 +1662,13 @@
     personagem: { rotulo: "Personagem", glifo: "ui_personagem", paineis: ["pPersonagem"] },
     // Equipamento junto da mochila: dá para arrastar de um para o outro.
     mochila: { rotulo: "Mochila", glifo: "ui_mochila", paineis: ["pEquip", "pMochila", "pBolsa"] },
-    batalha: { rotulo: "Batalha", glifo: "ui_espadas", paineis: ["pBatalha", "pRegistro"] },
+    batalha: { rotulo: "Batalha", glifo: "ui_espadas", paineis: ["pAnalisador", "pBatalha", "pRegistro"] },
   };
   const FOLHAS = {
     mochila: { titulo: "Mochila e bolsa", paineis: ["pEquip", "pMochila", "pBolsa"] },
     equip: { titulo: "Personagem", paineis: ["pPersonagem", "pEquip"] },
-    batalha: { titulo: "Batalha", paineis: ["pBatalha"] },
+    // O analisador vem antes: a lista de Batalha pode ser longa.
+    batalha: { titulo: "Batalha e caçada", paineis: ["pAnalisador", "pBatalha"] },
     missao: { titulo: "Missão", paineis: ["pMissao"] },
     registro: { titulo: "Registro", paineis: ["pRegistro"] },
   };
@@ -1507,13 +1695,13 @@
     modo = novo;
     document.body.classList.toggle("mapa-sobre-mundo", baixa);
     const dep = $("#deposito");
-    for (const id of ["pMissao", "pMochila", "pBolsa", "pRegistro", "pMapa", "pPersonagem", "pEquip", "pBatalha"]) dep.appendChild(painel(id));
+    for (const id of ["pMissao", "pMochila", "pBolsa", "pAnalisador", "pRegistro", "pMapa", "pPersonagem", "pEquip", "pBatalha"]) dep.appendChild(painel(id));
     $("#colEsq").innerHTML = "";
     $("#colDir").innerHTML = "";
     fecharFolha();
     const moldura = $("#mapaMoldura");
     if (modo === "largo") {
-      for (const id of ["pMissao", "pMochila", "pBolsa", "pRegistro"]) $("#colEsq").appendChild(painel(id));
+      for (const id of ["pMissao", "pMochila", "pBolsa", "pAnalisador", "pRegistro"]) $("#colEsq").appendChild(painel(id));
       for (const id of [...(baixa ? [] : ["pMapa"]), "pPersonagem", "pEquip", "pBatalha"]) $("#colDir").appendChild(painel(id));
       (baixa ? $("#mapaSobre") : $("#mapaCasa")).appendChild(moldura);
       abrirRegistro(true);
@@ -1873,9 +2061,11 @@
     atualizarCacadas(p);
     atualizarItens(p);
     atualizarBatalha(p);
+    atualizarAnalisador();
     $("#mapaCoord").textContent = `${p.x}, ${p.y}`;
     if (modalAberto?.id === "modalLoja") desenharLoja();
     if (modalAberto?.id === "modalMural") desenharMural();
+    if (modalAberto?.id === "modalBestiario") desenharBestiario();
   }
 
   function areaMudou(area) {
@@ -1905,6 +2095,7 @@
     atualizarBarras(p);
     atualizarToque(p);
     atualizarBatalha(p);
+    atualizarAnalisador(); // relógio e taxas por hora correm sem precisar de abate
     if (alvoDesenhado && typeof inimigos !== "undefined" && inimigos[alvoDesenhado]) atualizarVidaAlvo(inimigos[alvoDesenhado]);
     if (dlg.id && dlg.npc && Math.max(Math.abs(p.x - dlg.npc.x), Math.abs(p.y - dlg.npc.y)) > 2) fecharDialogo();
     if (modalAberto?.id === "modalOracao" && estadoOracao(p).ass !== assinaturaOracao) desenharOracao();
@@ -1930,6 +2121,8 @@
     $("#btnRegistro").addEventListener("click", () => abrirRegistro(painel("pRegistro").dataset.aberto !== "true"));
     $("#dialogo").addEventListener("click", () => (dlg.mostrado < dlg.texto.length ? completarDialogo() : fecharDialogo()));
     $("#pontos").addEventListener("click", () => abrirMural(null));
+    $("#btnBestiario").addEventListener("click", abrirBestiario);
+    $("#btnAnalisador").addEventListener("click", () => abrirAnalisador(painel("pAnalisador").dataset.aberto !== "true"));
     $("#missaoLinha").addEventListener("click", () => {
       const b = $("#missaoLinha");
       b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"));
@@ -1941,6 +2134,10 @@
       const folha = e.target.closest("[data-folha]");
       if (folha) abrirFolha(folha.dataset.folha);
       if (e.target.closest("[data-abrir-cacadas]")) abrirMural(null);
+      if (e.target.closest("[data-zerar-analisador]")) {
+        executar({ tipo: "zerarAnalisador" });
+        atualizarAnalisador(true);
+      }
     });
     $("#folhaFechar").addEventListener("click", fecharFolha);
     // arrastar a alça para baixo fecha a folha
@@ -1977,6 +2174,15 @@
         const noMural = e.target.closest("[data-aceitar-tarefa], [data-guardar-tarefa], [data-trocar], [data-confirmar-troca], [data-cancelar-troca]");
         if (noMural) {
           if (!noMural.disabled) acaoMural(e, noMural);
+          return;
+        }
+        // Bestiário: abre e fecha a ficha da espécie (uma por vez).
+        const verEspecie = e.target.closest("[data-ver-especie]");
+        if (verEspecie) {
+          const k = verEspecie.dataset.verEspecie;
+          especieAberta = especieAberta === k ? null : k;
+          desenharBestiario(true);
+          $(`#bestiarioCorpo [data-ver-especie="${k}"]`)?.focus({ preventScroll: true });
           return;
         }
         const viajar = e.target.closest("[data-viajar]");
@@ -2021,6 +2227,8 @@
       if (e.key === "F1") { e.preventDefault(); if (modalAberto?.id === "modalOracao") fecharModal(); else abrirOracao(); return; }
       const teclaT = (e.key === "t" || e.key === "T") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaT && modalAberto?.id === "modalMural") { e.preventDefault(); fecharModal(); return; }
+      const teclaB = (e.key === "b" || e.key === "B") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (teclaB && modalAberto?.id === "modalBestiario") { e.preventDefault(); fecharModal(); return; }
       if (modalAberto) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target && e.target.tagName) || "";
@@ -2028,6 +2236,8 @@
       if ((e.key === "m" || e.key === "M") && !e.repeat) { e.preventDefault(); alternarMinimapa(); return; }
       if (e.key === "?") { e.preventDefault(); abrirAjuda(); return; }
       if (teclaT) { e.preventDefault(); abrirMural(null); return; }
+      if (teclaB) { e.preventDefault(); abrirBestiario(); return; }
+      if ((e.key === "x" || e.key === "X") && !e.repeat) { e.preventDefault(); alternarAnalisador(); return; }
       if (/^[1-6]$/.test(e.key) && !e.repeat) {
         const i = Number(e.key) - 1;
         const hk = $(`#atalhos [data-atalho="${i}"]`);
@@ -2062,6 +2272,7 @@
     ligarToque();
     observarMochila();
     observarFolha();
+    abrirAnalisador(analisadorAberto());
     const re = () => { montar(); medirRodape(); };
     for (const q of ["(min-width: 1280px)", "(max-width: 760px)", TELA_BAIXA]) {
       const mq = matchMedia(q);
@@ -2083,6 +2294,7 @@
     abrirViagem,
     abrirOracao,
     abrirMural,
+    abrirBestiario,
     abrirAjuda,
     alternarMinimapa,
     atualizarMinimapa() { /* o MUNDO desenha o minimapa no #miniMap (game.js) */ },
@@ -2096,6 +2308,7 @@
   window.abrirViagem = () => UI.abrirViagem();
   window.abrirOracao = () => UI.abrirOracao();
   window.abrirMural = (id) => UI.abrirMural(id ?? null);
+  window.abrirBestiario = () => UI.abrirBestiario();
   window.alternarMinimapa = () => UI.alternarMinimapa();
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar);

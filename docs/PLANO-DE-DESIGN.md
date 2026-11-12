@@ -48,9 +48,9 @@ Cada inimigo: família, tier (normal/elite/campeão/raro/chefe), comportamento, 
 
 ## Caçadas
 - Áreas catalogadas por região com faixa de nível, densidade e XP/h e saque/h estimados.
-- **Analisador de caçada** (XP/h, saque/h, lucro, tempo até o próximo nível).
+- **Analisador de caçada** (XP/h, saque/h, lucro, tempo até o próximo nível). Feito (JGB-10).
 - **Mural de tarefas de caça** ("mate 150 escorpiões") → pontos trocáveis por itens/montarias.
-- **Bestiário** em 3 estágios (10/100/1000 abates) → revela fraquezas e dá amuletos (+5% contra a família).
+- **Bestiário** em 3 estágios (10/100/1000 abates) → revela fraquezas e dá amuletos (+5% contra a família). Feito (JGB-9).
 - Bônus de grupo (+10% por membro, mais com vocações diferentes); no MMO, instâncias ou crédito por dano.
 - **XP de descanso (Sábado)**: offline acumula XP em dobro.
 
@@ -93,8 +93,8 @@ Retenção D1 40% / D7 20% / D30 8%; sessão 25–40 min; 1º nível < 2 min; 1�
 3. ~~Tabela de saque por inimigo com chances (comum/raro/muito raro) e anúncio de raro~~ — feito (JGB-5): tabela por criatura em `dados/criaturas.js` com drops de 1% e 0,1% (pedras do peitoral), som, pilar de luz e anúncio no Registro; teste de simulação da frequência.
 4. ~~Campeões (5%, modificadores) e mais 2–3 criaturas por região existente com comportamentos novos (matilha, fuga, à distância)~~ — feito (JGB-6 e JGB-7): 24 criaturas novas (31 espécies) com tier, comportamento (matilha, fuga, à distância, investida, fúria), status (veneno, sangramento, atordoamento), tabela de saque e sprite próprio; campeões a 5% com modificadores no nome; um raro nomeado por região com janela de aparição e anúncio; simulação de balanceamento por criatura.
 5. ~~Mural de tarefas de caça + pontos de tarefa~~ — feito (JGB-3): um atalaia por região com rondas (20 h) e grandes caçadas (164 h), alvo por criatura, espécie ou família (`dados/tarefas.js`), entrega em qualquer atalaia e troca de pontos por alforjes, escudo de ferro e couraça; save v8.
-6. Bestiário com estágios e amuletos.
-7. Analisador de caçada (painel XP/h, saque/h).
+6. ~~Bestiário com estágios e amuletos~~ — feito (JGB-9): 3 estágios por espécie (10/100/1000 abates: ficha; fraquezas e saque; chances), fraquezas vindas dos comportamentos e status (`REGRAS_BESTIARIO` em `dados/criaturas.js`), amuleto por família (+5% de dano com todas as espécies no estágio 2, sem os raros nomeados); tecla B; save v10.
+7. ~~Analisador de caçada (painel XP/h, saque/h)~~ — feito (JGB-10): painel Caçada com XP, saque, lucro (menos poções, flechas e perdas na morte), abates e mortes por sessão e por hora e tempo até o próximo nível; relógio a partir do 1º golpe, zerável; tecla X.
 8. Maná diário e XP de descanso.
 9. Estender a simulação de balanceamento para cada novidade.
 

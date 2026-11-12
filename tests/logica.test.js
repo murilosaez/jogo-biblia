@@ -2396,9 +2396,10 @@ teste("37. troca de pontos: recusas sem mudar nada, itens, alforjes e estados da
 });
 
 teste("38. migração para a v8 e a v9: saves v5, v6 e v7 ganham caçadas vazias; v9 recarrega igual; corrompido é normalizado", () => {
+  const versaoAtual = carregarJogo().g("VERSAO_SAVE");
   const vazio = (p, onde) => {
     igual([p.tarefas, p.pontosTarefa, p.pontosTarefaTotal, p.trocas], [{}, 0, 0, {}], onde);
-    assert.strictEqual(p.versao, 9, onde);
+    assert.strictEqual(p.versao, versaoAtual, onde);
   };
   const avisos8 = (p) => p.avisosPendentes.filter((a) => a.id === "atualizacao_8").length;
   const recarregar = (j, ms) => {
@@ -2967,7 +2968,7 @@ teste("46. migração para a v9: posição e saques dos mapas de 80×60 vão par
   let p = j.entrar();
   const mapas = j.g("mapas");
   const livre = (area, pt) => mapas[area][pt.y][pt.x] === 0 && !Object.values(npcs).some((n) => n.area === area && n.x === pt.x && n.y === pt.y);
-  assert.strictEqual(p.versao, 9);
+  assert.strictEqual(p.versao, j.g("VERSAO_SAVE"));
   assert.strictEqual(p.area, "deserto");
   assert.ok(livre("deserto", p), "jogador em casa livre");
   assert.ok(Math.max(Math.abs(p.x - 140), Math.abs(p.y - 18)) <= 4, `perto do ponto equivalente (140,18): ${p.x},${p.y}`);
@@ -3885,6 +3886,280 @@ function abaterSemLimpar(j, inimigoId) {
   assert.ok(r.derrotado, `abate de ${inimigoId}: ${r.mensagem}`);
   return r;
 }
+
+// ---------------------------------------------------------------------
+// Bestiário (JGB-9) e analisador de caçada (JGB-10)
+// ---------------------------------------------------------------------
+// Põe a contagem da espécie em n (direto no save, como se n abates já tivessem acontecido).
+function contarNoBestiario(j, especie, n) {
+  j.p.bestiario[especie] = n;
+}
+
+teste("56. bestiário (JGB-9): estágios de 10/100/1000 abates revelam ficha, fraquezas e saque; amuleto dá +5% contra a família", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const g = (n) => j.g(n);
+  const visao = (k) => g("visaoEspecie")(p, k);
+  const ESPECIES = g("ESPECIES");
+  const ORDEM = g("ORDEM_ESPECIES");
+  const R = g("REGRAS_BESTIARIO");
+  igual(R.estagios.map((e) => e.abates), [10, 100, 1000]);
+
+  // 1. Toda espécie dos dados aparece uma vez, por família; personagem novo começa sem nada revelado.
+  igual(p.bestiario, {});
+  const porFamilia = g("bestiarioPorFamilia")(p);
+  const listadas = porFamilia.flatMap((f) => f.especies.map((v) => v.especie));
+  igual([...listadas].sort(), [...ORDEM].sort(), "cada espécie uma vez");
+  assert.strictEqual(ORDEM.length, new Set(g("DADOS_CRIATURAS").map((c) => c.especie)).size);
+  for (const f of porFamilia) for (const v of f.especies) assert.strictEqual(v.familia, f.familia);
+  const v0 = visao("lobo");
+  igual([v0.nome, v0.abates, v0.estagio, v0.ficha, v0.fraquezas, v0.saque, v0.proximo.abates], [null, 0, 0, null, null, null, 10]);
+  igual(g("resumoBestiario")(p), { especies: ORDEM.length, conhecidas: 0, porEstagio: [0, 0, 0], amuletos: 0, familias: 10 });
+
+  // 2. Cada abate conta para a espécie, também o das cópias do grupo (lobo1_2 é "lobo") e com flecha.
+  let r = abater(j, "lobo1");
+  igual(r.bestiario, { especie: "lobo", abates: 1, estagio: 0, subiu: false, amuleto: null });
+  assert.ok(g("inimigos").lobo1_2, "o lobo tem cópias");
+  abater(j, "lobo1_2");
+  assert.strictEqual(p.bestiario.lobo, 2);
+  assert.strictEqual(visao("lobo").nome, "Lobo", "conhecida a partir do 1º abate");
+  assert.strictEqual(visao("lobo").ficha, null, "ficha só no estágio 1");
+
+  // 3. Estágio 1 (10): ficha com vida, defesa, quanto do golpe passa e o golpe do jogador; anúncio no Registro.
+  contarNoBestiario(j, "lobo", 9);
+  r = abater(j, "lobo1");
+  igual([r.bestiario.abates, r.bestiario.estagio, r.bestiario.subiu], [10, 1, true]);
+  assert.ok(r.anuncios.some((t) => t.startsWith("Bestiário: Lobo chegou ao estágio 1 de 3, Avistada (10 abates)")), r.anuncios.join(" | "));
+  let v = visao("lobo");
+  const lobo = ESPECIES.lobo;
+  igual([v.ficha.vida, v.ficha.dano, v.ficha.defesa, v.ficha.nivel, v.ficha.xp], [lobo.vidaMaxima, lobo.danoContraJogador, lobo.defesa, lobo.nivel, lobo.xpRecompensa]);
+  assert.strictEqual(v.ficha.passa, Math.round((100 * 20) / (20 + lobo.defesa)));
+  assert.strictEqual(v.ficha.golpeCorpo, g("mitigarDano")(g("danoBruto")(p, "corpo"), lobo.defesa));
+  igual([v.fraquezas, v.saque], [null, null]);
+  igual([v.proximo.abates, v.proximo.nome, v.proximo.desde], [100, "Estudada", 10]);
+  r = abater(j, "lobo1");
+  assert.strictEqual(r.bestiario.subiu, false, "11º abate não repete o anúncio");
+  assert.ok(!r.anuncios.some((t) => t.startsWith("Bestiário")));
+
+  // 4. Estágio 2 (100): fraquezas e itens do saque, ainda sem chances nem moedas.
+  contarNoBestiario(j, "lobo", 99);
+  abater(j, "lobo1");
+  v = visao("lobo");
+  assert.strictEqual(v.estagio, 2);
+  assert.ok(v.fraquezas.includes(R.fraquezaDefesaBaixa), "lobo tem pouca defesa");
+  igual(v.saque.itens.map((l) => l.item), g("tabelaDeSaque")(lobo).map((l) => l.item));
+  assert.ok(v.saque.itens.every((l) => l.chance === null && l.textoChance === null));
+  assert.strictEqual(v.saque.moedas, null);
+  assert.strictEqual(v.saque.itens.find((l) => l.item === "escudo_madeira").raridade, "raro", "raridade mínima da linha");
+
+  // 5. Estágio 3 (1000): chances e moedas; depois dele não há próximo.
+  contarNoBestiario(j, "lobo", 999);
+  r = abater(j, "lobo1");
+  igual([r.bestiario.estagio, r.bestiario.subiu], [3, true]);
+  v = visao("lobo");
+  igual(v.saque.itens.map((l) => [l.item, l.textoChance]).filter(([i]) => ["pele_lobo", "presa_lobo", "pedra_sardio"].includes(i)), [
+    ["pele_lobo", "100%"],
+    ["presa_lobo", "25%"],
+    ["pedra_sardio", "0,1%"],
+  ]);
+  assert.strictEqual(v.saque.moedas, lobo.saque.moedas);
+  assert.strictEqual(v.proximo, null);
+
+  // 6. Fraquezas vêm dos comportamentos e status (com a chance da criatura) e do alcance menor que o do arco.
+  const fraq = (k) => g("fraquezasDaEspecie")(ESPECIES[k]);
+  const C = g("COMPORTAMENTOS");
+  assert.ok(fraq("hiena").includes(C.matilha.fraqueza) && fraq("hiena").includes(C.fuga.fraqueza));
+  assert.ok(fraq("arqueiro_bando").some((t) => t.includes("alcança 6 casas") && t.includes(", 5.")), fraq("arqueiro_bando").join(" | "));
+  assert.ok(fraq("vibora").some((t) => t.includes("Remover veneno")));
+  const atordoa = ORDEM.find((k) => ESPECIES[k].efeito?.tipo === "atordoamento" && ESPECIES[k].efeito.chance === 0.25);
+  assert.ok(fraq(atordoa).some((t) => t.includes("25%") && t.includes("4 s")), fraq(atordoa).join(" | "));
+  for (const k of ORDEM) for (const t of fraq(k)) assert.doesNotMatch(t, /\{\w+\}/, `marca sem valor em ${k}: ${t}`);
+  for (const [k, c] of Object.entries(C)) if (k !== "padrao") assert.ok(c.fraqueza, `comportamento ${k} sem fraqueza`);
+  for (const [k, st] of Object.entries(g("STATUS_CRIATURAS"))) assert.ok(st.fraqueza, `status ${k} sem fraqueza`);
+
+  // 7. Amuleto: todas as espécies da família no estágio 2 (raros nomeados fora da conta). Pragas: 3 espécies.
+  const doAmuleto = g("especiesDoAmuleto");
+  assert.ok(!doAmuleto("feras").includes("lobo_velho"), "Presa-Cinzenta (raro nomeado) não conta");
+  assert.ok(visao("lobo_velho").contaParaAmuleto === false && visao("lobo").contaParaAmuleto === true);
+  const pragas = doAmuleto("pragas");
+  igual([...pragas].sort(), ["gafanhotos", "ra", "vespas"]);
+  const gafanhotos = g("inimigos").gafanhotos1;
+  assert.strictEqual(g("bonusAmuleto")(p, gafanhotos), 0);
+  contarNoBestiario(j, "gafanhotos", 100);
+  contarNoBestiario(j, "ra", 250);
+  contarNoBestiario(j, "vespas", 99);
+  assert.strictEqual(g("progressoAmuleto")(p, "pragas").cumpridas, 2);
+  r = abater(j, "vespas1");
+  assert.strictEqual(r.bestiario.amuleto, "pragas");
+  assert.ok(r.anuncios.some((t) => t.startsWith("Amuleto conquistado: Pragas! +5% de dano")), r.anuncios.join(" | "));
+  r = abater(j, "vespas1");
+  assert.strictEqual(r.bestiario.amuleto, null, "o amuleto só é anunciado uma vez");
+  assert.strictEqual(g("bonusAmuleto")(p, gafanhotos), 0.05);
+  assert.strictEqual(g("bonusAmuleto")(p, g("inimigos").lobo1), 0, "só contra a família dele");
+  igual(g("amuletosDoJogador")(p).map((a) => a.familia), ["pragas"]);
+  assert.strictEqual(j.M.fichaInimigo(ID, "gafanhotos1").amuleto, 0.05);
+  // O bônus entra no golpe, antes da defesa e do crítico.
+  const calc = g("calcularGolpe");
+  igual(calc(p, "corpo", 4, 0.99, 1.05), { bruto: Math.round(g("danoBruto")(p, "corpo") * 1.05), critico: false, dano: g("mitigarDano")(Math.round(g("danoBruto")(p, "corpo") * 1.05), 4) });
+  igual(calc(p, "corpo", 4, 0.99), calc(p, "corpo", 4, 0.99, 1), "sem multiplicador, o golpe de sempre");
+  p.nivel = 30; // dano bruto alto: os 5% fazem diferença
+  const e = g("inimigos").gafanhotos1;
+  if (j.M.obterVidaInimigo(ID, e.id) <= 0) j.M.reaparecerInimigo(ID, e.id);
+  delete p.campeoes[e.id];
+  p.vidaInimigos[e.id] = 100000;
+  e.x = e.inicioX;
+  e.y = e.inicioY;
+  posicionarAoLado(j, e.area, e);
+  j.definirAleatorio(() => 0.99); // sem crítico
+  j.avancar(1000);
+  r = j.exec({ tipo: "atacar", alvoId: e.id });
+  const bruto = g("danoBruto")(p, "corpo");
+  igual([r.amuleto, r.danoAplicado], [0.05, g("mitigarDano")(Math.round(bruto * 1.05), e.defesa)]);
+  assert.ok(r.danoAplicado > g("mitigarDano")(bruto, e.defesa), "com o amuleto, o golpe é maior");
+  assert.strictEqual(g("visaoEspecie")(p, "gafanhotos").ficha.golpeCorpo, r.danoAplicado);
+
+  // 8. As funções da interface não mudam p, e a morte não mexe no bestiário.
+  const antes = fotografia(p);
+  for (const k of [...ORDEM, "constructor", "nada"]) g("visaoEspecie")(p, k);
+  g("bestiarioPorFamilia")(p);
+  g("resumoBestiario")(p);
+  g("amuletosDoJogador")(p);
+  assert.strictEqual(fotografia(p), antes);
+  assert.strictEqual(g("visaoEspecie")(p, "constructor"), null);
+  const bestiarioAntes = json(p.bestiario);
+  p.nivel = 60;
+  j.M.aplicarMorte(ID, "inimigo");
+  igual(p.bestiario, bestiarioAntes, "a morte não tira abates");
+
+  // 9. Save: recarrega igual; contagens inválidas somem; save v9 ganha o bestiário vazio e o aviso uma vez.
+  j.g("Storage").flush();
+  const j2 = carregarJogo({ store: j.store, inicio: j.agora + 60_000 });
+  j2.entrar();
+  igual(j2.p.bestiario, bestiarioAntes);
+  assert.strictEqual(j2.g("bonusAmuleto")(j2.p, j2.g("inimigos").gafanhotos1), 0.05);
+  const salvo = JSON.parse(j.store.save_jogador1);
+  salvo.bestiario = { lobo: "abc", chacal: 12.7, javali: -4, inexistente: 5, constructor: 3, urso: Infinity };
+  const j3 = carregarJogo({ store: { save_jogador1: JSON.stringify(salvo) } });
+  j3.entrar();
+  igual(j3.p.bestiario, { chacal: 12 });
+  const v9 = JSON.parse(j.store.save_jogador1);
+  delete v9.bestiario;
+  Object.assign(v9, { versao: 9, avisosPendentes: [] });
+  const j4 = carregarJogo({ store: { save_jogador1: JSON.stringify(v9) } });
+  j4.entrar();
+  igual(j4.p.bestiario, {});
+  assert.strictEqual(j4.p.versao, j4.g("VERSAO_SAVE"));
+  assert.strictEqual(j4.p.avisosPendentes.filter((a) => a.id === "atualizacao_10").length, 1);
+  j4.g("Storage").flush();
+  const j5 = carregarJogo({ store: j4.store });
+  j5.entrar();
+  assert.strictEqual(j5.p.avisosPendentes.filter((a) => a.id === "atualizacao_10").length, 1, "recarregar não duplica o aviso");
+
+  // 10. A interface só lê o bestiário pelas funções puras; game.js só lê o resultado do ataque.
+  const FONTE_UI = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  for (const fn of ["bestiarioPorFamilia(", "resumoBestiario(", "Mundo.analisador(", '"zerarAnalisador"']) assert.ok(FONTE_UI.includes(fn), `interface.js usa ${fn}`);
+  assert.doesNotMatch(FONTE_UI, /\.bestiario\b/, "interface.js não toca em p.bestiario");
+  igual([...FONTE_GAME.matchAll(/(\w+)\.bestiario\b/g)].map((m) => m[1]), ["r"], "game.js só lê r.bestiario");
+  const HTML = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  for (const id of ["modalBestiario", "btnBestiario", "pAnalisador", "btnAnalisador", "analiseDados"]) assert.match(HTML, new RegExp(`id="${id}"`));
+  const ARTE = fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8");
+  for (const gl of ["ui_bestiario", "ui_amuleto", "ui_ampulheta"]) assert.match(ARTE, new RegExp(`glifo\\("${gl}"`), `falta o glifo ${gl}`);
+});
+
+teste("57. analisador de caçada (JGB-10): XP/h, saque/h, lucro, abates, mortes e tempo até o próximo nível; zerável", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const g = (n) => j.g(n);
+  const A = () => j.M.analisador(ID);
+  const MIN = 60_000;
+
+  // 1. Parado até o primeiro golpe: coleta e poção antes dele não contam.
+  let a = A();
+  igual([a.ativo, a.duracaoMs, a.xp, a.xpHora, a.saque, a.lucro, a.abates, a.mortes, a.proximoNivelMs], [false, 0, 0, null, 0, 0, 0, 0, null]);
+  p.vida = 10;
+  p.inventario.push("pocao");
+  assert.ok(j.exec({ tipo: "usarPocao" }).ok);
+  assert.strictEqual(A().gastos, 0, "poção antes da sessão não conta");
+
+  // 2. Abate: começa o relógio (no golpe), conta XP, abate e espécie. Saque recolhido entra pelo valor de venda.
+  const inicio = j.agora + 1000; // abaterSemLimpar avança 1 s antes do golpe
+  const r1 = abaterSemLimpar(j, "lobo1");
+  a = A();
+  igual([a.ativo, a.xp, a.abates, a.especies], [true, r1.xpGanho, 1, [{ especie: "lobo", nome: "Lobo", abates: 1 }]]);
+  const doChao = p.saqueNoChao.filter((s) => s.area === p.area);
+  const moedasChao = doChao.reduce((t, s) => t + (s.moedas || 0), 0);
+  const valorChao = doChao.filter((s) => s.item).reduce((t, s) => t + (g("VALORES_VENDA")[g("baseItem")(s.item)] || 0), 0);
+  assert.ok(doChao.length, "o lobo deixou saque");
+  pegarSaques(j);
+  a = A();
+  igual([a.moedas, a.valorItens, a.saque, a.itens], [moedasChao, valorChao, moedasChao + valorChao, doChao.filter((s) => s.item).length]);
+  assert.ok(a.saque > 0, "pele de lobo vale 5");
+
+  // 3. Taxas por hora só depois de 1 minuto, e batem com a conta.
+  j.avancar(20_000);
+  a = A();
+  igual([a.medindo, a.xpHora, a.saqueHora, a.lucroHora, a.abatesHora], [false, null, null, null, null]);
+  j.avancar(inicio + 2 * MIN - j.agora); // 2 minutos de sessão
+  a = A();
+  assert.strictEqual(a.duracaoMs, 2 * MIN);
+  igual([a.medindo, a.xpHora, a.saqueHora, a.abatesHora], [true, Math.round(r1.xpGanho * 30), Math.round(a.saque * 30), 30]);
+  assert.strictEqual(a.xpFalta, g("limiarNivel")(p.nivel) - p.xp);
+  assert.strictEqual(a.proximoNivelMs, Math.ceil((a.xpFalta * 3_600_000) / a.xpHora));
+
+  // 4. Gastos: poção (12) e flecha (8 por 5 = 1,6) pelo preço da loja; o lucro desconta.
+  p.vida = 10;
+  p.inventario.push("pocao");
+  assert.ok(j.exec({ tipo: "usarPocao" }).ok);
+  p.equipamento.arma = null;
+  p.equipamento.arco = "arco_madeira";
+  for (let i = 0; i < 5; i++) p.inventario.push("flecha");
+  const r2 = abater(j, "lobo1", "atacarDistancia");
+  a = A();
+  assert.strictEqual(a.gastos, Math.round(12 + 1.6));
+  igual([a.abates, a.xp], [2, r1.xpGanho + r2.xpGanho]);
+  assert.strictEqual(a.lucro, a.saque - a.gastos);
+
+  // 5. Morte: conta a morte e as moedas perdidas; o item que caiu na morte não vira saque ao ser recolhido.
+  Object.assign(p, { nivel: 60, moedas: 200 });
+  j.definirAleatorio(() => 0); // 30% de chance: o item cai
+  const morte = j.M.aplicarMorte(ID, "inimigo");
+  assert.ok(morte.penalidade.item, "um item caiu no local da derrota");
+  a = A();
+  igual([a.mortes, a.perdas, a.lucro], [1, 20, a.saque - a.gastos - 20]);
+  const saqueAntes = a.saque;
+  const caido = p.saqueNoChao.find((s) => s.id.startsWith("morte_"));
+  posicionarAoLado(j, caido.area, caido);
+  assert.ok(j.exec({ tipo: "coletarSaque", saqueId: caido.id }).ok);
+  assert.strictEqual(A().saque, saqueAntes, "recolher o próprio item não é lucro");
+
+  // 6. Trocar de área / renascer (entrar de novo) não zera; Mundo.analisador não muda p.
+  const antes = A();
+  j.entrar();
+  igual(A(), antes, "a sessão atravessa entrar()");
+  const foto = fotografia(j.p);
+  j.M.analisador(ID);
+  g("resumoAnalisador")(j.p, j.M.estado[ID].analisador, j.agora);
+  assert.strictEqual(fotografia(j.p), foto);
+  assert.ok(!("analisador" in j.p), "o analisador não vai para o save");
+
+  // 7. Zerar: tudo volta a zero e o relógio espera o próximo golpe.
+  const z = j.exec({ tipo: "zerarAnalisador" });
+  assert.ok(z.ok && z.analisadorZerado);
+  a = A();
+  igual([a.ativo, a.xp, a.saque, a.gastos, a.mortes, a.abates, a.especies], [false, 0, 0, 0, 0, 0, []]);
+  j.definirAleatorio(aleatorioComSemente(3));
+  abater(j, "chacal1");
+  igual([A().ativo, A().abates, A().especies.map((x) => x.especie)], [true, 1, ["chacal"]]);
+
+  // 8. Relógio e nível máximo.
+  igual([g("textoRelogio")(0), g("textoRelogio")(65_000), g("textoRelogio")(3_725_000)], ["0:00", "1:05", "1:02:05"]);
+  j.p.nivel = g("NIVEL_MAXIMO");
+  j.avancar(2 * MIN);
+  a = A();
+  igual([a.nivelMaximo, a.xpFalta, a.proximoNivelMs], [true, 0, null]);
+});
 
 // ---------------------------------------------------------------------
 // Execução
