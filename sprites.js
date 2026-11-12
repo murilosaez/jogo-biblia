@@ -1455,6 +1455,8 @@
   // Bestiário (livro de capa de couro com a pegada dourada), amuleto da família e ampulheta do analisador.
   glifo("ui_bestiario", [".kkkkkk.", "kYLYLYPk", "kLLLLLPk", "kLYYYLPk", "kLYYYLPk", "kLLYLLPk", "kLLLLLPk", ".kkkkkk."], { L: "#7a4a30", Y: "#e8b94a", P: "#f3e4c0" });
   glifo("ui_amuleto", ["C......C", ".C....C.", "..C..C..", "...kk...", "..kYYk..", ".kYyGYk.", ".kYGGdk.", "..kddk.."], { C: "#c9b48a", Y: "#e8b94a", y: "#ffe08a", d: "#b8862b", G: "#3fa66a" });
+  // Maná (JGB-11): jarro de barro (o ômer) com flocos brancos caindo.
+  glifo("ui_mana", [".W.W..W.", "..kkkk.W", ".kWWWWk.", "kCCCCCCk", "kCcCCCdk", "kCcCCCdk", ".kCCCdk.", "..kkkk.."], { C: "#c98a52", c: "#e0a878", d: "#8e5a2b", W: "#f6efdc" });
   glifo("ui_ampulheta", ["NNNNNNNN", ".kYYYYk.", "..kYYk..", "...kk...", "...kk...", "..k.Yk..", ".kYYYYk.", "NNNNNNNN"], { N: "#b07a38", Y: "#e8b94a" });
 
   // -------------------------------------------------------------------

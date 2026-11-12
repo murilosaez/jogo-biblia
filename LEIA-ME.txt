@@ -12,7 +12,9 @@ Conteúdo do jogo (pasta dados/)
   casas livres que não se alcançam a partir do início da área viram obstáculo.
 - dados/mundo.js: áreas (início, trilha, cais, chegada da viagem e os portos do mar, um por cidade),
   regiões dos capítulos, preços da viagem rápida (REGRAS_VIAGEM) e da passagem do barco (REGRAS_BARCO),
-  ervas, odres, pontos de pesca e portais.
+  ervas, odres, pontos de pesca e portais; o maná diário (REGRAS_MANA: amanhecer, porções, sexta e sábado,
+  cura) e o descanso do Sábado (REGRAS_DESCANSO: janela, ausência mínima, XP por Sábado, limite e
+  multiplicador).
 - dados/npcs.js: personagens, posições, papéis e falas próprias. Comerciantes, guias e atalaias
   atendem à frente de uma tenda ou banca (estruturas com npc em dados/mapas.js); os moradores
   (papel "ambiente") só conversam, dizendo as suas falas em rodízio.
@@ -29,9 +31,10 @@ Conteúdo do jogo (pasta dados/)
   tipo e espera), regras (limite de caçadas ativas e bônus da 1ª entrega), falas dos atalaias e a
   troca de pontos de tarefa. Os ids das caçadas são permanentes (ficam no save): para tirar uma
   caçada do mural, use oculta: true.
-O progresso fica no save (save versão 10): missoes[id] = { status, etapa, progresso },
+O progresso fica no save (save versão 11): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
-(ofertas já trocadas) e bestiario[especie] = abates (os estágios e os amuletos saem da contagem). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+(ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
+mana = { porcao, estragaEm, proximaEm } e descanso = { xp, vistoEm, creditadoAte }. Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -45,8 +48,9 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 10, sem perder itens, moedas, nível ou progresso. A versão 10 traz o bestiário, que começa do
-   zero (os saves antigos não contavam abates por espécie). Na versão 9 os mapas dobraram de
+   para a versão 11, sem perder itens, moedas, nível ou progresso. A versão 11 traz o maná diário (o jarro
+   começa vazio) e o descanso do Sábado (a ausência conta a partir da primeira carga). A versão 10 trouxe o
+   bestiário, que começou do zero (os saves antigos não contavam abates por espécie). Na versão 9 os mapas dobraram de
    tamanho: a posição antiga (e os saques no chão) vai para o ponto equivalente do mapa novo e, se ali
    houver obstáculo, estrutura ou NPC, para a casa livre mais próxima. O jogo grava no máximo 1 vez por
    segundo e grava na hora ao fechar, ocultar ou trocar de aba.
@@ -71,6 +75,8 @@ Controles — teclado e mouse
   de pontos de tarefa, no topo, e as caçadas do painel Missão também abrem a consulta.
 - B: bestiário (abates de cada espécie, ficha, fraquezas, saque e amuletos; também pelo botão Bestiário,
   no topo). X: mostrar/ocultar o analisador de caçada.
+- N: maná e descanso (colher o maná do dia, comer uma porção e ver a reserva de descanso; também pelo
+  botão Maná, no topo, que acende quando o maná do dia caiu e mostra quantas porções há no jarro).
 - F1: Oração (depois de aprendê-la). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
   bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
 - Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
@@ -328,6 +334,25 @@ para sempre; a morte não tira nada. As espécies aparecem por família, como si
   Soldados de Faraó, Amalequitas, Aves de rapina, Pragas, Répteis do Nilo, Magos de Faraó e Criaturas do mar.
   A lista de Batalha mostra "Amuleto +5%" na ficha de quem já está coberto.
 
+Maná diário e descanso do Sábado
+Tecla N ou o botão Maná, no topo. Nada aqui exige entrar todo dia: perder um dia não tira nada.
+- Maná (Êxodo 16): o dia do maná vai de um amanhecer (6 h, hora do seu computador) ao seguinte; é a janela de
+  coleta. Colha uma vez por dia, em qualquer lugar:
+    Domingo a quinta ... 3 porções
+    Sexta .............. 6 porções (porção dobrada)
+    Sábado ............. não cai
+  Cada porção comida cura metade da vida máxima e dá 30 de fé (com a Oração aprendida); com vida e fé
+  cheias, o maná fica no jarro. O que sobra estraga no amanhecer seguinte (o da sexta dura o Sábado inteiro
+  e estraga no domingo de manhã), com aviso no Registro. O botão Maná acende quando o maná do dia caiu.
+- Descanso do Sábado: o tempo longe do jogo (página fechada, ou nenhuma ação por 5 min ou mais) que cai entre
+  sexta às 18 h e sábado às 18 h vira uma reserva de XP: um Sábado inteiro vale o XP do seu nível atual
+  (18 h valem 75%). Enquanto houver reserva, cada abate rende XP em dobro e o extra sai dela; missões e
+  caçadas entregues não gastam a reserva. A reserva não expira e para de crescer em 1,5 × o XP do nível.
+  Ao voltar, um aviso mostra quanto entrou; a barra de XP ganha contorno azul enquanto houver reserva.
+- O relógio é o do navegador até existir o servidor (v0.5). Para que mexer nele não renda mais: o maná
+  guardado nunca dura mais que 2,5 dias, a colheita do dia não volta ao atrasar o relógio e o mesmo trecho
+  de Sábado nunca vira reserva duas vezes.
+
 Analisador de caçada
 Painel "Caçada" (coluna da esquerda no largo; aba ou folha Batalha no médio e no celular). Tecla X mostra ou
 oculta; a escolha fica no navegador.
@@ -347,7 +372,8 @@ Para desenvolvedores
   estadoMissaoNpc(p, npcId) (balão sobre o NPC: "missao", "andamento", "entregar", "mural" para o
   atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
-  tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), infoItem(id) (item com raridade,
+  tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
+  estadoDescanso(p, agora), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
   som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)

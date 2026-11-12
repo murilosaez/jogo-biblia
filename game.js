@@ -1193,6 +1193,7 @@ class Cena extends Phaser.Scene {
     const r = Mundo.executar(MEU_ID, comando);
     if (r.mensagem) this.mensagem(r.mensagem);
     if (r.areaAlterada) { this.trocarArea(null); return r; }
+    if (comando.tipo === "comerMana" && r.ok && r.cura) this.efeitoCura(r.cura);
     if (comando.tipo === "orar" && r.ok) {
       if (r.cura) this.efeitoCura(r.cura);
       this.particulasSimples(this.jogador.x, this.jogador.y - 10, "#f2d27a", 10, { subir: true, dur: 800 });
@@ -1237,6 +1238,7 @@ class Cena extends Phaser.Scene {
       else if (x.tipo === "jogadorAtingido") this.jogadorAtingido(x);
       else if (x.tipo === "veneno") this.mensagem(x.mensagem, "perigo");
       else if (x.tipo === "venenoTerminou" || x.tipo === "sangramentoTerminou") this.mensagem(x.mensagem);
+      else if (x.tipo === "manaEstragou") this.mensagem(x.mensagem);
       else if (x.tipo === "sangramento") this.mensagem(x.mensagem, "perigo");
       else if (x.tipo === "atordoado") this.jogadorAtordoado(x);
       else if (x.tipo === "furia" || x.tipo === "fuga" || x.tipo === "investidaPreparo" || x.tipo === "investidaErrou" || x.tipo === "retorno") this.comportamentoInimigo(x);
