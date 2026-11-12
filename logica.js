@@ -14,7 +14,7 @@
 const TILE = 32;
 const COLS = DADOS_TAMANHO_MAPA.colunas; // dados/mapas.js
 const ROWS = DADOS_TAMANHO_MAPA.linhas;
-const VERSAO_SAVE = 10;
+const VERSAO_SAVE = 11;
 const ESCALA_MAPAS_V8 = 2; // os mapas passaram de 80×60 (save v8) para 160×120 (save v9)
 
 const VIDA_BASE = 100;
@@ -1160,6 +1160,160 @@ function normalizarBestiario(p) {
 }
 
 // ---------------------------------------------------------------------
+// Maná diário (Êxodo 16) e XP de descanso do Sábado (JGB-11)
+// ---------------------------------------------------------------------
+// REGRAS_MANA e REGRAS_DESCANSO vêm de dados/mundo.js. O relógio, por enquanto, é o do navegador, na hora
+// local do jogador; o confiável vem com o servidor (v0.5). Por isso toda função recebe "agora" e o save
+// guarda marcas que não deixam o relógio mexido render duas vezes a mesma coisa.
+// Save (v11): p.mana = { porcao, estragaEm, proximaEm } (porções no jarro, quando elas estragam e quando
+// cai o próximo maná para você) e p.descanso = { xp, vistoEm, creditadoAte } (reserva de XP, última ação e
+// até onde o Sábado já virou reserva).
+const HORA_MS = 3_600_000;
+const DIA_MS = 24 * HORA_MS;
+
+// Dia do maná que contém "agora": do amanhecer (hora local) ao amanhecer seguinte.
+function diaDoMana(agora) {
+  const d = new Date(agora);
+  if (d.getHours() < REGRAS_MANA.amanhecer) d.setDate(d.getDate() - 1);
+  d.setHours(REGRAS_MANA.amanhecer, 0, 0, 0);
+  const inicio = d.getTime();
+  const semana = d.getDay();
+  d.setDate(d.getDate() + 1);
+  return { inicio, fim: d.getTime(), semana };
+}
+
+// Porções que caem num dia da semana: dobradas na sexta, nenhuma no sábado.
+function porcaoDoDia(semana) {
+  if (semana === REGRAS_MANA.sabado) return 0;
+  return semana === REGRAS_MANA.sexta ? REGRAS_MANA.porcaoSexta : REGRAS_MANA.porcao;
+}
+
+// Primeiro amanhecer, a partir de "instante", em que cai maná (pula o Sábado).
+function proximoAmanhecerComMana(instante) {
+  let dia = diaDoMana(instante);
+  if (dia.inicio < instante) dia = diaDoMana(dia.fim);
+  for (let i = 0; i < 7 && !porcaoDoDia(dia.semana); i++) dia = diaDoMana(dia.fim);
+  return dia.inicio;
+}
+
+function normalizarMana(p, agora) {
+  const m = objetoValido(p.mana) ? p.mana : {};
+  const instante = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
+  const maximo = Math.max(REGRAS_MANA.porcao, REGRAS_MANA.porcaoSexta);
+  p.mana = {
+    porcao: Number.isInteger(m.porcao) ? Math.max(0, Math.min(maximo, m.porcao)) : 0,
+    // Relógio adiantado: o maná não dura nem demora mais do que dois dias e meio a partir de agora.
+    estragaEm: Math.min(instante(m.estragaEm), agora + 2.5 * DIA_MS),
+    proximaEm: Math.min(instante(m.proximaEm), diaDoMana(agora).fim),
+  };
+  if (!p.mana.estragaEm) p.mana.porcao = 0;
+}
+
+// Visão do maná para a interface (pura). disponivel: dá para colher agora; porcaoHoje: o que cai hoje
+// (0 no sábado); guardado: porções no jarro que ainda não estragaram; proximoEm: quando cai o próximo
+// maná que você ainda não colheu (agora, se disponível).
+function estadoMana(p, agora) {
+  const m = objetoValido(p?.mana) ? p.mana : {};
+  const dia = diaDoMana(agora);
+  const porcaoHoje = porcaoDoDia(dia.semana);
+  const guardado = m.porcao > 0 && agora < m.estragaEm ? m.porcao : 0;
+  const colhido = agora < (m.proximaEm || 0);
+  const disponivel = porcaoHoje > 0 && !colhido;
+  return {
+    disponivel,
+    colhido,
+    porcaoHoje,
+    dobrado: porcaoHoje > REGRAS_MANA.porcao,
+    sabado: porcaoHoje === 0,
+    guardado,
+    estragaEm: guardado ? m.estragaEm : 0,
+    proximoEm: disponivel ? agora : proximoAmanhecerComMana(Math.max(agora, m.proximaEm || 0)),
+  };
+}
+
+// XP que um nível custa (do nível atual para o seguinte).
+function custoDoNivel(nivel) {
+  return limiarNivel(nivel) - (nivel > 1 ? limiarNivel(nivel - 1) : 0);
+}
+
+// Milissegundos de [de, ate) que caem dentro do Sábado (REGRAS_DESCANSO.inicio → fim, hora local).
+function tempoNoSabado(de, ate) {
+  if (!(ate > de)) return 0;
+  const { inicio, fim } = REGRAS_DESCANSO;
+  const d = new Date(de);
+  d.setDate(d.getDate() - ((d.getDay() - inicio.dia + 7) % 7));
+  d.setHours(inicio.hora, 0, 0, 0);
+  if (d.getTime() > de) d.setDate(d.getDate() - 7);
+  const diasAteOFim = (fim.dia - inicio.dia + 7) % 7 || 7;
+  let total = 0;
+  // Uma ausência maior que um ano conta só o último ano (a reserva tem limite muito antes disso).
+  if (ate - d.getTime() > 366 * DIA_MS) return tempoNoSabado(ate - 365 * DIA_MS, ate);
+  while (d.getTime() < ate) {
+    const comeco = d.getTime();
+    const termino = new Date(comeco);
+    termino.setDate(termino.getDate() + diasAteOFim);
+    termino.setHours(fim.hora, 0, 0, 0);
+    total += Math.max(0, Math.min(ate, termino.getTime()) - Math.max(de, comeco));
+    d.setDate(d.getDate() + 7);
+  }
+  return total;
+}
+
+// Limite da reserva de descanso no nível atual.
+function limiteDescanso(p) {
+  return Math.round(custoDoNivel(p.nivel || 1) * REGRAS_DESCANSO.limite);
+}
+
+// Visão do descanso para a interface (pura).
+function estadoDescanso(p, agora) {
+  const xp = Math.max(0, Math.floor(p?.descanso?.xp || 0));
+  return {
+    xp,
+    limite: limiteDescanso(p),
+    multiplicador: REGRAS_DESCANSO.multiplicador,
+    sabado: tempoNoSabado(agora, agora + 1) > 0,
+  };
+}
+
+function normalizarDescanso(p, agora) {
+  const d = objetoValido(p.descanso) ? p.descanso : {};
+  const instante = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
+  p.descanso = {
+    xp: Number.isFinite(d.xp) ? Math.max(0, Math.min(limiteDescanso(p), Math.floor(d.xp))) : 0,
+    // Sem marca (save novo ou anterior à v11), a ausência começa a contar agora.
+    vistoEm: instante(d.vistoEm) || agora,
+    creditadoAte: instante(d.creditadoAte),
+  };
+}
+
+// Converte em reserva a ausência desde a última ação (só a que cai no Sábado e não virou reserva antes)
+// e marca a presença. Devolve o XP creditado.
+function creditarDescanso(p, agora) {
+  if (!objetoValido(p.descanso)) normalizarDescanso(p, agora);
+  const d = p.descanso;
+  const desde = Math.max(d.vistoEm, d.creditadoAte);
+  d.vistoEm = agora;
+  if (agora - desde < REGRAS_DESCANSO.ausenciaMinutos * 60_000) return 0;
+  const ms = tempoNoSabado(desde, agora);
+  d.creditadoAte = agora;
+  if (!ms) return 0;
+  const custo = custoDoNivel(p.nivel || 1);
+  const ganho = Math.round((ms / DIA_MS) * REGRAS_DESCANSO.porSabado * custo);
+  const antes = d.xp;
+  d.xp = Math.min(limiteDescanso(p), d.xp + ganho);
+  return d.xp - antes;
+}
+
+// Parte extra do XP de um abate que sai da reserva de descanso.
+function gastarDescanso(p, xp) {
+  const reserva = p.descanso?.xp || 0;
+  if (!(reserva > 0) || !(xp > 0)) return 0;
+  const extra = Math.min(reserva, Math.round(xp * (REGRAS_DESCANSO.multiplicador - 1)));
+  p.descanso.xp = reserva - extra;
+  return extra;
+}
+
+// ---------------------------------------------------------------------
 // Missões (dados/missoes.js) — motor genérico, sem missões escritas como código
 // ---------------------------------------------------------------------
 // Estado no save: p.missoes[id] = { status, etapa, progresso }.
@@ -1885,7 +2039,11 @@ const Mundo = {
   jogadores: {},
   estado: {},
 
+  // Toda gravação marca a presença do jogador: a ausência desde a anterior que caiu no Sábado vira
+  // reserva de XP de descanso (JGB-11).
   salvar(p) {
+    const descanso = creditarDescanso(p, Date.now());
+    if (descanso > 0) this.avisarDescanso(p, descanso);
     p.versao = VERSAO_SAVE;
     Storage.salvar(p);
   },
@@ -2016,6 +2174,9 @@ const Mundo = {
     normalizarTarefas(p, agora);
     // Bestiário (save v10): abates por espécie. Saves até a v9 começam do zero (não havia contagem).
     normalizarBestiario(p);
+    // Maná e descanso (save v11). Saves até a v10 começam com o jarro vazio e a ausência contando de agora.
+    normalizarMana(p, agora);
+    normalizarDescanso(p, agora);
 
     // Fé, Oração e veneno.
     p.oracaoDesbloqueada = !!p.oracaoDesbloqueada;
@@ -2076,6 +2237,15 @@ const Mundo = {
         "atualizacao_10",
         "Novidades: o bestiário (tecla B) registra os seus abates de cada criatura e revela ficha, fraquezas e saque; " +
           "complete uma família e ganhe o amuleto dela (+5% de dano). O analisador de caçada (tecla X) mostra XP/h, saque/h e lucro.",
+      );
+    }
+
+    if (!novo && versaoAnterior < 11) {
+      this.adicionarAviso(
+        p,
+        "atualizacao_11",
+        "Novidades: o maná cai todo dia ao amanhecer (tecla N ou botão Maná): colha e coma para recuperar vida e fé; " +
+          "o que sobra estraga no dia seguinte. E quem descansa no Sábado volta com XP em dobro nas próximas caçadas.",
       );
     }
 
@@ -2610,6 +2780,10 @@ const Mundo = {
         return this.trocarPontos(id, comando.ofertaId);
       case "zerarAnalisador":
         return this.zerarAnalisador(id);
+      case "colherMana":
+        return this.colherMana(id);
+      case "comerMana":
+        return this.comerMana(id);
       default:
         return { ok: false };
     }
@@ -2844,6 +3018,88 @@ const Mundo = {
   },
 
   // ----- Oração -----
+  // ----- Maná diário e descanso do Sábado (JGB-11) -----
+  avisarDescanso(p, ganho) {
+    if (!Array.isArray(p.avisosPendentes)) p.avisosPendentes = [];
+    const antes = p.avisosPendentes.find((a) => a.id === "descanso");
+    const total = ganho + (antes?.ganho || 0);
+    p.avisosPendentes = p.avisosPendentes.filter((a) => a.id !== "descanso");
+    p.avisosPendentes.push({
+      id: "descanso",
+      ganho: total,
+      texto:
+        `Você descansou no Sábado: +${total} XP de descanso (reserva: ${p.descanso.xp}). ` +
+        `Os próximos abates rendem XP em dobro até a reserva acabar.`,
+    });
+  },
+
+  // Porções guardadas que estragaram (Êx 16:20). Devolve quantas.
+  estragarMana(p, agora) {
+    if (!objetoValido(p.mana) || !(p.mana.porcao > 0) || agora < p.mana.estragaEm) return 0;
+    const n = p.mana.porcao;
+    p.mana.porcao = 0;
+    p.mana.estragaEm = 0;
+    this.salvar(p);
+    return n;
+  },
+
+  textoManaEstragou(p, n, agora) {
+    const porcoes = n === 1 ? "1 porção" : `${n} porções`;
+    const hojeTexto = estadoMana(p, agora).disponivel ? " O maná de hoje já caiu: colha com N." : "";
+    return `O maná guardado criou bichos e cheirou mal (Êx 16:20): ${porcoes} se perderam.${hojeTexto}`;
+  },
+
+  colherMana(id) {
+    const p = this.jogadores[id];
+    const agora = Date.now();
+    this.estragarMana(p, agora);
+    const est = estadoMana(p, agora);
+    const quando = textoEspera(est.proximoEm - agora);
+    if (est.sabado) {
+      const guardado = est.guardado ? ` Você ainda tem ${est.guardado} no jarro.` : "";
+      return { ok: false, mensagem: `Hoje é Sábado: o maná não cai (Êx 16:26).${guardado} O próximo cai em ${quando}.` };
+    }
+    if (!est.disponivel) return { ok: false, mensagem: `Você já colheu o maná de hoje. O próximo cai em ${quando}.` };
+    const dia = diaDoMana(agora);
+    p.mana.porcao = Math.min(Math.max(REGRAS_MANA.porcao, REGRAS_MANA.porcaoSexta), est.guardado + est.porcaoHoje);
+    p.mana.estragaEm = proximoAmanhecerComMana(dia.fim);
+    p.mana.proximaEm = dia.fim;
+    this.salvar(p);
+    const dura = textoEspera(p.mana.estragaEm - agora);
+    const texto = est.dobrado
+      ? `Sexta-feira: porção dobrada! Você colheu ${est.porcaoHoje} porções de maná. Guarde para o Sábado: ` +
+        `este não estraga até o amanhecer depois dele (em ${dura}; Êx 16:22-24).`
+      : `Você colheu ${est.porcaoHoje} porções de maná (Êx 16:16). Coma quando precisar (N): o que sobrar estraga em ${dura}.`;
+    return { ok: true, mana: est.porcaoHoje, mensagem: texto };
+  },
+
+  comerMana(id) {
+    const p = this.jogadores[id];
+    const agora = Date.now();
+    const estragou = this.estragarMana(p, agora);
+    if (!(p.mana.porcao > 0)) {
+      const est = estadoMana(p, agora);
+      if (estragou) return { ok: false, mensagem: this.textoManaEstragou(p, estragou, agora) };
+      if (est.disponivel) return { ok: false, mensagem: "O seu jarro está vazio, mas o maná de hoje já caiu: colha primeiro." };
+      return { ok: false, mensagem: `O seu jarro está vazio. O próximo maná cai em ${textoEspera(est.proximoEm - agora)}.` };
+    }
+    const vidaMax = vidaMaxima(p);
+    const feCheia = !p.oracaoDesbloqueada || p.fe >= FE_MAXIMA;
+    if (p.vida >= vidaMax && feCheia) {
+      return { ok: false, mensagem: "Você está saciado (vida e fé cheias). O maná fica no jarro para depois." };
+    }
+    const cura = Math.min(vidaMax - p.vida, Math.max(1, Math.round(vidaMax * REGRAS_MANA.cura.vida)));
+    const fe = p.oracaoDesbloqueada ? Math.min(FE_MAXIMA - p.fe, REGRAS_MANA.cura.fe) : 0;
+    p.vida += cura;
+    p.fe += fe;
+    p.mana.porcao -= 1;
+    if (!p.mana.porcao) p.mana.estragaEm = 0;
+    this.salvar(p);
+    const ganhos = [cura ? `+${cura} de vida` : "", fe ? `+${fe} de fé` : ""].filter(Boolean).join(", ");
+    const restam = p.mana.porcao ? `Restam ${p.mana.porcao} no jarro.` : "O jarro ficou vazio.";
+    return { ok: true, cura, fe, mensagem: `Você comeu o maná, com gosto de bolo de mel (Êx 16:31): ${ganhos}. ${restam}` };
+  },
+
   orar(id, acao) {
     const p = this.jogadores[id];
     if (!p.oracaoDesbloqueada) {
@@ -3437,6 +3693,7 @@ const Mundo = {
         tarefas: morte.tarefas,
         bestiario: morte.bestiario,
         xpGanho: morte.xpGanho,
+        xpDescanso: morte.xpDescanso,
         mensagem: `${prefixo}${morte.mensagem}${textoHabilidade}`,
       };
     }
@@ -3463,7 +3720,9 @@ const Mundo = {
       .filter((t) => t.cumpridaAgora)
       .map((t) => ` Caçada cumprida: ${t.nome} (${t.meta}/${t.meta})! Entregue a qualquer atalaia.`)
       .join("");
-    const xpGanho = Math.round(xpDoAbate(p, e) * (at.campeao ? CAMPEAO.xp : 1));
+    const xpBase = Math.round(xpDoAbate(p, e) * (at.campeao ? CAMPEAO.xp : 1));
+    const xpDescanso = gastarDescanso(p, xpBase); // reserva do Sábado: XP em dobro enquanto durar
+    const xpGanho = xpBase + xpDescanso;
     const niveis = adicionarXP(p, xpGanho);
     const bestiario = this.registrarAbateBestiario(p, e);
     const analisador = this.estado[p.id]?.analisador;
@@ -3503,6 +3762,7 @@ const Mundo = {
     }
     const alvoTexto = at.campeao || e.nomeado ? nome : nome.toLowerCase();
     const fraca = xpDoAbate(p, e) < e.xpRecompensa ? " (criatura fraca para o seu nível)" : "";
+    const descanso = xpDescanso ? ` (${xpDescanso} do descanso; reserva: ${p.descanso.xp})` : "";
     const reaparece = e.nomeado ? "" : ` ${e.genero === "f" ? "Ela" : "Ele"} reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
     return {
       saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id),
@@ -3514,7 +3774,8 @@ const Mundo = {
       tarefas,
       bestiario,
       xpGanho,
-      mensagem: `Você derrotou ${alvoTexto}! +${xpGanho} XP${fraca}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
+      xpDescanso,
+      mensagem: `Você derrotou ${alvoTexto}! +${xpGanho} XP${descanso}${fraca}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
     };
   },
 
@@ -4126,6 +4387,9 @@ const Mundo = {
     }
 
     this.atualizarNomeados(p, agora, eventos);
+
+    const estragou = this.estragarMana(p, agora);
+    if (estragou) eventos.push({ tipo: "manaEstragou", quantidade: estragou, mensagem: this.textoManaEstragou(p, estragou, agora) });
 
     if (agora >= estado.proximaLimpezaSaques) {
       estado.proximaLimpezaSaques = agora + INTERVALO_LIMPEZA_SAQUES;

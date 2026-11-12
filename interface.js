@@ -411,10 +411,14 @@
     const xpTxt = `${xp.atual}/${xp.total} XP`;
     definirBarra($("#barraVida"), p.vida, max, vidaTxt, { baixa });
     definirBarra($("#barraFe"), travada ? 0 : p.fe || 0, feMax, feTxt, { travada });
-    definirBarra($("#barraXp"), xp.atual, xp.total, xpTxt);
+    // Reserva de descanso do Sábado: a barra ganha contorno azul e o título explica o XP em dobro.
+    const descanso = Math.floor(p.descanso?.xp || 0);
+    const tituloXp = descanso ? `Reserva de descanso: ${descanso} XP (abates com XP em dobro)` : "";
+    for (const id of ["#barraXp", "#hudXp"]) if ($(id) && $(id).title !== tituloXp) $(id).title = tituloXp;
+    definirBarra($("#barraXp"), xp.atual, xp.total, xpTxt, { descanso });
     definirBarra($("#hudVida"), p.vida, max, vidaTxt, { baixa });
     definirBarra($("#hudFe"), travada ? 0 : p.fe || 0, feMax, feTxt, { travada });
-    definirBarra($("#hudXp"), xp.atual, xp.total, xpTxt);
+    definirBarra($("#hudXp"), xp.atual, xp.total, xpTxt, { descanso });
     $("#hudVidaTxt").textContent = vidaTxt;
     $("#hudFeTxt").textContent = travada ? "—" : `${p.fe || 0}`;
     $("#hudXpTxt").textContent = `Nv ${p.nivel}`;
@@ -1241,11 +1245,83 @@
   }
 
 
+  const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString("pt-BR") : "—");
+  // ----- Maná diário e descanso do Sábado (JGB-11) -----
+  // Só lê p.mana e p.descanso pelas funções puras (estadoMana, estadoDescanso); colher e comer são comandos.
+  const temMana = () => typeof estadoMana === "function" && typeof estadoDescanso === "function";
+  let htmlMana = "";
+  function abrirMana() {
+    if (!jogador() || !temMana()) return;
+    desenharMana(true);
+    abrirModal("modalMana");
+  }
+  function atualizarBotaoMana(p) {
+    const b = $("#btnMana");
+    if (!b || !temMana()) return;
+    const m = estadoMana(p, Date.now());
+    b.classList.toggle("caiu", m.disponivel);
+    const qtd = $("#manaQtd");
+    qtd.hidden = !m.guardado;
+    if (qtd.textContent !== String(m.guardado)) qtd.textContent = String(m.guardado);
+    const rotulo = m.disponivel
+      ? `Maná: ${m.porcaoHoje} porções para colher (N)`
+      : m.guardado ? `Maná: ${m.guardado} no jarro (N)` : "Maná e descanso (N)";
+    if (b.getAttribute("aria-label") !== rotulo) { b.setAttribute("aria-label", rotulo); b.title = rotulo; }
+  }
+  function desenharMana(forcar) {
+    const p = jogador();
+    const corpo = $("#manaCorpo");
+    if (!p || !corpo || !temMana()) return;
+    const html = montarMana(p, Date.now());
+    if (!forcar && html === htmlMana) return;
+    htmlMana = html;
+    const focado = document.activeElement && corpo.contains(document.activeElement) ? document.activeElement.dataset.acaoMana : null;
+    corpo.innerHTML = html;
+    preencherGlifos(corpo);
+    if (focado) $(`[data-acao-mana="${focado}"]:not([disabled])`, corpo)?.focus({ preventScroll: true });
+  }
+  function montarMana(p, agora) {
+    const m = estadoMana(p, agora);
+    const d = estadoDescanso(p, agora);
+    const R = typeof REGRAS_MANA !== "undefined" ? REGRAS_MANA : { cura: { vida: 0.5, fe: 30 } };
+    const espera = (ms) => (typeof textoEspera === "function" ? textoEspera(ms) : "");
+    const porcoes = (n) => (n === 1 ? "1 porção" : `${n} porções`);
+    let hoje;
+    if (m.disponivel) hoje = m.dobrado
+      ? `Sexta-feira: caiu porção dobrada, ${porcoes(m.porcaoHoje)}. O de hoje dura o Sábado inteiro (Êx 16:22-24).`
+      : `O maná caiu ao redor do arraial: ${porcoes(m.porcaoHoje)} para colher até o próximo amanhecer.`;
+    else if (m.sabado) hoje = `Hoje é Sábado: o maná não cai (Êx 16:26). O próximo cai em ${espera(m.proximoEm - agora)}.`;
+    else hoje = `Você já colheu o maná de hoje. O próximo cai em ${espera(m.proximoEm - agora)}.`;
+    const jarro = m.guardado
+      ? `No jarro: ${porcoes(m.guardado)}. Estraga em ${espera(m.estragaEm - agora)} (Êx 16:20).`
+      : "O jarro está vazio.";
+    const cura = `+${Math.round(R.cura.vida * 100)}% da vida${p.oracaoDesbloqueada ? ` e +${R.cura.fe} de fé` : ""}`;
+    const colher = `<button type="button" class="btn primario" data-acao-mana="colher" ${m.disponivel ? "data-foco-inicial" : "disabled"}>Colher ${m.disponivel ? porcoes(m.porcaoHoje) : "o maná"}</button>`;
+    const comer = `<button type="button" class="btn secundario" data-acao-mana="comer" ${m.guardado ? (m.disponivel ? "" : "data-foco-inicial") : "disabled"}>Comer 1 porção (${esc(cura)})</button>`;
+    const descanso = d.xp
+      ? `Reserva: ${fmt(d.xp)} XP. Os abates rendem XP × ${d.multiplicador} até ela acabar (o extra sai da reserva).`
+      : "Sem reserva agora.";
+    const agoraSabado = d.sabado ? " Agora é Sábado: o tempo longe do jogo vira reserva." : "";
+    return `<section class="mana-bloco" aria-label="Maná de hoje"><h3>Maná de hoje</h3>
+        <p>${esc(hoje)}</p><p>${esc(jarro)}</p>
+        <div class="acoes-modal">${colher}${comer}</div></section>
+      <section class="mana-bloco" aria-label="Descanso do Sábado"><h3>Descanso do Sábado</h3>
+        <div class="barra xp${d.xp ? " descanso" : ""}" role="meter" aria-label="Reserva de descanso" aria-valuenow="${d.xp}" aria-valuemax="${d.limite}"><i style="width:${d.limite ? Math.min(100, (100 * d.xp) / d.limite).toFixed(1) : 0}%"></i><b>${fmt(d.xp)}/${fmt(d.limite)} XP</b></div>
+        <p>${esc(descanso + agoraSabado)}</p></section>
+      <p class="nota">O maná cai todo dia ao amanhecer (dobrado na sexta, nada no sábado); colha uma vez e coma quando
+        precisar. O que sobra estraga no amanhecer seguinte, e perder um dia não tira nada. O tempo em que você fica longe do jogo
+        de sexta às 18 h a sábado às 18 h vira reserva de XP (um Sábado inteiro vale o XP de um nível; ela não expira).</p>`;
+  }
+  function acaoMana(botao) {
+    const tipo = botao.dataset.acaoMana === "colher" ? "colherMana" : "comerMana";
+    executar({ tipo });
+    desenharMana(true);
+  }
+
   // ----- Bestiário (JGB-9) -----
   // Só lê o bestiário pelas funções puras de logica.js (bestiarioPorFamilia, resumoBestiario): o abate é
   // que conta, na lógica. especieAberta: a espécie com a ficha expandida (uma por vez).
   const temBestiario = () => typeof bestiarioPorFamilia === "function" && typeof resumoBestiario === "function";
-  const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString("pt-BR") : "—");
   let especieAberta = null, htmlBestiario = "";
   function abrirBestiario() {
     if (!jogador() || !temBestiario()) return;
@@ -1579,6 +1655,7 @@
       [k("F1"), "Oração (depois de aprender com Jesus, na Galileia)"],
       [k("T"), "Suas caçadas (aceitar e trocar só ao lado de um atalaia)"],
       [k("B"), "Bestiário: abates, ficha, fraquezas, saque e amuletos"],
+      [k("N"), "Maná do dia (colher e comer) e reserva de descanso do Sábado"],
       [k("X"), "Mostrar ou ocultar o analisador de caçada (XP/h, saque/h, lucro)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
       [k("M"), "Mostrar ou ocultar o mapa"],
@@ -1614,6 +1691,11 @@
       <p>Bestiário: cada abate conta para a espécie. Com 10, 100 e 1000 abates ela chega aos estágios Avistada (ficha),
         Estudada (fraquezas e saque) e Dominada (chances do saque). Com todas as espécies de uma família Estudadas (sem os raros
         nomeados), você ganha o amuleto dela: +5% de dano contra a família, para sempre.</p>
+      <p>Maná (N ou o botão Maná, no topo): todo dia, ao amanhecer, cai maná ao redor do arraial — 3 porções, 6 na sexta e
+        nenhuma no sábado. Colha uma vez por dia e coma quando precisar (cada porção cura metade da vida e dá 30 de fé). O que sobra
+        estraga no amanhecer seguinte (o da sexta dura o Sábado), e perder um dia não tira nada.</p>
+      <p>Descanso do Sábado: o tempo longe do jogo de sexta às 18 h a sábado às 18 h vira uma reserva de XP (um Sábado inteiro vale
+        o XP de um nível). Enquanto houver reserva, os abates rendem XP em dobro. A reserva não expira.</p>
       <p>Analisador de caçada: o relógio começa no seu primeiro golpe e mostra XP, saque (moedas e o valor de venda dos itens
         recolhidos), lucro (menos poções, flechas e perdas na morte), abates e mortes, por sessão e por hora, e quanto falta para
         o próximo nível. Zere quando quiser; recarregar a página também zera.</p>
@@ -2073,10 +2155,12 @@
     atualizarItens(p);
     atualizarBatalha(p);
     atualizarAnalisador();
+    atualizarBotaoMana(p);
     $("#mapaCoord").textContent = `${p.x}, ${p.y}`;
     if (modalAberto?.id === "modalLoja") desenharLoja();
     if (modalAberto?.id === "modalMural") desenharMural();
     if (modalAberto?.id === "modalBestiario") desenharBestiario();
+    if (modalAberto?.id === "modalMana") desenharMana();
   }
 
   function areaMudou(area) {
@@ -2107,6 +2191,8 @@
     atualizarToque(p);
     atualizarBatalha(p);
     atualizarAnalisador(); // relógio e taxas por hora correm sem precisar de abate
+    atualizarBotaoMana(p); // o maná cai no amanhecer e estraga sozinho, sem nenhuma ação
+    if (modalAberto?.id === "modalMana") desenharMana();
     if (alvoDesenhado && typeof inimigos !== "undefined" && inimigos[alvoDesenhado]) atualizarVidaAlvo(inimigos[alvoDesenhado]);
     if (dlg.id && dlg.npc && Math.max(Math.abs(p.x - dlg.npc.x), Math.abs(p.y - dlg.npc.y)) > 2) fecharDialogo();
     if (modalAberto?.id === "modalOracao" && estadoOracao(p).ass !== assinaturaOracao) desenharOracao();
@@ -2133,6 +2219,7 @@
     $("#dialogo").addEventListener("click", () => (dlg.mostrado < dlg.texto.length ? completarDialogo() : fecharDialogo()));
     $("#pontos").addEventListener("click", () => abrirMural(null));
     $("#btnBestiario").addEventListener("click", abrirBestiario);
+    $("#btnMana").addEventListener("click", abrirMana);
     $("#btnAnalisador").addEventListener("click", () => abrirAnalisador(painel("pAnalisador").dataset.aberto !== "true"));
     $("#missaoLinha").addEventListener("click", () => {
       const b = $("#missaoLinha");
@@ -2185,6 +2272,11 @@
         const noMural = e.target.closest("[data-aceitar-tarefa], [data-guardar-tarefa], [data-trocar], [data-confirmar-troca], [data-cancelar-troca]");
         if (noMural) {
           if (!noMural.disabled) acaoMural(e, noMural);
+          return;
+        }
+        const mana = e.target.closest("[data-acao-mana]");
+        if (mana) {
+          if (!mana.disabled) acaoMana(mana);
           return;
         }
         // Bestiário: abre e fecha a ficha da espécie (uma por vez).
@@ -2240,6 +2332,8 @@
       if (teclaT && modalAberto?.id === "modalMural") { e.preventDefault(); fecharModal(); return; }
       const teclaB = (e.key === "b" || e.key === "B") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaB && modalAberto?.id === "modalBestiario") { e.preventDefault(); fecharModal(); return; }
+      const teclaN = (e.key === "n" || e.key === "N") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (teclaN && modalAberto?.id === "modalMana") { e.preventDefault(); fecharModal(); return; }
       if (modalAberto) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target && e.target.tagName) || "";
@@ -2248,6 +2342,7 @@
       if (e.key === "?") { e.preventDefault(); abrirAjuda(); return; }
       if (teclaT) { e.preventDefault(); abrirMural(null); return; }
       if (teclaB) { e.preventDefault(); abrirBestiario(); return; }
+      if (teclaN) { e.preventDefault(); abrirMana(); return; }
       if ((e.key === "x" || e.key === "X") && !e.repeat) { e.preventDefault(); alternarAnalisador(); return; }
       if (/^[1-6]$/.test(e.key) && !e.repeat) {
         const i = Number(e.key) - 1;

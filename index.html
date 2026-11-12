@@ -519,6 +519,18 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .teclas td:first-child{white-space:nowrap;width:1%}
 .teclas kbd{margin:1px 2px}
 .acoes-modal{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:12px}
+/* Maná e descanso (JGB-11): o botão do topo acende quando o maná do dia caiu; o número é o que há no jarro. */
+.mana-btn{position:relative}
+.mana-qtd{position:absolute;right:-5px;bottom:-5px;min-width:16px;height:16px;padding:0 3px;display:grid;place-items:center;font:600 var(--fs-11)/1 var(--f-pixel);color:var(--tinta);background:var(--perg-100);border:1px solid var(--tinta)}
+.mana-qtd[hidden]{display:none}
+.mana-btn.caiu{border-color:var(--ouro-300);animation:manaCaiu 1.6s steps(2) infinite}
+@keyframes manaCaiu{50%{box-shadow:var(--relevo),0 0 0 2px var(--ouro-300)}}
+.mana-btn.caiu::after{content:"";position:absolute;right:-3px;top:-3px;width:8px;height:8px;background:var(--ouro-300);border:1px solid var(--tinta)}
+.mana-bloco{margin:0 0 12px}
+.mana-bloco .barra{margin:6px 0}
+.mana-bloco .acoes-modal{justify-content:flex-start;margin-top:6px}
+.barra.xp.descanso{box-shadow:var(--relevo),0 0 0 1px var(--fe-3)}
+@media (prefers-reduced-motion:reduce){.mana-btn.caiu{animation:none}}
 
 /* ---------- controles de toque ---------- */
 #toque{display:none}
@@ -680,6 +692,7 @@ body.toque-forcado #dpad{display:block}
     <span class="moedas" id="moedas" title="Moedas"><img class="px g16" data-glifo="ui_moeda" alt=""><b id="moedasValor">0</b><span class="sr"> moedas</span></span>
     <button class="moedas pontos" id="pontos" type="button" title="Pontos de tarefa · T: suas caçadas" hidden>
       <img class="px g16" data-glifo="ui_selo" alt=""><b id="pontosValor">0</b><span class="sr"> pontos de tarefa (abre suas caçadas)</span></button>
+    <button class="btn-icone mana-btn" id="btnMana" type="button" aria-label="Maná e descanso (N)" title="Maná e descanso (N)"><img class="px g16" data-glifo="ui_mana" alt=""><span class="rotulo">Maná</span><b class="mana-qtd" id="manaQtd" hidden></b></button>
     <button class="btn-icone" id="btnBestiario" type="button" aria-label="Bestiário (B)" title="Bestiário (B)"><img class="px g16" data-glifo="ui_bestiario" alt=""><span class="rotulo">Bestiário</span></button>
     <button class="btn-icone" id="btnMapa" type="button" aria-label="Mostrar ou ocultar o mapa (M)" aria-pressed="true"><img class="px g16" data-glifo="ui_rosa" alt=""><span class="rotulo">Mapa</span></button>
     <button class="btn-icone so-largo" id="btnTelaCheia" type="button" aria-label="Tela cheia"><img class="px g16" data-glifo="ui_tela_cheia" alt=""><span class="rotulo">Tela cheia</span></button>
@@ -839,6 +852,14 @@ body.toque-forcado #dpad{display:block}
     <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_bestiario" data-escala="4" alt=""></span><div><h2 id="bestiarioTitulo">Bestiário</h2>
       <p class="sub" id="bestiarioSub">Abates, fraquezas e amuletos</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
     <div class="modal-corpo" id="bestiarioCorpo"></div>
+  </div>
+</div>
+
+<div class="modal" id="modalMana" aria-hidden="true">
+  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="manaTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_mana" data-escala="4" alt=""></span><div><h2 id="manaTitulo">Maná e descanso</h2>
+      <p class="sub" id="manaSub">Êxodo 16</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="manaCorpo"></div>
   </div>
 </div>
 

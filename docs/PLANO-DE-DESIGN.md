@@ -52,7 +52,7 @@ Cada inimigo: família, tier (normal/elite/campeão/raro/chefe), comportamento, 
 - **Mural de tarefas de caça** ("mate 150 escorpiões") → pontos trocáveis por itens/montarias.
 - **Bestiário** em 3 estágios (10/100/1000 abates) → revela fraquezas e dá amuletos (+5% contra a família). Feito (JGB-9).
 - Bônus de grupo (+10% por membro, mais com vocações diferentes); no MMO, instâncias ou crédito por dano.
-- **XP de descanso (Sábado)**: offline acumula XP em dobro.
+- **XP de descanso (Sábado)**: offline acumula XP em dobro. Feito (JGB-11).
 
 ## Missões
 História principal; cadeias secundárias; 3 diárias + 3 semanais; **maná diário** (estraga se acumulado, Êx 16); escolta de caravana; **Muralhas de Neemias** (defesa em ondas); **Arca de Noé** (coletar pares); **Jericó** (7 voltas no ritmo); escolhas morais (alimentam Frutos); eventos sazonais (Páscoa, Pentecostes, Tabernáculos, Natal).
@@ -95,7 +95,7 @@ Retenção D1 40% / D7 20% / D30 8%; sessão 25–40 min; 1º nível < 2 min; 1�
 5. ~~Mural de tarefas de caça + pontos de tarefa~~ — feito (JGB-3): um atalaia por região com rondas (20 h) e grandes caçadas (164 h), alvo por criatura, espécie ou família (`dados/tarefas.js`), entrega em qualquer atalaia e troca de pontos por alforjes, escudo de ferro e couraça; save v8.
 6. ~~Bestiário com estágios e amuletos~~ — feito (JGB-9): 3 estágios por espécie (10/100/1000 abates: ficha; fraquezas e saque; chances), fraquezas vindas dos comportamentos e status (`REGRAS_BESTIARIO` em `dados/criaturas.js`), amuleto por família (+5% de dano com todas as espécies no estágio 2, sem os raros nomeados); tecla B; save v10.
 7. ~~Analisador de caçada (painel XP/h, saque/h)~~ — feito (JGB-10): painel Caçada com XP, saque, lucro (menos poções, flechas e perdas na morte), abates e mortes por sessão e por hora e tempo até o próximo nível; relógio a partir do 1º golpe, zerável; tecla X.
-8. Maná diário e XP de descanso.
+8. ~~Maná diário e XP de descanso~~ — feito (JGB-11): maná em `REGRAS_MANA` (`dados/mundo.js`) — colheita 1×/dia do amanhecer ao amanhecer, 3 porções, 6 na sexta, nada no sábado; cada porção cura 50% da vida e 30 de fé; o guardado estraga no amanhecer seguinte (o da sexta dura o Sábado). Descanso em `REGRAS_DESCANSO`: a ausência de sexta 18 h a sábado 18 h vira reserva de XP (1 nível por Sábado, limite 1,5), gasta dobrando o XP dos abates; tecla N; save v11. Relógio do navegador com travas contra relógio mexido até o servidor (v0.5).
 9. Estender a simulação de balanceamento para cada novidade.
 
 ## Decisões do dono do jogo (registradas)

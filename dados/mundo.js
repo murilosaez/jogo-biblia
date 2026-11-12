@@ -168,3 +168,33 @@ const DADOS_PORTAIS = [
     texto: "Volta ao Sinai",
   },
 ];
+
+// Maná diário (Êxodo 16; JGB-11). O dia do maná começa no amanhecer (hora local do jogador) e vai até o
+// amanhecer seguinte: é a janela de coleta. Colha uma vez por dia (tecla N ou botão Maná, em qualquer lugar)
+// e coma quando quiser. Nos dias comuns cai uma porção; na sexta, porção dobrada (Êx 16:22); no sábado não
+// cai (Êx 16:26-27). O que sobra estraga no próximo amanhecer em que cai maná (Êx 16:20): o da sexta dura o
+// Sábado inteiro (Êx 16:23-24). Perder um dia não tira nada: no outro cai de novo.
+// revisao-teologica: pendente
+const REGRAS_MANA = {
+  amanhecer: 6, // hora local
+  porcao: 3, // um ômer por dia, em 3 refeições
+  porcaoSexta: 6, // porção dobrada
+  sexta: 5, // Date.getDay(): 0 = domingo
+  sabado: 6,
+  cura: { vida: 0.5, fe: 30 }, // cada porção: metade da vida máxima e 30 de fé (com a Oração aprendida)
+};
+
+// XP de descanso no Sábado (JGB-11). O tempo longe do jogo (página fechada, ou nenhuma ação por
+// ausenciaMinutos ou mais) que cai dentro do Sábado, de sexta ao pôr do sol a sábado ao pôr do sol (hora
+// local), vira uma reserva de XP: um Sábado inteiro vale porSabado × o XP do nível atual. Enquanto houver
+// reserva, cada abate rende XP × multiplicador (o extra sai da reserva). A reserva não expira, só para de
+// crescer no limite (limite × o XP do nível atual).
+// revisao-teologica: pendente
+const REGRAS_DESCANSO = {
+  inicio: { dia: 5, hora: 18 }, // sexta, 18 h
+  fim: { dia: 6, hora: 18 }, // sábado, 18 h
+  ausenciaMinutos: 5,
+  porSabado: 1,
+  limite: 1.5,
+  multiplicador: 2,
+};

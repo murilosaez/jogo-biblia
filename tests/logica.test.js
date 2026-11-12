@@ -4324,6 +4324,224 @@ teste("59. viagem rápida entre todas as cidades abertas, paga pela distância, 
 });
 
 // ---------------------------------------------------------------------
+// Maná diário e XP de descanso do Sábado (JGB-11)
+// ---------------------------------------------------------------------
+// Instantes na hora local do processo (o jogo usa a hora local do jogador): 12 de novembro de 2026 é uma quinta.
+const local = (dia, hora, minuto = 0) => new Date(2026, 10, dia, hora, minuto).getTime();
+
+teste("60. maná diário (JGB-11): cai no amanhecer, dobra na sexta, não cai no sábado e o guardado estraga", () => {
+  assert.strictEqual(new Date(local(12, 12)).getDay(), 4, "12/11/2026 é quinta");
+  const j = carregarJogo({ inicio: local(12, 7) });
+  j.entrar();
+  const p = j.p;
+  const M = (agora = j.agora) => j.g("estadoMana")(p, agora);
+  const ir = (instante) => j.avancar(instante - j.agora);
+
+  // Quinta, 7 h: caiu a porção comum.
+  let m = M();
+  igual([m.disponivel, m.porcaoHoje, m.dobrado, m.sabado, m.guardado], [true, 3, false, false, 0]);
+  // Antes do amanhecer ainda é o dia anterior (quarta), que já passou sem colheita: nada se perde.
+  igual([M(local(13, 5, 59)).disponivel, M(local(13, 5, 59)).porcaoHoje], [true, 3]);
+  let r = j.exec({ tipo: "colherMana" });
+  assert.ok(r.ok, r.mensagem);
+  assert.match(r.mensagem, /3 porções/);
+  igual([p.mana.porcao, p.mana.estragaEm, p.mana.proximaEm], [3, local(13, 6), local(13, 6)]);
+  m = M();
+  igual([m.disponivel, m.colhido, m.guardado, m.proximoEm], [false, true, 3, local(13, 6)]);
+  r = j.exec({ tipo: "colherMana" });
+  assert.ok(!r.ok && /já colheu/.test(r.mensagem), "uma colheita por dia");
+  assert.strictEqual(p.mana.porcao, 3);
+
+  // Comer: com vida e fé cheias, recusa sem gastar; ferido, cura metade da vida máxima (e fé, com a Oração).
+  r = j.exec({ tipo: "comerMana" });
+  assert.ok(!r.ok && p.mana.porcao === 3, "saciado não come");
+  const vidaMax = j.g("vidaMaxima")(p);
+  p.vida = 10;
+  p.oracaoDesbloqueada = true;
+  p.fe = 50;
+  r = j.exec({ tipo: "comerMana" });
+  assert.ok(r.ok, r.mensagem);
+  igual([r.cura, r.fe, p.vida, p.fe, p.mana.porcao], [Math.round(vidaMax / 2), 30, 10 + Math.round(vidaMax / 2), 80, 2]);
+  p.vida = vidaMax - 3;
+  r = j.exec({ tipo: "comerMana" });
+  igual([r.cura, p.vida, p.fe, p.mana.porcao], [3, vidaMax, 100, 1], "a cura para no máximo");
+
+  // Sexta, 6 h: o que sobrou estraga (Êx 16:20), com aviso no laço; cai a porção dobrada.
+  ir(local(13, 5, 59));
+  igual(j.atualizar().filter((e) => e.tipo === "manaEstragou").length, 0);
+  ir(local(13, 6));
+  const ev = j.atualizar().find((e) => e.tipo === "manaEstragou");
+  assert.ok(ev && ev.quantidade === 1 && /Êx 16:20/.test(ev.mensagem) && /colha/.test(ev.mensagem), "aviso do maná estragado");
+  igual([p.mana.porcao, M().guardado], [0, 0]);
+  m = M();
+  igual([m.disponivel, m.porcaoHoje, m.dobrado], [true, 6, true]);
+  r = j.exec({ tipo: "colherMana" });
+  assert.ok(r.ok && /dobrada/.test(r.mensagem), r.mensagem);
+  // O da sexta dura o Sábado inteiro: estraga no amanhecer de domingo.
+  igual([p.mana.porcao, p.mana.estragaEm], [6, local(15, 6)]);
+
+  // Sábado: não cai maná; o da sexta continua bom e alimenta.
+  ir(local(14, 10));
+  m = M();
+  igual([m.disponivel, m.sabado, m.porcaoHoje, m.guardado, m.proximoEm], [false, true, 0, 6, local(15, 6)]);
+  r = j.exec({ tipo: "colherMana" });
+  assert.ok(!r.ok && /Sábado/.test(r.mensagem) && /6 no jarro/.test(r.mensagem), r.mensagem);
+  p.vida = 10;
+  assert.ok(j.exec({ tipo: "comerMana" }).ok);
+  assert.strictEqual(p.mana.porcao, 5);
+  j.atualizar();
+  assert.strictEqual(p.mana.porcao, 5, "no sábado o maná da sexta não estraga");
+
+  // Domingo, 6 h: estraga e cai a porção comum de novo.
+  ir(local(15, 6));
+  j.atualizar();
+  igual([p.mana.porcao, M().disponivel, M().porcaoHoje], [0, true, 3]);
+
+  // Ficar dias sem jogar não tira nada: na volta, o maná do dia está lá, como sempre.
+  ir(local(25, 20));
+  igual([M().disponivel, M().porcaoHoje], [true, 3]);
+  assert.ok(j.exec({ tipo: "colherMana" }).ok);
+
+  // Comer com o jarro vazio explica quando cai o próximo; colhido e vazio, também.
+  p.mana.porcao = 0;
+  p.mana.estragaEm = 0;
+  r = j.exec({ tipo: "comerMana" });
+  assert.ok(!r.ok && /vazio/.test(r.mensagem) && /10 h/.test(r.mensagem), r.mensagem);
+});
+
+teste("60b. maná: save antigo, relógio mexido e dados corrompidos não rendem maná a mais", () => {
+  // Save v10 (sem maná nem descanso): jarro vazio, colheita liberada, aviso da novidade uma vez.
+  const j = carregarJogo({ inicio: local(16, 9) });
+  j.entrar();
+  const p = j.p;
+  delete p.mana;
+  delete p.descanso;
+  p.versao = 10;
+  p.avisosPendentes = [];
+  j.g("Storage").flush();
+  const j2 = carregarJogo({ store: j.store, inicio: local(16, 9) });
+  const p2 = j2.entrar();
+  igual(p2.mana, { porcao: 0, estragaEm: 0, proximaEm: 0 });
+  igual([p2.descanso.xp, p2.descanso.vistoEm], [0, local(16, 9)]);
+  assert.ok(p2.avisosPendentes.some((a) => a.id === "atualizacao_11"), "aviso da novidade");
+  assert.ok(j2.exec({ tipo: "colherMana" }).ok);
+
+  // Relógio adiantado e depois atrasado: não colhe de novo no "mesmo" dia, nem guarda maná por mais de 2,5 dias.
+  const j3 = carregarJogo({ store: j2.store, inicio: local(16, 9) });
+  const p3 = j3.entrar();
+  p3.mana.estragaEm = local(30, 6);
+  p3.mana.proximaEm = local(30, 6);
+  j3.g("Storage").flush();
+  const j4 = carregarJogo({ store: j3.store, inicio: local(16, 10) });
+  const p4 = j4.entrar();
+  assert.ok(p4.mana.estragaEm <= local(16, 10) + 2.5 * 24 * HORA, "maná não dura mais que 2,5 dias");
+  assert.strictEqual(p4.mana.proximaEm, local(17, 6), "colhido hoje: o próximo é amanhã");
+  assert.ok(!j4.exec({ tipo: "colherMana" }).ok);
+
+  // Corrompido: normalizado sem quebrar.
+  for (const lixo of [null, 7, "x", [], { porcao: "9", estragaEm: -1, proximaEm: NaN }, { porcao: 99, estragaEm: local(17, 6) }]) {
+    const k = carregarJogo({ inicio: local(16, 9) });
+    k.entrar();
+    k.p.mana = lixo;
+    k.p.descanso = lixo;
+    k.g("Storage").flush();
+    const k2 = carregarJogo({ store: k.store, inicio: local(16, 9) });
+    const q = k2.entrar();
+    assert.ok(Number.isInteger(q.mana.porcao) && q.mana.porcao >= 0 && q.mana.porcao <= 6, `porção de ${JSON.stringify(lixo)}`);
+    assert.ok(Number.isFinite(q.descanso.xp) && q.descanso.xp >= 0);
+    assert.ok(k2.exec({ tipo: "colherMana" }).ok || q.mana.porcao > 0);
+  }
+});
+
+teste("61. descanso do Sábado (JGB-11): a ausência no Sábado vira reserva e os abates rendem XP em dobro", () => {
+  const tempoNoSabado = (j, a, b) => j.g("tempoNoSabado")(a, b);
+  const j = carregarJogo({ inicio: local(13, 12) }); // sexta, meio-dia
+  // Janela: sexta 18 h → sábado 18 h, hora local; semanas inteiras somam 24 h por Sábado.
+  igual(
+    [
+      tempoNoSabado(j, local(13, 17), local(13, 19)),
+      tempoNoSabado(j, local(14, 17), local(15, 9)),
+      tempoNoSabado(j, local(9, 0), local(13, 17)),
+      tempoNoSabado(j, local(9, 0), local(23, 0)),
+      tempoNoSabado(j, local(14, 10), local(14, 9)),
+    ],
+    [2 * HORA - HORA, HORA, 0, 48 * HORA, 0],
+  );
+  j.entrar();
+  const p = j.p;
+  const custo = j.g("custoDoNivel")(1);
+  assert.strictEqual(custo, 100);
+  assert.strictEqual(p.descanso.xp, 0);
+
+  // Fechou na sexta ao meio-dia e voltou no sábado ao meio-dia: 18 h de Sábado = 75% do XP do nível.
+  j.g("Storage").flush();
+  const j2 = carregarJogo({ store: j.store, inicio: local(14, 12) });
+  const p2 = j2.entrar();
+  assert.strictEqual(p2.descanso.xp, Math.round(0.75 * custo));
+  const aviso = p2.avisosPendentes.find((a) => a.id === "descanso");
+  assert.ok(aviso && /\+75 XP de descanso/.test(aviso.texto) && /dobro/.test(aviso.texto), "aviso do descanso");
+  igual(j2.g("estadoDescanso")(p2, j2.agora), { xp: 75, limite: 150, multiplicador: 2, sabado: true });
+
+  // Abate: XP em dobro, o extra sai da reserva; quando ela acaba, o último abate leva só o que restava.
+  const base = j2.g("xpDoAbate")(p2, j2.g("inimigos").lobo1);
+  let r = abater(j2, "lobo1");
+  igual([r.xpGanho, r.xpDescanso, p2.descanso.xp], [2 * base, base, 75 - base]);
+  assert.match(r.mensagem, /do descanso/);
+  while (p2.descanso.xp > 0) abater(j2, "lobo1");
+  r = abater(j2, "lobo1");
+  igual([r.xpGanho, r.xpDescanso], [base, 0]);
+  assert.doesNotMatch(r.mensagem, /descanso/);
+
+  // Jogando no Sábado não acumula (cada ação marca presença); parado 5 min ou mais, acumula.
+  const antes = p2.descanso.xp;
+  j2.avancar(4 * 60_000);
+  j2.M.salvar(p2);
+  assert.strictEqual(p2.descanso.xp, antes, "4 min parado não conta");
+  j2.avancar(60 * 60_000);
+  j2.M.salvar(p2);
+  assert.strictEqual(p2.descanso.xp, antes + Math.round(j2.g("custoDoNivel")(p2.nivel) / 24), "1 h parado no Sábado vira reserva (pelo nível atual)");
+
+  // Fora do Sábado, a ausência não conta.
+  const sabadoTarde = p2.descanso.xp;
+  const restanteDoSabado = local(14, 18) - j2.agora;
+  j2.avancar(local(17, 12) - j2.agora); // de sábado à tarde a terça: só até sábado 18 h conta
+  j2.M.salvar(p2);
+  const reserva = p2.descanso.xp;
+  assert.strictEqual(reserva, sabadoTarde + Math.round((restanteDoSabado / (24 * HORA)) * j2.g("custoDoNivel")(p2.nivel)));
+  j2.avancar(local(19, 12) - j2.agora);
+  j2.M.salvar(p2);
+  assert.strictEqual(p2.descanso.xp, reserva, "terça → quinta não é Sábado");
+
+  // Limite: três semanas fora param em 1,5 × o XP do nível; a reserva não expira.
+  j2.avancar(local(40, 12) - j2.agora);
+  j2.M.salvar(p2);
+  assert.strictEqual(p2.descanso.xp, j2.g("limiteDescanso")(p2));
+  j2.avancar(30 * 24 * HORA);
+  j2.M.salvar(p2);
+  assert.strictEqual(p2.descanso.xp, j2.g("limiteDescanso")(p2), "não expira");
+});
+
+teste("61b. descanso: relógio atrasado e adiantado de novo não credita o mesmo Sábado duas vezes", () => {
+  const j = carregarJogo({ inicio: local(13, 12) });
+  j.entrar();
+  const p = j.p;
+  j.avancar(local(14, 12) - j.agora);
+  j.M.salvar(p);
+  assert.strictEqual(p.descanso.xp, 75);
+  p.descanso.xp = 0; // gastou tudo caçando
+  // Atrasa o relógio para sexta de manhã e adianta de novo para sábado: o trecho já creditado não conta.
+  j.avancar(local(13, 9) - j.agora);
+  j.M.salvar(p);
+  j.avancar(local(14, 12) - j.agora);
+  j.M.salvar(p);
+  assert.strictEqual(p.descanso.xp, 0);
+  // O que vem depois do já creditado ainda conta.
+  j.avancar(local(14, 18) - j.agora);
+  j.M.salvar(p);
+  assert.strictEqual(p.descanso.xp, Math.round((6 / 24) * 100));
+});
+
+// ---------------------------------------------------------------------
 // Execução
 // ---------------------------------------------------------------------
 // Filtro opcional: node tests/logica.test.js 2.  (roda só testes cujo nome começa com "2.")
