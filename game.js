@@ -24,8 +24,11 @@ const PROF = {
 const ESTILO_NUM = {
   dano: ["#f6e6bd", 14], critico: ["#ffd24a", 20], recebido: ["#ff7a5c", 14], cura: ["#8fd16a", 14],
   fe: ["#7fa3e0", 13], xp: ["#f2cf6a", 12], moeda: ["#e8b94a", 12], veneno: ["#a8c84a", 12],
-  bloqueio: ["#b9c6d6", 11], errou: ["#b9a27a", 11],
+  bloqueio: ["#b9c6d6", 11], errou: ["#b9a27a", 11], tarefa: ["#e6cf9c", 12],
 };
+
+// Números que levam um glifo à esquerda: moedas e a contagem das caçadas ("27/40").
+const ICONE_NUM = { moeda: "ui_moeda", tarefa: "ui_cacada" };
 
 const COR = {
   amigo: "#f3e4c0", hostil: "#ef6a5e", saida: "#b98ad0", agua: "#6fd0d0", tinta: "#1c1210",
@@ -490,8 +493,8 @@ class Cena extends Phaser.Scene {
     this._lado = -(this._lado || 6);
     const t = this.add.text(x + this._lado, y, txt, { fontFamily: FONTE_PIXEL, fontSize: fs + "px", color: cor, stroke: COR.tinta, strokeThickness: 3, resolution: 2 })
       .setOrigin(0.5, 1).setDepth(PROF.numero);
-    if (tipo === "moeda") {
-      const ic = this.add.image(-t.width / 2 - 8, 0, "ui_moeda").setOrigin(0.5, 1);
+    if (ICONE_NUM[tipo]) {
+      const ic = this.add.image(-t.width / 2 - 8, 0, ICONE_NUM[tipo]).setOrigin(0.5, 1);
       const c = this.add.container(t.x, t.y, [t.setPosition(0, 0), ic]).setDepth(PROF.numero);
       this.tweens.add({ targets: c, y: y - 26, duration: 700, ease: "Cubic.easeOut" });
       this.tweens.add({ targets: c, alpha: 0, delay: 450, duration: 300, onComplete: () => c.destroy() });
@@ -696,6 +699,8 @@ class Cena extends Phaser.Scene {
     }
     if (r.abrirLoja) (window.UI?.abrirLoja || window.abrirLoja)?.();
     if (r.abrirViagem) (window.UI?.abrirViagem || window.abrirViagem)?.();
+    if (r.abrirMural) window.UI?.abrirMural?.(r.abrirMural);
+    if (r.tarefasEntregues?.length) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 12, { subir: true, dur: 800 });
     if (r.missaoErvasIniciada || r.missaoDesertoIniciada) this.atualizarColetaveis();
     if (r.capituloConcluido || r.oracaoAprendida) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 12, { subir: true, dur: 800 });
     this.p = Mundo.jogadores[MEU_ID];
@@ -712,7 +717,10 @@ class Cena extends Phaser.Scene {
     const p = this.p;
     if (!p) return null;
     let melhor = null;
-    for (const n of Object.values(npcs)) if (n.area === this.areaAtual && cheb(p, n) <= 1) return { tipo: "npc", id: n.id, rotulo: "Falar", x: n.x, y: n.y, tecla: "F" };
+    for (const n of Object.values(npcs)) {
+      if (n.area !== this.areaAtual || cheb(p, n) > 1) continue;
+      return { tipo: "npc", id: n.id, rotulo: n.papel === "mural" ? "Caçadas" : "Falar", x: n.x, y: n.y, tecla: "F" };
+    }
     const a = areas[this.areaAtual];
     const alvos = [];
     if (this.areaAtual === "mar") {
@@ -809,10 +817,18 @@ class Cena extends Phaser.Scene {
       this.alvoId = null;
       const e = inimigos[id];
       if (e) this.time.delayedCall(200, () => this.numero(centroX(e.x), baseY(e.y) - 40, `+${e.xpRecompensa} XP`, "xp"));
+      // Caçadas que avançaram com este abate: "27/40" depois do "+XP" (até 3, uma por vez). Nascem abaixo
+      // do "+XP", que já subiu, e sobem no mesmo ritmo: os dois números nunca se cobrem.
+      if (e) (r.tarefas || []).slice(0, 3).forEach((t, i) => {
+        this.time.delayedCall(450 + i * 250, () => this.numero(centroX(e.x), baseY(e.y) - 28, `${t.progresso}/${t.meta}`, "tarefa"));
+      });
     }
     this.p = Mundo.jogadores[MEU_ID];
     this.time.delayedCall(r.derrotado ? 250 : 0, () => this.criarSaques(true));
+    const subiu = this.p.nivel > this.nivelAnterior;
     this.verificarNivel();
+    const cumpridas = (r.tarefas || []).filter((t) => t.cumpridaAgora);
+    if (cumpridas.length) this.time.delayedCall(subiu ? 1300 : 700, () => this.cartaoCacadaCumprida(cumpridas));
     this.atualizarBaloes();
     window.atualizarInterface?.();
   }
@@ -895,6 +911,24 @@ class Cena extends Phaser.Scene {
     this.nivelAnterior = p.nivel;
   }
 
+  // Cartão "CAÇADA CUMPRIDA" sobre o jogador, no estilo do "NÍVEL N" (com o nome da caçada embaixo).
+  cartaoCacadaCumprida(cumpridas) {
+    if (!this.jogador?.active) return;
+    const x = this.jogador.x, y = this.jogador.y, reduz = reduzMovimento();
+    const titulo = this.add.text(0, 0, "CAÇADA CUMPRIDA", { fontFamily: FONTE_TITULO, fontStyle: "700", fontSize: "18px", color: "#ffe08a", stroke: COR.tinta, strokeThickness: 4, resolution: 2 })
+      .setOrigin(0.5, 1);
+    const nomes = cumpridas.map((t) => t.nome).join(" · ");
+    const sub = this.add.text(0, 2, nomes, { fontFamily: FONTE_PIXEL, fontSize: "11px", color: "#e6cf9c", stroke: COR.tinta, strokeThickness: 3, resolution: 2 })
+      .setOrigin(0.5, 0);
+    const c = this.add.container(x, y - 60, [titulo, sub]).setDepth(PROF.numero);
+    if (reduz) {
+      this.time.delayedCall(1800, () => c.destroy());
+      return;
+    }
+    this.particulasSimples(x, y - 10, "#ffe08a", 16, { subir: true, dur: 1000, espalha: 8 });
+    this.tweens.add({ targets: c, y: y - 84, alpha: 0, delay: 1200, duration: 600, onComplete: () => c.destroy() });
+  }
+
   mover(dx, dy) {
     if (this.trocando) return;
     const r = Mundo.executar(MEU_ID, { tipo: "mover", dx, dy });
@@ -949,6 +983,7 @@ class Cena extends Phaser.Scene {
     }
     this.p = Mundo.jogadores[MEU_ID];
     this.atualizarVisualJogador();
+    this.atualizarBaloes(); // aceitar, guardar e trocar: o "!" do atalaia vira o balão de contagem
     window.atualizarInterface?.();
     return r;
   }
@@ -1337,8 +1372,11 @@ class Cena extends Phaser.Scene {
     }
     for (const ent of Object.values(this.entidades)) {
       const d = ent.tipo === "inimigo" ? inimigos[ent.id] : ent.dados;
-      if (ent.tipo === "npc") ponto(d.x, d.y, ent.estadoBalao === "missao" || ent.estadoBalao === "entregar" ? "#f2d27a" : "#e8b94a", ent.estadoBalao === "missao" || ent.estadoBalao === "entregar" ? 4 : 3);
-      else ponto(d.x, d.y, "#ef6a5e", 3);
+      if (ent.tipo === "npc") {
+        // "!"/"?" em destaque; o atalaia com o mural em uso fica na cor das caçadas (pergaminho).
+        const destaque = ent.estadoBalao === "missao" || ent.estadoBalao === "entregar";
+        ponto(d.x, d.y, destaque ? "#f2d27a" : ent.estadoBalao === "mural" ? "#e6cf9c" : "#e8b94a", destaque ? 4 : 3);
+      } else ponto(d.x, d.y, "#ef6a5e", 3);
     }
     const v = this.cameras.main.worldView;
     ctx.strokeStyle = "#2a1a14cc";

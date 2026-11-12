@@ -92,7 +92,7 @@
     dano: "#f6e6bd", recebido: "#ff7a5c", critico: "#ffd24a", cura: "#8fd16a",
     "fe-1": "#22356a", "fe-2": "#3b5a9a", "fe-3": "#7fa3e0",
     "xp-1": "#7a5518", "xp-2": "#c8962e", "xp-3": "#f2cf6a",
-    moeda: "#e8b94a", veneno: "#a8c84a", bloqueio: "#b9c6d6", hostil: "#ef6a5e",
+    moeda: "#e8b94a", veneno: "#a8c84a", bloqueio: "#b9c6d6", hostil: "#ef6a5e", tarefa: "#e6cf9c",
     amigo: "#f3e4c0", missao: "#f2d27a", saida: "#b98ad0", agua: "#6fd0d0", bloqueado: "#7a6a5a",
   };
 
@@ -443,6 +443,8 @@
     odre: { f: (g, c) => { g.ret(11, 13, 3, 4, c[0]); g.p(11, 13, c[1] || c[0]); g.p(12, 12, c[1] || c[0]); } },
     fardo: { fundo: true, f: (g, c) => { g.ret(9, 6, 6, 3, c[0]); g.lin(9, 6, 14, 6, c[1] || c[0]); } },
     corda: { f: (g, c) => { g.ret(2, 8, 4, 4, c[0]); g.p(3, 9, c[1]); g.p(4, 10, c[1]); g.p(3, 10, c[0]); } },
+    // shofar (chifre de carneiro) na cintura: c = [marfim, ponta, bocal]; a boca larga sobe à esquerda.
+    shofar: { f: (g, c) => { g.p(2, 11, c[1]); g.p(2, 12, c[0]); g.p(3, 12, c[0]); g.ret(3, 13, 3, 1, c[0]); g.p(6, 13, c[2]); g.p(4, 12, c[1]); } },
     saco: { f: (g, c) => { g.ret(1, 12, 3, 3, c[0]); g.p(2, 11, c[1] || c[0]); } },
     turbante: { f: (g, c) => { g.ret(3, 3, 10, 2, c[0]); g.ret(4, 2, 8, 1, c[0]); if (c[1]) { g.lin(3, 4, 12, 4, c[1]); } g.p(4, 2, c[2] || c[0]); } },
     elmo: { f: (g, c) => { g.ret(5, 2, 6, 1, c[1]); g.ret(4, 3, 8, 2, c[0]); g.lin(5, 3, 10, 3, c[1]); g.p(5, 5, c[0]); g.p(10, 5, c[0]); g.p(8, 1, c[1]); } },
@@ -481,6 +483,7 @@
   const CORES_ESCUDO = {
     escudo_madeira: ["#7d522b", "#4f3220", "#b07a3e"],
     escudo_bronze: ["#b07a38", "#7a4a24", "#f2d27a"],
+    escudo_ferro: ["#8a949c", "#4a5258", "#d4dce2"],
   };
   function chaveJogador(eq = {}) {
     return "pj_jogador" + (eq.arma ? "|" + eq.arma : "") + (eq.arco ? "|arco" : "") + (eq.escudo ? "|" + eq.escudo : "");
@@ -562,6 +565,13 @@
   humano("pj_viajante", {
     molde: "manto",
     cores: { H: "#4a2f20", S: "#cf9466", s: "#b07548", B: "#4a2f20", R: "#d4bf8f", r: "#a8916a", d: "#7d6a4a", A: "#7a4a30", F: "#5a3a24" },
+  });
+  // Atalaia (vigia do mural de caçadas): um visual só para todos, reconhecível como marco em cada região.
+  // Túnica curta em terra e ocre, cinto lápis, cajado alto e o shofar na cintura (o vigia toca o alarme).
+  humano("pj_atalaia", {
+    molde: "curta",
+    cores: { H: "#2e1f18", S: "#cf9466", s: "#b07548", B: "#2e1f18", R: "#a8703a", r: "#7d522b", d: "#4f3220", A: "#3b5a9a", F: "#4f3220" },
+    acessorios: [["cajado_alto", ["#6b4a2e", "#8a6a42"]], ["shofar", ["#eadcb6", "#8a6a42", "#5a3a24"]]],
   });
 
   // ----- Inimigos humanos (§6.5) -----
@@ -734,6 +744,16 @@
   item("escudo_bronze", (g) => {
     g.elip(8, 9, 5.5, 5.5, (nx, ny) => { const r = Math.sqrt(nx * nx + ny * ny); return r > 0.82 ? "#7a4a24" : r > 0.55 ? tom(["#b07a38", "#d29e52"], -(nx + ny)) : r > 0.3 ? "#b07a38" : "#f2d27a"; });
   });
+  // Escudo de ferro (troca de pontos de tarefa): ferro frio, aro escuro, 4 rebites e umbo.
+  item("escudo_ferro", (g) => {
+    g.elip(8, 9, 5.5, 5.5, (nx, ny) => {
+      const r = Math.sqrt(nx * nx + ny * ny);
+      if (r > 0.8) return "#4a5258";
+      if (r < 0.3) return "#d4dce2";
+      return tom(["#6e7a84", "#8a949c", "#b4bec6"], -(nx + ny) * 0.7);
+    });
+    for (const [x, y] of [[8, 4], [12, 9], [8, 13], [3, 9]]) g.p(x, y, "#d4dce2");
+  });
   item("tunica_pano", (g) => {
     const l = ["#a8916a", "#d4bf8f", "#eadcb6"];
     g.ret(3, 4, 10, 3, (x, y) => tom(l, -((x - 8) * 0.15 + (y - 6) * 0.3)));
@@ -747,6 +767,16 @@
     g.ret(6, 3, 4, 1, "#4f3220"); g.ret(7, 4, 2, 1, "#2a1a14");
     g.lin(4, 8, 11, 8, "#4f3220"); g.lin(4, 11, 11, 11, "#4f3220");
     for (const [x, y] of [[5, 5], [10, 5], [5, 12], [10, 12]]) g.p(x, y, "#e8b94a");
+  });
+  // Couraça de escamas (troca de pontos de tarefa): peitoral de bronze escuro; cada escama é um brilho
+  // com a sombra logo abaixo, em fileiras desencontradas.
+  item("couraca_escamas", (g) => {
+    const l = ["#7a4a24", "#b07a38", "#d29e52"];
+    g.ret(4, 4, 8, 10, (x, y) => tom(l, -((x - 7.5) * 0.2 + (y - 8) * 0.1)));
+    g.ret(6, 3, 4, 1, "#7a4a24"); g.ret(7, 4, 2, 1, "#2a1a14");
+    for (let y = 6; y <= 12; y += 2) for (let x = 4 + ((y / 2) % 2); x <= 11; x += 2) g.p(x, y, "#7a4a24");
+    for (let y = 5; y <= 11; y += 2) for (let x = 5 - ((y + 1) / 2) % 2; x <= 11; x += 2) g.p(x, y, "#d29e52");
+    g.ret(3, 4, 1, 3, "#7a4a24"); g.ret(12, 4, 1, 3, "#7a4a24");
   });
   item("arco_madeira", (g) => {
     g.lin(6, 2, 8, 3, "#9a6a3c"); g.lin(9, 4, 10, 6, "#9a6a3c"); g.lin(10, 7, 10, 9, "#c08f58");
@@ -830,6 +860,10 @@
   glifo("ui_flecha", ["....kkkk", ".....kIk", "....kWkk", "...kWk.k", "..kWk...", "Rkkk....", "RRk.....", "kRR....."], { I: "#e4ecf0", W: "#b07a38", R: "#c2452d" });
   glifo("ui_falar", [".kkkkkk.", "kPPPPPPk", "kPkPkPPk", "kPPPPPPk", ".kkPkkk.", "..kPk...", "..kk....", "........"], { P: "#f3e4c0" });
   glifo("ui_orar", ["...kk...", "..kSSk..", "..kSSk..", ".kSSSSk.", ".kSSSsk.", "kSSkkSsk", "kRRk.kRk", "kkk..kkk"], { S: "#e0a878", s: "#c68a5c", R: "#eadcb6" });
+  // Caçadas: tabuinha de contagem (riscos cortados por um traço), selo de argila dos pontos de tarefa e alforje.
+  glifo("ui_cacada", [".kkkkkk.", "kMWMWMyk", "kMWMWyWk", "kMWMyMWk", "kMWyWMWk", "kMyMWMWk", "kyWMWMWk", ".kkkkkk."], { W: "#d9a35c", M: "#5a3a24", y: "#f6efdc" });
+  glifo("ui_selo", ["..kkkk..", ".kTtTTkk", "kTtiiiTk", "kTTimiTk", "kTTiiidk", "kTTTTddk", ".kTddkk.", "..kkk..."], { T: "#b5663a", t: "#d88a58", d: "#8e4a2a", i: "#6e3420", m: "#f0c890" });
+  glifo("ui_alforje", [".kkkkkk.", "kkddddkk", "kDDkkDDk", "kDyDkDyk", "kLLLkLLk", "kLLLkLLk", "kLLdkLdk", "kkkkkkkk"], { L: "#a8703a", D: "#7a4a30", d: "#5a3624", y: "#e8b94a" });
 
   // -------------------------------------------------------------------
   // Marcadores (§6.8)
@@ -965,6 +999,8 @@
   balao("mk_balao_andamento", [".....", ".....", ".....", ".....", "b.b.b", "....."], { b: "#7a6a5a" });
   balao("mk_balao_loja", ["..d..", ".dYd.", "dYYYd", "dYyYd", "dYYYd", ".ddd."], { Y: "#e8b94a", y: "#ffe08a", d: "#7a5518" });
   balao("mk_balao_guia", ["..R..", "..R..", "dddYd", "..L..", "..L..", "....."], { R: "#c2452d", d: "#5a3a24", Y: "#e8b94a", L: "#7d6a4a" });
+  // Mural de caçadas: três riscos de contagem cortados por uma barra (legível em 5×6).
+  balao("mk_balao_mural", ["Y.Y.Y", "Y.Y.Y", "ddddd", "Y.Y.Y", "Y.Y.Y", "....."], { Y: "#c8962e", d: "#7a5518" });
 
   // -------------------------------------------------------------------
   // Efeitos (§8)
@@ -1115,9 +1151,13 @@
   };
   const VISUAL_POR_APARENCIA = { lobo: "in_lobo", escorpiao: "in_escorpiao", bandido: "in_salteador", soldado: "in_guarda_egipcio", guerreiro: "in_amalequita" };
   const CHEFES = new Set(["bandido1"]);
+  // NPCs sem visual próprio que compartilham um visual pelo papel (os 6 atalaias são o mesmo vigia).
+  const VISUAL_POR_PAPEL = { mural: "pj_atalaia" };
 
   function visualDe(id) {
     if (VISUAL_NPC[id]) return VISUAL_NPC[id];
+    const n = typeof npcs !== "undefined" ? npcs[id] : null;
+    if (n && VISUAL_POR_PAPEL[n.papel]) return VISUAL_POR_PAPEL[n.papel];
     if (VISUAL_INIMIGO[id]) return VISUAL_INIMIGO[id];
     const ini = typeof inimigos !== "undefined" ? inimigos[id] : null;
     if (ini) return VISUAL_POR_APARENCIA[ini.aparencia] || "in_salteador";
@@ -2245,7 +2285,7 @@
   global.Arte = {
     versao: 1, PX,
     PALETA, SEMANTICA, BIOMAS, SUBTITULOS, PIXEL_PATTERNS,
-    VISUAL_NPC, VISUAL_INIMIGO, VISUAL_POR_APARENCIA, CHEFES,
+    VISUAL_NPC, VISUAL_INIMIGO, VISUAL_POR_APARENCIA, VISUAL_POR_PAPEL, CHEFES,
     visualDe, nomeCurto, aliasItem,
     pixels, canvas, iconeURL, silhuetaURL, retratoURL, texturaURL, molduraURL, minimapaCores,
     gerarTileset, registrarTexturas, registrarTileset, garantirTextura, animarAgua,

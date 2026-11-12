@@ -21,7 +21,7 @@
  /* semânticas = Arte.SEMANTICA */
  --vida-1:#8e2a1f;--vida-2:#c2452d;--vida-3:#e2774f; --xp-1:#7a5518;--xp-2:#c8962e;--xp-3:#f2cf6a; --fe-1:#22356a;--fe-2:#3b5a9a;--fe-3:#7fa3e0;
  --dano:#f6e6bd;--recebido:#ff7a5c;--critico:#ffd24a;--cura:#8fd16a;--moeda:#e8b94a;--veneno:#a8c84a;--bloqueio:#b9c6d6;
- --hostil:#ef6a5e;--amigo:#f3e4c0;--missao:#f2d27a;--saida:#b98ad0;--agua:#6fd0d0;--bloqueado:#7a6a5a;
+ --hostil:#ef6a5e;--amigo:#f3e4c0;--missao:#f2d27a;--saida:#b98ad0;--agua:#6fd0d0;--bloqueado:#7a6a5a;--tarefa:#e6cf9c;
  /* foco e véu */          --foco:#ffe9a8;--veu:#1c1210cc;
  /* tipografia */          --f-titulo:"Cinzel",Georgia,serif;--f-texto:"Alegreya Sans",system-ui,sans-serif;--f-pixel:"Pixelify Sans",ui-monospace,monospace;
  --fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-20:20px;--fs-26:26px;
@@ -77,6 +77,9 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 .salvo{display:flex;align-items:center;gap:6px;font:400 var(--fs-12)/1 var(--f-pixel);color:var(--texto-2);white-space:nowrap}
 .salvo::before{content:"";width:6px;height:6px;background:var(--cura);box-shadow:0 0 0 2px #1c1210}
 .moedas{display:flex;align-items:center;gap:6px;padding:0 10px;height:28px;border:2px solid var(--bronze-700);background:#1a0f0a;box-shadow:inset 2px 2px 0 #0008;font:600 var(--fs-14)/1 var(--f-pixel);color:var(--moeda);white-space:nowrap}
+.pontos{color:var(--tarefa);cursor:pointer}
+.pontos:hover{border-color:var(--bronze-400)}
+.pontos[hidden]{display:none}
 .so-celular{display:none!important}
 
 /* layout */
@@ -113,6 +116,17 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:22px;height:22px;pad
 #pMissao .objetivo{margin:0;font:400 var(--fs-14)/1.35 var(--f-texto);color:var(--tinta)}
 #pMissao .progresso{display:inline-block;margin-top:6px;padding:2px 6px;font:600 var(--fs-12)/1 var(--f-pixel);color:var(--perg-100);background:var(--fe-2);border:2px solid var(--tinta)}
 #pMissao .progresso[hidden]{display:none}
+/* caçadas em andamento (painel Missão): uma linha por caçada, abre a consulta (T) */
+.cacadas{list-style:none;margin:8px 0 0;padding:6px 0 0;border-top:1px solid var(--perg-400);display:flex;flex-direction:column;gap:2px}
+.cacadas[hidden]{display:none}
+.cacadas button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:16px minmax(0,1fr) 44px 46px;align-items:center;gap:6px;width:100%;min-height:24px;padding:2px 4px;cursor:pointer;
+ font:500 var(--fs-13)/1.2 var(--f-texto);color:var(--tinta)}
+.cacadas button:hover{background:#fff3}
+.cacadas button:focus-visible{outline:2px solid var(--bronze-600)}
+.cacadas .nome{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cacadas .mini-barra i{background:var(--xp-2);box-shadow:inset 0 1px 0 var(--xp-3)}
+.cacadas b{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta-suave);text-align:right;white-space:nowrap}
+.cacadas .feita{grid-column:3/-1;text-align:left;color:var(--fe-2)}
 
 /* ---------- barras ---------- */
 .linha-barra{display:flex;align-items:center;gap:6px;margin-top:6px}
@@ -351,6 +365,35 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja span{font:400 var(--fs-13)/1.2 var(--f-texto);color:var(--tinta-suave)}
 .item-loja .btn{min-width:84px}
 .saldo{display:flex;align-items:center;gap:6px;margin-bottom:10px;font:600 var(--fs-14)/1 var(--f-pixel)}
+.aba-modal{display:inline-flex;align-items:center;gap:6px}
+.modal .vazio-txt,.modal .nota{color:var(--tinta-suave)}
+
+/* mural de caçadas (cartões no padrão das linhas da loja) */
+.item-loja.cacada{grid-template-columns:40px minmax(0,1fr) auto;align-items:start;padding:8px 6px}
+.item-loja.cacada .icone img{width:auto;height:auto;max-width:34px;max-height:32px}
+.cacada-nome{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.item-loja .cacada-nome strong{display:inline}
+.etiqueta-tipo{display:inline-block;padding:2px 5px 1px;font:600 var(--fs-11)/1 var(--f-pixel);font-style:normal;color:var(--perg-100);background:var(--couro-500);border:1px solid var(--tinta);white-space:nowrap}
+.etiqueta-tipo.grande{background:var(--bronze-600)}
+.etiqueta-tipo.estado{background:var(--perg-300);color:var(--tinta)}
+.cacada p{margin:3px 0 0;font:400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+.cacada p.cacada-desc{color:var(--tinta)}
+.cacada .cacada-premio{font:600 var(--fs-12)/1.4 var(--f-pixel);color:var(--tinta)}
+.cacada .cacada-premio img{vertical-align:-3px;margin-right:2px}
+.item-loja .regiao{font:italic 400 var(--fs-13)/1 var(--f-texto);color:var(--tinta-suave)}
+.cacada .cacada-nota{font-style:italic}
+.cacada .barra{margin-top:6px;height:14px}
+.cacada-acao{display:flex;flex-direction:column;align-items:stretch;min-width:112px;max-width:150px}
+.cacada-acao .btn{white-space:normal;text-align:center;line-height:1.15;padding:4px 10px}
+.cacada.em-espera .icone img{filter:grayscale(.8);opacity:.75}
+.item-loja .motivo{display:block;font-style:italic}
+.retorno{margin:0 0 10px;padding:4px 10px;border-left:3px solid var(--fe-2);background:#fff3;font:500 var(--fs-13)/1.35 var(--f-texto);color:var(--tinta)}
+.retorno.erro{border-left-color:var(--vida-2)}
+.modal .nota img{vertical-align:-3px}
+.voltam{list-style:none;margin:0;padding:0}
+.voltam li{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:3px 0;border-bottom:1px dotted var(--perg-400);font:400 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+.voltam b{font:600 var(--fs-12)/1 var(--f-pixel);color:var(--tinta);white-space:nowrap}
+.linha-inimigo .marca-cacada{display:inline-flex}
 
 /* viagem */
 .mapa-antigo{position:relative;width:320px;max-width:100%;margin:0 auto 10px;aspect-ratio:16/10}
@@ -508,6 +551,9 @@ body.dialogo-aberto #toque{visibility:hidden}
  .modal-caixa{max-height:calc(100dvh - 16px)}
  .cartao{min-height:auto;padding:8px}
  .item-loja .btn{min-width:76px;min-height:44px}
+ .item-loja.cacada{grid-template-columns:40px minmax(0,1fr)}
+ .cacada-acao{grid-column:1/-1;max-width:none}
+ .abas-modal{flex-wrap:wrap}
  .btn{min-height:44px}
  #dpad{bottom:10px;left:8px}
  #acoes{right:6px;bottom:10px}
@@ -531,6 +577,8 @@ body.toque-forcado #dpad{display:grid}
     <strong class="area-topo" id="areaTopo">Canaã</strong>
     <span class="salvo" id="salvoTexto" title="O progresso é salvo neste navegador">Salvo no navegador</span>
     <span class="moedas" id="moedas" title="Moedas"><img class="px g16" data-glifo="ui_moeda" alt=""><b id="moedasValor">0</b><span class="sr"> moedas</span></span>
+    <button class="moedas pontos" id="pontos" type="button" title="Pontos de tarefa · T: suas caçadas" hidden>
+      <img class="px g16" data-glifo="ui_selo" alt=""><b id="pontosValor">0</b><span class="sr"> pontos de tarefa (abre suas caçadas)</span></button>
     <button class="btn-icone" id="btnMapa" type="button" aria-label="Mostrar ou ocultar o mapa (M)" aria-pressed="true"><img class="px g16" data-glifo="ui_rosa" alt=""><span class="rotulo">Mapa</span></button>
     <button class="btn-icone so-largo" id="btnTelaCheia" type="button" aria-label="Tela cheia"><img class="px g16" data-glifo="ui_tela_cheia" alt=""><span class="rotulo">Tela cheia</span></button>
     <button class="btn-icone so-largo" id="btnAjuda" type="button" aria-label="Controles e ajuda (?)"><img class="px g16" data-glifo="ui_ajuda" alt=""><span class="rotulo">Controles</span></button>
@@ -612,7 +660,8 @@ body.toque-forcado #dpad{display:grid}
 <div id="deposito">
   <section class="perg" id="pMissao" aria-labelledby="tMissao">
     <div class="painel-cab"><img class="px g16" data-glifo="ui_pergaminho" alt=""><h2 id="tMissao">MISSÃO</h2></div>
-    <div class="painel-corpo"><h3 class="capitulo" id="missaoCapitulo">Canaã</h3><p class="objetivo" id="missaoObjetivo">Carregando…</p><span class="progresso" id="missaoProgresso" hidden></span></div>
+    <div class="painel-corpo"><h3 class="capitulo" id="missaoCapitulo">Canaã</h3><p class="objetivo" id="missaoObjetivo">Carregando…</p><span class="progresso" id="missaoProgresso" hidden></span>
+      <ul class="cacadas" id="missaoCacadas" hidden aria-label="Caçadas em andamento"></ul></div>
   </section>
 
   <section class="painel" id="pMochila" aria-labelledby="tMochila">
@@ -679,6 +728,14 @@ body.toque-forcado #dpad{display:grid}
     <div class="modal-corpo" id="lojaCorpo"></div>
   </div>
 </div>
+<div class="modal" id="modalMural" aria-hidden="true">
+  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="muralTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px" id="muralRetrato" alt=""></span><div><h2 id="muralTitulo">Caçadas</h2>
+      <p class="sub" id="muralSub">Atalaia · mural de caçadas</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar">
+      <img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="muralCorpo"></div>
+  </div>
+</div>
 <div class="modal" id="modalViagem" aria-hidden="true">
   <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="viagemTitulo">
     <div class="modal-cab"><span class="icone-cab"><img class="px" id="viagemRetrato" alt=""></span><div><h2 id="viagemTitulo">Viagem rápida</h2><p class="sub">guia de caravanas</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
@@ -700,6 +757,7 @@ body.toque-forcado #dpad{display:grid}
 <script src="dados/criaturas.js"></script>
 <script src="dados/capitulos.js"></script>
 <script src="dados/missoes.js"></script>
+<script src="dados/tarefas.js"></script>
 <script src="logica.js"></script>
 <script src="sprites.js"></script>
 <script src="game.js"></script>

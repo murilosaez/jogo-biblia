@@ -3,8 +3,9 @@
 //
 // Ordem de carga: storage.js → dados/*.js → logica.js → sprites.js → game.js → interface.js.
 // Este arquivo define o motor (Mundo) e as regras. Todo o CONTEÚDO (itens, áreas, NPCs,
-// criaturas, missões, capítulos e portais) vem dos arquivos em dados/ e é registrado aqui pelas
-// funções registrar*; para criar conteúdo novo, edite apenas dados/.
+// criaturas, missões, capítulos, portais, caçadas dos atalaias e troca de pontos de tarefa) vem
+// dos arquivos em dados/ e é registrado aqui pelas funções registrar*; para criar conteúdo novo,
+// edite apenas dados/.
 // =====================================================================
 
 // ---------------------------------------------------------------------
@@ -13,7 +14,7 @@
 const TILE = 32;
 const COLS = 80;
 const ROWS = 60;
-const VERSAO_SAVE = 7;
+const VERSAO_SAVE = 8;
 
 const VIDA_BASE = 100;
 const VIDA_POR_NIVEL = 10;
@@ -97,8 +98,9 @@ function pesoItem(id) {
   return ITENS[id]?.peso ?? 1;
 }
 
+// Carga máxima: base + 10 kg por nível acima do 1º + melhorias da troca de pontos (bonusCarga).
 function capacidadeCarga(p) {
-  return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL;
+  return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL + bonusCarga(p);
 }
 
 function pesoCarregado(p) {
@@ -372,7 +374,8 @@ for (const area of Object.values(DADOS_AREAS_CAPITULOS)) {
 // ---------------------------------------------------------------------
 // NPCs, coletáveis, pesca e inimigos base
 // ---------------------------------------------------------------------
-// papel: "missao" (dá missões de dados/missoes.js), "loja", "guia", ou, nos capítulos,
+// papel: "missao" (dá missões de dados/missoes.js), "loja", "guia", "mural" (atalaia: mural de
+// caçadas de dados/tarefas.js, aberto quando requer.missao é concluída) ou, nos capítulos,
 // "lider" (dá a missão do capítulo), "apoio" (só conversa) e "mestre" (ensina a Oração).
 const npcs = {};
 
@@ -542,11 +545,18 @@ function proximaMissao(missao) {
   return ORDEM_MISSOES.map((id) => MISSOES[id]).find((m) => m.anterior === missao.id) || null;
 }
 
+// "+80 XP, 25 moedas, 2× Poção de vida, 15 pontos de tarefa" (itens e pontos são opcionais).
 function resumoRecompensa(r) {
   const contagem = {};
-  for (const item of r.itens) contagem[item] = (contagem[item] || 0) + 1;
+  for (const item of r.itens || []) contagem[item] = (contagem[item] || 0) + 1;
   const nomes = Object.entries(contagem).map(([item, n]) => (n > 1 ? `${n}× ${nomeItem(item)}` : nomeItem(item)));
-  return [...(r.xp ? [`+${r.xp} XP`] : []), ...(r.moedas ? [`${r.moedas} moedas`] : []), ...nomes].join(", ");
+  const pontos = r.pontos ? [textoPontos(r.pontos)] : [];
+  return [...(r.xp ? [`+${r.xp} XP`] : []), ...(r.moedas ? [`${r.moedas} moedas`] : []), ...nomes, ...pontos].join(", ");
+}
+
+// "1 ponto de tarefa" / "15 pontos de tarefa".
+function textoPontos(n) {
+  return n === 1 ? "1 ponto de tarefa" : `${n} pontos de tarefa`;
 }
 
 // Variáveis das falas: {coletados}/{total} vêm do primeiro objetivo da etapa e
@@ -647,6 +657,242 @@ function faseCapitulo(p, chave) {
 }
 
 // ---------------------------------------------------------------------
+// Caçadas (dados/tarefas.js) — tarefas de caça dos atalaias e troca de pontos de tarefa
+// ---------------------------------------------------------------------
+// Estado no save (só as caçadas que o jogador já tocou):
+//   p.tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm, aceitaEm };
+//   p.pontosTarefa (saldo), p.pontosTarefaTotal (ganhos na vida, nunca diminui) e
+//   p.trocas[ofertaId] (vezes que a oferta foi trocada).
+// O estado de cada caçada é derivado (estadoTarefa), nunca gravado: "bloqueada", "espera",
+// "disponivel", "ativa", "cumprida" (meta atingida, falta entregar) ou "guardada" (fora das ativas,
+// com o progresso mantido). A espera só começa na entrega; uma caçada aceita nunca expira.
+const TAREFAS = {}; // id → caçada normalizada
+const ORDEM_TAREFAS = []; // ordem dos dados (ordem no mural)
+const OFERTAS_TROCA = {}; // id → oferta normalizada
+const ORDEM_OFERTAS = [];
+const ESTADOS_ACOMPANHADOS = ["ativa", "cumprida", "guardada"];
+const MS_POR_HORA = 3_600_000;
+
+function registrarTarefa(dados) {
+  const tarefa = {
+    ...dados,
+    alvo: { criaturas: [], especies: [], familias: [], area: null, ...dados.alvo },
+    requer: { ...dados.requer },
+    oculta: dados.oculta === true,
+    recompensa: { xp: 0, moedas: 0, pontos: 0, ...dados.recompensa },
+    esperaHoras: dados.esperaHoras ?? TIPOS_TAREFA[dados.tipo]?.esperaHoras ?? 0,
+  };
+  TAREFAS[tarefa.id] = tarefa;
+  if (!ORDEM_TAREFAS.includes(tarefa.id)) ORDEM_TAREFAS.push(tarefa.id);
+  return tarefa;
+}
+
+function registrarOfertaTroca(dados) {
+  const oferta = { quantidade: 1, ...dados, requer: { ...dados.requer }, unica: !!dados.melhoria };
+  OFERTAS_TROCA[oferta.id] = oferta;
+  if (!ORDEM_OFERTAS.includes(oferta.id)) ORDEM_OFERTAS.push(oferta.id);
+  return oferta;
+}
+
+for (const t of DADOS_TAREFAS) registrarTarefa(clonarDados(t));
+for (const o of DADOS_TROCA_PONTOS) registrarOfertaTroca(clonarDados(o));
+
+// O abate conta se a criatura estiver na lista OU for de uma das espécies OU famílias (e da área, se houver).
+function casaAlvo(alvo, e) {
+  const lista = (chave) => alvo[chave] || [];
+  const casa = lista("criaturas").includes(e.id) || lista("especies").includes(e.especie) || lista("familias").includes(e.familia);
+  return casa && (!alvo.area || e.area === alvo.area);
+}
+
+function esperaMs(tarefa) {
+  return tarefa.esperaHoras * MS_POR_HORA;
+}
+
+// Pontos da próxima entrega: a primeira de cada caçada ganha o bônus (arredondado para baixo).
+function pontosDaEntrega(tarefa, concluidas) {
+  const base = tarefa.recompensa.pontos;
+  return concluidas === 0 ? Math.floor(base * (1 + REGRAS_TAREFAS.bonusPrimeiraVez)) : base;
+}
+
+// Nome de uma oferta da troca: o da melhoria ou o do item ("3× Poção de vida").
+function nomeOferta(oferta) {
+  if (!oferta) return "";
+  if (oferta.melhoria) return oferta.nome;
+  return oferta.quantidade > 1 ? `${oferta.quantidade}× ${nomeItem(oferta.item)}` : nomeItem(oferta.item);
+}
+
+// "" se o requisito { missao?, nivel?, troca? } está cumprido; se não, a frase do primeiro que falta.
+function requisitoPendente(p, requer) {
+  const r = requer || {};
+  if (r.missao && !missaoConcluida(p, r.missao)) return `concluir a missão “${MISSOES[r.missao]?.nome || r.missao}”`;
+  if (r.nivel && (p?.nivel || 1) < r.nivel) return `chegar ao nível ${r.nivel}`;
+  if (r.troca && !(p?.trocas?.[r.troca] > 0)) return `ter ${nomeOferta(OFERTAS_TROCA[r.troca]) || r.troca}`;
+  return "";
+}
+
+// O requisito do atalaia (mural aberto) vem antes do requisito próprio da caçada.
+function requisitoDaTarefa(p, t) {
+  return requisitoPendente(p, npcs[t.mural]?.requer) || requisitoPendente(p, t.requer);
+}
+
+function estadoTarefa(p, tarefaId) {
+  const t = TAREFAS[tarefaId];
+  if (!t) return null;
+  const s = p?.tarefas?.[tarefaId];
+  if (s?.ativa) return s.progresso >= s.meta ? "cumprida" : "ativa";
+  if (s?.progresso > 0) return "guardada";
+  if (requisitoDaTarefa(p, t)) return "bloqueada";
+  if (Date.now() < (s?.disponivelEm || 0)) return "espera";
+  return "disponivel";
+}
+
+// Caçadas ativas (inclusive as cumpridas, que ocupam a vaga até a entrega).
+function tarefasAtivas(p) {
+  return ORDEM_TAREFAS.filter((id) => p?.tarefas?.[id]?.ativa === true);
+}
+
+// "agora", "45 min", "19 h 59 min", "20 h", "6 d 20 h", "2 d" (minutos arredondados para cima).
+function textoEspera(ms) {
+  if (!(ms > 0)) return "agora";
+  const minutos = Math.ceil(ms / 60000);
+  if (minutos < 60) return `${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (minutos < 1440) return minutos % 60 ? `${horas} h ${minutos % 60} min` : `${horas} h`;
+  const dias = Math.floor(minutos / 1440);
+  const resto = Math.floor((minutos % 1440) / 60);
+  return resto ? `${dias} d ${resto} h` : `${dias} d`;
+}
+
+// Tudo o que a interface mostra de uma caçada (funções puras; a interface nunca altera p.tarefas).
+function visaoTarefa(p, tarefaId) {
+  const t = TAREFAS[tarefaId];
+  if (!t) return null;
+  const s = p?.tarefas?.[tarefaId];
+  const estado = estadoTarefa(p, tarefaId);
+  const meta = s ? s.meta : t.total;
+  const area = npcs[t.mural]?.area || null;
+  const casam = Object.values(inimigos).filter((e) => casaAlvo(t.alvo, e));
+  const concluidas = s?.concluidas || 0;
+  return {
+    id: t.id,
+    nome: t.nome,
+    curto: t.curto,
+    tipo: t.tipo,
+    tipoNome: TIPOS_TAREFA[t.tipo]?.nome || t.tipo,
+    mural: t.mural,
+    area,
+    nomeArea: areas[area]?.nome || "",
+    descricao: preencherTexto(t.descricao, { total: meta }),
+    valem: [...new Set(casam.map((e) => e.nome))],
+    retrato: casam[0]?.id || null,
+    meta,
+    progresso: s?.progresso || 0,
+    estado,
+    esperaMs: estado === "espera" ? s.disponivelEm - Date.now() : 0,
+    motivo: estado === "bloqueada" ? requisitoDaTarefa(p, t) : "",
+    recompensa: { xp: t.recompensa.xp, moedas: t.recompensa.moedas, pontos: t.recompensa.pontos },
+    pontosNaEntrega: pontosDaEntrega(t, concluidas),
+    primeiraVez: concluidas === 0,
+    concluidas,
+    aceitaEm: s?.aceitaEm || 0,
+  };
+}
+
+// Caçadas do mural de um atalaia, na ordem dos dados. As ocultas só aparecem para quem já as acompanha.
+function tarefasDoMural(p, npcId) {
+  return ORDEM_TAREFAS.filter((id) => TAREFAS[id].mural === npcId)
+    .map((id) => visaoTarefa(p, id))
+    .filter((v) => !TAREFAS[v.id].oculta || ESTADOS_ACOMPANHADOS.includes(v.estado));
+}
+
+// Caçadas que o jogador acompanha: ativas e cumpridas, depois as guardadas (cada grupo por aceitaEm).
+function tarefasDoJogador(p) {
+  const grupo = (v) => (v.estado === "guardada" ? 1 : 0);
+  return ORDEM_TAREFAS.filter((id) => ESTADOS_ACOMPANHADOS.includes(estadoTarefa(p, id)))
+    .map((id) => visaoTarefa(p, id))
+    .sort((a, b) => grupo(a) - grupo(b) || a.aceitaEm - b.aceitaEm);
+}
+
+// Caçadas ativas (não cumpridas) para as quais o abate deste inimigo conta (glifo da lista Batalha).
+function tarefasDoInimigo(p, inimigoId) {
+  const e = inimigos[inimigoId];
+  if (!e) return [];
+  return ORDEM_TAREFAS.filter((id) => estadoTarefa(p, id) === "ativa" && casaAlvo(TAREFAS[id].alvo, e))
+    .map((id) => visaoTarefa(p, id));
+}
+
+function efeitoOferta(oferta) {
+  if (oferta.melhoria) return `+${oferta.melhoria.carga} kg de carga, para sempre`;
+  const item = ITENS[oferta.item] || {};
+  if (item.defesa) return `Defesa ${item.defesa}`;
+  if (item.bonus) return `Dano +${item.bonus}`;
+  return "";
+}
+
+// Ofertas da troca de pontos, na ordem dos dados.
+function ofertasDeTroca(p) {
+  const saldo = p?.pontosTarefa || 0;
+  return ORDEM_OFERTAS.map((id) => {
+    const o = OFERTAS_TROCA[id];
+    const motivo = requisitoPendente(p, o.requer);
+    let estado = "disponivel";
+    if (o.unica && p?.trocas?.[id] > 0) estado = "comprada";
+    else if (motivo) estado = "bloqueada";
+    else if (saldo < o.preco) estado = "semPontos";
+    return {
+      id,
+      nome: nomeOferta(o),
+      icone: o.melhoria ? o.icone || null : null,
+      item: o.item || null,
+      quantidade: o.quantidade,
+      efeito: efeitoOferta(o),
+      preco: o.preco,
+      estado,
+      motivo: estado === "bloqueada" ? motivo : "",
+      falta: estado === "semPontos" ? o.preco - saldo : 0,
+    };
+  });
+}
+
+// kg a mais das melhorias já trocadas (uma vez por oferta). Defensiva: roda em migrar antes da normalização.
+function bonusCarga(p) {
+  const trocas = objetoValido(p?.trocas) ? p.trocas : {};
+  let bonus = 0;
+  for (const id of ORDEM_OFERTAS) {
+    if (Number.isInteger(trocas[id]) && trocas[id] > 0) bonus += OFERTAS_TROCA[id].melhoria?.carga || 0;
+  }
+  return bonus;
+}
+
+// Garante p.tarefas, p.pontosTarefa, p.pontosTarefaTotal e p.trocas coerentes (save novo ou antigo).
+// Caçadas que saíram dos dados ficam no save intocadas (não contam, não ocupam vaga, não aparecem).
+// Ativas acima do limite não são desativadas: só fica bloqueado aceitar outra.
+function normalizarTarefas(p, agora) {
+  if (!objetoValido(p.tarefas)) p.tarefas = {};
+  for (const [id, s] of Object.entries(p.tarefas)) {
+    const t = TAREFAS[id];
+    if (!t) continue;
+    if (!objetoValido(s)) {
+      delete p.tarefas[id];
+      continue;
+    }
+    const inteiro = (v, minimo) => Number.isInteger(v) && v >= minimo;
+    const instante = (v) => Number.isFinite(v) && v >= 0;
+    s.ativa = s.ativa === true;
+    s.meta = inteiro(s.meta, 1) ? s.meta : t.total;
+    s.progresso = Number.isInteger(s.progresso) ? Math.max(0, Math.min(s.meta, s.progresso)) : 0;
+    s.concluidas = inteiro(s.concluidas, 0) ? s.concluidas : 0;
+    s.disponivelEm = instante(s.disponivelEm) ? Math.min(s.disponivelEm, agora + esperaMs(t)) : 0; // relógio adiantado
+    s.aceitaEm = instante(s.aceitaEm) ? s.aceitaEm : 0;
+  }
+  const pontos = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+  p.pontosTarefa = pontos(p.pontosTarefa);
+  p.pontosTarefaTotal = Math.max(pontos(p.pontosTarefaTotal), p.pontosTarefa);
+  if (!objetoValido(p.trocas)) p.trocas = {};
+  for (const [id, n] of Object.entries(p.trocas)) if (!(Number.isInteger(n) && n >= 0)) delete p.trocas[id];
+}
+
+// ---------------------------------------------------------------------
 // Textos de missão e balões (para a UI; funções puras)
 // ---------------------------------------------------------------------
 function textoMissaoDaArea(p, areaId) {
@@ -686,12 +932,20 @@ function textoMissaoAtual(p) {
   return `${nome} · ${texto || "Explore a região."}`;
 }
 
-// Balão sobre o NPC: "missao" (!), "andamento" (…), "entregar" (?) ou null.
+// Balão sobre o NPC: "missao" (!), "andamento" (…), "entregar" (?), "mural" (atalaia com o
+// mural aberto e já usado) ou null.
 function estadoMissaoNpc(p, npcId) {
   const npc = npcs[npcId];
   if (!p || !npc) return null;
   if (npc.papel === "mestre") {
     return !p.oracaoDesbloqueada && faseCapitulo(p, npc.capitulo) === "concluido" ? "entregar" : null;
+  }
+  if (npc.papel === "mural") {
+    // Caçada cumprida de qualquer região: "?" em todo atalaia, até nos de mural ainda bloqueado.
+    if (ORDEM_TAREFAS.some((id) => estadoTarefa(p, id) === "cumprida")) return "entregar";
+    if (requisitoPendente(p, npc.requer)) return null;
+    const doMural = ORDEM_TAREFAS.filter((id) => TAREFAS[id].mural === npcId);
+    return doMural.some((id) => p.tarefas?.[id]) ? "mural" : "missao"; // "!" só até a 1ª caçada aceita neste mural
   }
   const missao = missaoDaVez(p, missoesDoNpc(npcId));
   if (!missao) return null;
@@ -911,6 +1165,8 @@ const Mundo = {
     if (!objetoValido(p.missoes)) p.missoes = missoesDeSaveAntigo(p);
     for (const campo of ["missaoEliabe", "missaoErvas", "missaoDeserto", "capitulos"]) delete p[campo];
     normalizarMissoes(p);
+    // Caçadas e pontos de tarefa (save v8). Saves até a v7 não têm esses campos: começam vazios.
+    normalizarTarefas(p, agora);
 
     // Fé, Oração e veneno.
     p.oracaoDesbloqueada = !!p.oracaoDesbloqueada;
@@ -948,6 +1204,14 @@ const Mundo = {
         p,
         "atualizacao_6",
         "Jornada atualizada: combate rebalanceado (nível, arma e habilidade contam no dano), capítulos do Egito à Galileia corrigidos e regras de morte unificadas. Veja a Ajuda.",
+      );
+    }
+    if (!novo && versaoAnterior < 8) {
+      this.adicionarAviso(
+        p,
+        "atualizacao_8",
+        "Novidade: os atalaias de cada região têm um mural de caçadas. Ganhe XP, moedas e pontos de tarefa " +
+          "e troque os pontos por melhorias. Tecla T: suas caçadas.",
       );
     }
 
@@ -1347,6 +1611,12 @@ const Mundo = {
         return this.orar(id, comando.acao);
       case "alternarEquipamento":
         return this.alternarEquipamento(id, comando.slot);
+      case "aceitarTarefa":
+        return this.aceitarTarefa(id, comando.tarefaId);
+      case "guardarTarefa":
+        return this.guardarTarefa(id, comando.tarefaId);
+      case "trocarPontos":
+        return this.trocarPontos(id, comando.ofertaId);
       default:
         return { ok: false };
     }
@@ -1626,6 +1896,7 @@ const Mundo = {
     const conversa = this.registrarConversa(p, npc);
     if (conversa) return conversa;
     if (this.conversaDeMissao(p, npc)) return this.interagirMissao(id, npc);
+    if (npc.papel === "mural") return this.interagirMural(id, npc);
     if (npc.papel === "loja") {
       return {
         ok: true,
@@ -1645,12 +1916,12 @@ const Mundo = {
   },
 
   // ----- Motor de missões (dados/missoes.js) -----
-  // Quem dá missões conversa sobre elas; um NPC com outro papel (loja, guia) só
+  // Quem dá missões conversa sobre elas; um NPC com outro papel (loja, guia, mural) só
   // fala da missão enquanto ela está disponível ou em andamento.
   conversaDeMissao(p, npc) {
     const missao = missaoDaVez(p, missoesDoNpc(npc.id));
     if (!missao) return false;
-    if (npc.papel !== "loja" && npc.papel !== "guia") return true;
+    if (!["loja", "guia", "mural"].includes(npc.papel)) return true;
     return ["inicio", "andamento", "retorno"].includes(faseMissao(p, missao.id));
   },
 
@@ -1753,7 +2024,7 @@ const Mundo = {
       mensagem: `${npc.nome}: ${preencherTexto(texto, variaveisMissao(p, missao, estado))}`,
     });
     if (fase === "bloqueado") {
-      return falar(npc.falas?.bloqueado || missao.falas.bloqueada || "Conclua primeiro a tarefa anterior.");
+      return falar(npc.falas?.bloqueado || missao.falas.bloqueada || "Conclua primeiro a missão anterior.");
     }
     if (fase === "concluido") return falar(missao.falas.concluida || "A paz esteja com você.");
     if (fase === "inicio") {
@@ -1817,6 +2088,166 @@ const Mundo = {
       return { ...falar(npc.falas.ensino), oracaoAprendida: true };
     }
     return falar(npc.falas.depois);
+  },
+
+  // ----- Caçadas (atalaias, dados/tarefas.js) -----
+  // Atalaia ao lado com o mural já aberto (só ele aceita a troca de pontos).
+  muralProximo(p) {
+    return this.npcProximo(p, (n) => n.papel === "mural" && !requisitoPendente(p, n.requer));
+  },
+
+  // Conversa com um atalaia: entrega todas as caçadas cumpridas (de qualquer região, mesmo com o
+  // mural deste atalaia bloqueado) e, se o mural estiver aberto, pede à interface que o abra.
+  interagirMural(id, npc) {
+    const p = this.jogadores[id];
+    const falas = { ...FALAS_MURAL, ...npc.falas };
+    const entrega = this.entregarTarefas(p);
+    const pendente = requisitoPendente(p, npc.requer);
+    const entregou = entrega.entregues.length > 0;
+    const partes = [];
+    if (entregou) {
+      const recompensa = entrega.entregues
+        .map((t) => `${t.nome} (${resumoRecompensa({ xp: t.xp, moedas: t.moedas, pontos: t.pontos })})`)
+        .join("; ");
+      const subiu = entrega.niveis.length ? preencherTexto(falas.subiuNivel, { nivel: p.nivel }) : "";
+      partes.push(`${preencherTexto(falas.entrega, { recompensa })}${subiu}`);
+    }
+    if (pendente) partes.push(preencherTexto(falas.bloqueado, { requisito: pendente }));
+    else if (!entregou) partes.push(preencherTexto(falas.saudacao, {}));
+    this.salvar(p);
+    return {
+      ok: true,
+      mensagem: `${npc.nome.split(",")[0]}: ${partes.join(" ")}`,
+      ...(pendente ? {} : { abrirMural: npc.id }),
+      ...(entregou ? { tarefasEntregues: entrega.entregues, niveis: entrega.niveis } : {}),
+    };
+  },
+
+  // Entrega (sem comando próprio: acontece ao falar com qualquer atalaia). A recompensa é XP,
+  // moedas e pontos de tarefa, nunca itens: a mochila cheia não bloqueia a entrega.
+  entregarTarefas(p) {
+    const entregues = [];
+    const niveis = [];
+    for (const id of ORDEM_TAREFAS) {
+      if (estadoTarefa(p, id) !== "cumprida") continue;
+      const t = TAREFAS[id];
+      const s = p.tarefas[id];
+      const primeiraVez = s.concluidas === 0;
+      const pontos = pontosDaEntrega(t, s.concluidas);
+      p.moedas += t.recompensa.moedas;
+      niveis.push(...adicionarXP(p, t.recompensa.xp));
+      p.pontosTarefa += pontos;
+      p.pontosTarefaTotal += pontos;
+      s.ativa = false;
+      s.progresso = 0;
+      s.meta = t.total;
+      s.concluidas += 1;
+      s.disponivelEm = Date.now() + esperaMs(t); // a espera só começa na entrega
+      entregues.push({ id, nome: t.nome, xp: t.recompensa.xp, moedas: t.recompensa.moedas, pontos, primeiraVez });
+    }
+    return { entregues, niveis };
+  },
+
+  // Aceita (ou retoma, se estava guardada) uma caçada, ao lado do atalaia do mural dela.
+  // Em toda recusa nada muda no save; a ordem das checagens é a do contrato com a interface.
+  aceitarTarefa(id, tarefaId) {
+    const p = this.jogadores[id];
+    const t = TAREFAS[tarefaId];
+    if (!t) return { ok: false, mensagem: "Caçada desconhecida." };
+    const nomeArea = areas[npcs[t.mural]?.area]?.nome || "";
+    if (!this.npcProximo(p, (n) => n.id === t.mural)) {
+      return { ok: false, mensagem: `Fale com o atalaia (${nomeArea}) para aceitar esta caçada.` };
+    }
+    const estado = estadoTarefa(p, tarefaId);
+    if (estado === "ativa" || estado === "cumprida") return { ok: false, mensagem: "Você já acompanha esta caçada." };
+    if (estado === "bloqueada") return { ok: false, mensagem: `Para aceitar, é preciso ${requisitoDaTarefa(p, t)}.` };
+    if (t.oculta && estado !== "guardada") return { ok: false, mensagem: "Esta caçada não está mais no mural." };
+    if (estado === "espera") {
+      const falta = p.tarefas[tarefaId].disponivelEm - Date.now();
+      return { ok: false, mensagem: `Esta caçada volta ao mural em ${textoEspera(falta)}.` };
+    }
+    const limite = REGRAS_TAREFAS.limiteAtivas;
+    if (tarefasAtivas(p).length >= limite) {
+      return { ok: false, mensagem: `Você já acompanha ${limite} caçadas. Guarde uma para aceitar outra.` };
+    }
+    const retomada = estado === "guardada";
+    const s = p.tarefas[tarefaId] || { ativa: false, progresso: 0, meta: t.total, concluidas: 0, disponivelEm: 0, aceitaEm: 0 };
+    if (!retomada) {
+      s.progresso = 0;
+      s.meta = t.total;
+    }
+    s.ativa = true;
+    s.aceitaEm = Date.now();
+    p.tarefas[tarefaId] = s;
+    this.salvar(p);
+    const mensagem = retomada
+      ? `Caçada retomada: ${t.nome} (${s.progresso}/${s.meta}).`
+      : `Caçada aceita: ${t.nome} (0/${s.meta}).`;
+    return { ok: true, tarefaId, retomada, mensagem };
+  },
+
+  // Guarda uma caçada ativa (de qualquer lugar): sai das ativas, mantém o progresso e libera a vaga.
+  guardarTarefa(id, tarefaId) {
+    const p = this.jogadores[id];
+    const t = TAREFAS[tarefaId];
+    if (!t) return { ok: false, mensagem: "Caçada desconhecida." };
+    const estado = estadoTarefa(p, tarefaId);
+    if (estado === "cumprida") return { ok: false, mensagem: "Esta caçada já foi cumprida: entregue-a a qualquer atalaia." };
+    if (estado !== "ativa") return { ok: false, mensagem: "Esta caçada não está ativa." };
+    const s = p.tarefas[tarefaId];
+    s.ativa = false;
+    this.salvar(p);
+    const nomeArea = areas[npcs[t.mural]?.area]?.nome || "";
+    return {
+      ok: true,
+      tarefaId,
+      mensagem: `Caçada guardada com ${s.progresso}/${s.meta}. Para retomar, fale com o atalaia (${nomeArea}).`,
+    };
+  },
+
+  // Troca de pontos de tarefa (ao lado de um atalaia com o mural aberto). Pontos nunca viram moedas.
+  trocarPontos(id, ofertaId) {
+    const p = this.jogadores[id];
+    const o = OFERTAS_TROCA[ofertaId];
+    if (!o) return { ok: false, mensagem: "Essa troca não existe." };
+    if (!this.muralProximo(p)) return { ok: false, mensagem: "Aproxime-se de um atalaia para trocar pontos." };
+    const nome = nomeOferta(o);
+    if (o.unica && p.trocas[ofertaId] > 0) return { ok: false, mensagem: `Você já tem ${nome}.` };
+    const motivo = requisitoPendente(p, o.requer);
+    if (motivo) return { ok: false, mensagem: `Para trocar, é preciso ${motivo}.` };
+    if (p.pontosTarefa < o.preco) {
+      const falta = o.preco - p.pontosTarefa;
+      return { ok: false, mensagem: `${falta === 1 ? "Falta" : "Faltam"} ${textoPontos(falta)}.` };
+    }
+    const itens = o.item ? Array(o.quantidade).fill(o.item) : [];
+    if (itens.length && !this.podeReceberComRemocao(p, itens)) {
+      return { ok: false, mensagem: this.mensagemMochilaCheia(p, `Libere espaço para receber ${nome}.`) };
+    }
+    p.pontosTarefa -= o.preco;
+    for (const item of itens) this.adicionarItem(p, item);
+    p.trocas[ofertaId] = (p.trocas[ofertaId] || 0) + 1;
+    this.salvar(p);
+    const efeito = o.melhoria ? ` (+${o.melhoria.carga} kg de carga)` : "";
+    return {
+      ok: true,
+      ofertaId,
+      pontos: p.pontosTarefa,
+      mensagem: `Troca feita: ${nome}${efeito} por ${textoPontos(o.preco)}. Saldo: ${p.pontosTarefa}.`,
+    };
+  },
+
+  // Abate de criatura: +1 em todas as caçadas ativas cujo alvo casa com ela, até a meta.
+  // Devolve só as que avançaram: [{ id, nome, curto, progresso, meta, cumpridaAgora }].
+  registrarAbateTarefas(p, e) {
+    const avancos = [];
+    for (const id of ORDEM_TAREFAS) {
+      const s = p.tarefas?.[id];
+      const t = TAREFAS[id];
+      if (!s?.ativa || s.progresso >= s.meta || !casaAlvo(t.alvo, e)) continue;
+      s.progresso += 1;
+      avancos.push({ id, nome: t.nome, curto: t.curto, progresso: s.progresso, meta: s.meta, cumpridaAgora: s.progresso >= s.meta });
+    }
+    return avancos;
   },
 
   // ----- Combate do jogador -----
@@ -1909,6 +2340,7 @@ const Mundo = {
         ...base,
         derrotado: true,
         saques: morte.saques,
+        tarefas: morte.tarefas,
         mensagem: `${prefixo}${morte.mensagem}${textoHabilidade}`,
       };
     }
@@ -1927,14 +2359,22 @@ const Mundo = {
     p.vidaInimigos[e.id] = 0;
     const aviso = this.registrarAbate(p, e.id);
     const objetivo = aviso ? ` ${aviso}` : "";
+    const tarefas = this.registrarAbateTarefas(p, e);
+    // A mensagem só cita a caçada quando ela é cumprida (o progresso aparece nos números do mundo).
+    const cacada = tarefas
+      .filter((t) => t.cumpridaAgora)
+      .map((t) => ` Caçada cumprida: ${t.nome} (${t.meta}/${t.meta})! Entregue a qualquer atalaia.`)
+      .join("");
     const niveis = adicionarXP(p, e.xpRecompensa);
     const saque = this.criarSaque(p, e, agora);
     this.salvar(p);
     const up = niveis.length ? ` Você subiu para o nível ${p.nivel}! Vida máxima: ${vidaMaxima(p)}.` : "";
     const textoSaque = saque.length ? ` Saque no chão: ${saque.join(", ")}. Clique no saque ou caminhe sobre ele.` : "";
+    const reaparece = ` Ele reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
     return {
       saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id),
-      mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${e.xpRecompensa} XP.${up}${objetivo}${textoSaque} Ele reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`,
+      tarefas,
+      mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${e.xpRecompensa} XP.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
     };
   },
 

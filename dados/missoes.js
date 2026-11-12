@@ -87,13 +87,13 @@ const DADOS_MISSOES = [
     sinalAoIniciar: "missaoErvasIniciada",
     falas: {
       inicio: "Há viajantes feridos na vila. Preciso de 3 ervas medicinais; colete três e volte.",
-      concluida: "Obrigado por ajudar os viajantes. Você concluiu as tarefas de Canaã.",
+      concluida: "Obrigado por ajudar os viajantes. Você concluiu as missões de Canaã.",
       subiuNivel: " Você subiu para o nível {nivel}!",
     },
     painel: {
-      inicio: "Fale com Eliabe para a próxima tarefa.",
-      concluida: "Tarefas de Canaã concluídas. Siga a trilha (sudeste) ou fale com Micael para ir ao Deserto.",
-      encerrada: "Tarefas de Canaã concluídas.",
+      inicio: "Fale com Eliabe para a próxima missão.",
+      concluida: "Missões de Canaã concluídas. Siga a trilha (sudeste) ou fale com Micael para ir ao Deserto.",
+      encerrada: "Missões de Canaã concluídas.",
     },
     etapas: [
       {

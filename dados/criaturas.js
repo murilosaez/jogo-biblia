@@ -3,14 +3,28 @@
 // Dados puros (sem regras). Carregado antes de logica.js pelo index.html.
 // =====================================================================
 
-// Campos: id, nome, aparencia (sprite), area, x, y, vidaMaxima, danoContraJogador (antes da
-// defesa), defesa, raioPercepcao, xpRecompensa, saque { itens, moedas } e veneno ("padrao" ou
+// Campos: id, nome, aparencia (sprite), especie, familia, area, x, y, vidaMaxima, danoContraJogador
+// (antes da defesa), defesa, raioPercepcao, xpRecompensa, saque { itens, moedas } e veneno ("padrao" ou
 // { duracao, dano, intervalo }).
+// especie: grupo das instâncias da mesma criatura (escorpiao1, escorpiao2… = "escorpiao"); familia: chave de
+// FAMILIAS_CRIATURAS. As caçadas (dados/tarefas.js) e, no futuro, o bestiário contam por espécie ou família.
+
+// Famílias de criaturas. nome: como o grupo aparece na interface.
+const FAMILIAS_CRIATURAS = {
+  feras: { nome: "Feras" },
+  peconhentos: { nome: "Peçonhentos" },
+  saqueadores: { nome: "Saqueadores" },
+  soldados_farao: { nome: "Soldados de Faraó" },
+  amalequitas: { nome: "Amalequitas" },
+};
+
 const DADOS_CRIATURAS = [
   {
     id: "lobo1",
     nome: "Lobo",
     aparencia: "lobo",
+    especie: "lobo",
+    familia: "feras",
     area: "canaan",
     x: 22,
     y: 15,
@@ -25,6 +39,8 @@ const DADOS_CRIATURAS = [
     id: "escorpiao1",
     nome: "Escorpião",
     aparencia: "escorpiao",
+    especie: "escorpiao",
+    familia: "peconhentos",
     area: "deserto",
     x: 16,
     y: 9,
@@ -40,6 +56,8 @@ const DADOS_CRIATURAS = [
     id: "bandido1",
     nome: "Chefe dos saqueadores",
     aparencia: "bandido",
+    especie: "chefe_saqueadores",
+    familia: "saqueadores",
     area: "deserto",
     x: 49,
     y: 46,
@@ -54,6 +72,8 @@ const DADOS_CRIATURAS = [
     id: "soldadoEgito1",
     nome: "Guarda egípcio",
     aparencia: "soldado",
+    especie: "guarda_egipcio",
+    familia: "soldados_farao",
     area: "egito",
     x: 34,
     y: 31,
@@ -68,6 +88,8 @@ const DADOS_CRIATURAS = [
     id: "perseguidorMar1",
     nome: "Soldado perseguidor",
     aparencia: "soldado",
+    especie: "soldado_perseguidor",
+    familia: "soldados_farao",
     area: "marVermelho",
     x: 36,
     y: 31,
@@ -82,6 +104,8 @@ const DADOS_CRIATURAS = [
     id: "guardiaoSinai1",
     nome: "Guerreiro amalequita",
     aparencia: "guerreiro",
+    especie: "guerreiro_amalequita",
+    familia: "amalequitas",
     area: "sinai",
     x: 39,
     y: 31,
@@ -97,6 +121,8 @@ const DADOS_CRIATURAS = [
     id: "ameaçaGalileia1",
     nome: "Salteador da estrada",
     aparencia: "bandido",
+    especie: "salteador",
+    familia: "saqueadores",
     area: "galileia",
     x: 38,
     y: 31,

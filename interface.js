@@ -1,7 +1,8 @@
 // =====================================================================
 // interface.js — INTERFACE (DOM): painéis, barras, mochila, equipamento,
 // atalhos, lista de batalha, missão, avisos, registro, diálogo, modais
-// (loja, viagem, oração, ajuda), minimapa (posição), controles de toque.
+// (loja, viagem, oração, mural de caçadas, ajuda), minimapa (posição),
+// controles de toque.
 //
 // Guia de estilo §9 ("Iluminura viva"). Toda imagem vem de sprites.js
 // (window.Arte / window.iconeItemURL). Nenhum emoji: sem Arte, os
@@ -10,7 +11,10 @@
 // Contrato:
 //   consome  window.Jogo (game.js), Mundo/ITENS/... (logica.js, dados/*.js)
 //   expõe    window.UI + apelidos antigos (atualizarInterface, mostrarMensagem,
-//            abrirLoja, abrirViagem, abrirOracao, alternarMinimapa)
+//            abrirLoja, abrirViagem, abrirOracao, abrirMural, alternarMinimapa)
+//   caçadas  só lê p.tarefas, p.pontosTarefa e p.trocas pelas funções puras
+//            (tarefasDoMural, tarefasDoJogador, tarefasDoInimigo, ofertasDeTroca,
+//            textoEspera); aceitar, guardar e trocar passam por executar().
 // =====================================================================
 
 // ---------------------------------------------------------------------
@@ -437,6 +441,7 @@
       ["Crítico", `${s.critico}%`],
       ["Flechas", s.flechas],
       ["Carga", `${peso}/${cap}`],
+      ["Pontos de tarefa", p.pontosTarefa || 0],
     ];
     const html = linhas.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
     const dl = $("#atributos");
@@ -463,6 +468,49 @@
     if (prog) pr.textContent = `${prog[1]}/${prog[2]}`;
     $("#missaoLinhaTxt").textContent = objetivo;
     $("#missaoLinhaProg").textContent = prog ? `${prog[1]}/${prog[2]}` : "";
+  }
+
+  // ------------------------------------------------------------------
+  // Caçadas: linhas no painel Missão e saldo de pontos no topo
+  // ------------------------------------------------------------------
+  const temCacadas = () => typeof tarefasDoJogador === "function" && typeof tarefasDoMural === "function";
+  const limiteCacadas = () => (typeof REGRAS_TAREFAS !== "undefined" ? REGRAS_TAREFAS.limiteAtivas : 3);
+  const textoPts = (n) => (n === 1 ? "1 ponto de tarefa" : `${n} pontos de tarefa`);
+  // Ativas e cumpridas (as que ocupam vaga), na ordem em que foram aceitas.
+  const cacadasAtivas = (p) => (temCacadas() ? tarefasDoJogador(p).filter((t) => t.estado !== "guardada") : []);
+
+  let assinaturaCacadas = "";
+  function atualizarCacadas(p) {
+    const lista = $("#missaoCacadas");
+    if (!lista) return;
+    const ativas = cacadasAtivas(p);
+    const ass = JSON.stringify(ativas.map((t) => [t.id, t.progresso, t.meta, t.estado]));
+    if (ass === assinaturaCacadas) return;
+    assinaturaCacadas = ass;
+    lista.hidden = !ativas.length;
+    lista.innerHTML = ativas.map((t) => {
+      const cumprida = t.estado === "cumprida";
+      const pct = t.meta > 0 ? Math.min(100, (100 * t.progresso) / t.meta) : 0;
+      const estado = cumprida ? "cumprida: entregue a qualquer atalaia" : `${t.progresso} de ${t.meta}`;
+      const valor = cumprida ? '<b class="feita">Cumprida</b>' : `<span class="mini-barra"><i style="width:${pct}%"></i></span><b>${t.progresso}/${t.meta}</b>`;
+      return `<li${cumprida ? ' class="cumprida"' : ""}><button type="button" data-abrir-cacadas title="${esc(t.nome)} · ${esc(t.nomeArea)}"
+        aria-label="Caçada ${esc(t.nome)}, ${estado}. Abre suas caçadas.">${imgGlifo("ui_cacada")}<span class="nome">${esc(t.curto)}</span>${valor}</button></li>`;
+    }).join("");
+  }
+
+  // O saldo aparece no topo quando as caçadas entram no jogo do jogador: um mural aberto,
+  // uma caçada já tocada ou pontos já ganhos (personagem novo não vê um "0" sem explicação).
+  function cacadasConhecidas(p) {
+    if ((p.pontosTarefaTotal || 0) > 0 || Object.keys(p.tarefas || {}).length) return true;
+    if (typeof npcs === "undefined" || typeof estadoMissaoNpc !== "function") return false;
+    return Object.values(npcs).some((n) => n.papel === "mural" && estadoMissaoNpc(p, n.id) !== null);
+  }
+  function atualizarPontos(p) {
+    const b = $("#pontos");
+    if (!b) return;
+    b.hidden = !temCacadas() || !cacadasConhecidas(p);
+    const v = String(p.pontosTarefa || 0);
+    if ($("#pontosValor").textContent !== v) $("#pontosValor").textContent = v;
   }
 
   // ------------------------------------------------------------------
@@ -549,7 +597,8 @@
   function atualizarBatalha(p) {
     const alvo = alvoAtual();
     const vivos = inimigosVivos(p);
-    const ass = JSON.stringify([alvo, vivos.map((e) => [e.id, Mundo.obterVidaInimigo(ID, e.id)])]);
+    const cacadas = cacadasAtivas(p).map((t) => [t.id, t.progresso, t.estado]);
+    const ass = JSON.stringify([alvo, vivos.map((e) => [e.id, Mundo.obterVidaInimigo(ID, e.id)]), cacadas]);
     if (ass === assinaturaBatalha) return;
     assinaturaBatalha = ass;
     const caixa = $("#linhasBatalha");
@@ -561,8 +610,13 @@
         const pct = Math.max(0, Math.min(100, (100 * vida) / e.vidaMaxima));
         const curto = nomeCurto(e.nome);
         const mini = retratoURL(visualDe(e.id), { escala: 2, recorte: "busto" });
-        const marcas = (ehChefe(e.id) ? imgGlifo("ui_estrela_chefe", "px g16", "chefe") : "") + (e.veneno ? imgGlifo("ui_gota", "px g16", "venenoso") : "");
-        return `<button type="button" role="listitem" class="linha-inimigo${alvo === e.id ? " selecionada" : ""}" data-alvo="${esc(e.id)}" aria-pressed="${alvo === e.id}" aria-label="${esc(curto)}, vida ${vida} de ${e.vidaMaxima}${ehChefe(e.id) ? ", chefe" : ""}">
+        // Caçadas para as quais este abate conta: glifo de contagem, com uma linha por caçada no title.
+        const conta = typeof tarefasDoInimigo === "function" ? tarefasDoInimigo(p, e.id) : [];
+        const titulo = conta.map((t) => `Conta para: ${t.nome} (${t.progresso}/${t.meta})`).join("\n");
+        const marcaCacada = conta.length ? `<span class="marca-cacada" title="${esc(titulo)}">${imgGlifo("ui_cacada", "px g16", "conta para caçada")}</span>` : "";
+        const marcas = (ehChefe(e.id) ? imgGlifo("ui_estrela_chefe", "px g16", "chefe") : "") + (e.veneno ? imgGlifo("ui_gota", "px g16", "venenoso") : "") + marcaCacada;
+        const rotulo = `${curto}, vida ${vida} de ${e.vidaMaxima}${ehChefe(e.id) ? ", chefe" : ""}${conta.length ? `, conta para ${conta.map((t) => t.nome).join(" e ")}` : ""}`;
+        return `<button type="button" role="listitem" class="linha-inimigo${alvo === e.id ? " selecionada" : ""}" data-alvo="${esc(e.id)}" aria-pressed="${alvo === e.id}" aria-label="${esc(rotulo)}">
           <span class="mini">${mini ? `<img class="px" src="${mini}" alt="">` : ""}</span>
           <span class="nome">${esc(curto)}${marcas}</span>
           <span class="vida"><span class="mini-barra"><i style="width:${pct}%"></i></span><b>${vida}/${e.vidaMaxima}</b></span></button>`;
@@ -638,11 +692,18 @@
     if (ehFala(t)) return "fala";
     if (/envenen|derrotad[oa] você|caiu|morreu|sem flechas|sem poç/i.test(t)) return "perigo";
     if (/dano|golpe|ataca|derrot|crític/i.test(t)) return "combate";
+    if (/caçada|pontos de tarefa/i.test(t)) return "missao"; // antes de "moedas": "Ganhe XP, moedas e pontos…"
     if (/pegou|coletou|recebeu|moedas|\+\d/i.test(t)) return "saque";
     if (/missão|capítulo|recompensa|tarefa|rota/i.test(t)) return "missao";
     return "sistema";
   }
-  const glifoDoTipo = (tipo, texto) => (tipo === "perigo" && /veneno|envenen/i.test(texto) ? "ui_gota" : (TIPOS[tipo] || TIPOS.sistema).glifo);
+  // Caçadas e troca de pontos ganham o glifo próprio (contagem e selo) no Registro e nos avisos.
+  function glifoDoTipo(tipo, texto) {
+    if (tipo === "perigo" && /veneno|envenen/i.test(texto)) return "ui_gota";
+    if (tipo !== "fala" && /^Troca feita/.test(texto)) return "ui_selo";
+    if (tipo !== "fala" && /caçada/i.test(texto)) return "ui_cacada";
+    return (TIPOS[tipo] || TIPOS.sistema).glifo;
+  }
 
   const registro = [];
   function registrar(texto, tipo) {
@@ -760,7 +821,8 @@
     dlg.texto = corpo;
     dlg.npc = typeof npcs !== "undefined" ? npcs[id] : null;
     $("#dlgNome").textContent = nomeCurto(nome || dlg.npc?.nome || "");
-    $("#dlgPapel").textContent = PAPEIS[id] || (papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : "");
+    const reserva = papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : papel === "mural" ? "vigia · mural de caçadas" : "";
+    $("#dlgPapel").textContent = PAPEIS[id] || reserva;
     const url = retratoURL(visualDe(id), { escala: 3, recorte: "busto" });
     const img = $("#dlgRetrato");
     if (url) img.src = url; else img.removeAttribute("src");
@@ -904,6 +966,165 @@
       </div>
       <ul class="lista-loja" role="tabpanel">${lista}</ul>
       <p class="nota" style="color:var(--tinta-suave)">Flechas são vendidas em lotes de ${typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5}. Fique ao lado do mercador para negociar.</p>`;
+  }
+
+  // ----- Mural de caçadas (atalaia) -----
+  // muralNpc: o atalaia ao lado (aceitar, retomar e trocar valem) ou null (consulta pela tecla T,
+  // pelo saldo no topo ou pelo painel Missão: ver, guardar e saber quando cada caçada volta).
+  // A entrega acontece ao falar com o atalaia (antes de o mural abrir); a fala dele vem no topo.
+  // retornoMural: resposta da última ação feita no mural (os avisos ficam atrás do véu do modal;
+  // sem isto, "Libere espaço para receber…" passaria despercebido).
+  let muralNpc = null, abaMural = "cacadas", falaMural = "", htmlMural = "", retornoMural = null;
+  function abrirMural(npcId) {
+    const p = jogador();
+    if (!p || !temCacadas()) return;
+    const npc = npcId && typeof npcs !== "undefined" ? npcs[npcId] : null;
+    muralNpc = npc?.papel === "mural" ? npcId : null;
+    falaMural = muralNpc && dlg.id === muralNpc ? dlg.texto : "";
+    if (falaMural) fecharDialogo();
+    const img = $("#muralRetrato");
+    let url;
+    if (muralNpc) {
+      const area = (typeof areas !== "undefined" && areas[npc.area]?.nome) || "";
+      $("#muralTitulo").textContent = area ? `Caçadas · ${area}` : "Caçadas";
+      $("#muralSub").textContent = "Atalaia · mural de caçadas";
+      url = retratoURL(visualDe(muralNpc), { escala: 3, recorte: "busto" });
+      img.className = "px";
+    } else {
+      $("#muralTitulo").textContent = "Suas caçadas";
+      $("#muralSub").textContent = "Consulta · aceitar e trocar só ao lado de um atalaia";
+      url = glifoURL("ui_cacada", 4);
+      img.className = "px g32";
+    }
+    if (url) img.src = url; else img.removeAttribute("src");
+    abaMural = "cacadas";
+    retornoMural = null;
+    desenharMural(true);
+    abrirModal("modalMural");
+  }
+
+  // Redesenha só quando o HTML muda (atualizar() roda a cada passo de inimigo; o tique, a cada
+  // minuto da espera). Recriar os botões entre o mousedown e o mouseup perderia o clique.
+  function desenharMural(forcar) {
+    const p = jogador();
+    const corpo = $("#muralCorpo");
+    if (!p || !corpo || !temCacadas()) return;
+    const html = montarMural(p);
+    if (!forcar && html === htmlMural) return;
+    htmlMural = html;
+    // O foco volta para o mesmo cartão (Aceitar vira Guardar) ou para a aba; a rolagem fica.
+    const ativo = document.activeElement;
+    const foco = ativo && corpo.contains(ativo) ? ativo.closest("[data-tarefa], [data-oferta], [data-aba-mural]") : null;
+    const d = foco?.dataset || {};
+    const seletor = d.tarefa ? `[data-tarefa="${d.tarefa}"]` : d.oferta ? `[data-oferta="${d.oferta}"]` : d.abaMural ? `[data-aba-mural="${d.abaMural}"]` : null;
+    const rolagem = corpo.scrollTop;
+    corpo.innerHTML = html;
+    corpo.scrollTop = rolagem;
+    if (!seletor) return;
+    const alvo = $(seletor, corpo);
+    const botao = alvo?.matches("button") ? alvo : alvo?.querySelector("button:not([disabled])");
+    (botao && !botao.disabled ? botao : $(`[data-aba-mural="${abaMural}"]`, corpo))?.focus({ preventScroll: true });
+  }
+
+  function montarMural(p) {
+    const limite = limiteCacadas();
+    const acompanhando = cacadasAtivas(p).length;
+    const abas = [["cacadas", "ui_cacada", "Caçadas"], ["troca", "ui_selo", "Troca de pontos"]];
+    const painel = abaMural === "troca" ? montarTroca(p) : montarCacadas(p, acompanhando < limite);
+    const r = retornoMural;
+    const retorno = r ? `<p class="retorno${r.ok ? "" : " erro"}" role="status">${esc(r.mensagem)}</p>` : "";
+    return `${falaMural ? `<p class="fala-modal">${esc(falaMural)}</p>` : ""}${retorno}
+      <div class="saldo">${imgGlifo("ui_selo", "px g16")}<span>${textoPts(p.pontosTarefa || 0)} · acompanhando ${acompanhando} de ${limite}</span></div>
+      <div class="abas-modal" role="tablist" aria-label="Mural">${abas.map(([k, g, rot]) => `<button type="button" class="aba-modal" role="tab"
+        id="abaMural-${k}" data-aba-mural="${k}" aria-selected="${abaMural === k}" aria-controls="painelMural">${imgGlifo(g)}${rot}</button>`).join("")}</div>
+      <div id="painelMural" role="tabpanel" aria-labelledby="abaMural-${abaMural}">${painel}</div>`;
+  }
+
+  function montarCacadas(p, haVaga) {
+    const lista = (ts) => `<ul class="lista-loja">${ts.map((t) => htmlCacada(t, haVaga)).join("")}</ul>`;
+    if (muralNpc) {
+      const doMural = tarefasDoMural(p, muralNpc);
+      const outras = tarefasDoJogador(p).filter((t) => t.mural !== muralNpc);
+      const livre = doMural.some((t) => t.estado === "disponivel" || t.estado === "guardada");
+      const cheio = !haVaga && livre
+        ? `<p class="nota">${imgGlifo("ui_cadeado")} Você já acompanha ${limiteCacadas()} caçadas. Guarde uma para aceitar outra.</p>` : "";
+      return `${cheio}${lista(doMural)}${outras.length ? `<h3>Suas caçadas de outras regiões</h3>${lista(outras)}` : ""}`;
+    }
+    const minhas = tarefasDoJogador(p);
+    let html = minhas.length
+      ? lista(minhas)
+      : '<p class="vazio-txt">Você não acompanha nenhuma caçada. Os atalaias oferecem caçadas depois da missão principal de cada região.</p>';
+    // Quando cada caçada já entregue volta ao mural (a espera corre com o jogo fechado).
+    const voltam = typeof visaoTarefa === "function"
+      ? Object.keys(p.tarefas || {}).map((id) => visaoTarefa(p, id)).filter((t) => t && t.estado === "espera").sort((a, b) => a.esperaMs - b.esperaMs)
+      : [];
+    if (voltam.length) {
+      html += `<h3>Voltam ao mural</h3><ul class="voltam">${voltam.map((t) => `<li><span>${esc(t.nome)} · ${esc(t.nomeArea)}</span>
+        <b>em ${esc(textoEspera(t.esperaMs))}</b></li>`).join("")}</ul>`;
+    }
+    return html;
+  }
+
+  // Botão do cartão conforme o estado; nota = motivo visível quando aceitar/retomar não vale aqui.
+  function acaoCacada(t, haVaga) {
+    const btn = (attrs, rot, cls = "primario") => `<button type="button" class="btn ${cls}" ${attrs}>${rot}</button>`;
+    if (t.estado === "disponivel" || t.estado === "guardada") {
+      const rot = t.estado === "guardada" ? "Retomar" : "Aceitar";
+      const longe = muralNpc === null || muralNpc !== t.mural;
+      const motivo = longe ? `Fale com o atalaia (${t.nomeArea})` : !haVaga ? `Limite de ${limiteCacadas()} caçadas: guarde uma` : "";
+      const attrs = `data-aceitar-tarefa="${esc(t.id)}"${motivo ? ` disabled title="${esc(motivo)}"` : ""} aria-label="${rot} ${esc(t.nome)}${motivo ? `. ${esc(motivo)}` : ""}"`;
+      return { botao: btn(attrs, rot), nota: longe ? `${motivo} para ${rot.toLowerCase()}.` : "" };
+    }
+    if (t.estado === "ativa") {
+      const attrs = `data-guardar-tarefa="${esc(t.id)}" title="Guarda sem perder o progresso e libera a vaga" aria-label="Guardar ${esc(t.nome)} (o progresso fica)"`;
+      return { botao: btn(attrs, "Guardar", "secundario"), nota: "" };
+    }
+    if (t.estado === "cumprida") return { botao: btn("disabled", "Cumprida · entregue a um atalaia"), nota: "" };
+    if (t.estado === "espera") return { botao: btn("disabled", `Volta em ${esc(textoEspera(t.esperaMs))}`), nota: "" };
+    return { botao: btn("disabled", `${imgGlifo("ui_cadeado")}Bloqueada`), nota: `Requer: ${t.motivo}.` };
+  }
+
+  function htmlCacada(t, haVaga) {
+    const retrato = t.retrato ? retratoURL(visualDe(t.retrato), { escala: 2, recorte: "busto" }) : "";
+    const acompanhada = ["ativa", "cumprida", "guardada"].includes(t.estado);
+    const pct = t.meta > 0 ? Math.min(100, (100 * t.progresso) / t.meta) : 0;
+    const barra = acompanhada
+      ? `<div class="barra xp" role="progressbar" aria-label="Progresso de ${esc(t.nome)}" aria-valuemin="0" aria-valuenow="${t.progresso}"
+          aria-valuemax="${t.meta}"><i style="width:${pct.toFixed(1)}%"></i><b>${t.progresso}/${t.meta}</b></div>`
+      : "";
+    const { botao, nota } = acaoCacada(t, haVaga);
+    const outraRegiao = muralNpc !== t.mural ? `<span class="regiao">${esc(t.nomeArea)}</span>` : "";
+    const guardada = t.estado === "guardada" ? '<em class="etiqueta-tipo estado">Guardada</em>' : "";
+    const premio = `+${t.recompensa.xp} XP · ${t.recompensa.moedas} moedas · ${imgGlifo("ui_selo", "px g16")}${t.pontosNaEntrega} pts${t.primeiraVez ? " (1ª vez)" : ""}`;
+    return `<li class="item-loja cacada${t.estado === "espera" ? " em-espera" : ""}" data-tarefa="${esc(t.id)}">
+      <span class="icone">${retrato ? `<img class="px" src="${retrato}" alt="">` : ""}</span>
+      <div class="cacada-info">
+        <div class="cacada-nome"><strong>${esc(t.nome)}</strong><em class="etiqueta-tipo${t.tipo === "grande" ? " grande" : ""}">${esc(t.tipoNome)}</em>${guardada}${outraRegiao}</div>
+        <p class="cacada-desc">${esc(t.descricao)}</p>
+        <p>Valem: ${esc(t.valem.join(", "))}</p>${barra}
+        <p class="cacada-premio">${premio}</p>${nota ? `<p class="cacada-nota">${esc(nota)}</p>` : ""}
+      </div>
+      <div class="cacada-acao">${botao}</div></li>`;
+  }
+
+  function montarTroca(p) {
+    const selo = imgGlifo("ui_selo", "px g16");
+    const aqui = muralNpc !== null;
+    const linhas = ofertasDeTroca(p).map((o) => {
+      const icone = o.item ? htmlItem(o.item) : imgGlifo(o.icone || "ui_alforje", "px g32", o.nome);
+      let rot = `${o.preco} ${selo}`, attrs = "", estado = "";
+      if (o.estado === "comprada") { rot = "Já é seu"; attrs = "disabled"; estado = "já é seu"; }
+      else if (o.estado === "bloqueada") { rot = `${imgGlifo("ui_cadeado")}Bloqueada`; attrs = "disabled"; estado = `requer ${o.motivo}`; }
+      else if (o.estado === "semPontos") { rot = `faltam ${o.falta}`; attrs = `disabled title="Faltam ${o.falta} pontos de tarefa"`; estado = `faltam ${o.falta}`; }
+      else if (!aqui) { attrs = 'disabled title="Fale com um atalaia"'; estado = "fale com um atalaia"; }
+      const rotulo = `Trocar ${o.preco} pontos de tarefa por ${o.nome}${estado ? `; ${estado}` : ""}`;
+      return `<li class="item-loja" data-oferta="${esc(o.id)}"><span class="icone">${icone}</span>
+        <span><strong>${esc(o.nome)}</strong><span>${esc(o.efeito)} · ${o.preco} pontos</span>${o.estado === "bloqueada" ? `<span class="motivo">Requer: ${esc(o.motivo)}.</span>` : ""}</span>
+        <button type="button" class="btn primario" data-trocar="${esc(o.id)}" ${attrs} aria-label="${esc(rotulo)}">${rot}</button></li>`;
+    }).join("");
+    const consulta = aqui ? "" : '<p class="nota">Para trocar, fale com um atalaia de mural aberto. Aqui você vê os preços e o que falta.</p>';
+    return `${consulta}<ul class="lista-loja">${linhas}</ul>
+      <p class="nota">Pontos de tarefa não expiram nem se perdem na morte. O Azarias não compra itens da troca.</p>`;
   }
 
   // ----- Viagem -----
@@ -1088,6 +1309,7 @@
       [k("1", "–", "6"), "Usar o atalho"],
       [k("P"), "Pescar (no mar, ao lado do ponto de pesca)"],
       [k("F1"), "Oração (depois de aprender com Jesus, na Galileia)"],
+      [k("T"), "Suas caçadas (aceitar e trocar só ao lado de um atalaia)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
       [k("M"), "Mostrar ou ocultar o mapa"],
       [k("Alt"), "Segure para ver o nome de todos"],
@@ -1109,6 +1331,9 @@
     $("#ajudaCorpo").innerHTML = `${toque ? secToque + secItens + secTeclado : secTeclado + secItens + secToque}
       <h3>Regras</h3>
       <p>As habilidades (corpo, arco, defesa e oração) melhoram com o uso. Fora de combate, a vida volta aos poucos. ${esc(regra)}</p>
+      <p>Caçadas: depois da missão principal de cada região, o atalaia oferece rondas (voltam 20 h depois da entrega) e grandes caçadas
+        (voltam 6 d 20 h depois). Até 3 ao mesmo tempo; cada abate conta para todas as que pedem aquela criatura. Entregue a qualquer
+        atalaia e troque os pontos de tarefa por melhorias.</p>
       <p>Viagem rápida: fale com Micael em Canaã ou Tamar no Deserto. A trilha no extremo sul liga as regiões a pé. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. Azarias, no Deserto, vende provisões e compra recursos. No mar, pesque nos pontos com ondulação.</p>
       <div class="acoes-modal">
         <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${comToque}">${comToque ? "Ocultar" : "Mostrar"} controles de toque</button>
@@ -1499,7 +1724,7 @@
       if (r) {
         b.dataset.tipo = r.tipo;
         const img = b.querySelector("img");
-        const url = glifoURL(GLIFO_INTERACAO[r.tipo] || "ui_falar", 2);
+        const url = glifoURL(r.rotulo === "Caçadas" ? "ui_cacada" : GLIFO_INTERACAO[r.tipo] || "ui_falar", 2);
         if (url) img.src = url;
         img.style.transform = r.tipo === "portal" ? "rotate(90deg)" : "";
         b.querySelector(".rot").textContent = r.rotulo;
@@ -1516,13 +1741,16 @@
     const p = jogador();
     if (!p) return;
     $("#moedasValor").textContent = String(p.moedas);
+    atualizarPontos(p);
     atualizarBarras(p);
     atualizarPersonagem(p);
     atualizarMissao(p);
+    atualizarCacadas(p);
     atualizarItens(p);
     atualizarBatalha(p);
     $("#mapaCoord").textContent = `${p.x}, ${p.y}`;
     if (modalAberto?.id === "modalLoja") desenharLoja();
+    if (modalAberto?.id === "modalMural") desenharMural();
   }
 
   function areaMudou(area) {
@@ -1535,6 +1763,8 @@
     fecharDialogo();
     // Loja e viagem dependem de estar ao lado do NPC; oração e ajuda não.
     if (modalAberto && (modalAberto.id === "modalLoja" || modalAberto.id === "modalViagem")) fecharModal(false);
+    // O mural de um atalaia também; a consulta (T) pode continuar aberta.
+    if (modalAberto?.id === "modalMural" && muralNpc !== null) fecharModal(false);
     alvoDesenhado = undefined;
     assinaturaBatalha = "";
     atualizar();
@@ -1550,6 +1780,8 @@
     if (alvoDesenhado && typeof inimigos !== "undefined" && inimigos[alvoDesenhado]) atualizarVidaAlvo(inimigos[alvoDesenhado]);
     if (dlg.id && dlg.npc && Math.max(Math.abs(p.x - dlg.npc.x), Math.abs(p.y - dlg.npc.y)) > 2) fecharDialogo();
     if (modalAberto?.id === "modalOracao" && estadoOracao(p).ass !== assinaturaOracao) desenharOracao();
+    // A espera ("Volta em 19 h 59 min") muda a cada minuto: o mural só se redesenha quando o texto muda.
+    if (modalAberto?.id === "modalMural") desenharMural();
   }
 
   // ------------------------------------------------------------------
@@ -1569,6 +1801,7 @@
     $("#btnMenu").addEventListener("click", abrirAjuda);
     $("#btnRegistro").addEventListener("click", () => abrirRegistro(painel("pRegistro").dataset.aberto !== "true"));
     $("#dialogo").addEventListener("click", () => (dlg.mostrado < dlg.texto.length ? completarDialogo() : fecharDialogo()));
+    $("#pontos").addEventListener("click", () => abrirMural(null));
     $("#missaoLinha").addEventListener("click", () => {
       const b = $("#missaoLinha");
       b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"));
@@ -1579,6 +1812,7 @@
       if (aba) mostrarAbaMedia(aba.dataset.aba);
       const folha = e.target.closest("[data-folha]");
       if (folha) abrirFolha(folha.dataset.folha);
+      if (e.target.closest("[data-abrir-cacadas]")) abrirMural(null);
     });
     $("#folhaFechar").addEventListener("click", fecharFolha);
     // arrastar a alça para baixo fecha a folha
@@ -1602,6 +1836,26 @@
         if (vender) { executar({ tipo: "vender", item: vender.dataset.vender }); desenharLoja(); $("#lojaCorpo [data-aba-loja=vender]")?.focus(); return; }
         const abaL = e.target.closest("[data-aba-loja]");
         if (abaL) { abaLoja = abaL.dataset.abaLoja; desenharLoja(); $(`#lojaCorpo [data-aba-loja=${abaLoja}]`)?.focus(); return; }
+        // Mural: aba, aceitar/retomar, guardar (sem confirmação: nada se perde) e trocar pontos.
+        const abaM = e.target.closest("[data-aba-mural]");
+        if (abaM) {
+          abaMural = abaM.dataset.abaMural;
+          retornoMural = null;
+          desenharMural(true);
+          $(`#muralCorpo [data-aba-mural=${abaMural}]`)?.focus();
+          return;
+        }
+        const acaoMural = (comando) => {
+          const r = executar(comando);
+          retornoMural = r?.mensagem ? { ok: !!r.ok, mensagem: r.mensagem } : null;
+          desenharMural(true);
+        };
+        const aceitar = e.target.closest("[data-aceitar-tarefa]");
+        if (aceitar && !aceitar.disabled) return acaoMural({ tipo: "aceitarTarefa", tarefaId: aceitar.dataset.aceitarTarefa });
+        const guardar = e.target.closest("[data-guardar-tarefa]");
+        if (guardar && !guardar.disabled) return acaoMural({ tipo: "guardarTarefa", tarefaId: guardar.dataset.guardarTarefa });
+        const trocar = e.target.closest("[data-trocar]");
+        if (trocar && !trocar.disabled) return acaoMural({ tipo: "trocarPontos", ofertaId: trocar.dataset.trocar });
         const viajar = e.target.closest("[data-viajar]");
         if (viajar && !viajar.disabled) {
           fecharModal(false);
@@ -1636,12 +1890,15 @@
         return;
       }
       if (e.key === "F1") { e.preventDefault(); if (modalAberto?.id === "modalOracao") fecharModal(); else abrirOracao(); return; }
+      const teclaT = (e.key === "t" || e.key === "T") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (teclaT && modalAberto?.id === "modalMural") { e.preventDefault(); fecharModal(); return; }
       if (modalAberto) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target && e.target.tagName) || "";
       if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
       if ((e.key === "m" || e.key === "M") && !e.repeat) { e.preventDefault(); alternarMinimapa(); return; }
       if (e.key === "?") { e.preventDefault(); abrirAjuda(); return; }
+      if (teclaT) { e.preventDefault(); abrirMural(null); return; }
       if (/^[1-6]$/.test(e.key) && !e.repeat) {
         const i = Number(e.key) - 1;
         const hk = $(`#atalhos [data-atalho="${i}"]`);
@@ -1696,6 +1953,7 @@
     abrirLoja,
     abrirViagem,
     abrirOracao,
+    abrirMural,
     abrirAjuda,
     alternarMinimapa,
     atualizarMinimapa() { /* o MUNDO desenha o minimapa no #miniMap (game.js) */ },
@@ -1708,6 +1966,7 @@
   window.abrirLoja = () => UI.abrirLoja();
   window.abrirViagem = () => UI.abrirViagem();
   window.abrirOracao = () => UI.abrirOracao();
+  window.abrirMural = (id) => UI.abrirMural(id ?? null);
   window.alternarMinimapa = () => UI.alternarMinimapa();
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar);
