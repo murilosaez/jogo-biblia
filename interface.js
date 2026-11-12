@@ -1937,6 +1937,7 @@
       [k("N"), "Maná do dia (colher e comer) e reserva de descanso do Sábado"],
       [k("V"), "Vocação: escolher (nível 8), especialização (nível 50), habilidades e talentos (1 ponto por nível)"],
       [k("O"), "Ofícios: nível de cada ofício e receitas para fabricar com os materiais da mochila"],
+      [`${k("+")} ${k("−")}`, "Aproximar ou afastar o mapa (também com a roda do mouse); a escolha fica salva"],
       [k("1", "–", "8"), "Habilidades da vocação (com vocação; os itens passam para Shift + 1 a 6)"],
       [k("X"), "Mostrar ou ocultar o analisador de caçada (XP/h, saque/h, lucro)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
@@ -2665,6 +2666,12 @@
       if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
       if ((e.key === "m" || e.key === "M") && !e.repeat) { e.preventDefault(); alternarMinimapa(); return; }
       if (e.key === "?") { e.preventDefault(); abrirAjuda(); return; }
+      // Zoom do mapa: + aproxima, − afasta (a roda do mouse faz o mesmo).
+      if ((e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") && !e.repeat) {
+        e.preventDefault();
+        window.gameScene?.ajustarZoom?.(e.key === "-" || e.key === "_" ? -1 : 1);
+        return;
+      }
       if (teclaT) { e.preventDefault(); abrirMural(null); return; }
       if (teclaB) { e.preventDefault(); abrirBestiario(); return; }
       if (teclaO) { e.preventDefault(); abrirOficios(); return; }
