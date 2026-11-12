@@ -1408,6 +1408,98 @@
     g.lin(2, 7, 3, 8, "#2f7680"); g.lin(2, 11, 3, 10, "#2f7680"); g.p(2, 9, "#2f7680"); g.p(1, 6, "#4fa3a5"); g.p(1, 12, "#4fa3a5");
     g.p(10, 8, "#2a1a14"); g.lin(6, 6, 8, 6, "#2f7680");
   });
+  // ----- Ofícios (JGB-24): matérias-primas e o que se fabrica -----
+  item("madeira", (g) => {
+    // duas toras empilhadas, com os anéis à mostra
+    for (const [y, x0] of [[11, 3], [7, 4]]) {
+      g.ret(x0, y - 1, 9, 3, (x, yy) => tom(["#5a3622", "#7d522b", "#a8703a"], -((yy - y) * 0.6)));
+      g.elip(x0 + 9.5, y + 0.5, 1.6, 1.6, esfera(["#b07a3e", "#d9a35c", "#efc88a"]));
+      g.p(x0 + 9, y, "#7d522b");
+    }
+    g.p(5, 10, "#4f3220"); g.p(8, 6, "#4f3220");
+  });
+  item("argila", (g) => {
+    g.elip(8, 11, 5.5, 3.4, esfera(["#6a3a22", "#9a5a36", "#c47e52", "#e0a272"]));
+    g.elip(8, 8.5, 3.2, 2.2, esfera(["#7a4428", "#a8643c", "#d08c5c"]));
+    g.p(6, 11, "#5a3018"); g.p(10, 12, "#5a3018"); g.p(7, 7, "#f0c094");
+  });
+  item("minerio_cobre", (g) => {
+    g.elip(8, 10.5, 5.2, 4, esfera(["#3e3a3c", "#5e585a", "#867e7e", "#a8a0a0"]));
+    for (const [x, y] of [[6, 9], [9, 11], [10, 8], [5, 12]]) { g.p(x, y, "#c46a2b"); g.p(x + 1, y, "#e89a5a"); }
+    g.p(8, 13, "#3fa66a");
+  });
+  item("resina", (g) => {
+    // gotas de resina âmbar
+    g.elip(7, 10, 3, 3.4, esfera(["#8a4a10", "#c47a1e", "#e8a83a", "#ffd88a"]));
+    g.elip(11, 12, 1.8, 2, esfera(["#8a4a10", "#c47a1e", "#e8a83a"]));
+    g.lin(7, 4, 7, 6, "#c47a1e"); g.p(6, 8, "#fff2c8");
+  });
+  item("peixe_grande", (g) => {
+    g.elip(8, 9, 6.4, 3.4, (nx, ny) => (ny > 0.4 ? "#eadcb6" : tom(["#2a5a70", "#3f84a0", "#8ac4d8"], -(0.4 * nx + 0.9 * ny))));
+    g.lin(1, 6, 2, 8, "#2a5a70"); g.lin(1, 12, 2, 10, "#2a5a70"); g.p(1, 9, "#2a5a70");
+    g.p(12, 8, "#2a1a14"); g.lin(5, 5, 9, 5, "#2a5a70"); g.p(7, 9, "#c8e4ec");
+  });
+  item("lingote_bronze", (g) => {
+    for (let y = 0; y < 5; y++) g.ret(3 + (4 - y) * 0.5 | 0, 7 + y, 10 - ((4 - y) | 0), 1, (x) => tom(["#7a4a18", "#b8862b", "#e8b94a", "#ffe08a"], -(x - 8) * 0.12 - (2 - y) * 0.35));
+    g.lin(5, 7, 10, 7, "#ffe08a"); g.lin(3, 11, 12, 11, "#5a3410");
+  });
+  item("tecido_linho", (g) => {
+    // peça de tecido dobrada em três
+    for (let i = 0; i < 3; i++) g.ret(3, 6 + i * 2.5 | 0, 10, 2, (x) => tom(["#c8b898", "#e8dcc0", "#fbf5e6"], -(x - 8) * 0.1 + (1 - i) * 0.3));
+    g.lin(3, 13, 12, 13, "#a8987a"); g.p(12, 7, "#3b5a9a"); g.p(12, 10, "#3b5a9a");
+  });
+  item("frasco_barro", (g) => {
+    g.elip(8, 11, 3.2, 3, esfera(["#6a3a22", "#9a5a36", "#c47e52"]));
+    g.ret(7, 5, 2, 4, "#9a5a36"); g.ret(6, 4, 4, 1, "#c47e52"); g.p(7, 10, "#e0a272");
+  });
+  item("oleo_peixe", (g) => {
+    g.elip(8, 10.5, 3.6, 3.4, esfera(["#5a4a1a", "#9a8a2a", "#d0c04a", "#f0e08a"]));
+    g.ret(7, 4, 2, 4, "#c8b48a"); g.ret(6, 3, 4, 1, "#7d522b"); g.p(7, 9, "#fff8c8");
+  });
+  item("peixe_seco", (g) => {
+    g.elip(8, 9, 5, 2.4, (nx, ny) => tom(["#7a5a30", "#a8844a", "#d0b07a"], -(0.4 * nx + 0.9 * ny)));
+    g.lin(2, 7, 3, 9, "#7a5a30"); g.lin(2, 11, 3, 9, "#7a5a30");
+    for (const x of [6, 8, 10]) g.p(x, 9, "#5a3a1a");
+    g.lin(8, 3, 8, 6, "#c8b48a"); g.p(11, 8, "#2a1a14");
+  });
+  item("peixe_defumado", (g) => {
+    g.elip(8, 9.5, 5.6, 2.8, (nx, ny) => tom(["#4a2a14", "#7a4a22", "#a8703a"], -(0.4 * nx + 0.9 * ny)));
+    g.lin(1, 7, 2, 9, "#4a2a14"); g.lin(1, 12, 2, 10, "#4a2a14"); g.p(12, 9, "#2a1a14");
+    g.p(6, 4, "#b8b0a8"); g.p(8, 3, "#d8d0c8"); g.p(10, 5, "#b8b0a8");
+  });
+  item("jarro_barro", (g) => {
+    g.elip(8, 10, 4.6, 4.2, esfera(["#6a3a22", "#9a5a36", "#c47e52", "#e0a272"]));
+    g.ret(6, 3, 4, 3, "#9a5a36"); g.ret(5, 3, 6, 1, "#c47e52");
+    g.lin(11, 5, 12, 8, "#6a3a22"); g.lin(5, 10, 11, 10, "#5a3018");
+  });
+  item("lamparina", (g) => {
+    g.elip(7, 11, 5, 2.4, esfera(["#6a3a22", "#9a5a36", "#c47e52", "#e0a272"]));
+    g.ret(11, 9, 3, 2, "#9a5a36"); g.p(6, 10, "#2a1a14");
+    g.p(13, 7, "#ffe08a"); g.p(13, 8, "#e8a83a"); g.p(12, 7, "#ffd06a"); g.p(13, 6, "#fff2c8");
+  });
+  item("anfora", (g) => {
+    g.elip(8, 9, 3.6, 4.4, esfera(["#6a3a22", "#9a5a36", "#c47e52", "#e0a272"]));
+    g.ret(7, 2, 2, 3, "#9a5a36"); g.lin(6, 3, 5, 6, "#6a3a22"); g.lin(9, 3, 10, 6, "#6a3a22");
+    g.lin(8, 13, 8, 14, "#6a3a22"); g.p(7, 15, "#5a3018"); g.lin(5, 9, 11, 9, "#c8b48a");
+  });
+  item("incenso", (g) => {
+    // pedaços de olíbano num pratinho, com fumaça
+    g.elip(8, 12.5, 5, 1.8, esfera(["#6e5a40", "#a8906a", "#d0bc94"]));
+    for (const [x, y] of [[6, 11], [9, 11], [8, 10]]) g.elip(x, y, 1.4, 1.2, esfera(["#c8a85a", "#e8d08a", "#fff2c8"]));
+    g.p(8, 7, "#d8d0c8"); g.p(9, 5, "#b8b0a8"); g.p(8, 3, "#d8d0c8");
+  });
+  item("oleo_uncao", (g) => {
+    // chifre de óleo (1 Sm 16:13)
+    g.lin(4, 12, 11, 5, (x, y, i) => (i % 3 ? "#e8d8b0" : "#c8b48a"));
+    g.lin(5, 12, 12, 5, "#b8a07a"); g.lin(4, 11, 10, 5, "#fff2c8");
+    g.ret(11, 3, 2, 2, "#7d522b"); g.p(13, 3, "#e8b94a"); g.p(3, 13, "#7a6a4a");
+  });
+  item("manto_bordado", (g) => {
+    g.ret(4, 4, 8, 10, (x, y) => tom(["#5a2a6a", "#7a3a8e", "#a05ab8"], -((x - 8) * 0.1 + (y - 8) * 0.2)));
+    g.apagar(4, 4); g.apagar(11, 4); g.ret(7, 4, 2, 2, "#3a1a44");
+    for (let y = 6; y <= 13; y += 2) { g.p(4, y, "#e8b94a"); g.p(11, y, "#e8b94a"); }
+    g.lin(4, 13, 11, 13, "#e8b94a");
+  });
   item("moeda", (g, q) => {
     const larg = [3, 2, 1, 2][q];
     g.elip(8, 11, larg + 0.01, 3, (nx, ny) => (Math.abs(nx) > 0.75 && larg > 1 ? "#b8862b" : tom(["#b8862b", "#e8b94a", "#ffe08a"], -(0.5 * nx + 0.8 * ny))));
@@ -1449,6 +1541,13 @@
   glifo("ui_rosa", ["...k....", "..kRk...", ".kkRkk..", "kDDYddk.", ".kkDkk..", "..kDk...", "...k....", "........"], { R: "#c2452d", Y: "#e8b94a", D: "#e6cf9c", d: "#c9ad78" });
   glifo("ui_tela_cheia", ["YYY..YYY", "Y......Y", "Y......Y", "........", "........", "Y......Y", "Y......Y", "YYY..YYY"], { Y: "#e6cf9c" });
   glifo("ui_talentos", ["..kGGk..", ".kGgGGk.", "kGGkGgGk", "kGgGGGGk", ".kkTTkk.", "..kTTk..", "..kTTk..", ".kkkkkk."], { G: "#5f8a3a", g: "#8fbf5a", T: "#7a4a30" });
+  // Ofícios (JGB-24): um glifo por ofício (of_<icone> em dados/oficios.js).
+  glifo("of_pescador", ["......k.", ".....kWk", "..kk.k..", ".kBBkk..", "kBbBBBk.", ".kBBBk..", "..kkk...", "........"], { B: "#3f84a0", b: "#2a1a14", W: "#e6cf9c" });
+  glifo("of_ferreiro", [".kkkkk..", ".kIIIIk.", ".kkkIIk.", "...kNk..", "...kNk..", "...kNk..", "...kNk..", "...kkk.."], { I: "#a8b4bc", N: "#7d522b" });
+  glifo("of_carpinteiro", ["....kkk.", "...kIIk.", "..kIIk..", ".kNkk...", "kNk.....", "kk......", ".kkkkkk.", "kNNNNNNk"], { I: "#a8b4bc", N: "#a8703a" });
+  glifo("of_oleiro", ["..kkkk..", ".kOOOOk.", "kOoOOOOk", "kOOOOOOk", ".kOOOOk.", "..kkkk..", "kkkkkkkk", "kNNNNNNk"], { O: "#c47e52", o: "#e0a272", N: "#7d522b" });
+  glifo("of_tecelao", ["k.k.k.k.", "kLkLkLk.", "LLLLLLL.", "kLkLkLk.", "LLLLLLL.", "kLkLkLk.", "k.k.k.k.", "........"], { L: "#e6cf9c" });
+  glifo("of_perfumista", ["...kk...", "..kYYk..", "...kk...", "..kPPk..", ".kPpPPk.", "kPPPPPPk", ".kPPPPk.", "..kkkk.."], { Y: "#e8b94a", P: "#8a4ac2", p: "#c8a0e8" });
   glifo("ui_ajuda", ["..kkkk..", ".kYYYYk.", "kYkkkYYk", "kYYYkYYk", "kYYkYYYk", "kYYYYYYk", ".kYkYYk.", "..kkkk.."], { Y: "#e8b94a" });
   glifo("ui_fechar", ["DD....DD", "DDD..DDD", ".DDDDDD.", "..DDDD..", "..DDDD..", ".DDDDDD.", "DDD..DDD", "DD....DD"], { D: "#e6cf9c" });
   glifo("ui_menu", ["........", "DDDDDDDD", "DDDDDDDD", "........", "DDDDDDDD", "DDDDDDDD", "........", "DDDDDDDD"], { D: "#e6cf9c" });

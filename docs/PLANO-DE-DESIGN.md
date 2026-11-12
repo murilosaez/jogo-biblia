@@ -64,7 +64,7 @@ Ventre do grande peixe (solo), Templo de Dagom (grupo, enigma de pilares), Cova 
 6–8 habilidades por vocação com recarga e combinações; ameaça (tanque/dano/cura); posicionamento (costas +dano, terreno alto +alcance, água lenta); consumíveis táticos (comida 30 min, óleo na arma, incenso); PvP só opcional e não letal (arenas, torneios, duelos).
 
 ## Itens e economia
-Raridades (comum, incomum, raro, épico, relíquia) com cor/brilho/som; atributos aleatórios; **12 pedras do peitoral** (Êx 28) para engastar; forja +1 a +10 (falha consome material, nunca destrói o item); ofícios (ferreiro, carpinteiro, pescador, oleiro, tecelão, perfumista); bazar de Jerusalém com taxa; drenos de moeda (reparo, taxas, forja, casas); montarias (jumento, camelo, cavalo, carro).
+Raridades (comum, incomum, raro, épico, relíquia) com cor/brilho/som; atributos aleatórios; **12 pedras do peitoral** (Êx 28) para engastar; forja +1 a +10 (falha consome material, nunca destrói o item); ofícios (ferreiro, carpinteiro, pescador, oleiro, tecelão, perfumista — feito no JGB-24: `dados/oficios.js`, níveis 1–30, 22 receitas, pontos de extração de madeira, argila, minério e resina, pesca como Pescador, janela Ofícios na tecla O); bazar de Jerusalém com taxa; drenos de moeda (reparo, taxas, forja, casas); montarias (jumento, camelo, cavalo, carro).
 
 ## Social
 **12 tribos** como facções (nível 20, competição cooperativa semanal); guildas com banco e salão; **mentoria** veterano→novato com recompensa mútua; grupo, chat, amigos; moradia com troféus.

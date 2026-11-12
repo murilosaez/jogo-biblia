@@ -14,7 +14,7 @@
 const TILE = 32;
 const COLS = DADOS_TAMANHO_MAPA.colunas; // dados/mapas.js
 const ROWS = DADOS_TAMANHO_MAPA.linhas;
-const VERSAO_SAVE = 14;
+const VERSAO_SAVE = 15;
 const ESCALA_MAPAS_V8 = 2; // os mapas passaram de 80×60 (save v8) para 160×120 (save v9)
 
 const VIDA_BASE = 100;
@@ -756,6 +756,7 @@ function coletaveisDaArea(areaId) {
 // Pontos fixos sempre abertos: pesca, coletáveis, pontos das áreas (início, trilha, cais, viagem,
 // embarque) e portais. Depois disso, os bolsões fechados viram obstáculo.
 for (const ponto of pontosPesca) abrirCasa("mar", ponto.x, ponto.y);
+for (const ponto of pontosExtracao) abrirCasa(ponto.area, ponto.x, ponto.y);
 for (const [areaId, grupo] of Object.entries(COLETAVEIS_POR_AREA))
   for (const c of grupo.lista) abrirCasa(areaId, c.x, c.y);
 for (const area of Object.values(areas)) {
@@ -1341,6 +1342,158 @@ function arvoreValida(p) {
     }
   }
   return true;
+}
+
+// ---------------------------------------------------------------------
+// Ofícios (JGB-24)
+// ---------------------------------------------------------------------
+// OFICIOS, RECEITAS e REGRAS_OFICIOS vêm de dados/oficios.js; pontosExtracao de dados/mundo.js. Save:
+// p.oficios[oficio] = { xp } (XP total; o nível sai dele) e p.extracaoRespawn[ponto] = quando brota de novo.
+const ORDEM_OFICIOS = Object.keys(OFICIOS);
+
+// Ofício que ganha XP ao colher um item (pesca, ervas, extração), ou null.
+const OFICIO_DA_COLETA = {};
+for (const [id, o] of Object.entries(OFICIOS)) for (const item of Object.keys(o.coleta)) OFICIO_DA_COLETA[item] = id;
+
+// XP para subir do nível n ao n + 1.
+function xpParaSubirOficio(n) {
+  return Math.round(REGRAS_OFICIOS.xp.base * Math.pow(n, REGRAS_OFICIOS.xp.expoente));
+}
+
+// XP total para chegar ao nível n a partir do 1.
+function xpTotalOficio(n) {
+  let total = 0;
+  for (let i = 1; i < n; i++) total += xpParaSubirOficio(i);
+  return total;
+}
+
+function xpOficio(p, oficio) {
+  const xp = p?.oficios?.[oficio]?.xp;
+  return Number.isFinite(xp) && xp > 0 ? xp : 0;
+}
+
+function nivelOficio(p, oficio) {
+  const xp = xpOficio(p, oficio);
+  let n = 1;
+  while (n < REGRAS_OFICIOS.nivelMaximo && xp >= xpTotalOficio(n + 1)) n++;
+  return n;
+}
+
+// { nivel, xpNoNivel, xpParaProximo (0 no máximo), maximo }.
+function progressoOficio(p, oficio) {
+  const nivel = nivelOficio(p, oficio);
+  const maximo = nivel >= REGRAS_OFICIOS.nivelMaximo;
+  return { nivel, xpNoNivel: maximo ? 0 : xpOficio(p, oficio) - xpTotalOficio(nivel), xpParaProximo: maximo ? 0 : xpParaSubirOficio(nivel), maximo };
+}
+
+// Soma XP num ofício (até o máximo) e devolve o nível novo se subiu, ou 0.
+function ganharXpOficio(p, oficio, xp) {
+  if (!registroDe(OFICIOS, oficio) || !(xp > 0)) return 0;
+  const antes = nivelOficio(p, oficio);
+  if (!objetoValido(p.oficios)) p.oficios = {};
+  const teto = xpTotalOficio(REGRAS_OFICIOS.nivelMaximo);
+  p.oficios[oficio] = { xp: Math.min(teto, xpOficio(p, oficio) + xp) };
+  const depois = nivelOficio(p, oficio);
+  return depois > antes ? depois : 0;
+}
+
+// Chance de colher 1 a mais no nível do ofício.
+function chanceColetaExtra(nivel) {
+  const r = REGRAS_OFICIOS.coletaExtra;
+  return Math.min(r.maximo, r.porNivel * Math.max(0, nivel - 1));
+}
+
+// Chance de a pesca trazer um peixe grande (0 abaixo do nível pedido).
+function chancePeixeGrande(nivel) {
+  const r = REGRAS_OFICIOS.peixeGrande;
+  return nivel < r.nivel ? 0 : Math.min(r.maximo, r.chance + r.porNivel * (nivel - r.nivel));
+}
+
+// Chance de um equipamento fabricado sair incomum ou melhor.
+function chanceQualidade(nivelOficioAtual, nivelReceita) {
+  const r = REGRAS_OFICIOS.qualidade;
+  return Math.min(r.maximo, r.porNivelAcima * Math.max(0, nivelOficioAtual - nivelReceita));
+}
+
+// Pontos de extração de uma área, prontos para desenhar: [{ id, x, y, item, textura }].
+function extracoesDaArea(areaId) {
+  return pontosExtracao.filter((pt) => pt.area === areaId).map((pt) => ({ id: pt.id, x: pt.x, y: pt.y, item: pt.item, textura: pt.item }));
+}
+
+// Quantas unidades de um item há na mochila (o equipamento vestido não conta).
+function quantidadeNaMochila(p, item) {
+  return (p?.inventario || []).filter((x) => x === item).length;
+}
+
+// Pode fabricar a receita agora? { ok, motivo, vezes } — vezes: quantas dá para fazer com os materiais.
+function podeFabricar(p, receitaId) {
+  const r = registroDe(RECEITAS, receitaId);
+  if (!r) return { ok: false, motivo: "Receita desconhecida.", vezes: 0 };
+  const o = OFICIOS[r.oficio];
+  const nivel = nivelOficio(p, r.oficio);
+  const vezes = Math.min(...Object.entries(r.materiais).map(([item, q]) => Math.floor(quantidadeNaMochila(p, item) / q)));
+  if (nivel < r.nivel) return { ok: false, motivo: `Requer ${o.nome} no nível ${r.nivel} (você está no ${nivel}).`, vezes };
+  if (vezes < 1) {
+    const faltam = Object.entries(r.materiais)
+      .filter(([item, q]) => quantidadeNaMochila(p, item) < q)
+      .map(([item, q]) => `${q - quantidadeNaMochila(p, item)} ${nomeItem(item).toLowerCase()}`);
+    return { ok: false, motivo: `Faltam: ${faltam.join(", ")}.`, vezes: 0 };
+  }
+  return { ok: true, motivo: "", vezes };
+}
+
+// Tudo o que a janela Ofícios mostra (pura).
+function visaoOficios(p) {
+  return ORDEM_OFICIOS.map((id) => {
+    const o = OFICIOS[id];
+    const prog = progressoOficio(p, id);
+    return {
+      id,
+      nome: o.nome,
+      descricao: o.descricao,
+      onde: o.onde,
+      icone: o.icone,
+      ...prog,
+      coleta: Object.entries(o.coleta).map(([item, xp]) => ({ item, nome: nomeItem(item), xp })),
+      extra: chanceColetaExtra(prog.nivel),
+      peixeGrande: id === "pescador" ? chancePeixeGrande(prog.nivel) : 0,
+      receitas: Object.entries(RECEITAS)
+        .filter(([, r]) => r.oficio === id)
+        .map(([rid, r]) => {
+          const pode = podeFabricar(p, rid);
+          const info = infoItem(r.produto.item);
+          return {
+            id: rid,
+            nivel: r.nivel,
+            aberta: prog.nivel >= r.nivel,
+            xp: r.xp,
+            produto: { item: r.produto.item, nome: nomeItem(r.produto.item), quantidade: r.produto.quantidade, valor: VALORES_VENDA[r.produto.item] || 0, tipo: info?.tipo },
+            qualidade: TIPOS_COM_RARIDADE.has(info?.tipo) ? chanceQualidade(prog.nivel, r.nivel) : 0,
+            materiais: Object.entries(r.materiais).map(([item, q]) => ({ item, nome: nomeItem(item), precisa: q, tem: quantidadeNaMochila(p, item) })),
+            pode: pode.ok,
+            vezes: pode.vezes,
+            motivo: pode.motivo,
+          };
+        }),
+    };
+  });
+}
+
+// Save: XP inteiro e no máximo o do nível máximo; pontos de extração conhecidos, sem relógio adiantado.
+function normalizarOficios(p, agora) {
+  const salvo = objetoValido(p.oficios) ? p.oficios : {};
+  const teto = xpTotalOficio(REGRAS_OFICIOS.nivelMaximo);
+  p.oficios = {};
+  for (const id of ORDEM_OFICIOS) {
+    const xp = salvo[id]?.xp;
+    p.oficios[id] = { xp: Number.isFinite(xp) && xp > 0 ? Math.min(teto, Math.floor(xp)) : 0 };
+  }
+  const tempos = objetoValido(p.extracaoRespawn) ? p.extracaoRespawn : {};
+  p.extracaoRespawn = {};
+  for (const pt of pontosExtracao) {
+    const t = tempos[pt.id];
+    if (Number.isFinite(t) && t > agora) p.extracaoRespawn[pt.id] = Math.min(t, agora + REGRAS_OFICIOS.respawnExtracao);
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -2468,6 +2621,8 @@ function personagemNovo(id) {
     ervasRespawn: {},
     odresRespawn: {},
     pescaRespawn: {},
+    extracaoRespawn: {},
+    oficios: {},
     xp: 0,
     nivel: 1,
     moedas: 30,
@@ -2649,7 +2804,7 @@ const Mundo = {
     for (const chave of ["inimigosDerrotados", "ervasColetadas", "odresColetados"]) {
       if (!Array.isArray(p[chave])) p[chave] = [];
     }
-    for (const chave of ["ervasRespawn", "odresRespawn", "pescaRespawn", "vidaInimigos"]) {
+    for (const chave of ["ervasRespawn", "odresRespawn", "pescaRespawn", "extracaoRespawn", "vidaInimigos"]) {
       if (!objetoValido(p[chave])) p[chave] = {};
     }
 
@@ -2710,6 +2865,8 @@ const Mundo = {
     // Vocação (save v13): saves anteriores começam sem vocação (escolha no nível de escolha).
     normalizarVocacao(p, agora);
     // Talentos (save v14): saves anteriores começam com a árvore vazia e os pontos do nível livres.
+    // Ofícios (save v15): XP de cada ofício e pontos de extração.
+    normalizarOficios(p, agora);
     if (normalizarTalentos(p)) {
       this.adicionarAviso(p, "talentos_devolvidos", "Os seus talentos mudaram nesta versão: os pontos voltaram, de graça. Distribua de novo na janela Vocação (tecla V), aba Talentos.");
     }
@@ -2770,6 +2927,14 @@ const Mundo = {
         "atualizacao_13",
         "Novidade: as vocações! Escolha a sua (tecla V): Guerreiro, Fundibulário, Levita, Profeta ou Pastor. " +
           "Cada uma tem 7 habilidades na barra (teclas 1 a 8); os atalhos de itens passam para Shift + 1 a 6.",
+      );
+    }
+    if (!novo && versaoAnterior < 15) {
+      this.adicionarAviso(
+        p,
+        "atualizacao_15",
+        "Novidade: os ofícios! Pescador, Ferreiro, Carpinteiro, Oleiro, Tecelão e Perfumista sobem de nível " +
+          "colhendo e fabricando. A pesca já conta para o Pescador. Tecla O ou botão Ofícios.",
       );
     }
     if (!novo && versaoAnterior < 14 && vocacaoDe(p)) {
@@ -2958,6 +3123,13 @@ const Mundo = {
     if (!p || !grupo || !grupo.lista.some((c) => c.id === itemId)) return false;
     const tempos = p[grupo.respawn];
     return !tempos?.[itemId] || Date.now() >= tempos[itemId];
+  },
+
+  extracaoDisponivel(id, area, pontoId) {
+    const p = this.jogadores[id];
+    if (!p || !pontosExtracao.some((pt) => pt.id === pontoId && pt.area === area)) return false;
+    const t = p.extracaoRespawn?.[pontoId];
+    return !t || Date.now() >= t;
   },
 
   pescaDisponivel(id, pontoId) {
@@ -3325,6 +3497,8 @@ const Mundo = {
         return this.escolherVocacao(id, comando.vocacao);
       case "escolherEspecializacao":
         return this.escolherEspecializacao(id, comando.especializacao);
+      case "fabricar":
+        return this.fabricar(id, comando.receita, comando.quantidade);
       case "aprenderTalento":
         return this.aprenderTalento(id, comando.talento);
       case "resetarTalentos":
@@ -3464,6 +3638,8 @@ const Mundo = {
 
   // Ervas (Canaã) e odres (Deserto) ao pisar no ponto.
   coletarRecurso(id, p) {
+    const extracao = this.coletarExtracao(id, p);
+    if (extracao) return extracao;
     const grupo = COLETAVEIS_POR_AREA[p.area];
     if (!grupo) return null;
     const c = grupo.lista.find((x) => x.x === p.x && x.y === p.y && this.coletavelDisponivel(id, p.area, x.id));
@@ -3479,8 +3655,94 @@ const Mundo = {
     if (novaCasa) Object.assign(c, novaCasa);
     this.registrarColeta(p, grupo.item, c.id, "mapa");
     this.salvar(p);
-    const mensagem = p.area === "canaan" ? "Você coletou uma erva medicinal." : "Você encontrou um odre de água.";
-    return { ok: true, itemColetado: c.id, mensagem };
+    const oficio = this.xpDaColeta(p, grupo.item, 1);
+    const mensagem = (p.area === "canaan" ? "Você coletou uma erva medicinal." : "Você encontrou um odre de água.") + oficio.texto;
+    return { ok: true, itemColetado: c.id, mensagem, ...(oficio.subiu ? { oficioSubiu: oficio.subiu } : {}) };
+  },
+
+  // ----- Ofícios (JGB-24) -----
+  // XP de ofício por colher "quantidade" de um item: { texto, subiu: { oficio, nivel } | null }.
+  xpDaColeta(p, item, quantidade) {
+    const oficio = OFICIO_DA_COLETA[item];
+    if (!oficio) return { texto: "", subiu: null };
+    const xp = OFICIOS[oficio].coleta[item] * quantidade;
+    const nivel = ganharXpOficio(p, oficio, xp);
+    const nome = OFICIOS[oficio].nome;
+    return {
+      texto: ` +${xp} XP de ${nome}.${nivel ? ` ${nome} subiu para o nível ${nivel}!` : ""}`,
+      subiu: nivel ? { oficio, nivel } : null,
+    };
+  },
+
+  // Ponto de extração ao pisar nele: 1 unidade (às vezes 2, pelo nível do ofício) e XP.
+  coletarExtracao(id, p) {
+    const pt = pontosExtracao.find((x) => x.area === p.area && x.x === p.x && x.y === p.y && this.extracaoDisponivel(id, p.area, x.id));
+    if (!pt) return null;
+    const oficio = OFICIO_DA_COLETA[pt.item];
+    const extra = oficio && Math.random() < chanceColetaExtra(nivelOficio(p, oficio)) ? 1 : 0;
+    let colhidos = 0;
+    for (let i = 0; i < 1 + extra; i++) if (this.adicionarItem(p, pt.item)) colhidos++;
+    const nome = nomeItem(pt.item).toLowerCase();
+    if (!colhidos) return { ok: true, mensagem: this.mensagemMochilaCheia(p, `Libere espaço para colher ${nome}.`) };
+    p.extracaoRespawn[pt.id] = Date.now() + REGRAS_OFICIOS.respawnExtracao;
+    for (let i = 0; i < colhidos; i++) this.registrarColeta(p, pt.item, pt.id, "mapa");
+    const xp = this.xpDaColeta(p, pt.item, colhidos);
+    this.salvar(p);
+    return {
+      ok: true,
+      extracao: pt.id,
+      item: pt.item,
+      quantidade: colhidos,
+      ...(xp.subiu ? { oficioSubiu: xp.subiu } : {}),
+      mensagem: `Você colheu ${colhidos > 1 ? `${colhidos}× ` : ""}${nome}.${xp.texto}`,
+    };
+  },
+
+  // Fabrica uma receita "quantidade" vezes (ou "todos": quantas os materiais permitirem), em qualquer lugar.
+  // Equipamento pode sair incomum ou melhor (REGRAS_OFICIOS.qualidade). Devolve { ok, feitos, itens, subiu, mensagem }.
+  fabricar(id, receitaId, quantidade = 1) {
+    const p = this.jogadores[id];
+    const r = registroDe(RECEITAS, receitaId);
+    const pode = podeFabricar(p, receitaId);
+    if (!pode.ok) return { ok: false, mensagem: pode.motivo };
+    const pedidas = quantidade === "todos" ? pode.vezes : Math.max(1, Math.floor(Number(quantidade) || 1));
+    const vezes = Math.min(pedidas, pode.vezes, 100);
+    const remocoes = Object.entries(r.materiais);
+    const produtos = Array(r.produto.quantidade).fill(r.produto.item);
+    const equipamento = TIPOS_COM_RARIDADE.has(infoItem(r.produto.item)?.tipo);
+    const itens = [];
+    let subiu = null;
+    let feitos = 0;
+    for (let i = 0; i < vezes; i++) {
+      if (!this.podeReceberComRemocao(p, produtos, remocoes)) break;
+      for (const [item, q] of remocoes) this.removerItens(p, item, q);
+      for (const base of produtos) {
+        const nivel = nivelOficio(p, r.oficio);
+        const item = equipamento && Math.random() < chanceQualidade(nivel, r.nivel) ? gerarItem(base, sortearRaridade("incomum")) : base;
+        p.inventario.push(item);
+        itens.push(item);
+      }
+      const nivelNovo = ganharXpOficio(p, r.oficio, r.xp);
+      if (nivelNovo) subiu = { oficio: r.oficio, nivel: nivelNovo };
+      feitos++;
+    }
+    const o = OFICIOS[r.oficio];
+    if (!feitos) return { ok: false, mensagem: this.mensagemMochilaCheia(p, `Libere espaço para ${nomeItem(r.produto.item).toLowerCase()}.`) };
+    this.salvar(p);
+    const total = feitos * r.produto.quantidade;
+    const raros = itens.filter((x) => raridadeItem(x) !== raridadeItem(r.produto.item));
+    const textoRaros = raros.length ? ` Saiu ${raros.map((x) => `${nomeItem(x)} (${RARIDADES[raridadeItem(x)].nome.toLowerCase()})`).join(", ")}!` : "";
+    const parou = feitos < pedidas ? (feitos < vezes ? " A mochila encheu." : "") : "";
+    return {
+      ok: true,
+      receita: receitaId,
+      feitos,
+      itens,
+      ...(subiu ? { oficioSubiu: subiu } : {}),
+      mensagem:
+        `${o.nome}: ${total}× ${nomeItem(r.produto.item).toLowerCase()} (+${feitos * r.xp} XP).${textoRaros}` +
+        `${subiu ? ` ${o.nome} subiu para o nível ${subiu.nivel}!` : ""}${parou}`,
+    };
   },
 
   viajar(id, destino) {
@@ -3516,14 +3778,25 @@ const Mundo = {
     if (!this.pescaDisponivel(id, ponto.id)) {
       return { ok: false, mensagem: "Esse ponto está descansando. Tente outro local ou volte em alguns instantes." };
     }
-    if (!this.adicionarItem(p, "peixe")) {
+    // Pescador (JGB-24): o nível traz o peixe grande e, às vezes, um peixe a mais.
+    const nivel = nivelOficio(p, "pescador");
+    const item = Math.random() < chancePeixeGrande(nivel) ? "peixe_grande" : "peixe";
+    if (!this.adicionarItem(p, item)) {
       return { ok: false, mensagem: this.mensagemMochilaCheia(p, "Libere espaço antes de pescar.") };
     }
+    const extra = Math.random() < chanceColetaExtra(nivel) && this.adicionarItem(p, "peixe") ? 1 : 0;
     p.pescaRespawn[ponto.id] = Date.now() + TEMPO_RESPAWN_PESCA;
+    const xpPesca = OFICIOS.pescador.coleta[item] + extra * OFICIOS.pescador.coleta.peixe;
+    const nivelNovo = ganharXpOficio(p, "pescador", xpPesca);
+    const xp = { texto: ` +${xpPesca} XP de Pescador.${nivelNovo ? ` Pescador subiu para o nível ${nivelNovo}!` : ""}`, subiu: nivelNovo ? { oficio: "pescador", nivel: nivelNovo } : null };
     this.salvar(p);
+    const pescou = item === "peixe_grande" ? "Você pescou um peixe grande!" : "Você pescou um peixe fresco!";
     return {
       ok: true,
-      mensagem: `Você pescou um peixe fresco! Os mercadores compram cada peixe por ${VALORES_VENDA.peixe} moedas.`,
+      item,
+      quantidade: 1 + extra,
+      ...(xp.subiu ? { oficioSubiu: xp.subiu } : {}),
+      mensagem: `${pescou}${extra ? " E mais um peixe na rede." : ""}${xp.texto} Os mercadores compram cada peixe por ${VALORES_VENDA.peixe} moedas.`,
     };
   },
 
