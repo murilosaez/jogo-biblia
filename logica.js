@@ -20,7 +20,13 @@ const VIDA_BASE = 100;
 const VIDA_POR_NIVEL = 10;
 const NIVEL_MAXIMO = 100;
 const XP_NIVEIS = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250];
-const XP_POR_NIVEL_APOS_TABELA = 650;
+const XP_POR_NIVEL_APOS_TABELA = 650; // custo do nível 11
+const XP_ACRESCIMO_POR_NIVEL = 150; // cada nível depois do 11 custa 150 XP a mais que o anterior
+// Criatura muito mais fraca que você rende menos XP: até XP_FOLGA_NIVEIS de diferença, XP cheio;
+// depois, cai XP_QUEDA_POR_NIVEL por nível de diferença, até XP_FATOR_MINIMO.
+const XP_FOLGA_NIVEIS = 5;
+const XP_QUEDA_POR_NIVEL = 0.15;
+const XP_FATOR_MINIMO = 0.1;
 
 // Regeneração de vida fora de combate: 2% da vida máxima a cada 3 s,
 // começando 8 s depois do último golpe dado ou recebido.
@@ -144,7 +150,19 @@ function vidaMaxima(personagem) {
 // XP total necessário para sair do nível informado.
 function limiarNivel(nivel) {
   if (nivel < XP_NIVEIS.length) return XP_NIVEIS[nivel];
-  return XP_NIVEIS[XP_NIVEIS.length - 1] + (nivel - XP_NIVEIS.length + 1) * XP_POR_NIVEL_APOS_TABELA;
+  // Depois da tabela, o custo de cada nível cresce: 650, 800, 950... (soma de progressão aritmética).
+  const m = nivel - XP_NIVEIS.length + 1;
+  return XP_NIVEIS[XP_NIVEIS.length - 1] + m * XP_POR_NIVEL_APOS_TABELA + (XP_ACRESCIMO_POR_NIVEL * m * (m - 1)) / 2;
+}
+
+// XP que um abate rende para o personagem (criatura sem "nivel" nos dados rende sempre o XP cheio).
+function xpDoAbate(p, e) {
+  const base = e.xpRecompensa || 0;
+  if (!Number.isInteger(e.nivel)) return base;
+  const acima = (p.nivel || 1) - e.nivel - XP_FOLGA_NIVEIS;
+  if (acima <= 0) return base;
+  const fator = Math.max(XP_FATOR_MINIMO, 1 - XP_QUEDA_POR_NIVEL * acima);
+  return Math.max(1, Math.round(base * fator));
 }
 
 function adicionarXP(personagem, quantidade) {
@@ -2356,6 +2374,7 @@ const Mundo = {
         derrotado: true,
         saques: morte.saques,
         tarefas: morte.tarefas,
+        xpGanho: morte.xpGanho,
         mensagem: `${prefixo}${morte.mensagem}${textoHabilidade}`,
       };
     }
@@ -2380,7 +2399,8 @@ const Mundo = {
       .filter((t) => t.cumpridaAgora)
       .map((t) => ` Caçada cumprida: ${t.nome} (${t.meta}/${t.meta})! Entregue a qualquer atalaia.`)
       .join("");
-    const niveis = adicionarXP(p, e.xpRecompensa);
+    const xpGanho = xpDoAbate(p, e);
+    const niveis = adicionarXP(p, xpGanho);
     const saque = this.criarSaque(p, e, agora);
     this.salvar(p);
     const up = niveis.length ? ` Você subiu para o nível ${p.nivel}! Vida máxima: ${vidaMaxima(p)}.` : "";
@@ -2389,7 +2409,8 @@ const Mundo = {
     return {
       saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id),
       tarefas,
-      mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${e.xpRecompensa} XP.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
+      xpGanho,
+      mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${xpGanho} XP${xpGanho < e.xpRecompensa ? " (criatura fraca para o seu nível)" : ""}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
     };
   },
 

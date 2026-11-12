@@ -116,6 +116,13 @@ Inimigos obrigatórios (vida / defesa / dano por golpe antes da sua defesa)
 - Guerreiro amalequita 400 / 12 / 11 · Salteador da estrada 470 / 14 / 11
 Com o autoataque, cada luta da campanha leva de 11 a 35 segundos e as últimas pedem 1 ou 2 poções.
 
+Níveis e XP
+- XP para passar do nível 10 ao 11 = 650; cada nível seguinte custa 150 XP a mais que o anterior
+  (11→12: 800, 12→13: 950...). Até o nível 10, vale a tabela 100, 150, 200, 250, 300, 350, 400, 450, 500, 550.
+- Cada criatura tem um nível (lobo 3, escorpião 5, chefe dos saqueadores e guarda egípcio 6, perseguidor 7,
+  amalequita 8, salteador 9). Até 5 níveis acima dela, o abate rende o XP cheio; depois, 15% a menos por
+  nível de diferença, até o mínimo de 10%. O abate continua contando para missões e caçadas.
+
 Vida, poções e veneno
 - Vida máxima = 100 + 10 por nível acima do 1º.
 - Poção de vida: recupera 25% da vida máxima (mínimo 30). Poção de fé: +40 de fé.
