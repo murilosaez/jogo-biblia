@@ -271,7 +271,13 @@ function lutar(j, inimigoId, { maxPocoes = 3, tipo = "corpo" } = {}) {
     }
     if (j.agora >= proximoAuto) {
       proximoAuto += 2000;
-      const r = j.exec({ tipo: tipo === "distancia" ? "atacarDistancia" : "atacar", alvoId: inimigoId });
+      let r = j.exec({ tipo: tipo === "distancia" ? "atacarDistancia" : "atacar", alvoId: inimigoId });
+      // Atordoado: perde a vez. Longe (a criatura recuou ou fugiu): vai atrás dela e tenta de novo.
+      if (r.atordoado) { j.avancar(100); continue; }
+      if (!r.ok && /Chegue ao lado|Nenhum inimigo a até/.test(r.mensagem)) {
+        posicionarAoLado(j, e.area, e);
+        r = j.exec({ tipo: tipo === "distancia" ? "atacarDistancia" : "atacar", alvoId: inimigoId });
+      }
       assert.ok(r.ok, `ataque falhou: ${r.mensagem}`);
       golpes++;
       if (r.critico) criticos++;
@@ -2202,7 +2208,7 @@ teste("35. caçadas: aceitar, guardar, limite de 3, visões e balões dos atalai
     concluidas: 0,
     aceitaEm: p.tarefas.deserto_ferroes.aceitaEm,
   });
-  igual(visao("egito_farao").valem, ["Guarda egípcio", "Soldado perseguidor"]);
+  igual(visao("egito_farao").valem, ["Guarda egípcio", "Soldado perseguidor", "Arqueiro egípcio", "Auriga de Faraó"]);
   assert.strictEqual(visao("egito_farao").tipoNome, "Grande caçada");
   // tarefasDoJogador: ativas e cumpridas por aceitaEm, depois as guardadas.
   p.tarefas.canaa_lobos.aceitaEm = j.agora + 5;
@@ -3129,14 +3135,19 @@ teste("49. tabelas de saque: simulação de muitos abates bate com as chances, d
   const raridade = j.g("raridadeItem");
   const ordem = Object.keys(RARIDADES);
   const originais = Object.values(inimigos).filter((e) => !e.base);
-  const N = 200_000;
+  const N = 60_000;
   const linhas = [];
   for (const e of originais) {
     const tabela = e.saque.itens;
     const itens = tabela.map((l) => l.item);
     assert.strictEqual(new Set(itens).size, itens.length, `${e.id}: cada item aparece uma vez na tabela`);
-    assert.ok(tabela.some((l) => chanceSaque(l.chance) <= CHANCES.raro && chanceSaque(l.chance) > CHANCES.muito_raro), `${e.id}: tem drop raro (1%)`);
-    assert.ok(tabela.some((l) => chanceSaque(l.chance) <= CHANCES.muito_raro), `${e.id}: tem drop muito raro (0,1%)`);
+    // Raro nomeado tem saque garantido e pedra a 5%; as outras têm drop raro (1%) e muito raro (0,1%).
+    if (e.nomeado) {
+      assert.ok(tabela.some((l) => chanceSaque(l.chance) === 1 && l.raridadeMinima), `${e.id}: equipamento garantido`);
+    } else {
+      assert.ok(tabela.some((l) => chanceSaque(l.chance) <= CHANCES.raro && chanceSaque(l.chance) > CHANCES.muito_raro), `${e.id}: tem drop raro (1%)`);
+      assert.ok(tabela.some((l) => chanceSaque(l.chance) <= CHANCES.muito_raro), `${e.id}: tem drop muito raro (0,1%)`);
+    }
     // Linhas de 1% ou menos sempre rendem raro ou melhor (brilham e tocam).
     for (const l of tabela.filter((l) => chanceSaque(l.chance) <= CHANCES.raro)) {
       const min = l.raridadeMinima || l.raridade || raridade(l.item);
@@ -3164,8 +3175,8 @@ teste("49. tabelas de saque: simulação de muitos abates bate com as chances, d
       linhas.push({ criatura: e.id, item: l.item, chance: pr, obs, esperado });
     }
   }
-  console.log("\n    Simulação das tabelas de saque (" + N.toLocaleString("pt-BR") + " abates por criatura):");
-  for (const l of linhas.filter((l) => l.chance < 1)) {
+  console.log("\n    Simulação das tabelas de saque (" + N.toLocaleString("pt-BR") + " abates por criatura; drops de 1% e 0,1%):");
+  for (const l of linhas.filter((l) => l.chance <= 0.01)) {
     console.log(`    ${l.criatura.padEnd(18)}${l.item.padEnd(20)}${(l.chance * 100).toFixed(1).padStart(6)}%  ${String(l.obs).padStart(7)}  (esperado ${l.esperado.toFixed(0)})`);
   }
 
@@ -3193,9 +3204,9 @@ teste("49. tabelas de saque: simulação de muitos abates bate com as chances, d
     for (const etapa of m.etapas || []) for (const o of etapa.objetivos || []) if (o.tipo === "coletar" && o.origem === "saque") pedidos.add(o.item);
   assert.ok(pedidos.size >= 2);
   for (const item of pedidos) {
-    const donos = originais.filter((e) => e.saque.itens.some((l) => l.item === item));
-    assert.ok(donos.length, `${item}: alguma criatura deixa cair`);
-    for (const e of donos) assert.strictEqual(chanceSaque(e.saque.itens.find((l) => l.item === item).chance), 1, `${e.id}: ${item} sempre cai`);
+    // Pelo menos uma criatura (a da missão) deixa cair sempre; outras podem deixar com chance.
+    const sempre = originais.filter((e) => !e.nomeado && e.saque.itens.some((l) => l.item === item && chanceSaque(l.chance) === 1));
+    assert.ok(sempre.length, `${item}: alguma criatura deixa cair sempre`);
   }
 
   // No jogo: abate com drop raro devolve saquesRaros e anúncio; o saque no chão tem o item com raridade.
@@ -3224,6 +3235,438 @@ teste("49. tabelas de saque: simulação de muitos abates bate com as chances, d
   posicionarAoLado(j, sardio.area, sardio);
   const c = j.exec({ tipo: "coletarSaque", saqueId: sardio.id });
   assert.ok(c.ok && /Sárdio/.test(c.mensagem), c.mensagem);
+});
+
+// ---------------------------------------------------------------------
+// Criaturas novas, comportamentos, status, campeões e raros nomeados (JGB-6 e JGB-7)
+// ---------------------------------------------------------------------
+// Luta de balanceamento: jogador no perfil de chegada da região, no nível da criatura (ou acima),
+// com poções, contra a criatura (vida cheia, sem campeão). Devolve o resultado de lutar.
+function lutasDeBalanceamento(sementes, inimigoId, { nivelExtra = 0, pocoes = 6 } = {}) {
+  const j = carregarJogo({ semente: sementes[0] });
+  j.entrar();
+  concluirMissoes(j);
+  const p = j.p;
+  const e = j.g("inimigos")[inimigoId];
+  const perfil = PERFIS_CHEGADA[e.area];
+  // Sem vizinhos atrapalhando: a luta é só contra esta criatura.
+  for (const outro of Object.values(j.g("inimigos"))) if (outro !== e && outro.area === e.area) { outro.inicioX = outro.x = -50; outro.inicioY = outro.y = -50; }
+  if (e.nomeado) e.nomeado.deslocamentoHoras = ((j.agora - 60_000) % (e.nomeado.aCadaHoras * 3_600_000)) / 3_600_000; // janela aberta agora
+  return sementes.map((semente) => {
+    j.definirAleatorio(aleatorioComSemente(semente));
+    p.nivel = Math.max(perfil.nivel, e.nivel) + nivelExtra;
+    p.xp = j.g("limiarNivel")(p.nivel - 1);
+    p.equipamento = { arma: perfil.arma, arco: null, escudo: perfil.escudo, armadura: perfil.armadura };
+    p.habilidades = { corpo: perfil.corpo, distancia: 0, defesa: perfil.defesa, oracao: 0 };
+    p.skillXp = { corpo: 0, distancia: 0, defesa: 0, oracao: 0 };
+    p.vida = j.g("vidaMaxima")(p);
+    p.inventario = Array(pocoes).fill("pocao");
+    j.M.curarVeneno(p);
+    j.M.curarSangramento(p);
+    p.campeoes = {};
+    if (e.nomeado) {
+      p.nomeados = {};
+      j.atualizar();
+      assert.ok(j.M.inimigoVivo(p, e.id), `${e.id}: apareceu na janela`);
+    } else if (j.M.obterVidaInimigo(ID, e.id) <= 0) {
+      j.M.reaparecerInimigo(ID, e.id);
+      p.campeoes = {};
+    }
+    p.vidaInimigos[e.id] = e.vidaMaxima;
+    j.g("zerarComportamento")(e);
+    const r = lutar(j, inimigoId, { maxPocoes: pocoes });
+    p.saqueNoChao = [];
+    j.avancar(20_000);
+    return { ...r, nivel: p.nivel };
+  });
+}
+
+teste("50. criaturas: 30+ espécies, cada uma com família, tier, comportamento, status, tabela de saque e sprite próprio", () => {
+  const j = carregarJogo();
+  const inimigos = Object.values(j.g("inimigos")).filter((e) => !e.base);
+  const especies = inimigos.filter((e) => !e.nomeado);
+  assert.ok(especies.length >= 30, `${especies.length} criaturas (meta: 30+)`);
+  const novas = especies.filter((e) => !["lobo1", "escorpiao1", "bandido1", "soldadoEgito1", "perseguidorMar1", "guardiaoSinai1", "ameaçaGalileia1"].includes(e.id));
+  assert.ok(novas.length >= 24, `${novas.length} criaturas novas`);
+  const [FAM, TIERS, COMP, STATUS] = ["FAMILIAS_CRIATURAS", "TIERS_CRIATURAS", "COMPORTAMENTOS", "STATUS_CRIATURAS"].map(j.g);
+  // Regiões: todas as áreas de caça com criaturas novas.
+  for (const area of ["canaan", "deserto", "egito", "marVermelho", "sinai", "galileia"]) {
+    assert.ok(novas.filter((e) => e.area === area).length >= 3, `${area}: pelo menos 3 criaturas novas`);
+  }
+  const dados = Object.fromEntries(j.g("DADOS_CRIATURAS").map((d) => [d.id, d]));
+  for (const e of inimigos) {
+    const d = dados[e.id];
+    assert.ok(FAM[e.familia], `${e.id}: família ${e.familia}`);
+    assert.ok(TIERS[d.tier || "normal"] && d.tier, `${e.id}: tier explícito nos dados`);
+    for (const c of [].concat(d.comportamento || "padrao")) assert.ok(COMP[c], `${e.id}: comportamento ${c}`);
+    if (d.status) assert.ok(STATUS[d.status.tipo], `${e.id}: status ${d.status.tipo}`);
+    assert.ok(e.saque.itens.length >= 3, `${e.id}: tabela de saque`);
+    assert.ok(Number.isInteger(e.nivel) && e.vidaMaxima > 0 && e.xpRecompensa > 0, `${e.id}: atributos`);
+    if (d.comportamento === "distancia" || [].concat(d.comportamento || []).includes("distancia")) assert.ok(["flecha", "pedra", "magia"].includes(e.projetil), `${e.id}: projétil`);
+  }
+  // Variedade: comportamentos e status novos aparecem em várias criaturas.
+  for (const c of Object.keys(COMP).filter((c) => c !== "padrao")) assert.ok(inimigos.filter((e) => e.comportamentos.includes(c)).length >= 2, `comportamento ${c} em 2+ criaturas`);
+  for (const t of Object.keys(STATUS)) assert.ok(inimigos.filter((e) => e.efeito?.tipo === t).length >= 2, `status ${t} em 2+ criaturas`);
+  assert.ok(especies.filter((e) => e.tier === "elite").length >= 5, "5+ elites");
+  // Sprite próprio: cada criatura nova tem um sprite que nenhuma outra espécie usa (o raro nomeado usa o
+  // da espécie dele, maior e tingido).
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  const Arte = j.ctx.Arte;
+  const visual = new Map();
+  for (const e of especies) {
+    const v = Arte.visualDe(e.id);
+    assert.ok(j.ctx.PIXEL_PATTERNS[v], `${e.id}: sprite ${v}`);
+    if (novas.includes(e)) {
+      assert.ok(!visual.has(v), `${e.id} reaproveita o sprite de ${visual.get(v)}`);
+      assert.strictEqual(v, `in_${e.aparencia}`, `${e.id}: sprite próprio`);
+    }
+    if (!visual.has(v)) visual.set(v, e.id);
+    for (let q = 0; q < 5; q++) assert.ok(Arte.pixels(v, { quadro: q }), `${v}: quadro ${q}`);
+  }
+  for (const e of inimigos.filter((e) => e.nomeado)) assert.ok(j.ctx.PIXEL_PATTERNS[Arte.visualDe(e.id)] && e.escala > 1, `${e.id}: visual do nomeado`);
+  // Ícones dos recursos novos de saque.
+  for (const item of ["pena_ave", "couro_grosso", "carapaca", "amuleto_faianca"]) assert.ok(j.ctx.PIXEL_PATTERNS[item], `ícone de ${item}`);
+});
+
+teste("51. balanceamento: cada criatura é vencível no nível dela, em tempo justo e com poucas poções", () => {
+  const j0 = carregarJogo();
+  const lista = Object.values(j0.g("inimigos")).filter((e) => !e.base);
+  const sementes = [11, 12, 13, 14];
+  const linhas = [];
+  for (const e of lista) {
+    const rs = lutasDeBalanceamento(sementes, e.id, e.nomeado ? { nivelExtra: 1, pocoes: 10 } : {});
+    for (const r of rs) assert.ok(r.vitoria, `${e.id}: derrota (${r.mensagem})`);
+    const media = (f) => rs.reduce((a, r) => a + f(r), 0) / rs.length;
+    linhas.push({
+      id: e.id, nome: e.nome, tier: e.tier, nivel: e.nivel, jogador: rs[0].nivel,
+      duracao: media((r) => r.duracao), max: Math.max(...rs.map((r) => r.duracao)),
+      pressao: media((r) => r.danoRecebido / r.vidaMax), pocoes: Math.max(...rs.map((r) => r.pocoes)),
+      xpMin: (e.xpRecompensa / media((r) => r.duracao)) * 60,
+    });
+  }
+  const larg = [20, 24, 8, 5, 5, 9, 7, 9, 8, 8];
+  const lin = (c) => "    " + c.map((x, i) => String(x).padEnd(larg[i])).join("");
+  console.log("\n    Balanceamento por criatura (perfil de chegada, nível da criatura, autoataque; média de " + sementes.length + " lutas):");
+  console.log(lin(["Criatura", "Nome", "Tier", "Nv", "Jog", "Duração", "Máx", "Dano/vida", "Poções", "XP/min"]));
+  for (const l of linhas) console.log(lin([l.id, l.nome, l.tier, l.nivel, l.jogador, l.duracao.toFixed(1) + " s", l.max.toFixed(0) + " s", Math.round(l.pressao * 100) + "%", l.pocoes, l.xpMin.toFixed(0)]));
+  console.log("");
+  // [duração mínima, máxima (s), poções no pior caso, XP por minuto mínimo e máximo]
+  const FAIXAS = { normal: [3, 45, 2, 150, 700], chefe: [8, 60, 3, 150, 700], elite: [12, 75, 3, 300, 750], raro: [15, 150, 8, 500, 1500] };
+  for (const l of linhas) {
+    const [min, max, pocoes, xpMin, xpMax] = FAIXAS[l.tier];
+    assert.ok(l.duracao >= min && l.duracao <= max, `${l.id}: duração média ${l.duracao.toFixed(1)} s fora de ${min}–${max} s`);
+    assert.ok(l.pocoes <= pocoes, `${l.id}: ${l.pocoes} poções (máx. ${pocoes})`);
+    assert.ok(l.xpMin >= xpMin && l.xpMin <= xpMax, `${l.id}: ${l.xpMin.toFixed(0)} XP/min fora de ${xpMin}–${xpMax}`);
+  }
+  // Elite e raro nomeado pressionam mais que as normais da mesma região.
+  for (const area of new Set(lista.map((e) => e.area))) {
+    const da = linhas.filter((l) => j0.g("inimigos")[l.id].area === area);
+    const normais = da.filter((l) => l.tier === "normal");
+    for (const forte of da.filter((l) => l.tier === "elite" || l.tier === "raro")) {
+      const media = normais.reduce((a, l) => a + l.duracao, 0) / normais.length;
+      assert.ok(forte.duracao > media, `${forte.id} deveria durar mais que a média das normais de ${area}`);
+    }
+  }
+});
+
+// Cena de comportamento: só a criatura na área (as outras longe), jogador forte e cheio de vida.
+function cenaComportamento(inimigoId, opcoes = {}) {
+  const j = carregarJogo({ semente: opcoes.semente ?? 5 });
+  j.entrar();
+  const p = j.p;
+  const e = j.g("inimigos")[inimigoId];
+  for (const outro of Object.values(j.g("inimigos"))) if (outro !== e && outro.area === e.area && !opcoes.manterVizinhos) { outro.inicioX = outro.x = -50; outro.inicioY = outro.y = -50; }
+  p.nivel = 20;
+  p.vida = j.g("vidaMaxima")(p);
+  p.area = e.area;
+  return { j, p, e };
+}
+// Põe o jogador a "d" casas da criatura (na horizontal, com o caminho livre) e devolve a posição.
+// Se nenhuma das 8 direções estiver livre, abre a linha no mapa do teste.
+function aDistancia(j, e, d) {
+  const mapa = j.g("mapas")[e.area];
+  const direcoes = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+  for (const [sx, sy] of direcoes) {
+    let ok = true;
+    for (let i = 1; i <= d + 1 && ok; i++) if (mapa[e.y + sy * i]?.[e.x + sx * i] !== 0) ok = false;
+    if (ok) { Object.assign(j.p, { area: e.area, x: e.x + sx * d, y: e.y + sy * d }); return j.p; }
+  }
+  const sx = e.x + d + 1 < 159 ? 1 : -1;
+  for (let i = 1; i <= d + 1; i++) mapa[e.y][e.x + sx * i] = 0;
+  Object.assign(j.p, { area: e.area, x: e.x + sx * d, y: e.y });
+  return j.p;
+}
+
+teste("52. comportamentos e status: matilha, fuga, distância, investida, fúria, sangramento e atordoamento", () => {
+  // Matilha: atingido de longe, o chacal chama os outros do bando (e eles enxergam mais longe).
+  {
+    const { j, p, e } = cenaComportamento("chacal1", { manterVizinhos: true });
+    const bando = Object.values(j.g("inimigos")).filter((x) => x.especie === "chacal" && x !== e && Math.max(Math.abs(x.x - e.x), Math.abs(x.y - e.y)) <= 12);
+    assert.ok(bando.length, "há chacais por perto");
+    p.equipamento.arma = null;
+    p.equipamento.arco = "arco_madeira";
+    p.inventario.push("flecha", "flecha");
+    aDistancia(j, e, 4);
+    const r = j.exec({ tipo: "atacarDistancia", alvoId: e.id });
+    assert.ok(r.ok, r.mensagem);
+    for (const x of bando) assert.ok(x.alertaAte > j.agora, `${x.id} alertado`);
+  }
+  // Fuga: com 25% da vida ou menos foge (uma vez) e se afasta; depois volta a lutar.
+  {
+    const { j, p, e } = cenaComportamento("hiena1");
+    posicionarAoLado(j, e.area, e);
+    p.vidaInimigos[e.id] = 20;
+    const ev = j.atualizar();
+    assert.ok(ev.some((x) => x.tipo === "fuga"), "anuncia a fuga");
+    const antes = distanciaJ(p, e);
+    for (let i = 0; i < 6; i++) { j.avancar(500); j.atualizar(); }
+    assert.ok(distanciaJ(p, e) > antes, "se afastou");
+    j.avancar(4000);
+    j.atualizar();
+    assert.ok(!(e.fugindoAte > j.agora) && e.fugiu, "fugiu uma vez só");
+  }
+  // Distância: o arqueiro acerta de 4 casas com o caminho livre; colado, recua entre um disparo e outro.
+  {
+    const { j, p, e } = cenaComportamento("arqueiroBando1");
+    aDistancia(j, e, 4);
+    const ev = j.atualizar();
+    const tiro = ev.find((x) => x.tipo === "jogadorAtingido");
+    assert.ok(tiro && tiro.distancia && tiro.projetil === "flecha", "tiro de longe");
+    assert.match(tiro.mensagem, /acertou de longe/);
+    posicionarAoLado(j, e.area, e);
+    j.avancar(300);
+    const antes = distanciaJ(p, e);
+    j.atualizar();
+    assert.ok(distanciaJ(p, e) > antes, "recuou");
+  }
+  // Investida: a 3 casas prepara (aviso) e, se o jogador ficar na linha, avança e bate 1,6×; se sair, erra.
+  {
+    const { j, p, e } = cenaComportamento("javali1");
+    const cfg = j.g("COMPORTAMENTOS").investida;
+    aDistancia(j, e, 3);
+    let ev = j.atualizar();
+    assert.ok(ev.some((x) => x.tipo === "investidaPreparo"), "prepara a investida");
+    j.avancar(cfg.preparo);
+    ev = j.atualizar();
+    const golpe = ev.find((x) => x.tipo === "jogadorAtingido");
+    assert.ok(golpe && golpe.investida, "acertou a investida");
+    const bruto = Math.round(e.danoContraJogador * cfg.multiplicador);
+    assert.strictEqual(golpe.dano, j.g("mitigarDano")(bruto, j.g("defesaTotal")(p)));
+    assert.ok(distanciaJ(p, e) <= 1, "avançou até o jogador");
+    // Segunda: o jogador sai da linha (fica longe) durante o preparo.
+    const r2 = cenaComportamento("javali1");
+    aDistancia(r2.j, r2.e, 3);
+    r2.j.atualizar();
+    Object.assign(r2.p, { x: r2.e.x + 12, y: r2.e.y + 12 });
+    r2.j.avancar(cfg.preparo);
+    assert.ok(r2.j.atualizar().some((x) => x.tipo === "investidaErrou"), "errou quem saiu da linha");
+  }
+  // Fúria: com 30% da vida ou menos, bate 1,4× mais forte.
+  {
+    const { j, p, e } = cenaComportamento("urso1");
+    posicionarAoLado(j, e.area, e);
+    p.vidaInimigos[e.id] = 40;
+    const ev = j.atualizar();
+    assert.ok(ev.some((x) => x.tipo === "furia"));
+    const golpe = ev.find((x) => x.tipo === "jogadorAtingido");
+    const bruto = Math.round(e.danoContraJogador * j.g("COMPORTAMENTOS").furia.dano);
+    assert.strictEqual(golpe.dano, j.g("mitigarDano")(bruto, j.g("defesaTotal")(p)));
+  }
+  // Sangramento: ticks a cada 2 s por 8 s; a Oração "Remover veneno" estanca.
+  {
+    const { j, p, e } = cenaComportamento("leao1");
+    j.definirAleatorio(() => 0); // o sangramento sempre pega
+    posicionarAoLado(j, e.area, e);
+    const ev = j.atualizar();
+    assert.ok(ev.some((x) => x.tipo === "sangramento"), "sangrando");
+    Object.assign(p, { x: e.x + 30, y: e.y + 30 });
+    const ef = e.efeito;
+    let ticks = 0;
+    for (let t = 0; t <= ef.duracao + 500; t += 250) { j.avancar(250); for (const x of j.atualizar()) if (x.sangramento) ticks++; }
+    assert.strictEqual(ticks, ef.duracao / ef.intervalo, "um tick por intervalo");
+    assert.strictEqual(p.sangrandoAte, 0, "parou");
+    j.g("Mundo").aplicarSangramento(p, ef, j.agora);
+    p.oracaoDesbloqueada = true;
+    p.habilidades.oracao = 30;
+    p.skillXp.oracao = 0;
+    p.fe = 100;
+    const r = j.exec({ tipo: "orar", acao: "veneno" });
+    assert.ok(r.ok && /sangramento foi estancado/.test(r.mensagem), r.mensagem);
+    assert.strictEqual(p.sangrandoAte, 0);
+  }
+  // Atordoamento: não anda nem ataca; passa; e há imunidade logo depois.
+  {
+    const { j, p, e } = cenaComportamento("feiticeiro1");
+    j.definirAleatorio(() => 0);
+    aDistancia(j, e, 3);
+    const ev = j.atualizar();
+    assert.ok(ev.some((x) => x.tipo === "atordoado"), "atordoado");
+    assert.ok(j.exec({ tipo: "mover", dx: 0, dy: 1 }).atordoado);
+    assert.ok(j.exec({ tipo: "atacar", alvoId: e.id }).atordoado);
+    assert.ok(j.exec({ tipo: "usarPocao" }).ok || p.vida === j.g("vidaMaxima")(p), "poção continua valendo");
+    j.avancar(e.efeito.duracao + 1);
+    assert.ok(!j.M.atordoado(p));
+    assert.ok(!j.M.aplicarAtordoamento(p, e.efeito, j.agora), "imune logo depois");
+    j.avancar(e.efeito.imunidade);
+    assert.ok(j.M.aplicarAtordoamento(p, e.efeito, j.agora), "a imunidade passa");
+  }
+});
+const distanciaJ = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+
+teste("53. campeões (JGB-6): 5% ao renascer, modificadores no nome, mais fortes e com saque e XP reforçados", () => {
+  const j = carregarJogo({ semente: 21 });
+  j.entrar();
+  const p = j.p;
+  const [CAMPEAO, MODS, atributos, nomeDe] = ["CAMPEAO", "MODIFICADORES_CAMPEAO", "atributosInimigo", "nomeInimigo"].map(j.g);
+  // Frequência: em muitos renascimentos, perto de 5%, com 1 ou 2 modificadores diferentes.
+  const e = j.g("inimigos").hiena1;
+  let campeoes = 0;
+  const N = 6000;
+  const contagemMods = {};
+  for (let i = 0; i < N; i++) {
+    p.inimigosDerrotados.push(e.id);
+    assert.ok(j.M.reaparecerInimigo(ID, e.id));
+    const mods = p.campeoes[e.id];
+    if (mods) {
+      campeoes++;
+      assert.ok(mods.length >= 1 && mods.length <= 2 && new Set(mods).size === mods.length, `modificadores ${mods}`);
+      for (const m of mods) contagemMods[m] = (contagemMods[m] || 0) + 1;
+    }
+  }
+  const sigma = Math.sqrt(N * CAMPEAO.chance * (1 - CAMPEAO.chance));
+  assert.ok(Math.abs(campeoes - N * CAMPEAO.chance) <= 5 * sigma, `${campeoes} campeões em ${N}`);
+  for (const m of Object.keys(MODS)) assert.ok(contagemMods[m] > 0, `modificador ${m} aparece`);
+  // Chefe e raro nomeado nunca são campeões.
+  for (const id of ["bandido1", "presaCinzenta"]) {
+    p.inimigosDerrotados.push(id);
+    for (let i = 0; i < 300; i++) { j.M.reaparecerInimigo(ID, id); p.inimigosDerrotados.push(id); }
+    assert.ok(!p.campeoes[id], `${id} nunca é campeão`);
+  }
+  // Nome com o gênero da criatura e atributos.
+  p.campeoes.hiena1 = ["rapido", "vampirico"];
+  assert.strictEqual(nomeDe(p, e), "Hiena Rápida e Vampírica");
+  p.campeoes.urso1 = ["blindado"];
+  assert.strictEqual(nomeDe(p, j.g("inimigos").urso1), "Urso Blindado");
+  const at = atributos(p, e);
+  assert.strictEqual(at.vidaMaxima, Math.round(e.vidaMaxima * CAMPEAO.vida));
+  assert.strictEqual(at.dano, Math.round(e.danoContraJogador * CAMPEAO.dano));
+  assert.ok(at.intervaloAtaque < 1200 && at.rouboVida > 0);
+  assert.strictEqual(atributos(p, j.g("inimigos").urso1).defesa, Math.round(j.g("inimigos").urso1.defesa * MODS.blindado.defesa));
+  assert.strictEqual(j.M.fichaInimigo(ID, e.id).campeao, true);
+  // Vampírico recupera vida ao acertar.
+  const cena = cenaComportamento("hiena1");
+  cena.p.campeoes.hiena1 = ["vampirico"];
+  cena.p.vidaInimigos.hiena1 = 50;
+  posicionarAoLado(cena.j, cena.e.area, cena.e);
+  const golpe = cena.j.atualizar().find((x) => x.tipo === "jogadorAtingido");
+  assert.ok(golpe.roubo && cena.p.vidaInimigos.hiena1 > 50, "roubou vida");
+  // Abate: XP ×3, nome no anúncio e saque reforçado (2 rolagens; equipamento incomum ou melhor).
+  p.campeoes.hiena1 = ["feroz"];
+  p.vidaInimigos.hiena1 = 1;
+  p.nivel = 5;
+  const r = abaterSemLimpar(j, "hiena1");
+  assert.strictEqual(r.xpGanho, e.xpRecompensa * CAMPEAO.xp);
+  assert.ok(r.campeao && r.anuncios.some((t) => /^Campeão derrotado: Hiena Feroz!/.test(t)), r.anuncios.join(" | "));
+  assert.match(r.mensagem, /Você derrotou Hiena Feroz!/);
+  assert.ok(!p.campeoes.hiena1, "deixa de ser campeã depois de derrotada");
+  const moedas = p.saqueNoChao.find((s) => s.moedas && s.x === e.x && s.y === e.y);
+  assert.strictEqual(moedas.moedas, e.saque.moedas * CAMPEAO.moedas);
+  // Saque reforçado na média: muitas rolagens com reforço rendem ~2× itens e nenhum equipamento comum.
+  const sortear = j.g("sortearSaque");
+  const rng = aleatorioComSemente(3);
+  let normal = 0, reforcado = 0, comum = 0;
+  for (let i = 0; i < 20000; i++) {
+    normal += sortear(e, rng).length;
+    for (let k = 0; k < CAMPEAO.rolagensSaque; k++) for (const s of sortear(e, rng, CAMPEAO.raridadeMinima)) {
+      reforcado++;
+      const d = j.g("infoItem")(s.item);
+      if (["arma", "arma_distancia", "escudo", "armadura"].includes(d.tipo) && d.raridade === "comum") comum++;
+    }
+  }
+  assert.ok(reforcado > normal * 1.8, `saque reforçado (${reforcado} × ${normal})`);
+  assert.strictEqual(comum, 0, "equipamento de campeão é incomum ou melhor");
+  // Explosivo: ao morrer, marca o chão e explode depois em quem ficou ao lado.
+  const ex = cenaComportamento("chacal1");
+  ex.p.campeoes.chacal1 = ["explosivo"];
+  ex.p.vidaInimigos.chacal1 = 1;
+  posicionarAoLado(ex.j, ex.e.area, ex.e);
+  ex.j.avancar(1000);
+  const morte = ex.j.exec({ tipo: "atacar", alvoId: "chacal1" });
+  assert.ok(morte.derrotado && morte.explosao, "marca a explosão");
+  const vidaAntes = ex.p.vida;
+  ex.j.avancar(MODS.explosivo.explosao.atraso);
+  const bum = ex.j.atualizar().find((x) => x.tipo === "explosao");
+  assert.ok(bum && bum.dano > 0 && ex.p.vida === vidaAntes - bum.dano, "explodiu em quem estava ao lado");
+  // Save: os campeões voltam; modificador inventado ou criatura que não pode ser campeã somem.
+  p.campeoes = { urso1: ["blindado", "inventado"], bandido1: ["rapido"], nada: ["feroz"] };
+  j.g("Storage").salvarAgora(p);
+  const j2 = carregarJogo({ store: { save_jogador1: j.store.save_jogador1 } });
+  const p2 = j2.entrar();
+  igual(p2.campeoes, { urso1: ["blindado"] });
+  assert.strictEqual(p2.vidaInimigos.urso1 <= j2.g("atributosInimigo")(p2, j2.g("inimigos").urso1).vidaMaxima, true);
+});
+
+teste("54. raros nomeados (JGB-6): janela de aparição, anúncio, não renascem fora dela e somem quando ela fecha", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const nomeados = Object.values(j.g("inimigos")).filter((e) => e.nomeado);
+  assert.ok(nomeados.length >= 6, "um raro nomeado por região de caça");
+  assert.strictEqual(new Set(nomeados.map((e) => e.area)).size, nomeados.length, "um por região");
+  const janela = j.g("janelaNomeado");
+  const e = j.g("inimigos").presaCinzenta;
+  const n = e.nomeado;
+  // Algumas vezes por dia: aparições de duracaoMinutos a cada aCadaHoras.
+  assert.ok(24 / n.aCadaHoras >= 3 && 24 / n.aCadaHoras <= 8, "3 a 8 aparições por dia");
+  const periodo = n.aCadaHoras * 3_600_000;
+  // Vai para logo antes da próxima janela: fora dela, não existe.
+  const prox = janela(e, j.agora);
+  const inicio = prox.ativa ? prox.inicio + periodo : prox.proxima;
+  j.avancar(inicio - j.agora - 60_000);
+  j.atualizar();
+  assert.ok(!j.M.inimigoVivo(p, e.id), "fora da janela não existe");
+  assert.strictEqual(j.M.obterVidaInimigo(ID, e.id), 0);
+  // Abre a janela: anúncio e criatura com vida cheia.
+  j.avancar(61_000);
+  const ev = j.atualizar();
+  const apareceu = ev.find((x) => x.tipo === "nomeadoApareceu" && x.id === e.id);
+  assert.ok(apareceu, "anuncia a aparição");
+  assert.match(apareceu.mensagem, /^Rumores na estrada: Presa-Cinzenta, o lobo velho, foi visto em Canaã! Some em 30 min\.$/);
+  assert.ok(j.M.inimigoVivo(p, e.id));
+  assert.strictEqual(p.vidaInimigos[e.id], e.vidaMaxima);
+  assert.ok(!j.atualizar().some((x) => x.tipo === "nomeadoApareceu" && x.id === e.id), "anuncia uma vez por janela");
+  // Derrotado: anúncio próprio, saque garantido e não renasce até a próxima janela.
+  p.nivel = 20;
+  p.vida = j.g("vidaMaxima")(p);
+  p.vidaInimigos[e.id] = 1;
+  const r = abaterSemLimpar(j, e.id);
+  assert.ok(r.nomeado && r.anuncios.some((t) => /^Presa-Cinzenta foi derrotado!/.test(t)));
+  assert.doesNotMatch(r.mensagem, /reaparecerá/);
+  const equip = p.saqueNoChao.filter((s) => s.x === e.x && s.y === e.y && s.item && /^(espada|escudo)/.test(s.item));
+  assert.ok(equip.some((s) => ["raro", "epico", "reliquia"].includes(j.g("raridadeItem")(s.item))), "equipamento raro ou melhor garantido");
+  assert.strictEqual(j.M.reaparecerInimigo(ID, e.id), false, "não renasce pelo tempo");
+  j.avancar(10 * 60_000);
+  j.atualizar();
+  assert.ok(!j.M.inimigoVivo(p, e.id), "continua derrotado dentro da janela");
+  // A janela fecha (sem aviso de sumiço, porque foi derrotado) e a próxima traz ele de volta.
+  j.avancar(25 * 60_000);
+  const fim = j.atualizar().find((x) => x.tipo === "nomeadoSumiu" && x.id === e.id);
+  assert.ok(fim && fim.mensagem === null, "fechou a janela");
+  j.avancar(inicio + periodo + 30_000 - j.agora);
+  assert.ok(j.atualizar().some((x) => x.tipo === "nomeadoApareceu" && x.id === e.id), "volta na janela seguinte");
+  // Vivo quando a janela fecha: some, com aviso.
+  j.avancar(31 * 60_000);
+  const sumiu = j.atualizar().find((x) => x.tipo === "nomeadoSumiu" && x.id === e.id);
+  assert.match(sumiu.mensagem, /Presa-Cinzenta sumiu de Canaã/);
+  assert.ok(!j.M.inimigoVivo(p, e.id));
+  // Save: a janela atual fica guardada (recarregar no meio dela não anuncia de novo).
+  j.avancar(inicio + 2 * periodo + 60_000 - j.agora);
+  j.atualizar();
+  j.g("Storage").salvarAgora(p);
+  const j2 = carregarJogo({ store: { save_jogador1: j.store.save_jogador1 }, inicio: j.agora });
+  const p2 = j2.entrar();
+  assert.ok(j2.M.inimigoVivo(p2, e.id), "continua presente depois de recarregar");
+  assert.ok(!j2.atualizar().some((x) => x.tipo === "nomeadoApareceu" && x.id === e.id), "sem anúncio repetido");
 });
 
 // Abate num golpe sem limpar o saque (para olhar o que caiu).

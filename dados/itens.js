@@ -33,6 +33,10 @@ const ITENS = {
   linho_egipcio: { nome: "Linho egípcio", peso: 1, tipo: "recurso" },
   ponta_lanca: { nome: "Ponta de lança de bronze", peso: 1, tipo: "recurso" },
   bracelete_cobre: { nome: "Bracelete de cobre", peso: 0.5, tipo: "recurso", raridade: "incomum" },
+  pena_ave: { nome: "Pena de ave de rapina", peso: 0.1, tipo: "recurso" },
+  couro_grosso: { nome: "Couro grosso", peso: 2.5, tipo: "recurso" },
+  carapaca: { nome: "Carapaça", peso: 0.8, tipo: "recurso" },
+  amuleto_faianca: { nome: "Amuleto de faiança", peso: 0.3, tipo: "recurso", raridade: "incomum" },
   // Pedras do peitoral do sumo sacerdote (Êxodo 28.17–20): saques muito raros (0,1%). No futuro serão
   // engastadas nos equipamentos; por ora Azarias as compra.
   pedra_sardio: { nome: "Sárdio", peso: 0.2, tipo: "recurso", raridade: "reliquia", pedra: "#c2452d" },
@@ -98,6 +102,10 @@ const VALORES_VENDA = {
   linho_egipcio: 8,
   ponta_lanca: 9,
   bracelete_cobre: 16,
+  pena_ave: 4,
+  couro_grosso: 8,
+  carapaca: 6,
+  amuleto_faianca: 18,
   pedra_sardio: 150,
   pedra_topazio: 150,
   pedra_esmeralda: 160,

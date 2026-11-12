@@ -267,12 +267,14 @@ function itemDaLinha(linha, aleatorio = Math.random) {
 
 // Sorteia o saque de um abate: cada linha da tabela é sorteada à parte (a de 100% não gasta sorteio).
 // Devolve [{ item, chance }] na ordem da tabela.
-function sortearSaque(e, aleatorio = Math.random) {
+// raridadeMinima (campeões): o equipamento sai dela para cima.
+function sortearSaque(e, aleatorio = Math.random, raridadeMinima = null) {
   const saque = [];
   for (const linha of tabelaDeSaque(e)) {
     const chance = chanceSaque(linha.chance ?? 1);
     if (chance <= 0 || (chance < 1 && aleatorio() >= chance)) continue;
-    const item = itemDaLinha(linha, aleatorio);
+    const minima = raridadeMinima && indiceRaridade(raridadeMinima) > indiceRaridade(linha.raridadeMinima || "comum") ? raridadeMinima : linha.raridadeMinima;
+    const item = itemDaLinha(minima === linha.raridadeMinima ? linha : { ...linha, raridadeMinima: minima }, aleatorio);
     if (itemValido(item)) saque.push({ item, chance });
   }
   return saque;
@@ -768,8 +770,10 @@ for (const areaId of Object.keys(areas)) fecharBolsoes(areaId);
 
 const inimigos = {};
 
-// Campos: vidaMaxima, danoContraJogador (antes da defesa), defesa, raioPercepcao,
-// xpRecompensa, saque { itens, moedas }, veneno opcional e aparencia (dica visual).
+// Campos: vidaMaxima, danoContraJogador (antes da defesa), defesa, raioPercepcao, xpRecompensa,
+// saque { itens, moedas }, tier, comportamento, status, aparencia (dica visual) e, no raro nomeado,
+// nomeado { aCadaHoras, duracaoMinutos, deslocamentoHoras }. O campo antigo veneno ("padrao" ou
+// { duracao, dano, intervalo }) ainda vale e vira status { tipo: "veneno" }.
 function registrarInimigo(dados) {
   const e = {
     ...dados,
@@ -779,13 +783,113 @@ function registrarInimigo(dados) {
     inicioY: dados.y,
     defesa: dados.defesa || 0,
     saque: dados.saque || { itens: [], moedas: 0 },
+    tier: registroDe(TIERS_CRIATURAS, dados.tier) ? dados.tier : "normal",
     proximoMovimento: 0,
     proximoAtaque: 0,
   };
-  if (e.veneno === "padrao") e.veneno = { ...VENENO_PADRAO };
+  const lista = Array.isArray(dados.comportamento) ? dados.comportamento : [dados.comportamento || "padrao"];
+  e.comportamentos = lista.filter((c) => registroDe(COMPORTAMENTOS, c) && c !== "padrao");
+  // Status aplicado ao acertar: os padrões de STATUS_CRIATURAS com os ajustes da criatura.
+  let status = dados.status;
+  if (!status && dados.veneno) status = { tipo: "veneno", ...(dados.veneno === "padrao" ? {} : dados.veneno) };
+  e.efeito = status && registroDe(STATUS_CRIATURAS, status.tipo) ? { ...STATUS_CRIATURAS[status.tipo], ...status } : null;
+  e.veneno = e.efeito?.tipo === "veneno" ? { duracao: e.efeito.duracao, dano: e.efeito.dano, intervalo: e.efeito.intervalo } : undefined;
   inimigos[e.id] = e;
   if (!dados.id.includes("_")) abrirClareira(e.area, e.x, e.y, 1);
   return e;
+}
+
+// Zera o estado de comportamento (fúria, fuga, investida, alerta) — ao renascer e na morte do jogador.
+function zerarComportamento(e) {
+  e.furioso = false;
+  e.fugiu = false;
+  e.fugindoAte = 0;
+  e.preparoAte = 0;
+  e.proximaInvestida = 0;
+  e.alertaAte = 0;
+}
+
+// ---------------------------------------------------------------------
+// Campeões e raros nomeados
+// ---------------------------------------------------------------------
+function podeSerCampeao(e) {
+  return !e.nomeado && !!TIERS_CRIATURAS[e.tier]?.podeSerCampeao;
+}
+
+// Modificadores de campeão da criatura para este jogador (p.campeoes[id], no save); [] = não é campeã.
+function modificadoresCampeao(p, e) {
+  const lista = p?.campeoes?.[e.id];
+  return Array.isArray(lista) ? lista.filter((k) => registroDe(MODIFICADORES_CAMPEAO, k)) : [];
+}
+
+// Sorteia 1 a 2 modificadores diferentes (CAMPEAO.modificadores), na ordem dos dados.
+function sortearModificadores(aleatorio = Math.random) {
+  const [min, max] = CAMPEAO.modificadores;
+  const n = min + Math.floor(aleatorio() * (max - min + 1));
+  const disponiveis = Object.keys(MODIFICADORES_CAMPEAO);
+  const escolhidos = [];
+  while (escolhidos.length < n && disponiveis.length) escolhidos.push(disponiveis.splice(Math.floor(aleatorio() * disponiveis.length), 1)[0]);
+  return Object.keys(MODIFICADORES_CAMPEAO).filter((k) => escolhidos.includes(k));
+}
+
+// Atributos efetivos da criatura (campeã ou não): vida máxima, dano, defesa, intervalos, roubo de vida
+// e explosão. A fúria entra na hora do golpe.
+function atributosInimigo(p, e) {
+  const modificadores = modificadoresCampeao(p, e);
+  const campeao = modificadores.length > 0;
+  let vida = e.vidaMaxima;
+  let dano = e.danoContraJogador;
+  let defesa = e.defesa || 0;
+  let intervaloAtaque = e.intervaloAtaque || INTERVALO_ATAQUE;
+  let intervaloMovimento = e.intervaloMovimento || INTERVALO_MOVIMENTO;
+  let rouboVida = 0;
+  let explosao = null;
+  if (campeao) {
+    vida *= CAMPEAO.vida;
+    dano *= CAMPEAO.dano;
+  }
+  for (const k of modificadores) {
+    const m = MODIFICADORES_CAMPEAO[k];
+    if (m.intervaloAtaque) intervaloAtaque *= m.intervaloAtaque;
+    if (m.intervaloMovimento) intervaloMovimento *= m.intervaloMovimento;
+    if (m.rouboVida) rouboVida = Math.max(rouboVida, m.rouboVida);
+    if (m.defesa) defesa *= m.defesa;
+    if (m.dano) dano *= m.dano;
+    if (m.explosao) explosao = m.explosao;
+  }
+  return {
+    campeao,
+    modificadores,
+    vidaMaxima: Math.round(vida),
+    dano: Math.round(dano),
+    defesa: Math.round(defesa),
+    intervaloAtaque: Math.round(intervaloAtaque),
+    intervaloMovimento: Math.round(intervaloMovimento),
+    rouboVida,
+    explosao,
+  };
+}
+
+// Nome com os modificadores ("Hiena Rápida e Vampírica"); o raro nomeado já tem nome próprio.
+function nomeInimigo(p, e) {
+  const mods = modificadoresCampeao(p, e);
+  if (!mods.length) return e.nome;
+  const g = e.genero === "f" ? 1 : 0;
+  const nomes = mods.map((k) => MODIFICADORES_CAMPEAO[k].nome[g]);
+  return `${e.nome} ${nomes.length > 1 ? `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}` : nomes[0]}`;
+}
+
+// Janela de aparição do raro nomeado: aparece a cada aCadaHoras, por duracaoMinutos, a partir de
+// deslocamentoHoras (hora do relógio, contada desde 1970 em UTC). indice identifica a janela.
+function janelaNomeado(e, agora = Date.now()) {
+  const n = e.nomeado;
+  if (!n) return null;
+  const periodo = n.aCadaHoras * 3_600_000;
+  const desloc = (n.deslocamentoHoras || 0) * 3_600_000;
+  const indice = Math.floor((agora - desloc) / periodo);
+  const inicio = desloc + indice * periodo;
+  const fim = inicio + n.duracaoMinutos * 60_000;
+  return { indice, inicio, fim, ativa: agora < fim, proxima: agora < fim ? inicio : inicio + periodo };
 }
 
 // Casa livre aleatória a até `raio` casas de (cx, cy): chão livre, longe dos NPCs e da entrada da área
@@ -846,6 +950,9 @@ for (const criatura of DADOS_CRIATURAS) {
     if (!sortearPosicaoInimigo(copia)) delete inimigos[copia.id]; // sem espaço: menos uma cópia
   }
 }
+// Raros nomeados (o laço de tempo confere a janela deles a cada quadro).
+const NOMEADOS = Object.values(inimigos).filter((e) => e.nomeado);
+
 // ---------------------------------------------------------------------
 // Missões (dados/missoes.js) — motor genérico, sem missões escritas como código
 // ---------------------------------------------------------------------
@@ -1467,6 +1574,7 @@ const Mundo = {
       e.y = e.inicioY;
       e.proximoMovimento = 0;
       e.proximoAtaque = 0;
+      zerarComportamento(e);
     }
     this.jogadores[id] = p;
     this.estado[id] = {
@@ -1474,6 +1582,7 @@ const Mundo = {
       ultimoCombate: 0,
       proximoAtaqueJogador: 0,
       proximaLimpezaSaques: 0,
+      explosoes: [],
     };
     this.limparSaques(p, Date.now());
     this.salvar(p);
@@ -1581,6 +1690,12 @@ const Mundo = {
     p.envenenadoAte = Number.isFinite(p.envenenadoAte) && p.envenenadoAte > agora ? p.envenenadoAte : 0;
     p.proximoDanoVeneno = p.envenenadoAte && Number.isFinite(p.proximoDanoVeneno) ? p.proximoDanoVeneno : 0;
     if (!p.envenenadoAte) p.venenoAtual = null;
+    // Sangramento (como o veneno) e atordoamento (curto: não sobrevive a recarregar).
+    p.sangrandoAte = Number.isFinite(p.sangrandoAte) && p.sangrandoAte > agora ? p.sangrandoAte : 0;
+    p.proximoDanoSangue = p.sangrandoAte && Number.isFinite(p.proximoDanoSangue) ? p.proximoDanoSangue : 0;
+    if (!p.sangrandoAte || !objetoValido(p.sangramentoAtual)) p.sangramentoAtual = p.sangrandoAte ? { dano: STATUS_CRIATURAS.sangramento.dano, intervalo: STATUS_CRIATURAS.sangramento.intervalo } : null;
+    p.atordoadoAte = 0;
+    p.imuneAtordoamentoAte = 0;
     delete p.proximaRegenFe;
 
     // Avisos pendentes para a UI (exibidos uma vez via Mundo.consumirAviso).
@@ -1663,11 +1778,23 @@ const Mundo = {
     // tabela antiga (lobo 50, chefe 100, guarda 40…): com o rebalanceamento,
     // todo inimigo vivo volta com a vida máxima nova.
     const vidaAntiga = versaoAnterior < 6;
+    // Campeões (p.campeoes[id] = modificadores) e raros nomeados (p.nomeados[id] = { janela }).
+    if (!objetoValido(p.campeoes)) p.campeoes = {};
+    for (const [chave, mods] of Object.entries(p.campeoes)) {
+      const e = registroDe(inimigos, chave);
+      const validos = Array.isArray(mods) ? mods.filter((k) => registroDe(MODIFICADORES_CAMPEAO, k)) : [];
+      if (!e || !podeSerCampeao(e) || !validos.length) delete p.campeoes[chave];
+      else p.campeoes[chave] = validos;
+    }
+    if (!objetoValido(p.nomeados)) p.nomeados = {};
+    for (const [chave, n] of Object.entries(p.nomeados)) {
+      if (!registroDe(inimigos, chave)?.nomeado || !objetoValido(n) || !Number.isInteger(n.janela)) delete p.nomeados[chave];
+    }
     for (const e of Object.values(inimigos)) {
       const hp = p.vidaInimigos[e.id];
       if (p.inimigosDerrotados.includes(e.id)) p.vidaInimigos[e.id] = 0;
-      else if (vidaAntiga || !Number.isFinite(hp) || hp <= 0) p.vidaInimigos[e.id] = e.vidaMaxima;
-      else p.vidaInimigos[e.id] = Math.min(hp, e.vidaMaxima);
+      else if (vidaAntiga || !Number.isFinite(hp) || hp <= 0) p.vidaInimigos[e.id] = atributosInimigo(p, e).vidaMaxima;
+      else p.vidaInimigos[e.id] = Math.min(hp, atributosInimigo(p, e).vidaMaxima);
     }
     p.versao = VERSAO_SAVE;
     return p;
@@ -1711,15 +1838,56 @@ const Mundo = {
   },
 
   // ----- Consultas -----
+  // O raro nomeado só existe dentro da janela de aparição.
   inimigoVivo(p, inimigoId) {
-    return !p.inimigosDerrotados.includes(inimigoId) && p.vidaInimigos[inimigoId] > 0;
+    if (p.inimigosDerrotados.includes(inimigoId) || !(p.vidaInimigos[inimigoId] > 0)) return false;
+    const e = inimigos[inimigoId];
+    return !e?.nomeado || this.nomeadoPresente(p, e);
+  },
+
+  nomeadoPresente(p, e, agora = Date.now()) {
+    const j = janelaNomeado(e, agora);
+    return !!j?.ativa && p.nomeados?.[e.id]?.janela === j.indice;
   },
 
   obterVidaInimigo(id, inimigoId) {
     const p = this.jogadores[id];
     const e = inimigos[inimigoId];
     if (!p || !e) return null;
-    return p.inimigosDerrotados.includes(inimigoId) ? 0 : p.vidaInimigos[inimigoId];
+    return this.inimigoVivo(p, inimigoId) ? p.vidaInimigos[inimigoId] : 0;
+  },
+
+  // Para a interface: vida máxima e nome com os modificadores de campeão, e a "ficha" da criatura.
+  vidaMaximaInimigo(id, inimigoId) {
+    const p = this.jogadores[id];
+    const e = registroDe(inimigos, inimigoId);
+    return p && e ? atributosInimigo(p, e).vidaMaxima : 0;
+  },
+
+  nomeInimigo(id, inimigoId) {
+    const p = this.jogadores[id];
+    const e = registroDe(inimigos, inimigoId);
+    return p && e ? nomeInimigo(p, e) : "";
+  },
+
+  fichaInimigo(id, inimigoId) {
+    const p = this.jogadores[id];
+    const e = registroDe(inimigos, inimigoId);
+    if (!p || !e) return null;
+    const at = atributosInimigo(p, e);
+    return {
+      nome: nomeInimigo(p, e),
+      tier: e.tier,
+      campeao: at.campeao,
+      modificadores: at.modificadores,
+      nomeado: !!e.nomeado,
+      titulo: e.titulo || null,
+      familia: FAMILIAS_CRIATURAS[e.familia]?.nome || "",
+      comportamentos: e.comportamentos.map((c) => COMPORTAMENTOS[c].nome),
+      status: e.efeito ? STATUS_CRIATURAS[e.efeito.tipo].nome : null,
+      nivel: e.nivel,
+      furioso: !!e.furioso,
+    };
   },
 
   contarItem(id, item) {
@@ -1888,12 +2056,16 @@ const Mundo = {
   // ----- Saques no chão -----
   // Sorteia a tabela de saque da criatura e põe no chão. Devolve os nomes (para a mensagem) e os
   // destaques: saques incomuns ou melhores, ou de linha com 1% de chance ou menos, que brilham e tocam.
-  criarSaque(p, e, agora = Date.now()) {
-    const moedas = e.saque?.moedas || 0;
+  // reforco (campeão): sorteia a tabela reforco.rolagensSaque vezes, equipamento com reforco.raridadeMinima
+  // ou melhor e moedas × reforco.moedas.
+  criarSaque(p, e, agora = Date.now(), reforco = null) {
+    const moedas = Math.round((e.saque?.moedas || 0) * (reforco?.moedas || 1));
     const sufixo = `${agora}_${Math.floor(Math.random() * 1e6).toString(36)}`;
     const itens = [];
     const destaques = [];
-    for (const { item, chance } of sortearSaque(e)) {
+    const sorteio = [];
+    for (let i = 0; i < (reforco?.rolagensSaque || 1); i++) sorteio.push(...sortearSaque(e, Math.random, reforco?.raridadeMinima));
+    for (const { item, chance } of sorteio) {
       const id = `saque_${e.id}_${sufixo}_${itens.length}`;
       const destaque = destaqueDoSaque(item, chance);
       const s = { id, area: e.area, x: e.x, y: e.y, item, criadoEm: agora };
@@ -2094,6 +2266,7 @@ const Mundo = {
     if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)) {
       return { ok: false };
     }
+    if (this.atordoado(p)) return { ok: false, atordoado: true, mensagem: "Você está atordoado." };
     const nx = p.x + dx;
     const ny = p.y + dy;
     if (!this.casaLivre(nx, ny, p, true)) return { ok: false };
@@ -2312,10 +2485,10 @@ const Mundo = {
       };
     }
     const agora = Date.now();
-    const envenenado = p.envenenadoAte > agora;
+    const envenenado = p.envenenadoAte > agora || p.sangrandoAte > agora;
     const vidaCheia = p.vida >= vidaMaxima(p);
     if ((acao === "vida" || acao === "area") && vidaCheia) return { ok: false, mensagem: "Sua vida já está cheia." };
-    if (acao === "veneno" && !envenenado) return { ok: false, mensagem: "Você não está envenenado." };
+    if (acao === "veneno" && !envenenado) return { ok: false, mensagem: "Você não está envenenado nem sangrando." };
     if (acao === "milagre" && vidaCheia && !envenenado)
       return { ok: false, mensagem: "Você não precisa de um milagre agora." };
     if (p.fe < custo) {
@@ -2331,15 +2504,19 @@ const Mundo = {
       p.vida = Math.min(vidaMaxima(p), p.vida + 20 + Math.floor(nivel / 2));
       mensagem = `Oração: recuperou ${p.vida - antes} de vida.`;
     } else if (acao === "veneno") {
+      const sangrava = p.sangrandoAte > agora;
+      const envenenadoAgora = p.envenenadoAte > agora;
       this.curarVeneno(p);
-      mensagem = "O veneno foi removido pela Oração.";
+      this.curarSangramento(p);
+      mensagem = envenenadoAgora && sangrava ? "O veneno e o sangramento foram removidos pela Oração." : sangrava ? "O sangramento foi estancado pela Oração." : "O veneno foi removido pela Oração.";
     } else if (acao === "area") {
       p.vida = Math.min(vidaMaxima(p), p.vida + 30 + Math.floor(nivel / 2));
       mensagem = `Oração em área 3×3: você recuperou ${p.vida - antes} de vida. Aliados próximos serão curados quando houver companheiros no jogo.`;
     } else {
       p.vida = vidaMaxima(p);
       this.curarVeneno(p);
-      mensagem = "Milagre: vida restaurada por completo e veneno removido.";
+      this.curarSangramento(p);
+      mensagem = "Milagre: vida restaurada por completo, veneno e sangramento removidos.";
     }
     const subiu = ganharHabilidade(p, "oracao", XP_HABILIDADE_POR_USO.oracao);
     if (subiu) mensagem += ` Oração: nível ${p.habilidades.oracao}.`;
@@ -2351,6 +2528,17 @@ const Mundo = {
     p.envenenadoAte = 0;
     p.proximoDanoVeneno = 0;
     p.venenoAtual = null;
+  },
+
+  curarSangramento(p) {
+    p.sangrandoAte = 0;
+    p.proximoDanoSangue = 0;
+    p.sangramentoAtual = null;
+  },
+
+  // Atordoado: não anda nem ataca até atordoadoAte (poções e Oração continuam valendo).
+  atordoado(p, agora = Date.now()) {
+    return p.atordoadoAte > agora;
   },
 
   // ----- Conversas -----
@@ -2738,7 +2926,7 @@ const Mundo = {
       if (!e || e.area !== p.area) return { erro: "Não há inimigos por perto." };
       if (!this.inimigoVivo(p, e.id)) return { erro: "Esse inimigo já foi derrotado." };
       if (distanciaChebyshev(p, e) > ALCANCE_CORPO)
-        return { erro: `Chegue ao lado de ${e.nome.toLowerCase()} para atacá-lo.` };
+        return { erro: `Chegue ao lado de ${e.nome.toLowerCase()} para atacá-${e.genero === "f" ? "la" : "lo"}.` };
       return { inimigo: e };
     }
     const e = Object.values(inimigos).find(
@@ -2750,16 +2938,7 @@ const Mundo = {
   linhaDeTiroLivre(p, e) {
     // Qualquer direção: alvo dentro do círculo de ALCANCE_ARCO casas e nenhuma casa bloqueada no
     // caminho reto da flecha (linha de Bresenham entre os dois, sem contar as pontas).
-    const dx = e.x - p.x;
-    const dy = e.y - p.y;
-    if ((dx === 0 && dy === 0) || Math.hypot(dx, dy) > ALCANCE_ARCO + 0.5) return false;
-    const passos = Math.max(Math.abs(dx), Math.abs(dy));
-    for (let i = 1; i < passos; i++) {
-      const x = p.x + Math.round((dx * i) / passos);
-      const y = p.y + Math.round((dy * i) / passos);
-      if (mapas[p.area][y][x] !== 0) return false;
-    }
-    return true;
+    return this.linhaReta({ x: p.x, y: p.y, area: p.area }, e, ALCANCE_ARCO + 0.5);
   },
 
   alvoDistancia(p, alvoId) {
@@ -2782,9 +2961,11 @@ const Mundo = {
       if (!p.equipamento.arco) return { ok: false, mensagem: "Equipe um arco antes de atacar à distância." };
       if (!p.inventario.includes("flecha")) return { ok: false, mensagem: "Você não tem flechas." };
     }
+    if (this.atordoado(p, agora)) return { ok: false, atordoado: true, mensagem: "Você está atordoado e não consegue atacar." };
     const alvo = distancia ? this.alvoDistancia(p, alvoId) : this.alvoCorpo(p, alvoId);
     if (alvo.erro) return { ok: false, mensagem: alvo.erro };
     const e = alvo.inimigo;
+    const at = atributosInimigo(p, e);
 
     if (agora < estado.proximoAtaqueJogador) {
       const restante = estado.proximoAtaqueJogador - agora;
@@ -2799,7 +2980,9 @@ const Mundo = {
     estado.ultimoCombate = agora;
     if (distancia) this.removerItens(p, "flecha", 1);
 
-    const golpe = calcularGolpe(p, tipo, e.defesa || 0);
+    const golpe = calcularGolpe(p, tipo, at.defesa);
+    // Atingida, a criatura de matilha chama as outras (mesmo de longe, com a flecha).
+    if (e.comportamentos.includes("matilha")) this.alertarMatilha(e, agora);
     const chaveHabilidade = distancia ? "distancia" : "corpo";
     const subiu = ganharHabilidade(p, chaveHabilidade, XP_HABILIDADE_POR_USO[chaveHabilidade]);
     p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - golpe.dano);
@@ -2813,7 +2996,7 @@ const Mundo = {
       danoAplicado: golpe.dano,
       inimigoId: e.id,
       critico: golpe.critico,
-      defesaAlvo: e.defesa || 0,
+      defesaAlvo: at.defesa,
       tipoAtaque: tipo,
       skillLevel: p.habilidades[chaveHabilidade],
     };
@@ -2825,6 +3008,9 @@ const Mundo = {
         saques: morte.saques,
         saquesRaros: morte.saquesRaros,
         anuncios: morte.anuncios,
+        campeao: morte.campeao,
+        nomeado: morte.nomeado,
+        explosao: morte.explosao,
         tarefas: morte.tarefas,
         xpGanho: morte.xpGanho,
         mensagem: `${prefixo}${morte.mensagem}${textoHabilidade}`,
@@ -2835,12 +3021,14 @@ const Mundo = {
     return {
       ...base,
       derrotado: false,
-      mensagem: `${prefixo}${acao} (${golpe.dano} de dano). Vida dele: ${p.vidaInimigos[e.id]}/${e.vidaMaxima}.${textoHabilidade}`,
+      mensagem: `${prefixo}${acao} (${golpe.dano} de dano). Vida ${e.genero === "f" ? "dela" : "dele"}: ${p.vidaInimigos[e.id]}/${at.vidaMaxima}.${textoHabilidade}`,
     };
   },
 
   derrotarInimigo(p, e) {
     const agora = Date.now();
+    const at = atributosInimigo(p, e);
+    const nome = nomeInimigo(p, e);
     if (!p.inimigosDerrotados.includes(e.id)) p.inimigosDerrotados.push(e.id);
     p.vidaInimigos[e.id] = 0;
     const aviso = this.registrarAbate(p, e.id);
@@ -2851,9 +3039,14 @@ const Mundo = {
       .filter((t) => t.cumpridaAgora)
       .map((t) => ` Caçada cumprida: ${t.nome} (${t.meta}/${t.meta})! Entregue a qualquer atalaia.`)
       .join("");
-    const xpGanho = xpDoAbate(p, e);
+    const xpGanho = Math.round(xpDoAbate(p, e) * (at.campeao ? CAMPEAO.xp : 1));
     const niveis = adicionarXP(p, xpGanho);
-    const saque = this.criarSaque(p, e, agora);
+    const saque = this.criarSaque(p, e, agora, at.campeao ? CAMPEAO : null);
+    // Campeã explosiva: a explosão vem depois, em quem estiver ao lado (Mundo.atualizar).
+    const explosao = at.explosao ? { em: agora + at.explosao.atraso, area: e.area, x: e.x, y: e.y, dano: Math.round(at.dano * at.explosao.dano), nome } : null;
+    const estado = this.estado[p.id];
+    if (explosao && estado) estado.explosoes.push(explosao);
+    delete p.campeoes[e.id];
     this.salvar(p);
     const up = niveis.length ? ` Você subiu para o nível ${p.nivel}! Vida máxima: ${vidaMaxima(p)}.` : "";
     const textoSaque = saque.nomes.length ? ` Saque no chão: ${saque.nomes.join(", ")}. Clique no saque ou caminhe sobre ele.` : "";
@@ -2865,31 +3058,43 @@ const Mundo = {
     };
     const anuncios = saque.destaques
       .filter((d) => tituloAnuncio(d))
-      .map((d) => `${tituloAnuncio(d)} ${e.nome} deixou cair: ${nomeItem(d.item)}.`);
-    const reaparece = ` Ele reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
+      .map((d) => `${tituloAnuncio(d)} ${nome} deixou cair: ${nomeItem(d.item)}.`);
+    if (at.campeao) anuncios.unshift(`Campeão derrotado: ${nome}! +${xpGanho} XP e saque reforçado.`);
+    if (e.nomeado) anuncios.unshift(`${e.nome} foi derrotado! Ele só volta na próxima aparição.`);
+    const alvoTexto = at.campeao || e.nomeado ? nome : nome.toLowerCase();
+    const fraca = xpDoAbate(p, e) < e.xpRecompensa ? " (criatura fraca para o seu nível)" : "";
+    const reaparece = e.nomeado ? "" : ` ${e.genero === "f" ? "Ela" : "Ele"} reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
     return {
       saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id),
       saquesRaros: saque.destaques.map(({ saqueId, item, raridade }) => ({ saqueId, item, raridade })),
       anuncios,
+      campeao: at.campeao,
+      nomeado: !!e.nomeado,
+      explosao: explosao ? { em: explosao.em, x: explosao.x, y: explosao.y } : null,
       tarefas,
       xpGanho,
-      mensagem: `Você derrotou ${e.nome.toLowerCase()}! +${xpGanho} XP${xpGanho < e.xpRecompensa ? " (criatura fraca para o seu nível)" : ""}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
+      mensagem: `Você derrotou ${alvoTexto}! +${xpGanho} XP${fraca}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
     };
   },
 
+  // Renasce a criatura (o raro nomeado não: ele só volta na próxima janela). Com CAMPEAO.chance, renasce
+  // campeã, com 1 ou 2 modificadores.
   reaparecerInimigo(id, inimigoId) {
     const p = this.jogadores[id];
     const e = inimigos[inimigoId];
-    if (!p || !e) return false;
+    if (!p || !e || e.nomeado) return false;
     const i = p.inimigosDerrotados.indexOf(inimigoId);
     if (i < 0) return false;
     p.inimigosDerrotados.splice(i, 1);
-    p.vidaInimigos[inimigoId] = e.vidaMaxima;
+    delete p.campeoes[inimigoId];
+    if (podeSerCampeao(e) && Math.random() < CAMPEAO.chance) p.campeoes[inimigoId] = sortearModificadores();
+    p.vidaInimigos[inimigoId] = atributosInimigo(p, e).vidaMaxima;
     e.x = e.inicioX;
     e.y = e.inicioY;
     sortearPosicaoInimigo(e);
     e.proximoMovimento = 0;
     e.proximoAtaque = 0;
+    zerarComportamento(e);
     this.salvar(p);
     return true;
   },
@@ -2910,6 +3115,234 @@ const Mundo = {
       }
     }
     return false;
+  },
+
+  // ----- Comportamento das criaturas (um passo do laço de tempo) -----
+  // Devolve "morte" se o jogador morreu (o evento já está em eventos).
+  agirCriatura(id, p, estado, e, agora, eventos) {
+    const at = atributosInimigo(p, e);
+    const tem = (c) => e.comportamentos.includes(c);
+    const distancia = distanciaChebyshev(p, e);
+    const vida = p.vidaInimigos[e.id];
+    const nome = nomeInimigo(p, e);
+
+    if (tem("furia") && !e.furioso && vida <= at.vidaMaxima * COMPORTAMENTOS.furia.vidaLimite) {
+      e.furioso = true;
+      eventos.push({ tipo: "furia", id: e.id, mensagem: `${nome} entra em fúria!` });
+    }
+    if (tem("fuga") && !e.fugiu && vida <= at.vidaMaxima * COMPORTAMENTOS.fuga.vidaLimite) {
+      e.fugiu = true;
+      e.fugindoAte = agora + COMPORTAMENTOS.fuga.duracao;
+      e.preparoAte = 0;
+      eventos.push({ tipo: "fuga", id: e.id, mensagem: `${nome} foge, ${e.genero === "f" ? "ferida" : "ferido"}!` });
+    }
+    if (e.fugindoAte > agora) {
+      if (agora >= e.proximoMovimento) {
+        e.proximoMovimento = agora + Math.round(at.intervaloMovimento * 0.8);
+        if (this.passoParaLonge(e, p)) eventos.push({ tipo: "inimigoMoveu", id: e.id });
+      }
+      return null;
+    }
+
+    // Investida: o preparo terminou — avança em linha reta e bate, ou erra se você saiu da linha.
+    if (e.preparoAte) {
+      if (agora < e.preparoAte) return null;
+      const cfg = COMPORTAMENTOS.investida;
+      e.preparoAte = 0;
+      e.proximaInvestida = agora + cfg.recarga;
+      let passos = 0;
+      if (distancia <= cfg.alcanceMax + 1 && this.linhaReta(e, p, cfg.alcanceMax + 1.5)) {
+        while (distanciaChebyshev(p, e) > ALCANCE_CORPO && passos < cfg.alcanceMax + 1 && this.passoInimigo(e, p.x, p.y, p)) passos++;
+      }
+      if (passos) eventos.push({ tipo: "inimigoMoveu", id: e.id, investida: true });
+      if (distanciaChebyshev(p, e) > ALCANCE_CORPO) {
+        eventos.push({ tipo: "investidaErrou", id: e.id, mensagem: `${nome} avançou e errou!` });
+        e.proximoAtaque = agora + 600;
+        return null;
+      }
+      return this.golpeDaCriatura(id, p, estado, e, at, agora, eventos, { multiplicador: cfg.multiplicador, investida: true });
+    }
+
+    const alerta = e.alertaAte > agora;
+    const percepcao = e.raioPercepcao + (alerta ? COMPORTAMENTOS.matilha.alcanceExtra : 0);
+    if (tem("matilha") && distancia <= e.raioPercepcao && !alerta) this.alertarMatilha(e, agora);
+
+    if (tem("distancia")) {
+      const cfg = COMPORTAMENTOS.distancia;
+      const alcance = e.alcance || cfg.alcance;
+      if (distancia <= percepcao && this.linhaReta(e, p, alcance + 0.5)) {
+        // Colada em você, entre um disparo e outro, recua um passo.
+        if (distancia < cfg.distanciaMinima && agora < e.proximoAtaque && agora >= e.proximoMovimento) {
+          e.proximoMovimento = agora + at.intervaloMovimento;
+          if (this.passoParaLonge(e, p)) eventos.push({ tipo: "inimigoMoveu", id: e.id });
+          return null;
+        }
+        if (agora < e.proximoAtaque) return null;
+        return this.golpeDaCriatura(id, p, estado, e, at, agora, eventos, { distancia: distancia > ALCANCE_CORPO });
+      }
+    } else if (distancia <= ALCANCE_CORPO) {
+      if (agora < e.proximoAtaque) return null;
+      return this.golpeDaCriatura(id, p, estado, e, at, agora, eventos, {});
+    }
+
+    if (tem("investida") && distancia <= percepcao) {
+      const cfg = COMPORTAMENTOS.investida;
+      const pronta = agora >= (e.proximaInvestida || 0);
+      if (pronta && distancia >= cfg.alcanceMin && distancia <= cfg.alcanceMax && this.linhaReta(e, p, cfg.alcanceMax + 0.5)) {
+        e.preparoAte = agora + cfg.preparo;
+        eventos.push({ tipo: "investidaPreparo", id: e.id, ate: e.preparoAte, mensagem: `${nome} prepara uma investida!` });
+        return null;
+      }
+    }
+
+    if (agora < e.proximoMovimento) return null;
+    e.proximoMovimento = agora + at.intervaloMovimento;
+    let alvoX = e.inicioX;
+    let alvoY = e.inicioY;
+    if (distancia <= percepcao) {
+      alvoX = p.x;
+      alvoY = p.y;
+    } else if (e.x === e.inicioX && e.y === e.inicioY) return null;
+    if (this.passoInimigo(e, alvoX, alvoY, p)) {
+      e.proximoAtaque = Math.max(e.proximoAtaque, agora + 600);
+      eventos.push({ tipo: "inimigoMoveu", id: e.id });
+    }
+    return null;
+  },
+
+  // Golpe (ou disparo) da criatura no jogador, com fúria, roubo de vida e status.
+  golpeDaCriatura(id, p, estado, e, at, agora, eventos, { multiplicador = 1, distancia = false, investida = false }) {
+    const furia = e.furioso ? COMPORTAMENTOS.furia : null;
+    e.proximoAtaque = agora + Math.round(at.intervaloAtaque * (furia ? furia.intervalo : 1));
+    estado.ultimoCombate = agora;
+    const bruto = Math.round(at.dano * (furia ? furia.dano : 1) * multiplicador);
+    const dano = mitigarDano(bruto, defesaTotal(p));
+    p.vida = Math.max(0, p.vida - dano);
+    const subiu = ganharHabilidade(p, "defesa", XP_HABILIDADE_POR_USO.defesa);
+    const nome = nomeInimigo(p, e);
+    if (p.vida === 0) {
+      eventos.push(this.aplicarMorte(id, "inimigo", agora));
+      return "morte";
+    }
+    if (at.rouboVida) p.vidaInimigos[e.id] = Math.min(at.vidaMaxima, p.vidaInimigos[e.id] + Math.max(1, Math.round(dano * at.rouboVida)));
+    const verbo = investida ? "avançou e atingiu" : distancia ? (e.projetil === "magia" ? "lançou um feitiço em" : "acertou de longe") : "atingiu";
+    eventos.push({
+      tipo: "jogadorAtingido",
+      inimigoId: e.id,
+      dano,
+      distancia,
+      investida,
+      projetil: distancia ? e.projetil || "flecha" : null,
+      roubo: at.rouboVida ? true : undefined,
+      defesaBloqueada: Math.max(0, bruto - dano),
+      mensagem: `${nome} ${verbo} você por ${dano} de dano! Vida: ${p.vida}/${vidaMaxima(p)}.${subiu ? ` Defesa: nível ${p.habilidades.defesa}.` : ""}`,
+    });
+    const ef = e.efeito;
+    if (ef && (ef.chance >= 1 || Math.random() < ef.chance)) {
+      if (ef.tipo === "veneno" && this.aplicarVeneno(p, ef, agora)) {
+        eventos.push({
+          tipo: "veneno",
+          mensagem: `${nome} envenenou você (${ef.dano} de dano a cada ${ef.intervalo / 1000} s por ${ef.duracao / 1000} s). A Oração remove veneno a partir do nível ${NIVEL_ORACAO.veneno}.`,
+        });
+      } else if (ef.tipo === "sangramento" && this.aplicarSangramento(p, ef, agora)) {
+        eventos.push({
+          tipo: "sangramento",
+          mensagem: `${nome} feriu você: sangramento de ${ef.dano} a cada ${ef.intervalo / 1000} s por ${ef.duracao / 1000} s.`,
+        });
+      } else if (ef.tipo === "atordoamento" && this.aplicarAtordoamento(p, ef, agora)) {
+        eventos.push({ tipo: "atordoado", ate: p.atordoadoAte, mensagem: `${nome} atordoou você por ${String(ef.duracao / 1000).replace(".", ",")} s!` });
+      }
+    }
+    this.salvar(p);
+    return null;
+  },
+
+  // Chama as criaturas da mesma espécie por perto (comportamento matilha).
+  alertarMatilha(e, agora) {
+    const cfg = COMPORTAMENTOS.matilha;
+    for (const outro of Object.values(inimigos)) {
+      if (outro.area !== e.area || outro.especie !== e.especie) continue;
+      if (Math.max(Math.abs(outro.x - e.x), Math.abs(outro.y - e.y)) <= cfg.raioAlerta) outro.alertaAte = agora + cfg.duracao;
+    }
+  },
+
+  // Um passo que aumenta a distância até o jogador (fuga e recuo de quem ataca de longe).
+  passoParaLonge(e, p) {
+    const atual = distanciaChebyshev(p, e);
+    const opcoes = [];
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = e.x + dx;
+        const ny = e.y + dy;
+        const d = Math.max(Math.abs(p.x - nx), Math.abs(p.y - ny));
+        if (d > atual && this.casaLivre(nx, ny, p)) opcoes.push({ nx, ny, d: d + Math.hypot(p.x - nx, p.y - ny) / 100 });
+      }
+    if (!opcoes.length) return false;
+    opcoes.sort((a, b) => b.d - a.d);
+    e.x = opcoes[0].nx;
+    e.y = opcoes[0].ny;
+    return true;
+  },
+
+  // Caminho reto livre entre a e b (pontas não contam), dentro de um círculo de raio "alcance".
+  linhaReta(a, b, alcance) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    if ((dx === 0 && dy === 0) || Math.hypot(dx, dy) > alcance) return false;
+    const passos = Math.max(Math.abs(dx), Math.abs(dy));
+    const mapa = mapas[a.area || b.area];
+    for (let i = 1; i < passos; i++) {
+      const x = a.x + Math.round((dx * i) / passos);
+      const y = a.y + Math.round((dy * i) / passos);
+      if (mapa[y][x] !== 0) return false;
+    }
+    return true;
+  },
+
+  // Raros nomeados: abre a janela (renasce com vida cheia num ponto do grupo e avisa) e fecha a janela.
+  atualizarNomeados(p, agora, eventos) {
+    for (const e of NOMEADOS) {
+      const j = janelaNomeado(e, agora);
+      const estado = p.nomeados[e.id];
+      if (j.ativa && estado?.janela !== j.indice) {
+        p.nomeados[e.id] = { janela: j.indice };
+        p.inimigosDerrotados = p.inimigosDerrotados.filter((x) => x !== e.id);
+        p.vidaInimigos[e.id] = atributosInimigo(p, e).vidaMaxima;
+        e.x = e.inicioX;
+        e.y = e.inicioY;
+        sortearPosicaoInimigo(e);
+        zerarComportamento(e);
+        const minutos = Math.max(1, Math.round((j.fim - agora) / 60_000));
+        eventos.push({
+          tipo: "nomeadoApareceu",
+          id: e.id,
+          area: e.area,
+          mensagem: `Rumores na estrada: ${e.nome}${e.titulo ? `, ${e.titulo},` : ""} foi visto em ${areas[e.area].nome}! Some em ${minutos} min.`,
+        });
+        this.salvar(p);
+      } else if (!j.ativa && estado && estado.janela === j.indice && !estado.sumiu) {
+        estado.sumiu = true;
+        const vivo = !p.inimigosDerrotados.includes(e.id);
+        eventos.push({ tipo: "nomeadoSumiu", id: e.id, area: e.area, mensagem: vivo ? `${e.nome} sumiu de ${areas[e.area].nome}.` : null });
+        this.salvar(p);
+      }
+    }
+  },
+
+  aplicarSangramento(p, ef, agora) {
+    if (p.sangrandoAte > agora) return false;
+    p.sangrandoAte = agora + ef.duracao;
+    p.proximoDanoSangue = agora + ef.intervalo;
+    p.sangramentoAtual = { dano: ef.dano, intervalo: ef.intervalo };
+    return true;
+  },
+
+  aplicarAtordoamento(p, ef, agora) {
+    if (p.atordoadoAte > agora || p.imuneAtordoamentoAte > agora) return false;
+    p.atordoadoAte = agora + ef.duracao;
+    p.imuneAtordoamentoAte = p.atordoadoAte + (ef.imunidade || 0);
+    return true;
   },
 
   aplicarVeneno(p, veneno, agora) {
@@ -2957,6 +3390,8 @@ const Mundo = {
 
     p.mortes++;
     this.curarVeneno(p);
+    this.curarSangramento(p);
+    p.atordoadoAte = 0;
     p.area = "canaan";
     p.x = areas.canaan.inicio.x;
     p.y = areas.canaan.inicio.y;
@@ -2966,9 +3401,11 @@ const Mundo = {
       outro.y = outro.inicioY;
       outro.proximoAtaque = 0;
       outro.proximoMovimento = 0;
-      if (this.inimigoVivo(p, outro.id)) p.vidaInimigos[outro.id] = outro.vidaMaxima;
+      zerarComportamento(outro);
+      if (this.inimigoVivo(p, outro.id)) p.vidaInimigos[outro.id] = atributosInimigo(p, outro).vidaMaxima;
     }
     if (estado) {
+      estado.explosoes = [];
       estado.ultimoCombate = 0;
       estado.proximaRegen = agora + TEMPO_REGEN;
       estado.proximoAtaqueJogador = 0;
@@ -3002,46 +3439,60 @@ const Mundo = {
 
     for (const e of Object.values(inimigos)) {
       if (e.area !== p.area || !this.inimigoVivo(p, e.id)) continue;
-      const distancia = distanciaChebyshev(p, e);
-      if (distancia <= ALCANCE_CORPO) {
-        if (agora < e.proximoAtaque) continue;
-        e.proximoAtaque = agora + (e.intervaloAtaque || INTERVALO_ATAQUE);
-        estado.ultimoCombate = agora;
-        const defesa = defesaTotal(p);
-        const dano = mitigarDano(e.danoContraJogador, defesa);
-        p.vida = Math.max(0, p.vida - dano);
-        const subiu = ganharHabilidade(p, "defesa", XP_HABILIDADE_POR_USO.defesa);
+      if (this.agirCriatura(id, p, estado, e, agora, eventos) === "morte") return eventos;
+    }
+
+    // Explosões de campeões explosivos (marcadas na morte deles).
+    if (estado.explosoes?.length) {
+      const prontas = estado.explosoes.filter((x) => agora >= x.em);
+      estado.explosoes = estado.explosoes.filter((x) => agora < x.em);
+      for (const x of prontas) {
+        const atingiu = x.area === p.area && distanciaChebyshev(p, x) <= 1;
+        const dano = atingiu ? mitigarDano(x.dano, defesaTotal(p)) : 0;
+        if (atingiu) {
+          p.vida = Math.max(0, p.vida - dano);
+          estado.ultimoCombate = agora;
+        }
+        eventos.push({
+          tipo: "explosao",
+          x: x.x,
+          y: x.y,
+          area: x.area,
+          dano,
+          mensagem: atingiu ? `${x.nome} explodiu e atingiu você por ${dano} de dano!` : `${x.nome} explodiu.`,
+        });
         if (p.vida === 0) {
           eventos.push(this.aplicarMorte(id, "inimigo", agora));
           return eventos;
         }
-        eventos.push({
-          tipo: "jogadorAtingido",
-          inimigoId: e.id,
-          dano,
-          defesaBloqueada: Math.max(0, e.danoContraJogador - dano),
-          mensagem: `${e.nome} atingiu você por ${dano} de dano! Vida: ${p.vida}/${vidaMaxima(p)}.${subiu ? ` Defesa: nível ${p.habilidades.defesa}.` : ""}`,
-        });
-        if (e.veneno && this.aplicarVeneno(p, e.veneno, agora)) {
-          eventos.push({
-            tipo: "veneno",
-            mensagem: `${e.nome} envenenou você (${e.veneno.dano} de dano a cada ${e.veneno.intervalo / 1000} s por ${e.veneno.duracao / 1000} s). A Oração remove veneno a partir do nível ${NIVEL_ORACAO.veneno}.`,
-          });
+        if (atingiu) this.salvar(p);
+      }
+    }
+
+    // Sangramento: como o veneno, com a sua própria grade de ticks.
+    if (p.sangrandoAte) {
+      const sangue = p.sangramentoAtual || STATUS_CRIATURAS.sangramento;
+      const tickPendente = agora >= p.proximoDanoSangue && p.proximoDanoSangue <= p.sangrandoAte;
+      if (!tickPendente && agora >= p.sangrandoAte) {
+        this.curarSangramento(p);
+        this.salvar(p);
+        eventos.push({ tipo: "sangramentoTerminou", mensagem: "O sangramento parou." });
+      } else if (tickPendente) {
+        p.proximoDanoSangue += sangue.intervalo;
+        p.vida = Math.max(0, p.vida - sangue.dano);
+        estado.ultimoCombate = agora;
+        if (p.vida === 0) {
+          eventos.push(this.aplicarMorte(id, "sangramento", agora));
+          return eventos;
         }
         this.salvar(p);
-        continue;
-      }
-      if (agora < e.proximoMovimento) continue;
-      e.proximoMovimento = agora + INTERVALO_MOVIMENTO;
-      let alvoX = e.inicioX;
-      let alvoY = e.inicioY;
-      if (distancia <= e.raioPercepcao) {
-        alvoX = p.x;
-        alvoY = p.y;
-      } else if (e.x === e.inicioX && e.y === e.inicioY) continue;
-      if (this.passoInimigo(e, alvoX, alvoY, p)) {
-        e.proximoAtaque = Math.max(e.proximoAtaque, agora + 600);
-        eventos.push({ tipo: "inimigoMoveu", id: e.id });
+        eventos.push({
+          tipo: "jogadorAtingido",
+          dano: sangue.dano,
+          defesaBloqueada: 0,
+          sangramento: true,
+          mensagem: `O sangramento causa ${sangue.dano} de dano. Vida: ${p.vida}/${vidaMaxima(p)}.`,
+        });
       }
     }
 
@@ -3092,6 +3543,8 @@ const Mundo = {
       this.salvar(p);
       eventos.push({ tipo: "regenerou" });
     }
+
+    this.atualizarNomeados(p, agora, eventos);
 
     if (agora >= estado.proximaLimpezaSaques) {
       estado.proximaLimpezaSaques = agora + INTERVALO_LIMPEZA_SAQUES;

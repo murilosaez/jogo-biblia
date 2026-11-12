@@ -15,7 +15,8 @@ Conteúdo do jogo (pasta dados/)
 - dados/npcs.js: personagens, posições, papéis e falas próprias. Comerciantes, guias e atalaias
   atendem à frente de uma tenda ou banca (estruturas com npc em dados/mapas.js); os moradores
   (papel "ambiente") só conversam, dizendo as suas falas em rodízio.
-- dados/criaturas.js: inimigos, atributos, tabela de saque (itens com chance) e veneno; especie e familia de cada criatura (as
+- dados/criaturas.js: inimigos (tier, comportamento, status, atributos e tabela de saque), as regras de
+  tiers, comportamentos, status e campeões, e os raros nomeados com a janela de aparição; especie e familia de cada criatura (as
   caçadas contam por elas) e os nomes das famílias.
 - dados/capitulos.js: capítulos em ordem, a missão de cada um e o Mestre que ensina a Oração.
 - dados/missoes.js: todas as missões (Eliabe, Noemi e capítulos): quem dá e recebe, missão
@@ -165,6 +166,41 @@ Inimigos obrigatórios (vida / defesa / dano por golpe antes da sua defesa)
 - Guerreiro amalequita 400 / 12 / 11 · Salteador da estrada 470 / 14 / 11
 Com o autoataque, cada luta da campanha leva de 11 a 35 segundos e as últimas pedem 1 ou 2 poções.
 
+Criaturas (31 espécies e 6 raros nomeados; cada uma com sprite próprio)
+- Canaã: lobo, chacal (matilha), javali (investida), urso (elite, fúria), leão (elite, investida, sangramento).
+- Deserto: escorpião (veneno), chefe dos saqueadores (chefe), víbora (veneno), hiena (matilha e fuga),
+  abutre (rápido, foge), enxame de gafanhotos (ataque muito rápido), arqueiro do bando (à distância).
+- Egito: guarda egípcio, crocodilo do Nilo (elite, investida, atordoa), naja (veneno), feiticeiro da corte
+  (feitiço à distância, atordoa), rã da praga, arqueiro egípcio (à distância).
+- Mar Vermelho: soldado perseguidor, caranguejo das rochas (defesa alta), pirata da costa (sangramento),
+  auriga de Faraó (elite, investida).
+- Monte Sinai: guerreiro amalequita, cabra selvagem (investida e fuga), águia (rápida, foge), fundibulário
+  amalequita (pedras à distância, atordoa), leopardo das rochas (elite, fúria, sangramento).
+- Galileia: salteador da estrada, enxame de vespas (veneno, ataque muito rápido), corvo (foge), mercenário
+  (elite, fúria, sangramento).
+- Tiers: normal, elite (nome prateado, mais forte e com saque melhor), chefe e raro nomeado.
+- Comportamentos: matilha (ao ver você ou ser atingida, chama as da mesma espécie a até 12 casas, que
+  passam a enxergar 8 casas mais longe por 10 s); fuga (com 25% da vida, foge por 4 s, uma vez, e volta);
+  à distância (flecha, pedra ou feitiço de até 5 casas com o caminho livre; colada em você, recua); investida
+  (entre 2 e 4 casas, avisa com "!" por 0,9 s e avança em linha reta batendo 1,6×; saia da linha e ela erra;
+  recarga de 7 s); fúria (com 30% da vida, bate 1,4× mais forte e 25% mais rápido).
+- Status: veneno; sangramento (3 de dano a cada 2 s por 8 s, 30% de chance por golpe); atordoamento
+  (1,2 s sem andar nem atacar, 15–30% de chance; depois, 4 s de imunidade). Poções valem atordoado.
+  A Oração "Remover veneno" também estanca o sangramento, e o Milagre remove os dois.
+- Campeões: toda criatura normal ou elite tem 5% de chance de renascer campeã, com 1 ou 2 modificadores no
+  nome, em dourado ("Hiena Rápida e Vampírica"): Rápido (ataca e anda mais rápido), Vampírico (recupera
+  metade do dano que causa), Explosivo (ao morrer, marca o chão e explode 1,2 s depois em quem ficou ao
+  lado), Blindado (defesa ×1,6) e Feroz (dano ×1,3). O campeão tem vida ×1,8 e dano ×1,2, rende o triplo de
+  XP e de moedas e o saque é sorteado duas vezes, com equipamento incomum ou melhor. O surgimento e a
+  derrota são anunciados no Registro.
+- Raros nomeados: um por região — Presa-Cinzenta, o lobo velho (Canaã); Rei das Areias, o escorpião
+  gigante (Deserto); Mandíbula do Nilo, o crocodilo ancião (Egito); Garra-de-Coral, o caranguejo colossal
+  (Mar Vermelho); Chifre-de-Pedra, o bode das alturas (Monte Sinai); Asa-Negra, o corvo da tempestade
+  (Galileia). Cada um aparece a cada 4 horas por 30 minutos (6 vezes por dia, em horários desencontrados,
+  pelo relógio), com anúncio no Registro ("Rumores na estrada: …"). Derrotado, só volta na aparição
+  seguinte; vivo quando a janela fecha, some. Saque garantido de equipamento raro ou melhor e chance de
+  pedra do peitoral. São maiores e tingidos, com o nome em lilás.
+
 Níveis e XP
 - XP para passar do nível 10 ao 11 = 650; cada nível seguinte custa 150 XP a mais que o anterior
   (11→12: 800, 12→13: 950...). Até o nível 10, vale a tabela 100, 150, 200, 250, 300, 350, 400, 450, 500, 550.
@@ -247,7 +283,12 @@ Para desenvolvedores
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
   som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
-  são puras; o teste 49 simula 200 mil abates por criatura e confere a frequência de cada linha da tabela.
+  são puras; o teste 49 simula 60 mil abates por criatura e confere a frequência de cada linha da tabela.
+- Criaturas: Mundo.fichaInimigo(id, inimigoId) (nome com modificadores, tier, campeão, família,
+  comportamentos e status), Mundo.vidaMaximaInimigo(id, inimigoId) e Mundo.nomeInimigo(id, inimigoId).
+  O laço de tempo (Mundo.atualizar) devolve também furia, fuga, investidaPreparo, investidaErrou,
+  sangramento, atordoado, explosao, nomeadoApareceu e nomeadoSumiu. O teste 51 simula a luta contra cada
+  criatura no perfil de chegada da região (no nível dela) e aprova duração, poções e XP por minuto.
 - Caçadas: comandos { tipo: "aceitarTarefa", tarefaId }, { tipo: "guardarTarefa", tarefaId } e
   { tipo: "trocarPontos", ofertaId } de Mundo.executar. Falar com um atalaia devolve abrirMural (mural
   aberto) e, se houve entrega, tarefasEntregues e niveis; os ataques que derrotam devolvem tarefas
