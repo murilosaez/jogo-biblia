@@ -128,6 +128,7 @@ class Cena extends Phaser.Scene {
     this.respawns = new Set();
     this.entidades = {}; // id → {tipo, dados, sprite, sombra, rotulo, balao, ...}
     this.spritesItens = {};
+    this.spritesAliados = {}; // cão e ovelhas do Pastor (JGB-20), sincronizados com Mundo.aliados
     this.copas = new Map(); // "x,y" → copa ou telhado que fica translúcido com o jogador logo atrás
     this.copasTranslucidas = [];
     this.blocos = new Map(); // "bx,by" → imagens do cenário daquele bloco (culling)
@@ -894,6 +895,7 @@ class Cena extends Phaser.Scene {
     if (r.abrirLoja) (window.UI?.abrirLoja || window.abrirLoja)?.(r.abrirLoja);
     if (r.abrirViagem) (window.UI?.abrirViagem || window.abrirViagem)?.(r.abrirViagem);
     if (r.abrirMural) window.UI?.abrirMural?.(r.abrirMural);
+    if (r.abrirVocacao) window.UI?.abrirVocacao?.(r.abrirVocacao);
     if (r.tarefasEntregues?.length) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 12, { subir: true, dur: 800 });
     if (r.missaoErvasIniciada || r.missaoDesertoIniciada) this.atualizarColetaveis();
     if (r.capituloConcluido || r.oracaoAprendida) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 12, { subir: true, dur: 800 });
@@ -998,7 +1000,8 @@ class Cena extends Phaser.Scene {
     // Também a 1 casa: espada e arco são exclusivos, então com o arco nas
     // mãos o golpe corpo a corpo sairia sem arma (a lógica aceita o tiro
     // a partir de 1 casa).
-    const podeAtirar = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0 && alinhado;
+    const semMunicao = this.p.equipamento.arco && typeof infoItem === "function" && infoItem(this.p.equipamento.arco)?.semMunicao;
+    const podeAtirar = this.p.equipamento.arco && (semMunicao || Mundo.contarItem(MEU_ID, "flecha") > 0) && alinhado;
     // Ainda a caminho do alvo: espera chegar (sem a mensagem "chegue ao lado" a cada 2 s).
     if (this.perseguir && !this.alcancaAlvo(e)) return;
     this.ultimoAutoAtaque = this.time.now;
@@ -1190,6 +1193,7 @@ class Cena extends Phaser.Scene {
     if (comando.tipo === "pescar") { this.pescar(); return { ok: true }; }
     if (comando.tipo === "usarPocao") return this.usarPocao();
     if (comando.tipo === "usarPocaoFe") return this.usarPocaoFe();
+    if (comando.tipo === "usarHabilidade") return this.usarHabilidade(comando.habilidade, comando.alvoId);
     const r = Mundo.executar(MEU_ID, comando);
     if (r.mensagem) this.mensagem(r.mensagem);
     if (r.areaAlterada) { this.trocarArea(null); return r; }
@@ -1241,6 +1245,13 @@ class Cena extends Phaser.Scene {
       else if (x.tipo === "manaEstragou") this.mensagem(x.mensagem);
       else if (x.tipo === "sangramento") this.mensagem(x.mensagem, "perigo");
       else if (x.tipo === "atordoado") this.jogadorAtordoado(x);
+      else if (x.tipo === "medo") this.jogadorComMedo(x);
+      else if (x.tipo === "medoTerminou") this.mensagem(x.mensagem);
+      else if (x.tipo === "statusInimigo") this.statusNaCriatura(x);
+      else if (x.tipo === "inimigoDerrotado") { this.mensagem(x.mensagem, "combate"); this.aposAtaque(x); }
+      else if (x.tipo === "aliadoAtacou") this.numeroNoInimigo(x.inimigoId, `−${x.dano}`, "dano");
+      else if (x.tipo === "iscaAtingida") this.numeroNoAliado(x.aliadoId, `−${x.dano}`);
+      else if (x.tipo === "curaBuff") this.numero(this.jogador.x, this.jogador.y - 46, `+${x.cura}`, "cura");
       else if (x.tipo === "furia" || x.tipo === "fuga" || x.tipo === "investidaPreparo" || x.tipo === "investidaErrou" || x.tipo === "retorno") this.comportamentoInimigo(x);
       else if (x.tipo === "cura") this.curaInimiga(x);
       else if (x.tipo === "explosao") this.explosao(x);
@@ -1258,6 +1269,7 @@ class Cena extends Phaser.Scene {
       }
     }
     if (ev.length) window.atualizarInterface?.();
+    this.sincronizarAliados(time);
 
     this.animar(time);
   }
@@ -1534,6 +1546,103 @@ class Cena extends Phaser.Scene {
       if (tipo === "magia") this.particulasSimples(this.jogador.x, this.jogador.y - 22, cor, 6, { dur: 400, espalha: 8 });
       p.destroy();
     } });
+  }
+
+  // Medo (JGB-16): aviso e "MEDO" sobre o jogador (sem prender: ele pode recuar).
+  jogadorComMedo(x) {
+    this.mensagem(x.mensagem, "perigo");
+    this.numero(this.jogador.x, this.jogador.y - 50, "MEDO", "bloqueio");
+    if (reduzMovimento()) return;
+    this.jogador.setTint(0xb9a2d6);
+    this.time.delayedCall(Math.max(300, x.ate - Date.now()), () => this.jogador.active && this.jogador.clearTint());
+  }
+
+  // Tique de status numa criatura (veneno, sangramento): número com a cor do status sobre ela.
+  statusNaCriatura(x) {
+    const e = inimigos[x.inimigoId];
+    const ent = this.entidades[x.inimigoId];
+    if (!e || !ent?.sprite?.active) return;
+    this.numero(centroX(e.x), baseY(e.y) - 34, `−${x.dano}`, x.status === "veneno" ? "veneno" : "recebido");
+    if (!reduzMovimento()) this.particulasSimples(centroX(e.x), baseY(e.y) - 16, x.status === "veneno" ? "#a8c84a" : "#c2452d", 2, { dur: 450, espalha: 4 });
+  }
+
+  // ===== vocações (JGB-20) ============================================
+  // Usa a habilidade (pelo id) no alvo escolhido (ou no mais perto) e mostra os efeitos.
+  usarHabilidade(habilidade, alvoId) {
+    const def = typeof HABILIDADES_VOCACAO !== "undefined" ? HABILIDADES_VOCACAO[habilidade] : null;
+    const alvo = alvoId || (def?.alvo === "inimigo" ? this.alvoId : null) || undefined;
+    const r = Mundo.executar(MEU_ID, { tipo: "usarHabilidade", habilidade, alvoId: alvo });
+    if (!r.ok) {
+      if (r.mensagem) this.mensagem(r.mensagem);
+      return r;
+    }
+    this.p = Mundo.jogadores[MEU_ID];
+    if (r.movimento) {
+      this.tweens.add({ targets: this.jogador, x: centroX(this.p.x), y: baseY(this.p.y), duration: 160, ease: "Cubic.easeOut" });
+      if (!reduzMovimento()) this.particulasSimples(this.jogador.x, this.jogador.y - 6, "#e6cf9c", 5, { espalha: 8, dur: 400 });
+    }
+    for (const l of r.alvos || []) {
+      const e = inimigos[l.inimigoId];
+      if (!e) continue;
+      if (l.repelido) this.moverInimigo(l.inimigoId);
+      if (l.dano) this.numeroNoInimigo(l.inimigoId, l.critico ? `${l.dano}!` : `${l.dano}`, l.critico ? "critico" : "dano");
+      if (l.status) this.time.delayedCall(200, () => this.numeroNoInimigo(l.inimigoId, STATUS_CRIATURAS[l.status].nome.toUpperCase(), "bloqueio"));
+      const ent = this.entidades[l.inimigoId];
+      if (ent?.sprite?.active && l.dano) { ent.sprite.setTintFill(0xffffff); this.time.delayedCall(70, () => ent.sprite.active && ent.sprite.clearTint()); }
+      if (!this.alvoId && !l.derrotado && def?.alvo === "inimigo") this.alvoId = l.inimigoId;
+    }
+    if (r.cura) this.efeitoCura(r.cura);
+    if (r.buff && !reduzMovimento()) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#ffe08a", 8, { subir: true, dur: 700 });
+    this.mensagem(r.mensagem, "combate");
+    for (const m of r.mortes || []) this.aposAtaque({ ...m, derrotado: true });
+    if (!(r.mortes || []).length) window.atualizarInterface?.();
+    return r;
+  }
+  // Barra de habilidades: a habilidade do espaço i (0 a 7).
+  usarHabilidadeDaBarra(i) {
+    const barra = typeof barraHabilidades === "function" ? barraHabilidades(this.p, Date.now()) : [];
+    const h = barra[i];
+    if (!h) return null;
+    return this.usarHabilidade(h.id);
+  }
+  numeroNoInimigo(id, txt, tipo) {
+    const e = inimigos[id];
+    if (e) this.numero(centroX(e.x), baseY(e.y) - 40, txt, tipo);
+  }
+  numeroNoAliado(id, txt) {
+    const s = this.spritesAliados[id];
+    if (s) this.numero(s.x, s.y - 30, txt, "recebido");
+  }
+  // Cão e ovelhas: um sprite por aliado da área, que anda até a casa dele (e some quando ele vai embora).
+  sincronizarAliados(time) {
+    const lista = typeof Mundo.aliados === "function" ? Mundo.aliados(MEU_ID).filter((a) => a.area === this.areaAtual) : [];
+    const vistos = new Set();
+    for (const a of lista) {
+      vistos.add(a.id);
+      const x = centroX(a.x), y = baseY(a.y);
+      let s = this.spritesAliados[a.id];
+      if (!s) {
+        const chave = Arte.garantirTextura(this, a.tipo === "cao" ? "al_cao" : "al_ovelha");
+        s = this.add.sprite(x, y, chave, 0).setOrigin(0.5, 1).setDepth(PROF.entidade + y);
+        this.spritesAliados[a.id] = s;
+        if (!reduzMovimento()) this.particulasSimples(x, y - 8, "#f6efdc", 6, { espalha: 8, dur: 500 });
+      }
+      const dx = x - s.x, dy = y - s.y;
+      const andando = Math.abs(dx) + Math.abs(dy) > 1;
+      if (andando) {
+        s.x += dx * 0.2;
+        s.y += dy * 0.2;
+        if (Math.abs(dx) > 1) s.setFlipX(dx < 0);
+      } else s.setPosition(x, y);
+      s.setDepth(PROF.entidade + s.y);
+      s.setFrame(andando ? 2 + (Math.floor(time / 150) % 2) : 0);
+    }
+    for (const [id, s] of Object.entries(this.spritesAliados)) {
+      if (vistos.has(id)) continue;
+      if (!reduzMovimento()) this.particulasSimples(s.x, s.y - 8, "#f6efdc", 5, { espalha: 8, dur: 400 });
+      s.destroy();
+      delete this.spritesAliados[id];
+    }
   }
 
   jogadorAtordoado(x) {
@@ -1958,6 +2067,7 @@ window.Jogo = {
     }
   },
   usarAtalho(i) { return window.gameScene?.usarHotkey(i); },
+  usarHabilidade(i) { return window.gameScene?.usarHabilidadeDaBarra(i); },
   alvoAtual() { return window.gameScene?.alvoId || null; },
   podeInteragir() {
     const r = window.gameScene?.podeInteragir();

@@ -131,11 +131,18 @@ const COMPORTAMENTOS = {
   },
 };
 
-// Status que a criatura aplica ao acertar (campo status: { tipo, ...ajustes }). chance por golpe;
-// duracao, dano e intervalo em ms; imunidade: tempo sem poder ser atordoado de novo.
-// A Oração "Remover veneno" também estanca o sangramento.
+// Status (JGB-16): valem para o jogador e para as criaturas, com as mesmas regras. A criatura aplica o seu
+// ao acertar (campo status: { tipo, ...ajustes }); as habilidades das vocações (v0.3) aplicam nas criaturas.
+//   chance: por golpe; duracao, dano e intervalo em ms (dano e intervalo só nos status que machucam aos poucos);
+//   acumulo: o que um novo acerto faz enquanto o status dura —
+//     "renova": recomeça a duração (o dano por tique fica o maior dos dois);
+//     "pilhas": soma uma pilha, até pilhasMax, e recomeça a duração; cada tique causa dano × pilhas;
+//     "nenhum": não faz nada até o status acabar;
+//   imunidade: depois que o status acaba, tempo em que ele não pega de novo.
+// Efeitos: atordoamento — não anda nem ataca; medo — não ataca (o jogador pode andar e beber poção; a criatura
+// foge de quem a assustou). A Oração Remover veneno cura veneno e sangramento; o Milagre cura todos.
 // fraqueza: o que o bestiário ensina contra quem aplica o status ({chance}: a chance da criatura, em %;
-// {imunidade}: a imunidade, em segundos).
+// {duracao} e {imunidade}: em segundos; {pilhas}: pilhasMax).
 const STATUS_CRIATURAS = {
   veneno: {
     nome: "Veneno",
@@ -143,22 +150,59 @@ const STATUS_CRIATURAS = {
     duracao: 15000,
     dano: 3,
     intervalo: 3000,
-    fraqueza: "O veneno não se acumula: enquanto dura, um novo golpe não envenena de novo. A Oração Remover veneno o cura.",
+    acumulo: "renova",
+    fraqueza: "O veneno não soma: cada picada só recomeça os {duracao}. Afaste-se para ele passar; a Oração Remover veneno o cura.",
   },
   sangramento: {
     nome: "Sangramento",
     chance: 0.3,
     duracao: 8000,
-    dano: 3,
+    dano: 2,
     intervalo: 2000,
-    fraqueza: "Faz sangrar em só {chance} dos golpes, e a Oração Remover veneno também estanca o sangue.",
+    acumulo: "pilhas",
+    pilhasMax: 2,
+    fraqueza: "Faz sangrar em {chance} dos golpes e as feridas somam (até {pilhas} pilhas): não alongue a luta. A Oração Remover veneno também estanca o sangue.",
   },
   atordoamento: {
     nome: "Atordoamento",
     chance: 0.2,
     duracao: 1200,
     imunidade: 4000,
-    fraqueza: "Atordoa em {chance} dos golpes e, depois, passa {imunidade} sem conseguir de novo: é a hora de beber a poção.",
+    acumulo: "nenhum",
+    fraqueza: "Atordoa em {chance} dos golpes, e o golpe seguinte em você é crítico. Depois, passa {imunidade} sem conseguir de novo: é a hora de beber a poção.",
+  },
+  medo: {
+    nome: "Medo",
+    chance: 0.2,
+    duracao: 2500,
+    imunidade: 6000,
+    acumulo: "nenhum",
+    fraqueza: "O rugido assusta em {chance} dos golpes: por {duracao} você não ataca e leva +25% de dano. Recue ou beba a poção; depois, {imunidade} sem medo.",
+  },
+};
+
+// Combinações de status (JGB-16), para o jogador e para as criaturas:
+//   critico: golpes em quem tem o status saem sempre críticos;
+//   danoRecebido: multiplica o dano dos golpes em quem tem o status;
+//   danoTiques: com todos os status de "requer" juntos, os tiques deles causam × este valor.
+const COMBINACOES_STATUS = {
+  golpeNoAtordoado: {
+    nome: "Golpe no atordoado",
+    requer: ["atordoamento"],
+    critico: true,
+    texto: "Quem está atordoado não se defende: todo golpe nele é crítico.",
+  },
+  panico: {
+    nome: "Pânico",
+    requer: ["medo"],
+    danoRecebido: 1.25,
+    texto: "Quem está com medo dá as costas: leva +25% de dano dos golpes.",
+  },
+  feridaInfeccionada: {
+    nome: "Ferida infeccionada",
+    requer: ["veneno", "sangramento"],
+    danoTiques: 1.5,
+    texto: "Veneno e sangramento juntos: os tiques dos dois causam +50%.",
   },
 };
 
@@ -464,6 +508,7 @@ const DADOS_CRIATURAS = [
     nivel: 5,
     grupo: { quantidade: 2, raio: 10 },
     comportamento: "furia",
+    status: { tipo: "medo", chance: 0.2 },
     xpRecompensa: 115,
     saque: {
       moedas: 12,
@@ -555,6 +600,7 @@ const DADOS_CRIATURAS = [
     nivel: 5,
     grupo: { quantidade: 5, raio: 14 },
     comportamento: ["matilha", "fuga"],
+    status: { tipo: "medo", chance: 0.15 },
     xpRecompensa: 56,
     saque: {
       moedas: 6,
@@ -1008,7 +1054,7 @@ const DADOS_CRIATURAS = [
     nivel: 10,
     grupo: { quantidade: 2, raio: 10 },
     comportamento: "furia",
-    status: { tipo: "sangramento", chance: 0.35 },
+    status: { tipo: "sangramento", chance: 0.25 },
     xpRecompensa: 270,
     saque: {
       moedas: 28,

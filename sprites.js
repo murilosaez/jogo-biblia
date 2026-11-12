@@ -901,7 +901,7 @@
   function quadrupede(chave, o) {
     const W = o.w || 20, H = o.h || 14;
     return registrar(chave, {
-      w: W, h: H, quadros: 5, contorno: "hostil",
+      w: W, h: H, quadros: 5, contorno: o.contorno || "hostil",
       desenhar(g, q) {
         const [A, B, C] = o.pelo, V = o.ventre || C, N = "#2a1a14";
         const resp = q === 1 ? 0.3 : 0, bote = q === 4 ? 2 : 0;
@@ -945,6 +945,15 @@
       },
     });
   }
+  // Aliados do Pastor (JGB-20): cão pastor e ovelha, com o contorno dos amigos.
+  quadrupede("al_cao", {
+    w: 20, h: 14, pelo: ["#5a3a24", "#8a5a34", "#b07a48"], ventre: "#efe2c4", rx: 4.6, ry: 2.4, cabeca: 2.2, focinho: 2,
+    corFocinho: "#efe2c4", orelhas: "pontudas", cauda: "peluda", perna: 4, contorno: "amigo",
+  });
+  quadrupede("al_ovelha", {
+    w: 20, h: 14, pelo: ["#cfc6b4", "#e8e2d4", "#f8f4ea"], ventre: "#e8e2d4", rx: 5, ry: 3, cabeca: 1.8, focinho: 1,
+    corFocinho: "#3a3028", olho: "#2a1a14", orelhas: "pontudas", cauda: "curta", perna: 2, casco: "#3a3028", contorno: "amigo",
+  });
   quadrupede("in_chacal", {
     w: 20, h: 14, pelo: ["#9a6a34", "#c08a48", "#dcae6c"], ventre: "#ecd4a4", rx: 4.6, ry: 2.2, cabeca: 2, focinho: 3,
     orelhas: "grandes", cauda: "peluda", perna: 4,
@@ -1309,6 +1318,12 @@
     g.lin(9, 9, 9, 10, "#eadcb6"); g.p(10, 8, "#7d522b"); g.lin(9, 11, 7, 13, "#b07a3e"); g.p(6, 13, "#7d522b"); g.p(5, 14, "#2a1a14");
     g.lin(6, 4, 6, 12, "#eadcb6");
   });
+  // Funda: correia de couro com a bolsa da pedra no meio.
+  item("funda", (g) => {
+    g.lin(3, 3, 6, 8, "#8a5a2e"); g.lin(13, 3, 10, 8, "#8a5a2e");
+    g.elip(8, 9.5, 2.6, 2, () => "#6b4a2e"); g.p(8, 9, "#b8ab8a"); g.p(7, 9, "#d8ccb0");
+    g.ret(2, 2, 2, 2, "#c08f58"); g.ret(12, 2, 2, 2, "#c08f58");
+  });
   item("flecha", (g) => {
     g.lin(4, 12, 11, 5, "#b07a3e");
     g.p(12, 4, "#a8b4bc"); g.p(13, 3, "#e4ecf0"); g.p(11, 4, "#a8b4bc"); g.p(12, 5, "#a8b4bc");
@@ -1455,6 +1470,46 @@
   // Bestiário (livro de capa de couro com a pegada dourada), amuleto da família e ampulheta do analisador.
   glifo("ui_bestiario", [".kkkkkk.", "kYLYLYPk", "kLLLLLPk", "kLYYYLPk", "kLYYYLPk", "kLLYLLPk", "kLLLLLPk", ".kkkkkk."], { L: "#7a4a30", Y: "#e8b94a", P: "#f3e4c0" });
   glifo("ui_amuleto", ["C......C", ".C....C.", "..C..C..", "...kk...", "..kYYk..", ".kYyGYk.", ".kYGGdk.", "..kddk.."], { C: "#c9b48a", Y: "#e8b94a", y: "#ffe08a", d: "#b8862b", G: "#3fa66a" });
+  // Habilidades das vocações (JGB-20): um glifo por ícone (hb_<icone> em dados/vocacoes.js).
+  glifo("hb_espada", ["......kW", ".....kWk", "....kWk.", "k..kWk..", "kk.Wk...", ".kBk....", "kBkkk...", "kk......"], { W: "#e4ecf0", B: "#b07a38" });
+  glifo("hb_escudo", ["kkkkkkkk", "kBBBBBdk", "kBbBBBdk", "kBBYBBdk", ".kBBBdk.", ".kBBBdk.", "..kBdk..", "...kk..."], { B: "#b07a38", b: "#d29e52", d: "#6b4a2e", Y: "#e8b94a" });
+  glifo("hb_grito", [".kk...W.", "kRRk.W..", "kRRRk..W", "kRRRk.W.", "kRRRk..W", "kRRk.W..", ".kk...W.", "........"], { R: "#c2452d", W: "#f6efdc" });
+  glifo("hb_escudo_golpe", ["kkkkk.Y.", "kBBBk.YY", "kBbBkYY.", "kBBBk.Y.", ".kBk....", "..k.....", "........", "........"], { B: "#b07a38", b: "#d29e52", Y: "#ffe08a" });
+  glifo("hb_investida", ["........", "W...kk..", "....kWk.", "WWkkWWWk", "....kWk.", "W...kk..", "........", "........"], { W: "#e4ecf0" });
+  glifo("hb_redemoinho", ["..kkkk..", ".kW..Wk.", "kW.kk.Wk", "kW.k..W.", "kW..kWk.", "k.Wk....", ".k.kkkk.", "..k....."], { W: "#e4ecf0" });
+  glifo("hb_coracao", [".kk.kk..", "kRRkRRk.", "kRrRRRk.", "kRRRRRk.", ".kRRRk..", "..kRk...", "...k....", "........"], { R: "#c2452d", r: "#ef6a5e" });
+  glifo("hb_chama", ["...k....", "..kYk...", "..kYk.k.", ".kYOYkYk", ".kYOOYYk", "kYOOROYk", "kYORROYk", ".kkkkkk."], { Y: "#ffe08a", O: "#e8b94a", R: "#c2452d" });
+  glifo("hb_muralha", ["kkkkkkkk", "kSSkSSSk", "kkkkkkkk", "kSSSkSSk", "kkkkkkkk", "kSSkSSSk", "kkkkkkkk", "........"], { S: "#b8ab8a" });
+  glifo("hb_pedra", ["........", "..kkk...", ".kSSsk..", "kSSSssk.", "kSSssdk.", ".kSsdk..", "..kkk...", "........"], { S: "#d8ccb0", s: "#b8ab8a", d: "#8a7a6a" });
+  glifo("hb_testa", [".kkkkk..", "kRRRRRk.", "kRWWWRk.", "kRWkWRk.", "kRWWWRk.", "kRRRRRk.", ".kkkkk..", "........"], { R: "#c2452d", W: "#f6efdc" });
+  glifo("hb_salto", ["kkkk....", "kWWk....", "kWk.....", "k.kW....", "...kW...", "....kW..", ".....kWk", "......kk"], { W: "#e4ecf0" });
+  glifo("hb_chuva", ["S..S..S.", "d..d..d.", "........", ".S..S..S", ".d..d..d", "........", "S..S..S.", "d..d..d."], { S: "#d8ccb0", d: "#8a7a6a" });
+  glifo("hb_pedra_afiada", ["......kR", "....kkR.", "..kSSk..", ".kSSsk..", "kSSsk...", "kSsk....", ".kk.....", "........"], { S: "#d8ccb0", s: "#b8ab8a", R: "#c2452d" });
+  glifo("hb_duas_pedras", [".kkk....", "kSsk....", "kSdk....", ".kk.kkk.", "....kSsk", "....kSdk", ".....kk.", "........"], { S: "#d8ccb0", s: "#b8ab8a", d: "#8a7a6a" });
+  glifo("hb_olho", ["........", "..kkkk..", ".kWWWWk.", "kWWBBWWk", "kWWBkWWk", ".kWWWWk.", "..kkkk..", "........"], { W: "#f6efdc", B: "#4fa3a5" });
+  glifo("hb_pedra_grande", ["..kkkk..", ".kSSssk.", "kSSSsssk", "kSSssddk", "kSsssddk", "kSssdddk", ".kddddk.", "..kkkk.."], { S: "#d8ccb0", s: "#b8ab8a", d: "#8a7a6a" });
+  glifo("hb_cura", ["...kk...", "..kGGk..", "..kGGk..", "kkkGGkkk", "kGGGGGGk", "kkkGGkkk", "..kGGk..", "...kk..."], { G: "#8fd16a" });
+  glifo("hb_candelabro", ["Y.Y.Y.Y.", "N.N.N.N.", "NNNNNNN.", "...N....", "...N....", "..NNN...", ".NNNNN..", "........"], { Y: "#ffe08a", N: "#e8b94a" });
+  glifo("hb_incenso", ["..W.W...", "...W....", "..W.....", "..kkkk..", ".kNNNNk.", ".kNnNNk.", "..kNNk..", "..kkkk.."], { W: "#d8ccb0", N: "#b07a38", n: "#d29e52" });
+  glifo("hb_agua", ["...kk...", "..kBBk..", ".kBbBBk.", ".kBbBBk.", "kBBBBBBk", "kBBBBBdk", ".kBBBdk.", "..kkkk.."], { B: "#6fd0d0", b: "#d8f4f4", d: "#3a8a8a" });
+  glifo("hb_trombeta", ["........", "k.......", "kNk.....", "kNNk....", ".kNNkk..", "..kNNNkk", "...kNNNk", "....kkk."], { N: "#e0c088" });
+  glifo("hb_escudo_luz", ["Y.kkkk.Y", ".kWWWWk.", "kWWYWWWk", "kWYYYWWk", ".kWYWWk.", ".kWWWk..", "..kWk...", "...k...."], { W: "#d8f4f4", Y: "#ffe08a" });
+  glifo("hb_maos", ["k.k..k.k", "kSk..kSk", "kSk..kSk", "kSSkkSSk", "kSSSSSSk", ".kSSSSk.", "..kSSk..", "..kkkk.."], { S: "#e0a878" });
+  glifo("hb_altar", ["..Y..Y..", ".YRY.Y..", "..kkkk..", ".kSSSSk.", "kSSSSSSk", "kSdSSdSk", "kSSSSSSk", "kkkkkkkk"], { Y: "#ffe08a", R: "#c2452d", S: "#b8ab8a", d: "#8a7a6a" });
+  glifo("hb_harpa", ["kkkkk...", "kN..Wk..", "kN.W.Wk.", "kNW.W.Wk", "kN.W.W.k", "kN..W.k.", "kNNNNNk.", "kkkkkk.."], { N: "#b07a38", W: "#f6efdc" });
+  glifo("hb_nuvem", ["..kkk...", ".kWWWkk.", "kWWWWWWk", "kWWWWWWk", ".kkWWkk.", "...kWk..", "...kWk..", "...kWk.."], { W: "#f6efdc" });
+  glifo("hb_gota", ["...kk...", "...kk...", "..kVVk..", ".kVvVVk.", "kVvVVVdk", "kVVVVddk", ".kVVddk.", "..kkkk.."], { V: "#a8c84a", v: "#e4f0a8", d: "#6a8a2a" });
+  glifo("hb_raio", ["....kkk.", "...kYk..", "..kYk...", ".kYYYYk.", "...kYk..", "..kYk...", ".kYk....", ".kk....."], { Y: "#ffe08a" });
+  glifo("hb_balanca", ["...kk...", "kkkkkkkk", "k..kk..k", "Y..kk..Y", "YY.kk.YY", "...kk...", "..kkkk..", ".kkkkkk."], { Y: "#e8b94a" });
+  glifo("hb_onda", ["........", "..kkk...", ".kBBBk..", "kBBkBBk.", "BkkkBBBk", "BBBBBBBk", "kBBBBBBk", "kkkkkkkk"], { B: "#4fa3a5" });
+  glifo("hb_carro", ["Y..Y....", ".YR.Y...", "kkkkkk..", "kNNNNk..", "kkkkkkkk", ".kWk.kWk", "..k...k.", "........"], { Y: "#ffe08a", R: "#c2452d", N: "#c2452d", W: "#e8b94a" });
+  glifo("hb_cao", ["k.....k.", "kk...kk.", "kNkkkNk.", "kNNNNNk.", "kNkNNkNk", "kNNNNNNk", ".kNNdNk.", "..kkkk.."], { N: "#b07a38", d: "#2a1a14" });
+  glifo("hb_cajado", ["..kkkk..", ".kN..Nk.", ".kN..kk.", "..k.kN..", "....kN..", "....kN..", "....kN..", "....kk.."], { N: "#b07a38" });
+  glifo("hb_ovelha", [".kkkkk..", "kWWWWWkk", "kWWWWkSk", "kWWWWkSk", "kWWWWWkk", ".kkkkkk.", ".k.k.k..", ".k.k.k.."], { W: "#f6efdc", S: "#3a3028" });
+  glifo("hb_presa", ["kkkkkkkk", "kRRRRRRk", "kWkRRkWk", ".W.kk.W.", "........", ".W....W.", "kWkkkkWk", "kRRRRRRk"], { R: "#c2452d", W: "#f6efdc" });
+  glifo("hb_rebanho", ["kkk.kkk.", "kWWkkWWk", "kWWkkWWk", "kkkkkkkk", "........", "..kkk...", ".kWWWk..", "..k.k..."], { W: "#f6efdc" });
+  glifo("hb_vara", ["k......k", ".kN..Nk.", "..kNNk..", "...kk...", "..kNNk..", ".kN..Nk.", "kN....Nk", "k......k"], { N: "#b07a38" });
+  glifo("hb_aprisco", ["N.N.N.N.", "NNNNNNNN", "N.N.N.N.", "N.N.N.N.", "NNNNNNNN", "N.N.N.N.", "N.N.N.N.", "........"], { N: "#b07a38" });
   // Maná (JGB-11): jarro de barro (o ômer) com flocos brancos caindo.
   glifo("ui_mana", [".W.W..W.", "..kkkk.W", ".kWWWWk.", "kCCCCCCk", "kCcCCCdk", "kCcCCCdk", ".kCCCdk.", "..kkkk.."], { C: "#c98a52", c: "#e0a878", d: "#8e5a2b", W: "#f6efdc" });
   glifo("ui_ampulheta", ["NNNNNNNN", ".kYYYYk.", "..kYYk..", "...kk...", "...kk...", "..k.Yk..", ".kYYYYk.", "NNNNNNNN"], { N: "#b07a38", Y: "#e8b94a" });

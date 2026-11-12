@@ -422,8 +422,30 @@
     $("#hudVidaTxt").textContent = vidaTxt;
     $("#hudFeTxt").textContent = travada ? "—" : `${p.fe || 0}`;
     $("#hudXpTxt").textContent = `Nv ${p.nivel}`;
-    const env = (p.envenenadoAte || 0) > Date.now();
+    const env = (p.status?.veneno?.ate || 0) > Date.now();
     document.body.classList.toggle("envenenado", env);
+    atualizarStatus(p);
+  }
+
+  // Status ativos do jogador (JGB-16), na ficha e no HUD do celular. Só lê, por visaoStatus.
+  let htmlStatus = "";
+  function atualizarStatus(p) {
+    if (typeof visaoStatus !== "function") return;
+    const html = visaoStatus(p, Date.now())
+      .map((s) => {
+        const seg = Math.ceil(s.restanteMs / 1000);
+        const pilhas = s.pilhas > 1 ? ` ${s.pilhas}×` : "";
+        return `<span class="status-chip" data-status="${esc(s.tipo)}" title="${esc(s.nome)}: ${seg} s">${esc(s.nome)}${pilhas} ${seg}s</span>`;
+      })
+      .join("");
+    if (html === htmlStatus) return;
+    htmlStatus = html;
+    for (const id of ["#statusFicha", "#statusHud"]) if ($(id)) $(id).innerHTML = html;
+    // No celular, os selos aumentam o HUD: os avisos descem a mesma altura.
+    const hud = $("#statusHud");
+    const altura = hud && hud.offsetParent && html ? hud.offsetHeight + 4 : 0;
+    $("#palco")?.style.setProperty("--status-hud", `${altura}px`);
+    posicionarAvisos();
   }
 
   // ------------------------------------------------------------------
@@ -589,16 +611,17 @@
         <span class="slot">${sil ? `<img class="px silhueta" src="${sil}" width="32" height="32" alt="">` : ""}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>vazio</em></span></button>`;
     }).join("");
 
-    // Atalhos
+    // Atalhos (com vocação, as teclas 1 a 8 são das habilidades e os itens ficam em Shift + 1 a 6)
     const hk = p.hotkeys || [];
+    const shift = temVocacao(p) ? "⇧" : "";
     let html = "";
     for (let i = 0; i < 6; i++) {
       const id = hk[i];
       const qtd = id ? g.get(id) || 0 : 0;
       const nome = id ? nomeDoItem(id) : "";
       html += `<button type="button" class="atalho${id && !qtd ? " esgotado" : ""}" data-atalho="${i}" ${id ? `data-dica="${esc(id)}"` : ""}
-        aria-label="Atalho ${i + 1}: ${id ? `${esc(nome)}, ${qtd} restantes` : "vazio"}" title="${id ? `${esc(nome)} · tecla ${i + 1} · botão direito limpa` : `Solte um consumível · tecla ${i + 1}`}">
-        <span class="tecla-n">${i + 1}</span>${id ? htmlItem(id) : ""}${id ? `<span class="qtd">${qtd}</span>` : ""}</button>`;
+        aria-label="Atalho ${shift ? "Shift + " : ""}${i + 1}: ${id ? `${esc(nome)}, ${qtd} restantes` : "vazio"}" title="${id ? `${esc(nome)} · tecla ${shift ? "Shift + " : ""}${i + 1} · botão direito limpa` : `Solte um consumível · tecla ${shift ? "Shift + " : ""}${i + 1}`}">
+        <span class="tecla-n">${shift}${i + 1}</span>${id ? htmlItem(id) : ""}${id ? `<span class="qtd">${qtd}</span>` : ""}</button>`;
     }
     $("#atalhos").innerHTML = html;
   }
@@ -1246,6 +1269,99 @@
 
 
   const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString("pt-BR") : "—");
+  // ----- Vocações e barra de habilidades (JGB-20) -----
+  // Só lê a vocação pelas funções puras (barraHabilidades, visaoVocacao); escolher e usar são comandos.
+  const temVocacao = (p) => typeof barraHabilidades === "function" && !!p?.vocacao?.id;
+  let htmlBarraHab = "", vocacaoNpc = null, confirmaVocacao = null, htmlVocacao = "";
+  function atualizarBarraHab(p) {
+    const caixa = $("#barraHab");
+    if (!caixa) return;
+    const barra = temVocacao(p) ? barraHabilidades(p, Date.now()) : [];
+    caixa.hidden = !barra.length;
+    const html = barra.map((h, i) => {
+      const seg = Math.ceil(h.restanteMs / 1000);
+      const r = h.recarga ? Math.min(1, h.restanteMs / h.recarga) : 0;
+      const estado = !h.aberta ? `Abre no nível ${h.nivel}` : seg ? `pronta em ${seg} s` : "pronta";
+      return `<button type="button" class="hab${h.aberta ? "" : " bloqueada"}" data-hab="${i}" style="--r:${h.aberta ? r.toFixed(2) : 0}"
+        aria-label="${esc(h.nome)}, tecla ${i + 1}: ${estado}" title="${esc(h.nome)} (tecla ${i + 1}) — ${esc(h.descricao)} Recarga ${Math.round(h.recarga / 1000)} s. ${estado}.">
+        <span class="tecla-n">${i + 1}</span>${imgGlifo("hb_" + h.icone, "px")}<span class="recarga"></span>
+        ${!h.aberta ? `<span class="seg">Nv ${h.nivel}</span>` : seg ? `<span class="seg">${seg}</span>` : ""}</button>`;
+    }).join("");
+    if (html === htmlBarraHab) return;
+    htmlBarraHab = html;
+    caixa.innerHTML = html;
+  }
+  function atualizarBotaoVocacao(p) {
+    const b = $("#btnVocacao");
+    if (!b || typeof visaoVocacao !== "function") return;
+    const v = visaoVocacao(p);
+    b.classList.toggle("escolher", (!v.atual && v.podeEscolher) || v.podeEspecializar);
+  }
+  function abrirVocacao(npcId) {
+    if (!jogador() || typeof visaoVocacao !== "function") return;
+    vocacaoNpc = typeof npcId === "string" ? npcId : null;
+    confirmaVocacao = null;
+    desenharVocacao(true);
+    abrirModal("modalVocacao");
+  }
+  function desenharVocacao(forcar) {
+    const p = jogador();
+    const corpo = $("#vocacaoCorpo");
+    if (!p || !corpo || typeof visaoVocacao !== "function") return;
+    const html = montarVocacao(p);
+    if (!forcar && html === htmlVocacao) return;
+    htmlVocacao = html;
+    const foco = document.activeElement && corpo.contains(document.activeElement) ? document.activeElement.dataset.vocacao || document.activeElement.dataset.especializacao : null;
+    corpo.innerHTML = html;
+    preencherGlifos(corpo);
+    if (foco) $(`[data-vocacao="${foco}"],[data-especializacao="${foco}"]`, corpo)?.focus({ preventScroll: true });
+  }
+  function montarVocacao(p) {
+    const v = visaoVocacao(p);
+    const nivel = p.nivel || 1;
+    const atual = v.vocacoes.find((x) => x.id === v.atual);
+    const listaHabs = (habs) => `<ul class="voc-habs">${habs.map((h) => `<li class="${nivel >= h.nivel ? "" : "fechada"}" title="${esc(h.descricao)}">${imgGlifo("hb_" + h.icone, "px")}${esc(h.nome)} <small>Nv ${h.nivel}</small></li>`).join("")}</ul>`;
+    const noMestre = !!vocacaoNpc;
+    const cartao = (x) => {
+      const ehAtual = x.id === v.atual;
+      let botao = "";
+      if (!ehAtual && v.podeEscolher && (!v.atual || noMestre)) {
+        const custo = v.atual ? (v.precoTroca ? ` (${v.precoTroca} moedas)` : " (grátis)") : "";
+        const confirmar = confirmaVocacao === x.id;
+        botao = `<div class="acoes-modal"><button type="button" class="btn ${confirmar ? "primario" : "secundario"}" data-vocacao="${x.id}">${confirmar ? `Confirmar: ser ${esc(x.nome)}${custo}` : `${v.atual ? "Trocar para" : "Escolher"} ${esc(x.nome)}${custo}`}</button></div>`;
+      }
+      return `<li class="voc-card${ehAtual ? " atual" : ""}"><h3>${esc(x.nome)} · ${esc(x.titulo)}${ehAtual ? " (você)" : ""}</h3>
+        <p class="papel">${esc(x.papel)}</p><p>${esc(x.descricao)} <strong>${esc(x.textoPassivo)}</strong></p>${listaHabs(x.habilidades)}${botao}</li>`;
+    };
+    let topo;
+    if (!v.atual && !v.podeEscolher) topo = `<p>Você escolhe a sua vocação no nível ${v.nivelEscolha} (agora: ${nivel}). Conheça os caminhos:</p>`;
+    else if (!v.atual) topo = `<p>Escolha a sua vocação. Ela define as suas habilidades (teclas 1 a 8; os itens passam para Shift + 1 a 6). Você pode trocar depois com Jetro, o mestre de vocações, em Canaã: ${v.trocasGratis ? "a primeira troca é grátis" : `custa ${v.precoTroca} moedas`}.</p>`;
+    else topo = `<p>Você é <strong>${esc(atual.nome)}</strong> (${esc(atual.titulo)}). ${noMestre ? (v.precoTroca ? `Trocar custa ${v.precoTroca} moedas e recomeça a especialização.` : "A próxima troca é grátis (a especialização recomeça).") : "Para trocar de vocação, fale com Jetro, o mestre de vocações, na vila de Canaã."}</p>`;
+    let esp = "";
+    if (atual) {
+      const escolhida = atual.especializacoes.find((e) => e.id === v.especializacao);
+      if (escolhida) esp = `<h3>Especialização: ${esc(escolhida.nome)}</h3><p>${esc(escolhida.textoPassivo)} Habilidade: ${esc(escolhida.habilidade.nome)} — ${esc(escolhida.habilidade.descricao)}</p>`;
+      else esp = `<h3>Especialização (nível ${v.nivelEspecializacao})</h3><ul class="voc-lista">${atual.especializacoes.map((e) => `<li class="voc-card"><h3>${esc(e.nome)}</h3><p>${esc(e.textoPassivo)} Habilidade: <strong>${esc(e.habilidade.nome)}</strong> — ${esc(e.habilidade.descricao)}</p>${v.podeEspecializar ? `<div class="acoes-modal"><button type="button" class="btn ${confirmaVocacao === "esp:" + e.id ? "primario" : "secundario"}" data-especializacao="${e.id}">${confirmaVocacao === "esp:" + e.id ? `Confirmar: ${esc(e.nome)} (definitivo até trocar de vocação)` : `Escolher ${esc(e.nome)}`}</button></div>` : ""}</li>`).join("")}</ul>`;
+    }
+    const outras = v.vocacoes.filter((x) => x.id !== v.atual);
+    return `${topo}<ul class="voc-lista">${atual ? cartao(atual) : ""}</ul>${esp}${outras.length ? `<h3>${v.atual ? "Outras vocações" : "Vocações"}</h3><ul class="voc-lista">${outras.map(cartao).join("")}</ul>` : ""}`;
+  }
+  function acaoVocacao(botao) {
+    const voc = botao.dataset.vocacao;
+    const esp = botao.dataset.especializacao;
+    const chave = voc || "esp:" + esp;
+    if (confirmaVocacao !== chave) {
+      confirmaVocacao = chave;
+      desenharVocacao(true);
+      $(`#vocacaoCorpo [data-${voc ? "vocacao" : "especializacao"}="${voc || esp}"]`)?.focus();
+      return;
+    }
+    confirmaVocacao = null;
+    const r = voc ? executar({ tipo: "escolherVocacao", vocacao: voc }) : executar({ tipo: "escolherEspecializacao", especializacao: esp });
+    desenharVocacao(true);
+    if (r?.ok) { fecharModal(); atualizar(); }
+  }
+
   // ----- Maná diário e descanso do Sábado (JGB-11) -----
   // Só lê p.mana e p.descanso pelas funções puras (estadoMana, estadoDescanso); colher e comer são comandos.
   const temMana = () => typeof estadoMana === "function" && typeof estadoDescanso === "function";
@@ -1561,7 +1677,7 @@
   let assinaturaOracao = "";
   function estadoOracao(p) {
     const nivelOr = typeof estatisticasCombate === "function" ? estatisticasCombate(p).habilidades.oracao?.nivel || 0 : 0;
-    return { nivelOr, ass: JSON.stringify([p.fe, nivelOr, p.vida, p.envenenadoAte > Date.now()]) };
+    return { nivelOr, ass: JSON.stringify([p.fe, nivelOr, p.vida, (p.status?.veneno?.ate || 0) > Date.now(), (p.status?.sangramento?.ate || 0) > Date.now()]) };
   }
   // Os cartões são montados uma vez por nível de oração (o nível muda quais
   // ficam travados); depois o tique() só atualiza no lugar a fé, os custos,
@@ -1656,6 +1772,8 @@
       [k("T"), "Suas caçadas (aceitar e trocar só ao lado de um atalaia)"],
       [k("B"), "Bestiário: abates, ficha, fraquezas, saque e amuletos"],
       [k("N"), "Maná do dia (colher e comer) e reserva de descanso do Sábado"],
+      [k("V"), "Vocação: escolher (nível 8), especialização (nível 50) e habilidades"],
+      [k("1", "–", "8"), "Habilidades da vocação (com vocação; os itens passam para Shift + 1 a 6)"],
       [k("X"), "Mostrar ou ocultar o analisador de caçada (XP/h, saque/h, lucro)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
       [k("M"), "Mostrar ou ocultar o mapa"],
@@ -1685,12 +1803,18 @@
         mostram a raridade (comum, incomum, raro, épico, relíquia); equipamentos raros ou melhores trazem atributos aleatórios.</p>
       <p>Criaturas: cada região tem feras, pragas e inimigos com comportamentos próprios — matilhas que cercam, fuga com
         reforço, arqueiros que mantêm distância, curandeiros (marca CURA: derrube-os primeiro), investida (o chão fica
-        vermelho na linha dela: saia da área marcada) e fúria — e alguns causam veneno, sangramento ou atordoamento. Às vezes uma
+        vermelho na linha dela: saia da área marcada) e fúria — e alguns causam veneno, sangramento, atordoamento ou medo
+        (sem atacar por 2,5 s). Golpe em quem está atordoado é sempre crítico; com medo, leva +25%; veneno e sangramento
+        juntos infeccionam (+50% nos tiques). Os status ativos aparecem como selos na ficha. Às vezes uma
         criatura renasce campeã (nome dourado, 1 ou 2 modificadores, saque reforçado), e cada região tem um raro nomeado que
         aparece algumas vezes por dia, com anúncio no Registro.</p>
       <p>Bestiário: cada abate conta para a espécie. Com 10, 100 e 1000 abates ela chega aos estágios Avistada (ficha),
         Estudada (fraquezas e saque) e Dominada (chances do saque). Com todas as espécies de uma família Estudadas (sem os raros
         nomeados), você ganha o amuleto dela: +5% de dano contra a família, para sempre.</p>
+      <p>Vocações (V): no nível 8, escolha Guerreiro (tanque), Fundibulário (funda, de longe), Levita (cura), Profeta (controle e magia)
+        ou Pastor (cão e ovelhas). Cada uma tem 7 habilidades com recarga, que abrem do nível 8 ao 25, nas teclas 1 a 8 (ou tocando
+        na barra); no nível 50, a especialização dá um bônus e a 8ª habilidade. Combine: atordoar e depois bater (crítico), assustar e
+        depois julgar. Trocar de vocação só com Jetro, em Canaã: a primeira troca é grátis, as outras custam moedas.</p>
       <p>Maná (N ou o botão Maná, no topo): todo dia, ao amanhecer, cai maná ao redor do arraial — 3 porções, 6 na sexta e
         nenhuma no sábado. Colha uma vez por dia e coma quando precisar (cada porção cura metade da vida e dá 30 de fé). O que sobra
         estraga no amanhecer seguinte (o da sexta dura o Sábado), e perder um dia não tira nada.</p>
@@ -2156,11 +2280,14 @@
     atualizarBatalha(p);
     atualizarAnalisador();
     atualizarBotaoMana(p);
+    atualizarBarraHab(p);
+    atualizarBotaoVocacao(p);
     $("#mapaCoord").textContent = `${p.x}, ${p.y}`;
     if (modalAberto?.id === "modalLoja") desenharLoja();
     if (modalAberto?.id === "modalMural") desenharMural();
     if (modalAberto?.id === "modalBestiario") desenharBestiario();
     if (modalAberto?.id === "modalMana") desenharMana();
+    if (modalAberto?.id === "modalVocacao") desenharVocacao();
   }
 
   function areaMudou(area) {
@@ -2192,6 +2319,7 @@
     atualizarBatalha(p);
     atualizarAnalisador(); // relógio e taxas por hora correm sem precisar de abate
     atualizarBotaoMana(p); // o maná cai no amanhecer e estraga sozinho, sem nenhuma ação
+    atualizarBarraHab(p); // recargas das habilidades
     if (modalAberto?.id === "modalMana") desenharMana();
     if (alvoDesenhado && typeof inimigos !== "undefined" && inimigos[alvoDesenhado]) atualizarVidaAlvo(inimigos[alvoDesenhado]);
     if (dlg.id && dlg.npc && Math.max(Math.abs(p.x - dlg.npc.x), Math.abs(p.y - dlg.npc.y)) > 2) fecharDialogo();
@@ -2220,6 +2348,18 @@
     $("#pontos").addEventListener("click", () => abrirMural(null));
     $("#btnBestiario").addEventListener("click", abrirBestiario);
     $("#btnMana").addEventListener("click", abrirMana);
+    $("#btnVocacao").addEventListener("click", () => abrirVocacao(null));
+    $("#barraHab").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-hab]");
+      if (!b || b.classList.contains("bloqueada")) return;
+      const i = Number(b.dataset.hab);
+      if (window.Jogo?.usarHabilidade) window.Jogo.usarHabilidade(i);
+      else {
+        const h = barraHabilidades(jogador(), Date.now())[i];
+        if (h) executar({ tipo: "usarHabilidade", habilidade: h.id });
+      }
+      atualizarBarraHab(jogador());
+    });
     $("#btnAnalisador").addEventListener("click", () => abrirAnalisador(painel("pAnalisador").dataset.aberto !== "true"));
     $("#missaoLinha").addEventListener("click", () => {
       const b = $("#missaoLinha");
@@ -2272,6 +2412,11 @@
         const noMural = e.target.closest("[data-aceitar-tarefa], [data-guardar-tarefa], [data-trocar], [data-confirmar-troca], [data-cancelar-troca]");
         if (noMural) {
           if (!noMural.disabled) acaoMural(e, noMural);
+          return;
+        }
+        const voc = e.target.closest("[data-vocacao], [data-especializacao]");
+        if (voc) {
+          if (!voc.disabled) acaoVocacao(voc);
           return;
         }
         const mana = e.target.closest("[data-acao-mana]");
@@ -2332,6 +2477,8 @@
       if (teclaT && modalAberto?.id === "modalMural") { e.preventDefault(); fecharModal(); return; }
       const teclaB = (e.key === "b" || e.key === "B") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaB && modalAberto?.id === "modalBestiario") { e.preventDefault(); fecharModal(); return; }
+      const teclaV = (e.key === "v" || e.key === "V") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (teclaV && modalAberto?.id === "modalVocacao") { e.preventDefault(); fecharModal(); return; }
       const teclaN = (e.key === "n" || e.key === "N") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaN && modalAberto?.id === "modalMana") { e.preventDefault(); fecharModal(); return; }
       if (modalAberto) return;
@@ -2343,13 +2490,27 @@
       if (teclaT) { e.preventDefault(); abrirMural(null); return; }
       if (teclaB) { e.preventDefault(); abrirBestiario(); return; }
       if (teclaN) { e.preventDefault(); abrirMana(); return; }
-      if ((e.key === "x" || e.key === "X") && !e.repeat) { e.preventDefault(); alternarAnalisador(); return; }
-      if (/^[1-6]$/.test(e.key) && !e.repeat) {
-        const i = Number(e.key) - 1;
+      if (teclaV) { e.preventDefault(); abrirVocacao(null); return; }
+      // Com vocação: 1 a 8 usam as habilidades e Shift + 1 a 6 os atalhos de itens. Sem vocação, 1 a 6 são os itens.
+      const digito = /^Digit([1-8])$/.exec(e.code || "") || (/^[1-8]$/.test(e.key) ? [null, e.key] : null);
+      if (digito && !e.repeat && temVocacao(jogador()) && !e.shiftKey) {
+        e.preventDefault();
+        const i = Number(digito[1]) - 1;
+        const b = $(`#barraHab [data-hab="${i}"]`);
+        if (b) { b.classList.remove("pronta-agora"); void b.offsetWidth; b.classList.add("pronta-agora"); }
+        window.Jogo?.usarHabilidade(i);
+        atualizarBarraHab(jogador());
+        return;
+      }
+      if (digito && !e.repeat && Number(digito[1]) <= 6 && (e.shiftKey || !temVocacao(jogador()))) {
+        e.preventDefault();
+        const i = Number(digito[1]) - 1;
         const hk = $(`#atalhos [data-atalho="${i}"]`);
         if (hk) { hk.classList.remove("usado"); void hk.offsetWidth; hk.classList.add("usado"); }
         window.Jogo?.usarAtalho(i);
+        return;
       }
+      if ((e.key === "x" || e.key === "X") && !e.repeat) { e.preventDefault(); alternarAnalisador(); return; }
     });
     // O Phaser também escuta "mousedown"/"touchstart" na janela e faria o clique
     // num botão da UI (modal, diálogo, HUD) atravessar até o NPC desenhado embaixo.
@@ -2401,6 +2562,7 @@
     abrirOracao,
     abrirMural,
     abrirBestiario,
+    abrirVocacao,
     abrirAjuda,
     alternarMinimapa,
     atualizarMinimapa() { /* o MUNDO desenha o minimapa no #miniMap (game.js) */ },

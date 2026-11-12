@@ -20,7 +20,7 @@ Metas: 1º nível < 2 min; recompensa a cada 30–60 s; item/habilidade nova a c
 
 ## Progressão
 - Nível 1→200 (curva suave até 30 ≈ 15 h).
-- **Vocações** (nível 8; especialização no 50): Guerreiro/Valente de Davi (tanque), Fundibulário/Benjamita (funda e arco), Levita (cura), Profeta (controle/magia), Pastor (invocador com cão e ovelhas).
+- **Vocações** (nível 8; especialização no 50): Guerreiro/Valente de Davi (tanque), Fundibulário/Benjamita (funda e arco), Levita (cura), Profeta (controle/magia), Pastor (invocador com cão e ovelhas). Feito (JGB-20): `dados/vocacoes.js` com 7 habilidades por vocação (recarga, combinações com os status do JGB-16) e 2 especializações com a 8ª habilidade; barra nas teclas 1–8 (itens em Shift + 1–6); troca com Jetro em Canaã (1ª grátis); cão e ovelhas do Pastor como aliados no mapa; simulação por vocação (teste 63e).
 - Árvore de talentos (3 ramos por vocação).
 - **Frutos do Espírito**: 9 medidores de virtude que sobem por comportamento (curar outros → amor; ajudar novatos → bondade; caçar sem morrer → paciência; não acumular maná → domínio próprio). Dão passivos e títulos; todos no máximo desbloqueiam fim de jogo.
 - **Armadura de Deus (Efésios 6)**: conjunto lendário de 6 peças, cada uma de uma masmorra/raid, bônus em 2/4/6 peças.
@@ -43,7 +43,7 @@ Cada inimigo: família, tier (normal/elite/campeão/raro/chefe), comportamento, 
 - Canaã: lobo, chacal, urso, javali, leão (elite). Deserto: escorpião, víbora, hiena, abutre, enxame de gafanhotos.
 - Egito: crocodilo, naja, guardas, feiticeiro da corte. Mar: tubarão, polvo, piratas, **Leviatã** (chefe de mundo).
 - Sinai: cabra, águia, amalequitas. Vale de Elá: filisteus, **Golias** (ideal vencer com funda). Babilônia: leões, caldeus.
-- IA: matilha que cerca, fuga e retorno com reforço, arqueiro que mantém distância, curandeiro inimigo, investida telegrafada, fúria < 30%, status (veneno, sangramento, atordoar, medo). Feito (JGB-7 e JGB-8), menos o medo: cada comportamento tem simulação própria (teste 55).
+- IA: matilha que cerca, fuga e retorno com reforço, arqueiro que mantém distância, curandeiro inimigo, investida telegrafada, fúria < 30%, status (veneno, sangramento, atordoar, medo). Feito (JGB-7 e JGB-8): cada comportamento tem simulação própria (teste 55). Status unificados com o medo (JGB-16): um motor para jogador e criaturas, com acúmulo (renova, pilhas), imunidade e combinações (atordoado → crítico, medo → +25%, veneno + sangramento → +50% nos tiques); testes 62, 62b e 62c.
 - **Campeão** (5%, nome dourado, modificadores), **raro nomeado** anunciado no chat, **chefe de mundo** com horário.
 
 ## Caçadas

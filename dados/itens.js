@@ -22,6 +22,8 @@ const ITENS = {
   arco_madeira: { nome: "Arco de madeira", peso: 7, tipo: "arma_distancia", bonus: 10 },
   arco_composto: { nome: "Arco composto", peso: 7, tipo: "arma_distancia", bonus: 15 },
   flecha: { nome: "Flecha", peso: 0.1, tipo: "municao" },
+  // Funda (JGB-20): arma à distância que não gasta munição (pedras há em todo lugar). semMunicao: dispensa flechas.
+  funda: { nome: "Funda", peso: 1, tipo: "arma_distancia", bonus: 9, semMunicao: true },
   pele_lobo: { nome: "Pele de lobo", peso: 2, tipo: "recurso" },
   veneno_escorpiao: { nome: "Veneno de escorpião", peso: 0.5, tipo: "recurso" },
   insignia_bandido: { nome: "Insígnia do bando", peso: 0.5, tipo: "recurso" },
@@ -88,12 +90,12 @@ const CHANCES_SAQUE = { sempre: 1, comum: 0.25, incomum: 0.08, raro: 0.01, muito
 
 // Preço de compra nas lojas ("flechas" é um pacote de FLECHAS_POR_PACOTE). Os itens da troca de pontos
 // de tarefa (dados/tarefas.js) ficam fora desta lista e de VALORES_VENDA: pontos nunca viram moedas.
-const PRECOS_LOJA = { pocao: 12, pocao_fe: 18, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80 };
+const PRECOS_LOJA = { pocao: 12, pocao_fe: 18, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80, funda: 60 };
 const FLECHAS_POR_PACOTE = 5;
 // O que cada mercador (NPC com papel "loja", dados/npcs.js) vende, na ordem da lista; o preço é o de
 // PRECOS_LOJA. Todo mercador compra todos os itens de VALORES_VENDA.
 const LOJAS = {
-  mercador_canaa: ["pocao", "pocao_fe", "flechas", "escudo_madeira"],
+  mercador_canaa: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "funda"],
   mercador1: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira"],
   mercador_egito: ["pocao", "pocao_fe", "flechas", "armadura_couro", "arco_madeira"],
   mercador_mar: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira"],
