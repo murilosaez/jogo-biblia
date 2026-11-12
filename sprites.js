@@ -1164,6 +1164,25 @@
       g.lin(12, 7, pos[0], pos[1] + 1, "#a8916a"); g.p(pos[0], pos[1], "#8a8478");
     },
   });
+  // Curandeiros (JGB-8): manto claro, bolsa de ervas e cajado com brilho verde.
+  humano("in_curandeiro_bando", {
+    molde: "manto", hostil: true,
+    cores: { H: "#6a6458", S: "#a86e44", s: "#86542e", B: "#8a8478", R: "#a8916a", r: "#86704e", d: "#5e4e36", A: "#4a7a3a", F: "#2a1a14" },
+    acessorios: [["cajado_alto", ["#6b4a2e", "#8ad06a"]], ["saco", ["#4a7a3a", "#7ab04a"]]],
+    extra: (g, q) => { if (q === 1 || q === 4) { g.p(13, -0, "#c8f0a0"); g.p(12, 1, "#8ad06a"); g.p(14, 1, "#8ad06a"); } g.p(7, 9, "#7ab04a"); g.p(8, 10, "#7ab04a"); },
+  });
+  humano("in_sacerdote", {
+    molde: "manto", hostil: true, barba: false,
+    cores: { H: "#b97a4c", S: "#b97a4c", s: "#93603a", B: "#b97a4c", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#e8b94a", F: "#4f3220" },
+    ajustar: (l) => l.map((s, y) => (y === 5 || y === 6 ? s.replace(/[Rrd]/g, "A") : s)),
+    acessorios: [["cajado_curto", ["#e8b94a"]]],
+    extra: (g, q) => {
+      // pele de leopardo sobre o ombro e o ankh de ouro no cajado
+      g.ret(4, 8, 3, 4, "#d8a040"); g.p(5, 9, "#3a2414"); g.p(4, 11, "#3a2414");
+      g.p(13, 3, "#e8b94a"); g.p(12, 4, "#e8b94a"); g.p(14, 4, "#e8b94a"); g.p(13, 2, "#e8b94a");
+      if (q === 1 || q === 4) { g.p(13, 1, "#c8f0a0"); g.p(15, 3, "#8ad06a"); }
+    },
+  });
   humano("in_mercenario", {
     molde: "curta", hostil: true, alargar: true,
     cores: { H: "#3a2a1e", S: "#b97a4c", s: "#93603a", B: "#3a2a1e", R: "#5a5450", r: "#3e3a36", d: "#2a2624", A: "#8a1f1f", F: "#2a1a14" },

@@ -238,12 +238,18 @@ function atravessar(j, area, ponto, dx, dy) {
 }
 
 // Jogador "normal": autoataque a cada 2 s, poção quando a vida cai abaixo de 30%.
-function lutar(j, inimigoId, { maxPocoes = 3, tipo = "corpo" } = {}) {
+// semCampeao: a luta é contra a criatura comum (a campanha mede a dificuldade-base das lutas obrigatórias;
+// um campeão sorteado no renascimento mudaria a conta).
+function lutar(j, inimigoId, { maxPocoes = 3, tipo = "corpo", semCampeao = false } = {}) {
   const M = j.M;
   const e = j.g("inimigos")[inimigoId];
   const vidaMaxima = j.g("vidaMaxima");
   const p = j.p;
   if (M.obterVidaInimigo(ID, inimigoId) <= 0) assert.ok(M.reaparecerInimigo(ID, inimigoId));
+  if (semCampeao && p.campeoes[inimigoId]) {
+    delete p.campeoes[inimigoId];
+    p.vidaInimigos[inimigoId] = e.vidaMaxima;
+  }
   e.x = e.inicioX;
   e.y = e.inicioY;
   j.avancar(1500); // tempo de caminhar até o inimigo
@@ -320,7 +326,7 @@ function jogarCampanha(semente) {
   // Canaã
   falar(j, "viajante1");
   esperarCurar(j);
-  registrar("Canaã", "lobo1", lutar(j, "lobo1"));
+  registrar("Canaã", "lobo1", lutar(j, "lobo1", { semCampeao: true }));
   pegarSaques(j);
   falar(j, "viajante1");
   equiparMelhor(j);
@@ -340,14 +346,14 @@ function jogarCampanha(semente) {
   assert.strictEqual(j.p.equipamento.armadura, "armadura_couro");
   for (let i = 0; i < 2; i++) {
     esperarCurar(j);
-    registrar("Deserto", "escorpiao1", lutar(j, "escorpiao1"));
+    registrar("Deserto", "escorpiao1", lutar(j, "escorpiao1", { semCampeao: true }));
     pegarSaques(j);
     j.avancar(5000);
   }
   falar(j, "noemi1");
   assert.strictEqual(j.p.missoes.deserto.etapa, 2, "etapa 3 de 3 (índice 2)");
   esperarCurar(j);
-  registrar("Deserto", "bandido1", lutar(j, "bandido1"));
+  registrar("Deserto", "bandido1", lutar(j, "bandido1", { semCampeao: true }));
   pegarSaques(j);
   falar(j, "noemi1");
   assert.strictEqual(j.p.missoes.deserto.status, "concluida");
@@ -364,7 +370,7 @@ function jogarCampanha(semente) {
     falar(j, cap.npc);
     assert.strictEqual(j.p.missoes[cap.missao].status, "em_andamento");
     esperarCurar(j);
-    registrar(cap.nome, cap.inimigo, lutar(j, cap.inimigo));
+    registrar(cap.nome, cap.inimigo, lutar(j, cap.inimigo, { semCampeao: true }));
     pegarSaques(j);
     igual(j.p.missoes[cap.missao].progresso, [1], `alvo de ${chave} deveria estar cumprido`);
     assert.strictEqual(j.g("faseCapitulo")(j.p, chave), "retorno");
@@ -3667,6 +3673,204 @@ teste("54. raros nomeados (JGB-6): janela de aparição, anúncio, não renascem
   const p2 = j2.entrar();
   assert.ok(j2.M.inimigoVivo(p2, e.id), "continua presente depois de recarregar");
   assert.ok(!j2.atualizar().some((x) => x.tipo === "nomeadoApareceu" && x.id === e.id), "sem anúncio repetido");
+});
+
+// Área de teste: abre um quadrado livre em volta de (cx, cy) e tira as outras criaturas da área.
+function arenaLivre(j, area, cx, cy, raio, manter = []) {
+  const mapa = j.g("mapas")[area];
+  for (let y = cy - raio; y <= cy + raio; y++) for (let x = cx - raio; x <= cx + raio; x++) mapa[y][x] = 0;
+  for (const e of Object.values(j.g("inimigos"))) if (e.area === area && !manter.includes(e.id)) { e.inicioX = e.x = -50; e.inicioY = e.y = -50; }
+}
+function colocar(j, e, x, y) {
+  e.x = e.inicioX = x;
+  e.y = e.inicioY = y;
+  j.g("zerarComportamento")(e);
+  if (j.M.obterVidaInimigo(ID, e.id) <= 0) j.M.reaparecerInimigo(ID, e.id);
+  j.p.campeoes = {};
+  j.p.vidaInimigos[e.id] = e.vidaMaxima;
+  e.x = x; e.y = y;
+}
+// Roda o laço de tempo por ms, em passos de 100 ms; devolve todos os eventos.
+function rodar(j, ms) {
+  const ev = [];
+  for (let t = 0; t < ms; t += 100) { j.avancar(100); ev.push(...j.atualizar()); }
+  return ev;
+}
+
+teste("55. simulação de cada comportamento (JGB-8): cerco, fuga com reforço, distância, curandeiro, investida e fúria", () => {
+  const inimigos = (j) => j.g("inimigos");
+  const preparar = (semente = 9) => {
+    const j = carregarJogo({ semente });
+    j.entrar();
+    const p = j.p;
+    p.nivel = 40;
+    p.vida = j.g("vidaMaxima")(p);
+    return { j, p };
+  };
+  const linhas = [];
+
+  // Matilha cerca: 4 chacais vindo do mesmo lado ocupam casas diferentes em volta do jogador, de lados opostos.
+  {
+    const { j, p } = preparar();
+    const ids = ["chacal1", "chacal1_2", "chacal1_3", "chacal1_4"];
+    const cx = 60, cy = 60;
+    arenaLivre(j, "canaan", cx, cy, 9, ids);
+    Object.assign(p, { area: "canaan", x: cx, y: cy });
+    ids.forEach((id, i) => colocar(j, inimigos(j)[id], cx + 5, cy - 2 + i));
+    rodar(j, 8000);
+    const lados = ids.map((id) => inimigos(j)[id]).filter((e) => distanciaJ(p, e) <= 1).map((e) => Math.atan2(e.y - p.y, e.x - p.x));
+    assert.strictEqual(new Set(ids.map((id) => `${inimigos(j)[id].x},${inimigos(j)[id].y}`)).size, 4, "casas diferentes");
+    assert.ok(lados.length >= 4, `${lados.length} chacais colados no jogador`);
+    const abertura = Math.max(...lados.flatMap((a) => lados.map((b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))))));
+    assert.ok(abertura >= Math.PI / 2, `cercam por lados diferentes (abertura ${(abertura * 180 / Math.PI).toFixed(0)}°)`);
+    linhas.push(["Matilha cerca", `${lados.length} chacais em volta, abertura de ${(abertura * 180 / Math.PI).toFixed(0)}°`]);
+  }
+
+  // Fuga com retorno e reforço: a hiena foge ferida e volta com outra que estava longe (fora da percepção).
+  {
+    const { j, p } = preparar();
+    const cx = 60, cy = 80;
+    arenaLivre(j, "deserto", cx, cy, 14, ["hiena1", "hiena1_2"]);
+    Object.assign(p, { area: "deserto", x: cx, y: cy });
+    const h = inimigos(j).hiena1, aliada = inimigos(j).hiena1_2;
+    colocar(j, h, cx + 1, cy);
+    colocar(j, aliada, cx - 13, cy + 12);
+    // Longe: fora da percepção e do alerta comum da matilha (só o reforço a traz).
+    assert.ok(distanciaJ(p, aliada) > aliada.raioPercepcao && distanciaJ(h, aliada) > j.g("COMPORTAMENTOS").matilha.raioAlerta, "a aliada começa longe");
+    p.vidaInimigos[h.id] = 20;
+    const ev = rodar(j, 4500);
+    const volta = ev.find((x) => x.tipo === "retorno");
+    assert.ok(ev.some((x) => x.tipo === "fuga") && volta && volta.reforcos >= 1, "foge e volta com reforço");
+    assert.ok(p.vidaInimigos[h.id] > 20, "volta um pouco curada");
+    rodar(j, 10000);
+    assert.ok(distanciaJ(p, aliada) <= 1, "o reforço chega ao jogador");
+    linhas.push(["Fuga e reforço", `voltou com ${volta.reforcos} reforço; a aliada veio de 13 casas`]);
+  }
+
+  // Arqueiro mantém distância: com o jogador parado colado nele, recua e atira de 3+ casas.
+  {
+    const { j, p } = preparar();
+    const cx = 70, cy = 60;
+    arenaLivre(j, "deserto", cx, cy, 9, ["arqueiroBando1"]);
+    Object.assign(p, { area: "deserto", x: cx, y: cy });
+    const a = inimigos(j).arqueiroBando1;
+    colocar(j, a, cx + 1, cy);
+    const tiros = [];
+    for (let t = 0; t < 15000; t += 100) { j.avancar(100); for (const x of j.atualizar()) if (x.tipo === "jogadorAtingido") tiros.push(distanciaJ(p, a)); }
+    const depois = tiros.slice(2);
+    const media = depois.reduce((s, d) => s + d, 0) / depois.length;
+    assert.ok(tiros.length >= 6, `${tiros.length} disparos`);
+    assert.ok(media >= j.g("COMPORTAMENTOS").distancia.distanciaMinima, `distância média dos disparos ${media.toFixed(1)}`);
+    linhas.push(["Arqueiro", `${tiros.length} disparos, distância média ${media.toFixed(1)} casas`]);
+  }
+
+  // Curandeiro e prioridade de alvo: com o curandeiro vivo a luta contra o arqueiro demora mais; matar o
+  // curandeiro primeiro encurta a luta contra os dois. Ele cura a aliada mais ferida.
+  {
+    const luta = (ordem, comCurandeiro = true) => {
+      const { j, p } = preparar(17);
+      p.nivel = 6;
+      p.vida = j.g("vidaMaxima")(p);
+      p.equipamento = { arma: "espada_ferro", arco: null, escudo: "escudo_madeira", armadura: "armadura_couro" };
+      p.habilidades = { corpo: 7, distancia: 0, defesa: 5, oracao: 0 };
+      p.inventario = Array(20).fill("pocao");
+      const cx = 70, cy = 60;
+      const ids = comCurandeiro ? ["arqueiroBando1", "curandeiroBando1"] : ["arqueiroBando1"];
+      arenaLivre(j, "deserto", cx, cy, 9, ids);
+      Object.assign(p, { area: "deserto", x: cx, y: cy });
+      colocar(j, inimigos(j).arqueiroBando1, cx + 2, cy);
+      if (comCurandeiro) colocar(j, inimigos(j).curandeiroBando1, cx + 4, cy + 1);
+      const inicio = j.agora;
+      let curas = 0;
+      for (const id of ordem) {
+        const r = lutar(j, id, { maxPocoes: 20 });
+        assert.ok(r.vitoria, `${id}: ${r.mensagem}`);
+      }
+      return { segundos: (j.agora - inicio) / 1000, curas };
+    };
+    // Prioridade do curandeiro: entre duas feridas, cura a de menor fração de vida.
+    {
+      const { j, p } = preparar();
+      const cx = 70, cy = 60;
+      arenaLivre(j, "deserto", cx, cy, 9, ["arqueiroBando1", "arqueiroBando1_2", "curandeiroBando1"]);
+      Object.assign(p, { area: "deserto", x: cx - 8, y: cy - 8 });
+      colocar(j, inimigos(j).arqueiroBando1, cx, cy);
+      colocar(j, inimigos(j).arqueiroBando1_2, cx + 2, cy);
+      colocar(j, inimigos(j).curandeiroBando1, cx + 1, cy + 2);
+      p.vidaInimigos.arqueiroBando1 = 100;
+      p.vidaInimigos.arqueiroBando1_2 = 40;
+      const cura = j.atualizar().find((x) => x.tipo === "cura");
+      assert.ok(cura && cura.alvo === "arqueiroBando1_2", "cura a mais ferida primeiro");
+      assert.strictEqual(cura.cura, Math.round(inimigos(j).arqueiroBando1.vidaMaxima * j.g("COMPORTAMENTOS").curandeiro.curaPercentual));
+      assert.ok(!j.atualizar().some((x) => x.tipo === "cura"), "respeita o intervalo");
+    }
+    const semCurandeiro = luta(["arqueiroBando1"], false);
+    const arqueiroPrimeiro = luta(["arqueiroBando1", "curandeiroBando1"]);
+    const curandeiroPrimeiro = luta(["curandeiroBando1", "arqueiroBando1"]);
+    assert.ok(curandeiroPrimeiro.segundos < arqueiroPrimeiro.segundos, `matar o curandeiro primeiro é mais rápido (${curandeiroPrimeiro.segundos} s × ${arqueiroPrimeiro.segundos} s)`);
+    linhas.push(["Curandeiro", `arqueiro sozinho ${semCurandeiro.segundos.toFixed(0)} s; arqueiro → curandeiro ${arqueiroPrimeiro.segundos.toFixed(0)} s; curandeiro → arqueiro ${curandeiroPrimeiro.segundos.toFixed(0)} s`]);
+  }
+
+  // Investida telegrafada: a área marcada inclui o jogador; quem sai dela nunca é atingido, quem fica sempre é.
+  {
+    const rodadas = (desvia) => {
+      const { j, p } = preparar(23);
+      const cx = 60, cy = 60;
+      arenaLivre(j, "canaan", cx, cy, 9, ["javali1"]);
+      const jv = inimigos(j).javali1;
+      let acertos = 0, investidas = 0, antecedencia = Infinity;
+      for (let k = 0; k < 10; k++) {
+        Object.assign(p, { area: "canaan", x: cx, y: cy });
+        colocar(j, jv, cx + 3 - (k % 2) * 6, cy + (k % 3) - 1);
+        p.vida = j.g("vidaMaxima")(p);
+        const ev = j.atualizar();
+        const prep = ev.find((x) => x.tipo === "investidaPreparo");
+        assert.ok(prep, "prepara a investida");
+        assert.ok(prep.casas.some((c) => c.x === p.x && c.y === p.y), "a área marcada passa pelo jogador");
+        antecedencia = Math.min(antecedencia, prep.ate - j.agora);
+        investidas++;
+        if (desvia) {
+          // sai da linha: um passo para uma casa vizinha fora da área marcada
+          const fora = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]].find(([dx, dy]) => !prep.casas.some((c) => c.x === p.x + dx && c.y === p.y + dy));
+          assert.ok(j.exec({ tipo: "mover", dx: fora[0], dy: fora[1] }).ok);
+        }
+        let ev2 = [];
+        for (let t = 0; t < 1200; t += 100) { j.avancar(100); ev2.push(...j.atualizar()); if (ev2.some((x) => x.tipo === "investidaErrou" || x.investida)) break; }
+        if (ev2.some((x) => x.tipo === "jogadorAtingido" && x.investida)) acertos++;
+      }
+      return { acertos, investidas, antecedencia };
+    };
+    const fica = rodadas(false), sai = rodadas(true);
+    assert.strictEqual(fica.acertos, fica.investidas, "quem fica na área marcada é atingido");
+    assert.strictEqual(sai.acertos, 0, "quem sai da área marcada desvia");
+    assert.ok(fica.antecedencia >= 800, `telegrafo visível ${fica.antecedencia} ms antes do golpe`);
+    linhas.push(["Investida", `parado: ${fica.acertos}/${fica.investidas} acertos; desviando: ${sai.acertos}/${sai.investidas}; aviso ${fica.antecedencia} ms antes`]);
+  }
+
+  // Fúria: abaixo de 30% da vida, o dano por segundo sobe (dano 1,4× e golpes 25% mais rápidos).
+  {
+    const { j, p } = preparar();
+    const cx = 60, cy = 60;
+    arenaLivre(j, "canaan", cx, cy, 6, ["urso1"]);
+    Object.assign(p, { area: "canaan", x: cx, y: cy });
+    const u = inimigos(j).urso1;
+    colocar(j, u, cx + 1, cy);
+    const dps = () => {
+      p.vida = j.g("vidaMaxima")(p);
+      let dano = 0;
+      for (const x of rodar(j, 12000)) if (x.tipo === "jogadorAtingido") dano += x.dano;
+      return dano / 12;
+    };
+    const antes = dps();
+    p.vidaInimigos[u.id] = Math.floor(u.vidaMaxima * 0.25);
+    const depois = dps();
+    assert.ok(u.furioso && depois >= antes * 1.6, `dano por segundo ${antes.toFixed(1)} → ${depois.toFixed(1)}`);
+    linhas.push(["Fúria", `dano por segundo ${antes.toFixed(1)} → ${depois.toFixed(1)}`]);
+  }
+
+  console.log("\n    Simulação dos comportamentos:");
+  for (const [a, b] of linhas) console.log(`    ${a.padEnd(18)}${b}`);
+  console.log("");
 });
 
 // Abate num golpe sem limpar o saque (para olhar o que caiu).

@@ -1210,7 +1210,8 @@ class Cena extends Phaser.Scene {
       else if (x.tipo === "venenoTerminou" || x.tipo === "sangramentoTerminou") this.mensagem(x.mensagem);
       else if (x.tipo === "sangramento") this.mensagem(x.mensagem, "perigo");
       else if (x.tipo === "atordoado") this.jogadorAtordoado(x);
-      else if (x.tipo === "furia" || x.tipo === "fuga" || x.tipo === "investidaPreparo" || x.tipo === "investidaErrou") this.comportamentoInimigo(x);
+      else if (x.tipo === "furia" || x.tipo === "fuga" || x.tipo === "investidaPreparo" || x.tipo === "investidaErrou" || x.tipo === "retorno") this.comportamentoInimigo(x);
+      else if (x.tipo === "cura") this.curaInimiga(x);
       else if (x.tipo === "explosao") this.explosao(x);
       else if (x.tipo === "nomeadoApareceu" || x.tipo === "nomeadoSumiu") this.eventoNomeado(x);
       else if (x.tipo === "saqueExpirou") for (const id of x.ids || []) { this.spritesItens[id]?.destroy(); delete this.spritesItens[id]; }
@@ -1387,12 +1388,37 @@ class Cena extends Phaser.Scene {
       this.particulasSimples(s.x, s.y - 14, "#c2452d", 10, { subir: true, dur: 700 });
     } else if (x.tipo === "fuga") this.numero(s.x, y, "FOGE!", "errou");
     else if (x.tipo === "investidaErrou") this.numero(s.x, y, "ERROU", "errou");
+    else if (x.tipo === "retorno") {
+      this.numero(s.x, y, x.reforcos ? "REFORÇO!" : "VOLTOU", "critico");
+      this.particulasSimples(s.x, s.y - 14, "#8fd16a", 6, { subir: true, dur: 600 });
+    }
     else if (x.tipo === "investidaPreparo") {
       ent.alerta?.destroy();
       ent.alerta = this.add.text(s.x, y, "!", { fontFamily: FONTE_PIXEL, fontSize: "18px", color: "#ffd24a", stroke: COR.tinta, strokeThickness: 4, resolution: 2 })
         .setOrigin(0.5, 1).setDepth(PROF.numero);
       if (!reduzMovimento()) this.tweens.add({ targets: s, x: s.x + 2, duration: 60, yoyo: true, repeat: 6 });
-      this.time.delayedCall(Math.max(200, x.ate - Date.now()) + 200, () => { ent.alerta?.destroy(); ent.alerta = null; });
+      // Telegrafo no chão: as casas por onde a investida vai passar, pulsando até o golpe.
+      const marcas = (x.casas || []).map((c) => {
+        const r = this.add.rectangle(c.x * TAM + TAM / 2, c.y * TAM + TAM / 2, TAM - 4, TAM - 4, 0xff3a1a, 0.8)
+          .setStrokeStyle(2, 0xffd24a, 1).setDepth(PROF.sombra + 2);
+        if (!reduzMovimento()) this.tweens.add({ targets: r, alpha: 0.75, duration: 160, yoyo: true, repeat: -1 });
+        return r;
+      });
+      this.time.delayedCall(Math.max(200, x.ate - Date.now()) + 150, () => { ent.alerta?.destroy(); ent.alerta = null; for (const r of marcas) r.destroy(); });
+    }
+  }
+
+  // Curandeiro inimigo: raio verde até a aliada curada e o "+N" sobre ela.
+  curaInimiga(x) {
+    const de = this.entidades[x.id], para = this.entidades[x.alvo];
+    this.mensagem(x.mensagem, "combate");
+    if (!para) return;
+    if (de) de.acaoAte = this.time.now + 300;
+    this.numero(para.sprite.x, para.sprite.y - para.alturaCabeca - 4, `+${x.cura}`, "cura");
+    this.particulasSimples(para.sprite.x, para.sprite.y - 14, "#8fd16a", 8, { subir: true, dur: 700 });
+    if (de && de !== para && !reduzMovimento()) {
+      const linha = this.add.line(0, 0, de.sprite.x, de.sprite.y - 20, para.sprite.x, para.sprite.y - 14, 0x8fd16a, 0.8).setOrigin(0, 0).setLineWidth(2).setDepth(PROF.numero - 2);
+      this.tweens.add({ targets: linha, alpha: 0, duration: 450, onComplete: () => linha.destroy() });
     }
   }
 
