@@ -45,8 +45,9 @@ Conteúdo do jogo (pasta dados/)
   grande, qualidade dos equipamentos e respawn da extração; OFICIOS: os 6 ofícios, de onde vêm os materiais e
   o XP de cada coleta; RECEITAS: ofício, nível, materiais, produto e XP). Os pontos de extração (madeira,
   argila, minério e resina) ficam em dados/mundo.js (pontosExtracao) e os itens novos em dados/itens.js.
-- dados/cosmeticos.js: trajes (TRAJES: nome, vocação, gratuito, preço e o visual do boneco) e montarias
-  (MONTARIAS: jumento, camelo, cavalo e carro), só de aparência, e a regra da loja (REGRAS_COSMETICOS:
+- dados/cosmeticos.js: trajes (TRAJES: nome, vocação, gratuito, preço e o visual do boneco), montarias
+  (MONTARIAS: jumento, camelo, cavalo e carro) e a paleta das cores do visual (CORES_VISUAL: id, nome e cor;
+  PARTES_COR_VISUAL: cabeça, tronco, pernas e detalhe), só de aparência, e a regra da loja (REGRAS_COSMETICOS:
   pagamento, null enquanto o meio de pagamento não for definido). Os ids ficam no save; para tirar da
   loja, use oculto: true.
 O progresso fica no save (save versão 16): missoes[id] = { status, etapa, progresso },
@@ -56,7 +57,7 @@ mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte 
 { ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
 vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica pronta) e talentos[id] = graus
 (só os da vocação atual; os pontos saem do nível), oficios[id] = { xp } (o nível sai do XP) e
-extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos = { possui, traje, montaria }. Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -112,8 +113,9 @@ Controles — teclado e mouse
   ponto de talento livre).
 - P: pescar (no barco, ao lado de um ponto de pesca). A pesca rende XP de Pescador.
 - O: janela Ofícios (também pelo botão Ofícios, no topo).
-- U: janela Visual (também pelo botão Visual): trajes e montarias, só de aparência. Vestir, montar,
-  tirar e descer; a compra única aparece como "Em breve" até o meio de pagamento ser definido.
+- U: janela Visual (também pelo botão Visual): cores, trajes e montarias, só de aparência. Na aba Cores,
+  pinte a cabeça, o tronco, as pernas e o detalhe do seu personagem (grátis, com a prévia de frente, de lado
+  e de costas; as cores valem também por cima dos trajes). Vestir, montar, tirar e descer; a compra única aparece como "Em breve" até o meio de pagamento ser definido.
 - + e −, ou a roda do mouse sobre o mapa: aproximar ou afastar a câmera (a escolha fica salva neste
   navegador). Sem ajuste, a câmera mostra cerca de 15 × 11 casas na tela deitada e 9 × 13 em pé, como no
   Tibia, e cada pixel da arte ocupa um número inteiro de pixels da tela (nada borrado nem esticado). O mapa

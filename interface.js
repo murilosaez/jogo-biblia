@@ -462,7 +462,7 @@
     if (ass !== assinaturaRetrato && temArte()) {
       assinaturaRetrato = ass;
       let chave = "pj_jogador";
-      try { chave = Arte.garantirJogador ? Arte.garantirJogador(eq, { traje: visualPj.traje }) : chave; } catch (e) { chave = "pj_jogador"; }
+      try { chave = Arte.garantirJogador ? Arte.garantirJogador(eq, { traje: visualPj.traje, cores: visualPj.cores }) : chave; } catch (e) { chave = "pj_jogador"; }
       const url = retratoURL(chave, { escala: 3, recorte: "busto" }) || retratoURL("pj_jogador", { escala: 3 });
       if (url) $("#retratoJogador").src = url;
       // Boneco do painel Equipamento: o corpo inteiro, de frente, com o que está vestido.
@@ -1797,10 +1797,51 @@
     atualizar();
   }
 
-  // ----- Visual: trajes e montarias (JGB-27) -----
-  // Só lê cosmeticosDoJogador (função pura); vestir, montar e comprar são comandos. Nada aqui muda combate.
+  // ----- Visual: cores, trajes e montarias (JGB-27, cores na JGB-49) -----
+  // Só lê cosmeticosDoJogador e visualDoJogador (funções puras); pintar, vestir, montar e comprar são
+  // comandos. Nada aqui muda combate.
   const temVisual = () => typeof cosmeticosDoJogador === "function";
-  let abaVisual = "traje", retornoVisual = null, htmlVisual = "";
+  const temCores = () => typeof CORES_VISUAL !== "undefined" && typeof PARTES_COR_VISUAL !== "undefined" && typeof visualDoJogador === "function";
+  let abaVisual = "cores", retornoVisual = null, htmlVisual = "";
+  // Prévia do boneco (de frente, de lado e de costas) com as cores escolhidas: 3 px de tela por px de arte.
+  const cachePreviaCores = new Map();
+  function previaBoneco(chave, quadro) {
+    const id = chave + "#" + quadro;
+    if (!cachePreviaCores.has(id)) {
+      let url = "";
+      try { url = Arte.canvas(chave, { quadro, escala: 6 })?.toDataURL("image/png") || ""; } catch (e) { url = ""; }
+      if (cachePreviaCores.size > 120) cachePreviaCores.clear();
+      cachePreviaCores.set(id, url);
+    }
+    return cachePreviaCores.get(id);
+  }
+  function montarCores(p) {
+    const visual = visualDoJogador(p);
+    const cores = visual.cores || {};
+    let previa = "";
+    if (temArte() && Arte.garantirJogador) {
+      try {
+        const chave = Arte.garantirJogador(p.equipamento || {}, { traje: visual.traje, cores });
+        previa = [[5, "De frente"], [0, "De lado"], [10, "De costas"]].map(([q, nome]) => {
+          const url = previaBoneco(chave, q);
+          return url ? `<figure><img class="px" src="${url}" alt="Seu personagem ${nome.toLowerCase()}"><figcaption>${nome}</figcaption></figure>` : "";
+        }).join("");
+      } catch (e) { previa = ""; }
+    }
+    const nomeCor = (id) => CORES_VISUAL.find((c) => c.id === id)?.nome || "Cor do traje";
+    const partes = Object.entries(PARTES_COR_VISUAL).map(([parte, nome]) => {
+      const atual = cores[parte] || null;
+      const amostras = [{ id: "", nome: "Cor do traje", cor: "" }].concat(CORES_VISUAL).map((c) => {
+        const marcada = (c.id || null) === atual;
+        return `<button type="button" class="amostra-cor${c.id ? "" : " padrao"}" data-cor-parte="${parte}" data-cor="${esc(c.id)}" aria-pressed="${marcada}" title="${esc(c.nome)}" aria-label="${esc(nome)}: ${esc(c.nome)}"${c.cor ? ` style="--cor:${c.cor}"` : ""}></button>`;
+      }).join("");
+      return `<fieldset class="parte-cor"><legend>${esc(nome)} <small>${esc(nomeCor(atual))}</small></legend><div class="amostras">${amostras}</div></fieldset>`;
+    }).join("");
+    const traje = visual.traje && typeof TRAJES !== "undefined" ? TRAJES[visual.traje]?.nome : null;
+    return `<div class="cores-visual"><div class="previa-cores" aria-live="polite">${previa}</div><div class="partes-cores">${partes}
+      <p class="oficio-pe">${traje ? `Pintando o traje ${esc(traje)}. ` : ""}Cabeça: cabelo ou pano da cabeça · Tronco: veste de cima · Pernas: parte de baixo · Detalhe: cinto, gola e barra. Grátis e só aparência.</p>
+      <button type="button" class="btn secundario" data-cores-padrao>Voltar às cores do traje</button></div></div>`;
+  }
   function abrirVisual() {
     if (!jogador() || !temVisual()) return;
     retornoVisual = null;
@@ -1820,11 +1861,23 @@
     const corpo = $("#visualCorpo");
     if (!p || !corpo || !temVisual()) return;
     const lista = cosmeticosDoJogador(p);
+    if (abaVisual === "cores" && !temCores()) abaVisual = "traje";
     const itens = lista.filter((x) => x.tipo === abaVisual);
-    const abas = `<div class="abas-modal" role="tablist" aria-label="Visual">${[["traje", "Trajes"], ["montaria", "Montarias"]].map(([id, nome]) =>
-      `<button type="button" class="aba-modal" role="tab" data-aba-visual="${id}" aria-selected="${id === abaVisual}">${nome}<small>${lista.filter((x) => x.tipo === id && x.possui).length}/${lista.filter((x) => x.tipo === id).length}</small></button>`).join("")}</div>`;
+    const abas = `<div class="abas-modal" role="tablist" aria-label="Visual">${(temCores() ? [["cores", "Cores"]] : []).concat([["traje", "Trajes"], ["montaria", "Montarias"]]).map(([id, nome]) =>
+      `<button type="button" class="aba-modal" role="tab" data-aba-visual="${id}" aria-selected="${id === abaVisual}">${nome}${id === "cores" ? "" : `<small>${lista.filter((x) => x.tipo === id && x.possui).length}/${lista.filter((x) => x.tipo === id).length}</small>`}</button>`).join("")}</div>`;
     const r = retornoVisual;
-    const retorno = r ? `<p class="retorno${r.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(r.mensagem || "")}</p>` : "";
+    const retorno = r && r.mensagem ? `<p class="retorno${r.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(r.mensagem || "")}</p>` : "";
+    if (abaVisual === "cores") {
+      const html = `${abas}${retorno}${montarCores(p)}`;
+      if (!forcar && html === htmlVisual) return;
+      htmlVisual = html;
+      const foco = document.activeElement && corpo.contains(document.activeElement) && document.activeElement.dataset.corParte
+        ? `[data-cor-parte="${document.activeElement.dataset.corParte}"][data-cor="${document.activeElement.dataset.cor}"]` : null;
+      corpo.innerHTML = html;
+      preencherGlifos(corpo);
+      if (foco) $(foco, corpo)?.focus({ preventScroll: true });
+      return;
+    }
     const nomeVoc = (v) => (typeof VOCACOES !== "undefined" && VOCACOES[v]?.nome) || v;
     const linhas = itens.map((x) => {
       const url = previaCosmetico(x);
@@ -1847,7 +1900,13 @@
   function acaoVisual(botao) {
     const d = botao.dataset;
     if (d.abaVisual) { abaVisual = d.abaVisual; retornoVisual = null; desenharVisual(true); $(`#visualCorpo [data-aba-visual="${abaVisual}"]`)?.focus(); return; }
-    if (d.cosmeticoTirar) retornoVisual = executar(d.cosmeticoTirar === "traje" ? { tipo: "vestirTraje", traje: null } : { tipo: "usarMontaria", montaria: null });
+    if (d.corParte) {
+      const r = executar({ tipo: "definirCores", cores: { [d.corParte]: d.cor || null } });
+      retornoVisual = r && !r.ok ? r : null;
+    } else if ("coresPadrao" in d) {
+      const r = executar({ tipo: "definirCores", cores: Object.fromEntries(Object.keys(PARTES_COR_VISUAL).map((k) => [k, null])) });
+      retornoVisual = r && !r.ok ? r : null;
+    } else if (d.cosmeticoTirar) retornoVisual = executar(d.cosmeticoTirar === "traje" ? { tipo: "vestirTraje", traje: null } : { tipo: "usarMontaria", montaria: null });
     else if (d.cosmeticoUsar) retornoVisual = executar(d.tipo === "traje" ? { tipo: "vestirTraje", traje: d.cosmeticoUsar } : { tipo: "usarMontaria", montaria: d.cosmeticoUsar });
     else if (d.cosmeticoComprar) retornoVisual = executar({ tipo: "comprarCosmetico", cosmetico: d.cosmeticoComprar });
     desenharVisual(true);
@@ -2883,7 +2942,7 @@
           if (!voc.disabled) acaoVocacao(voc);
           return;
         }
-        const vis = e.target.closest("[data-aba-visual], [data-cosmetico-usar], [data-cosmetico-tirar], [data-cosmetico-comprar]");
+        const vis = e.target.closest("[data-aba-visual], [data-cosmetico-usar], [data-cosmetico-tirar], [data-cosmetico-comprar], [data-cor-parte], [data-cores-padrao]");
         if (vis) {
           if (!vis.disabled) acaoVisual(vis);
           return;

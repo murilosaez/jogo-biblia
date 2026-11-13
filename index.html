@@ -468,6 +468,24 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja.cosmetico .preco{font-style:italic}
 .item-loja.cosmetico > span:nth-child(2) > span{display:block}
 .item-loja.cosmetico.em-uso{border-color:var(--ouro-500,#e8b94a);box-shadow:inset 0 0 0 1px #e8b94a}
+/* Visual: cores do boneco (JGB-49) — prévia de frente, de lado e de costas e uma fileira de amostras por parte */
+.cores-visual{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--e-4);align-items:start}
+.previa-cores{display:flex;flex-direction:column;gap:6px;padding:8px;border:2px solid var(--bronze-700);background:radial-gradient(circle at 40% 30%,#8fa34e,#5d7234)}
+.previa-cores figure{margin:0;display:grid;justify-items:center;gap:2px}
+.previa-cores img{width:120px;height:144px;image-rendering:pixelated}
+.previa-cores figcaption{font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto);text-shadow:var(--contorno)}
+.partes-cores{display:flex;flex-direction:column;gap:8px;min-width:0}
+.parte-cor{margin:0;padding:4px 8px 8px;border:1px solid var(--perg-400);background:#fff2}
+.parte-cor legend{padding:0 4px;font:700 var(--fs-16)/1.2 var(--f-ui);color:var(--tinta)}
+.parte-cor legend small{font:italic 500 var(--fs-14)/1 var(--f-texto);color:var(--tinta-suave);margin-left:4px}
+.amostras{display:grid;grid-template-columns:repeat(13,minmax(24px,34px));gap:5px}
+.amostra-cor{aspect-ratio:1;min-width:24px;padding:0;border:2px solid var(--tinta);border-radius:var(--raio);background:var(--cor);box-shadow:inset 0 2px 0 #fff5,inset 0 -2px 0 #0004;cursor:pointer}
+.amostra-cor.padrao{background:repeating-linear-gradient(135deg,var(--perg-100) 0 4px,var(--perg-300) 4px 8px)}
+.amostra-cor:hover{outline:2px solid var(--bronze-500);outline-offset:1px}
+.amostra-cor:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
+.amostra-cor[aria-pressed="true"]{outline:3px solid var(--tinta);outline-offset:2px;box-shadow:inset 0 0 0 2px var(--ouro-300)}
+.partes-cores > .btn{align-self:flex-start}
+@media (max-width:760px){ .cores-visual{grid-template-columns:1fr} .previa-cores{flex-direction:row;justify-content:center} .previa-cores img{width:80px;height:96px} .amostra-cor{min-width:32px} .amostras{grid-template-columns:repeat(auto-fill,minmax(32px,1fr))} }
 /* passagem do barco: bilhete com preço, saldo e o que sobra */
 .bilhete{margin:0 0 12px;border:2px solid var(--tinta);background:#fff8e6;box-shadow:inset 0 0 0 2px #e6cf9c}
 .bilhete-linha{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 12px;font:600 var(--fs-16)/1.2 var(--f-ui);color:var(--tinta)}
@@ -1065,7 +1083,7 @@ body.toque-forcado #dpad{display:block}
 <div class="modal" id="modalVisual" aria-hidden="true">
   <div class="modal-caixa perg larga" role="dialog" aria-modal="true" aria-labelledby="visualTitulo">
     <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_personagem" data-escala="4" alt=""></span><div><h2 id="visualTitulo">Visual</h2>
-      <p class="sub">Trajes e montarias: só aparência, nenhuma vantagem em combate</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+      <p class="sub">Cores, trajes e montarias: só aparência, nenhuma vantagem em combate</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
     <div class="modal-corpo" id="visualCorpo"></div>
   </div>
 </div>

@@ -5798,7 +5798,8 @@ teste("67. cosméticos (JGB-27): trajes por vocação e montarias só visuais, c
   // Gratuito: veste já; pagos: a loja não vende sem pagamento.
   const exec = (c) => j.exec(c);
   assert.ok(exec({ tipo: "vestirTraje", traje: "peregrino" }).ok);
-  igual(g("visualDoJogador")(p), { traje: "peregrino", montaria: null });
+  const semCores = { cabeca: null, tronco: null, pernas: null, detalhe: null };
+  igual(g("visualDoJogador")(p), { traje: "peregrino", montaria: null, cores: semCores });
   let r = exec({ tipo: "comprarCosmetico", cosmetico: "cavalo" });
   assert.ok(!r.ok && r.semPagamento && r.mensagem === REGRAS.textoSemPagamento);
   assert.ok(!exec({ tipo: "usarMontaria", montaria: "cavalo" }).ok, "sem o cavalo não monta");
@@ -5834,12 +5835,12 @@ teste("67. cosméticos (JGB-27): trajes por vocação e montarias só visuais, c
   p.vocacao.id = "guerreiro";
   j.g("Storage").flush();
   const q = carregarJogo({ store: j.store, inicio: j.agora }).entrar();
-  igual(q.cosmeticos, { possui: ["cavalo", "armadura_de_davi"], traje: "armadura_de_davi", montaria: "cavalo" });
+  igual(q.cosmeticos, { possui: ["cavalo", "armadura_de_davi"], traje: "armadura_de_davi", montaria: "cavalo", cores: semCores });
   const k = carregarJogo();
   k.entrar();
   k.p.cosmeticos = { possui: ["cavalo", "dragao", 7, "peregrino", "cavalo"], traje: "dragao", montaria: "camelo" };
   k.g("Storage").flush();
-  igual(carregarJogo({ store: k.store, inicio: k.agora }).entrar().cosmeticos, { possui: ["cavalo"], traje: null, montaria: null });
+  igual(carregarJogo({ store: k.store, inicio: k.agora }).entrar().cosmeticos, { possui: ["cavalo"], traje: null, montaria: null, cores: semCores });
   const m = carregarJogo();
   m.entrar();
   m.g("Storage").flush();
@@ -5887,7 +5888,7 @@ teste("68. arte em 32 px por casa (JGB-48): humanos em 3 vistas com equipamento 
   // Montarias e trajes geram sprite; montado tem as 3 vistas.
   for (const m of ["jumento", "camelo", "cavalo", "carro"]) {
     const chave = Arte.garantirJogador({}, { montaria: m });
-    igual([PP[chave].quadros, PP[chave].direcoes, Arte.pixels(chave).w], [15, 3, 48], m);
+    igual([PP[chave].quadros, PP[chave].direcoes, Arte.pixels(chave).w, Arte.pixels(chave).h], [15, 3, 56, 64], m);
     assert.ok(PP["mt_" + m], `prévia mt_${m}`);
   }
   for (const t of Object.keys(j.g("TRAJES"))) assert.notStrictEqual(Arte.pixels(Arte.garantirJogador({}, { traje: t }), { quadro: 5 }).data.join(), nu, t);
@@ -5900,7 +5901,8 @@ teste("68. arte em 32 px por casa (JGB-48): humanos em 3 vistas com equipamento 
   assert.strictEqual(Arte.pixels("ui_moeda").w, 8);
   // game.js vira o boneco para a direção do passo (lado, frente ou costas).
   assert.match(FONTE_GAME, /function virar\(sprite, dx, dy\)/);
-  assert.match(FONTE_GAME, /quadroComVista\(j, 2 \+/);
+  assert.match(FONTE_GAME, /quadroComVista\(j, quadroAndando\(j, time\)\)/);
+  assert.match(FONTE_GAME, /const CICLO_PASSO = \[2, 0, 3, 0\];/, "andando: contato A, passagem, contato B, passagem");
 });
 
 // ---------------------------------------------------------------------
@@ -6013,6 +6015,72 @@ teste("70. conversa por palavras-chave: as palavras de cada papel, sinônimos se
   Object.assign(p, { area: "canaan", x: npcs.mercador_canaa.x, y: npcs.mercador_canaa.y + 2 });
   assert.ok(j.exec({ tipo: "interagir", alvoId: "mercador_canaa" }).ok);
   igual(lista("mercador_canaa"), ["oi", "comprar", "vender", "tchau"], "sem [missão] depois da conversa");
+});
+
+teste("71. cores do visual (JGB-49): paleta fixa, comando definirCores validado, save sem versão nova e chave da arte", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, g = (n) => j.g(n);
+  const PALETA = g("CORES_VISUAL"), PARTES = Object.keys(g("PARTES_COR_VISUAL"));
+  // Dados: 4 partes e uma paleta de cores únicas em #rrggbb, sem campo de poder.
+  igual(PARTES, ["cabeca", "tronco", "pernas", "detalhe"]);
+  assert.ok(PALETA.length >= 20 && PALETA.length <= 32, `${PALETA.length} cores`);
+  assert.strictEqual(new Set(PALETA.map((c) => c.id)).size, PALETA.length, "ids únicos");
+  for (const c of PALETA) {
+    assert.match(c.cor, /^#[0-9a-f]{6}$/, c.id);
+    assert.ok(c.nome && typeof c.nome === "string", c.id);
+    igual(Object.keys(c), ["id", "nome", "cor"], c.id);
+  }
+  // Jogador novo: todas as partes com a cor do traje (null).
+  const nulas = { cabeca: null, tronco: null, pernas: null, detalhe: null };
+  igual(p.cosmeticos.cores, nulas);
+  // Comando: muda só as partes pedidas, valida tudo antes (nada muda se uma parte for inválida).
+  const est = () => JSON.stringify([g("estatisticasCombate")(p), g("vidaMaxima")(p), g("capacidadeCarga")(p)]);
+  const antes = est();
+  let r = j.exec({ tipo: "definirCores", cores: { tronco: "anil", detalhe: "acafrao" } });
+  assert.ok(r.ok && r.visual, r.mensagem);
+  igual(p.cosmeticos.cores, { cabeca: null, tronco: "anil", pernas: null, detalhe: "acafrao" });
+  for (const ruim of [{ tronco: "dourado_magico" }, { braco: "anil" }, { cabeca: 3 }, {}, null, "anil", { tronco: "anil", pernas: "xadrez" }]) {
+    r = j.exec({ tipo: "definirCores", cores: ruim });
+    assert.ok(!r.ok && r.mensagem, JSON.stringify(ruim));
+  }
+  igual(p.cosmeticos.cores, { cabeca: null, tronco: "anil", pernas: null, detalhe: "acafrao" }, "inválido não muda nada");
+  assert.ok(j.exec({ tipo: "definirCores", cores: { cabeca: "carvao", pernas: "garanca", detalhe: null } }).ok);
+  igual(p.cosmeticos.cores, { cabeca: "carvao", tronco: "anil", pernas: "garanca", detalhe: null });
+  assert.strictEqual(est(), antes, "cor não muda estatística");
+  igual(g("visualDoJogador")(p).cores, p.cosmeticos.cores);
+  // Save: recarrega igual; cores corrompidas viram null; save v16 sem cores ganha as 4 partes em null
+  // (a normalização é a migração: sem versão nova).
+  j.g("Storage").flush();
+  igual(carregarJogo({ store: j.store, inicio: j.agora }).entrar().cosmeticos.cores, { cabeca: "carvao", tronco: "anil", pernas: "garanca", detalhe: null });
+  const chave = Object.keys(j.store).find((c) => c.startsWith("save_"));
+  const dados = JSON.parse(j.store[chave]);
+  dados.cosmeticos.cores = { cabeca: "neon", tronco: 7, pernas: "verde", detalhe: "anil", braco: "anil" };
+  j.store[chave] = JSON.stringify(dados);
+  igual(carregarJogo({ store: j.store }).entrar().cosmeticos.cores, { cabeca: null, tronco: null, pernas: "verde", detalhe: "anil" });
+  dados.versao = 16;
+  delete dados.cosmeticos.cores;
+  j.store[chave] = JSON.stringify(dados);
+  const q = carregarJogo({ store: j.store }).entrar();
+  igual([q.versao, q.cosmeticos.cores], [g("VERSAO_SAVE"), nulas]);
+  assert.strictEqual(g("VERSAO_SAVE"), 16, "cores não pedem versão nova do save");
+  // Arte: as cores entram na chave da textura (e só as da paleta); trocam o desenho, também com traje.
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  const Arte = j.ctx.Arte;
+  assert.strictEqual(Arte.chaveJogador({}, { cores: nulas }), "pj_jogador");
+  assert.strictEqual(Arte.chaveJogador({}, { cores: { tronco: "inventada" } }), "pj_jogador");
+  const k1 = Arte.chaveJogador({}, { cores: { tronco: "anil" } }), k2 = Arte.chaveJogador({}, { cores: { tronco: "verde" } });
+  assert.ok(k1 !== "pj_jogador" && k1 !== k2 && /anil/.test(k1), k1);
+  const quadro = (k) => Arte.pixels(k, { quadro: 5 }).data.join();
+  const nu = quadro(Arte.garantirJogador({}, {}));
+  for (const parte of PARTES) assert.notStrictEqual(quadro(Arte.garantirJogador({}, { cores: { [parte]: "escarlate" } })), nu, `a cor da parte ${parte} aparece`);
+  const comTraje = quadro(Arte.garantirJogador({}, { traje: "pastor_de_belem" }));
+  assert.notStrictEqual(quadro(Arte.garantirJogador({}, { traje: "pastor_de_belem", cores: { cabeca: "anil", tronco: "verde" } })), comTraje, "cores por cima do traje");
+  assert.notStrictEqual(Arte.chaveJogador({}, { montaria: "cavalo", cores: { tronco: "anil" } }), Arte.chaveJogador({}, { montaria: "cavalo" }));
+  // Interface: a janela Visual pinta pelas cores com o comando, sem escrever em p.cosmeticos.
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  assert.match(ui, /tipo: "definirCores"/);
+  assert.doesNotMatch(ui, /\.cosmeticos\.cores\s*(\[|\.\w+\s*=|=)/, "a interface não escreve em p.cosmeticos.cores");
 });
 
 const filtro = process.argv[2];

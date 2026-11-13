@@ -1544,7 +1544,8 @@ function normalizarOficios(p, agora) {
 
 // ---------------------------------------------------------------------
 // Cosméticos (JGB-27, save v16): trajes e montarias só mudam a aparência (dados/cosmeticos.js).
-// p.cosmeticos = { possui: [ids comprados], traje: id | null, montaria: id | null }. Os gratuitos
+// p.cosmeticos = { possui: [ids comprados], traje: id | null, montaria: id | null, cores } (cores: JGB-49,
+// abaixo). Os gratuitos
 // não entram em possui (todos têm). Nenhuma regra de combate, carga ou movimento lê p.cosmeticos.
 // ---------------------------------------------------------------------
 function cosmeticoDe(id) {
@@ -1568,20 +1569,36 @@ function motivoSemCosmetico(p, id) {
   return null;
 }
 
+// Cores do visual (JGB-49): p.cosmeticos.cores = { cabeca, tronco, pernas, detalhe }, cada uma o id de uma
+// cor de CORES_VISUAL (dados/cosmeticos.js) ou null (= a cor do traje). Grátis e só aparência.
+const PARTES_COR = Object.keys(PARTES_COR_VISUAL);
+function corVisualDe(id) {
+  return typeof id === "string" ? CORES_VISUAL.find((c) => c.id === id) || null : null;
+}
+function coresVisuaisValidas(salvas) {
+  const s = objetoValido(salvas) ? salvas : {};
+  return Object.fromEntries(PARTES_COR.map((k) => [k, corVisualDe(s[k]) ? s[k] : null]));
+}
+
+// Saves sem cores (até a v16 da JGB-27) ou com cores fora da paleta ficam com null em cada parte.
 function normalizarCosmeticos(p) {
   const salvo = objetoValido(p.cosmeticos) ? p.cosmeticos : {};
   const possui = Array.isArray(salvo.possui) ? salvo.possui : [];
-  p.cosmeticos = { possui: [...new Set(possui.filter((id) => cosmeticoDe(id) && !cosmeticoDe(id).def.gratuito))], traje: null, montaria: null };
+  p.cosmeticos = {
+    possui: [...new Set(possui.filter((id) => cosmeticoDe(id) && !cosmeticoDe(id).def.gratuito))], traje: null, montaria: null,
+    cores: coresVisuaisValidas(salvo.cores),
+  };
   if (registroDe(TRAJES, salvo.traje) && !motivoSemCosmetico(p, salvo.traje)) p.cosmeticos.traje = salvo.traje;
   if (registroDe(MONTARIAS, salvo.montaria) && !motivoSemCosmetico(p, salvo.montaria)) p.cosmeticos.montaria = salvo.montaria;
 }
 
-// Aparência atual para a arte: { traje, montaria } (o traje de outra vocação fica guardado mas não aparece).
+// Aparência atual para a arte: { traje, montaria, cores } (o traje de outra vocação fica guardado mas não
+// aparece; as cores valem com ou sem traje).
 function visualDoJogador(p) {
   const c = p?.cosmeticos || {};
   const traje = c.traje && !motivoSemCosmetico(p, c.traje) ? c.traje : null;
   const montaria = c.montaria && !motivoSemCosmetico(p, c.montaria) ? c.montaria : null;
-  return { traje, montaria };
+  return { traje, montaria, cores: coresVisuaisValidas(c.cores) };
 }
 
 // Lista da loja e do guarda-roupa (função pura): um registro por cosmético visível.
@@ -3745,6 +3762,8 @@ const Mundo = {
         return this.usarCosmetico(id, "montaria", comando.montaria ?? null);
       case "comprarCosmetico":
         return this.comprarCosmetico(id, comando.cosmetico);
+      case "definirCores":
+        return this.definirCores(id, comando.cores);
       default:
         return { ok: false };
     }
@@ -3766,6 +3785,19 @@ const Mundo = {
     p.cosmeticos[tipo] = cosmeticoId;
     this.salvar(p);
     return { ok: true, visual: true, mensagem: tipo === "traje" ? `Você vestiu: ${c.def.nome}.` : `Você montou: ${c.def.nome}.` };
+  },
+  // Cores do visual (JGB-49): cores = { parte: id da paleta ou null } (só as partes que mudam). Valida tudo
+  // antes de mudar qualquer parte. Grátis; sem mensagem no sucesso (a janela mostra a prévia).
+  definirCores(id, cores) {
+    const p = this.jogadores[id];
+    if (!objetoValido(cores) || !Object.keys(cores).length) return { ok: false, mensagem: "Escolha uma cor." };
+    for (const [parte, cor] of Object.entries(cores)) {
+      if (!PARTES_COR.includes(parte)) return { ok: false, mensagem: "Essa parte do visual não existe." };
+      if (cor !== null && !corVisualDe(cor)) return { ok: false, mensagem: "Essa cor não está na paleta." };
+    }
+    Object.assign(p.cosmeticos.cores, cores);
+    this.salvar(p);
+    return { ok: true, visual: true, cores: Object.assign({}, p.cosmeticos.cores) };
   },
   // Compra única. Sem meio de pagamento definido (REGRAS_COSMETICOS.pagamento), não vende.
   comprarCosmetico(id, cosmeticoId) {
