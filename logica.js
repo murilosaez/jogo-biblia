@@ -5201,6 +5201,7 @@ const Mundo = {
         bestiario: morte.bestiario,
         xpGanho: morte.xpGanho,
         xpDescanso: morte.xpDescanso,
+        xpVigor: morte.xpVigor,
         mensagem: `${prefixo}${morte.mensagem}${textoHabilidade}`,
       };
     }
@@ -6264,14 +6265,17 @@ const Mundo = {
   },
 
   // Vigor: gasta em tempo real enquanto houve golpe dado ou recebido há pouco (REGRAS_VIGOR.janelaCombateSegundos).
-  // Passos longos (aba parada, sem quadros) não contam além de passoMaximoSegundos. Grava com o próximo salvar.
+  // Passos longos (aba parada, sem quadros) não contam além de passoMaximoSegundos. Caçar é estar presente: a
+  // marca da ausência anda junto. Grava com o próximo salvar.
   passoVigor(p, estado, agora) {
     const R = REGRAS_VIGOR;
     const desde = estado.vigorEm || agora;
     estado.vigorEm = agora;
     if (!(estado.ultimoCombate > 0) || agora - estado.ultimoCombate > R.janelaCombateSegundos * 1000) return;
+    if (!objetoValido(p.vigor)) normalizarVigor(p, agora);
     const ms = Math.min(agora - desde, R.passoMaximoSegundos * 1000);
     if (ms > 0) gastarVigor(p, ms / MINUTO_MS);
+    p.vigor.vistoEm = Math.max(p.vigor.vistoEm, agora);
   },
 
   // Buffs com regeneração (Incenso): cura a cada intervalo. E os buffs vencidos saem.
