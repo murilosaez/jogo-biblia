@@ -6357,6 +6357,115 @@ teste("72. inventário (e): vender 1, X ou tudo e comprar provisões em quantida
   igual(antes2.moedas, 200 - 5 * preco.pocao - 4 * preco.flechas - preco.pocao);
 });
 
+teste("75. rota longa (A*): caminho mais rápido, casa alcançável mais perto e o mapa inteiro sem travar", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const M = j.M, p = j.p;
+  const rotaNaGrade = j.g("rotaNaGrade"), REGRAS = j.g("REGRAS_ROTA"), COLS = j.g("COLS"), ROWS = j.g("ROWS");
+  const reto = REGRAS.custoReto, diag = REGRAS.custoDiagonal;
+  const custoDe = (passos) => passos.reduce((t, [dx, dy]) => t + (dx && dy ? diag : reto), 0);
+  // Confere passo a passo: vizinhas (8 direções), todas pisáveis, terminando na chegada.
+  const conferir = (r, origem, livre, msg) => {
+    let x = origem.x, y = origem.y;
+    for (const [dx, dy] of r.passos) {
+      assert.ok(Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx || dy), `${msg}: passo inválido ${dx},${dy}`);
+      x += dx;
+      y += dy;
+      assert.ok(livre(x, y), `${msg}: pisou em ${x},${y}, que não é livre`);
+    }
+    igual({ x, y }, r.chegada, `${msg}: termina na chegada`);
+  };
+
+  // (a) Grade pequena com paredes: o custo é o mesmo de uma busca completa (Dijkstra), em vários pares.
+  const L = 14, A = 10;
+  let semente = 7;
+  const sorteio = () => ((semente = (semente * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const bloqueio = Array.from({ length: L * A }, () => sorteio() < 0.28);
+  const livre = (x, y) => !bloqueio[y * L + x];
+  const dijkstra = (o) => {
+    const dist = new Array(L * A).fill(Infinity), feito = new Array(L * A).fill(false);
+    dist[o.y * L + o.x] = 0;
+    for (;;) {
+      let i = -1;
+      for (let k = 0; k < L * A; k++) if (!feito[k] && dist[k] < Infinity && (i < 0 || dist[k] < dist[i])) i = k;
+      if (i < 0) return dist;
+      feito[i] = true;
+      const x = i % L, y = Math.floor(i / L);
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= L || ny >= A || !livre(nx, ny)) continue;
+          dist[ny * L + nx] = Math.min(dist[ny * L + nx], dist[i] + (dx && dy ? diag : reto));
+        }
+    }
+  };
+  const casasLivres = [];
+  for (let y = 0; y < A; y++) for (let x = 0; x < L; x++) if (livre(x, y)) casasLivres.push({ x, y });
+  let comparados = 0;
+  for (let k = 0; k < 40; k++) {
+    const o = casasLivres[Math.floor(sorteio() * casasLivres.length)], d = casasLivres[Math.floor(sorteio() * casasLivres.length)];
+    const dist = dijkstra(o)[d.y * L + d.x];
+    const r = rotaNaGrade(livre, o, d, { colunas: L, linhas: A });
+    if (dist === Infinity) { assert.ok(!r.exato, "destino fora de alcance não é exato"); continue; }
+    assert.ok(r.exato, `${o.x},${o.y} → ${d.x},${d.y} chega`);
+    conferir(r, o, livre, `${o.x},${o.y} → ${d.x},${d.y}`);
+    assert.strictEqual(custoDe(r.passos), dist, `${o.x},${o.y} → ${d.x},${d.y}: o caminho mais rápido`);
+    comparados++;
+  }
+  assert.ok(comparados >= 20, `pares comparados: ${comparados}`);
+
+  // (b) Destino bloqueado ou cercado: vai até a casa alcançável mais perto; já estar nela = nenhum passo.
+  const parede = (x, y) => !(x === 5 && y >= 1) && !(y === 1 && x >= 5); // parede em L (x = 5 e y = 1)
+  let r = rotaNaGrade(parede, { x: 0, y: 5 }, { x: 8, y: 5 }, { colunas: 10, linhas: 8 });
+  igual([r.exato, r.chegada], [false, { x: 4, y: 5 }], "atrás da parede: para na casa mais perto, do lado de cá");
+  conferir(r, { x: 0, y: 5 }, parede, "parede");
+  r = rotaNaGrade(parede, { x: 4, y: 5 }, { x: 8, y: 5 }, { colunas: 10, linhas: 8 });
+  igual([r.passos, r.exato, r.chegada], [[], false, { x: 4, y: 5 }], "já está o mais perto possível");
+  r = rotaNaGrade(() => true, { x: 3, y: 3 }, { x: 3, y: 3 }, { colunas: 10, linhas: 8 });
+  igual([r.passos, r.exato], [[], true], "origem = destino");
+  r = rotaNaGrade((x, y) => !(x === 6 && y === 2), { x: 0, y: 2 }, { x: 6, y: 2 }, { colunas: 10, linhas: 8 });
+  igual([r.exato, r.chegada, r.passos.length], [false, { x: 5, y: 2 }, 5], "casa do destino é obstáculo: a vizinha");
+  igual(rotaNaGrade(() => true, { x: -1, y: 0 }, { x: 3, y: 3 }), null, "origem fora do mapa");
+  igual(rotaNaGrade(() => true, { x: 1, y: 1 }, { x: 1.5, y: 3 }), null, "destino inválido");
+  r = rotaNaGrade(() => true, { x: 0, y: 0 }, { x: 9999, y: -40 }, { colunas: 10, linhas: 8 });
+  igual([r.exato, r.chegada], [true, { x: 9, y: 0 }], "destino fora do mapa vai para a borda");
+  // cada casa é perguntada uma vez só
+  const perguntas = new Map();
+  rotaNaGrade((x, y) => { const k = `${x},${y}`; perguntas.set(k, (perguntas.get(k) || 0) + 1); return true; }, { x: 0, y: 0 }, { x: 9, y: 7 }, { colunas: 10, linhas: 8 });
+  assert.ok([...perguntas.values()].every((n) => n === 1), "livre(x, y) uma vez por casa");
+
+  // (c) Grade de passagem: obstáculos, NPC e criatura viva bloqueiam; a casa do jogador e a criatura morta, não.
+  p.area = "canaan";
+  const grade = M.gradeDePassagem(p);
+  const mapa = j.g("mapas").canaan;
+  assert.strictEqual(grade.length, COLS * ROWS);
+  for (let y = 0; y < ROWS; y += 7) for (let x = 0; x < COLS; x += 5) if (mapa[y][x] !== 0) assert.strictEqual(grade[y * COLS + x], 0, `obstáculo ${x},${y}`);
+  const npc = Object.values(j.g("npcs")).find((n) => n.area === "canaan");
+  assert.strictEqual(grade[npc.y * COLS + npc.x], 0, "NPC bloqueia");
+  assert.strictEqual(grade[p.y * COLS + p.x], 1, "a casa do jogador conta como livre");
+  const lobo = Object.values(j.g("inimigos")).find((e) => e.area === "canaan" && M.inimigoVivo(p, e.id));
+  assert.strictEqual(M.gradeDePassagem(p)[lobo.y * COLS + lobo.x], 0, "criatura viva bloqueia");
+  for (let y = 0; y < ROWS; y += 3)
+    for (let x = 0; x < COLS; x += 3) assert.strictEqual(grade[y * COLS + x] === 1, M.casaLivre(x, y, p, true), `mesma regra de casaLivre em ${x},${y}`);
+
+  // (d) Do início de Canaã até o canto oposto do mapa: a busca cobre o mapa inteiro em poucos ms, e o
+  // jogador anda a rota com o comando mover até a chegada (sem pisar em cais, trilha ou portal no meio).
+  const a = j.g("areas").canaan;
+  const transicao = new Set([a.passagem, a.cais, ...Object.values(a.portos || {}).map((x) => x.cais), ...j.g("PORTAIS").filter((t) => t.area === "canaan")]
+    .filter(Boolean).map((c) => c.y * COLS + c.x));
+  Object.assign(p, { x: a.inicio.x, y: a.inicio.y });
+  const destino = { x: COLS - 2, y: ROWS - 2 };
+  const pode = (x, y) => grade[y * COLS + x] === 1 && (!transicao.has(y * COLS + x) || (x === destino.x && y === destino.y));
+  const t0 = process.hrtime.bigint();
+  r = rotaNaGrade(pode, p, destino);
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  assert.ok(ms < 150, `A* em todo o mapa: ${ms.toFixed(1)} ms`);
+  assert.ok(r.passos.length > 100, `rota longa: ${r.passos.length} passos`);
+  assert.ok(Math.max(Math.abs(r.chegada.x - destino.x), Math.abs(r.chegada.y - destino.y)) <= 6, `chega perto do canto: ${JSON.stringify(r.chegada)}`);
+  for (const [dx, dy] of r.passos) assert.ok(j.exec({ tipo: "mover", dx, dy }).ok !== false, `passo ${dx},${dy} em ${p.x},${p.y}`);
+  igual([p.area, p.x, p.y], ["canaan", r.chegada.x, r.chegada.y], "andou a rota inteira");
+});
+
 const filtro = process.argv[2];
 const selecionados = filtro ? testes.filter((t) => t.nome.startsWith(filtro)) : testes;
 let falhas = 0;

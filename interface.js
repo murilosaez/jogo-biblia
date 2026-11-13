@@ -1111,7 +1111,9 @@
   // tecla +) o mundo vai a 3×, ~14 × 9 casas.
   // Opção "Conversa sob o mundo" (menu Janelas): o console fica embaixo do mundo, entre as colunas, e o
   // dock é só a faixa dos atalhos (como antes); a altura segue a mesma regra.
-  const ALTURA_CONSOLE = { min: 112, padrao: 176, fracaoMax: 0.5 };
+  // minSobMundo: sob o mundo a barra dos atalhos já tira altura do palco; com 2 linhas o mundo ainda fica em
+  // 2× em 1366 × 768.
+  const ALTURA_CONSOLE = { min: 112, minSobMundo: 88, padrao: 176, fracaoMax: 0.5 };
   const chatSobMundo = () => prefConsole.lugar === "mundo";
   // O que encolhe o palco quando o console cresce: o dock inteiro ou só o console (sob o mundo).
   const caixaDoConsole = () => (chatSobMundo() ? painel("pRegistro") : $("#rodape"));
@@ -1133,7 +1135,7 @@
   }
   function limitesDoConsole() {
     const caixa = caixaDoConsole(), palco = $("#palco");
-    const min = Math.max(ALTURA_CONSOLE.min, minimoDoDock());
+    const min = Math.max(chatSobMundo() ? ALTURA_CONSOLE.minSobMundo : ALTURA_CONSOLE.min, minimoDoDock());
     if (!caixa || !palco || !palco.clientWidth) return { min, max: Math.max(min, ALTURA_CONSOLE.padrao) };
     const w = palco.clientWidth, total = palco.clientHeight + caixa.offsetHeight; // o palco mais a caixa
     const teto = Math.max(min, Math.round(innerHeight * ALTURA_CONSOLE.fracaoMax));

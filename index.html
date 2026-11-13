@@ -129,7 +129,7 @@ body.movendo-janela,body.movendo-janela *{cursor:grabbing!important}
 .janela-btn img{width:16px;height:16px;pointer-events:none}
 /* o menu da janela (mover pelo teclado) aparece com o ponteiro sobre o cabeçalho ou com o foco nele */
 .janela-btn[data-janela-menu]{width:0;border-width:0;margin-right:-2px;overflow:hidden;opacity:0}
-.painel-cab:hover .janela-btn[data-janela-menu],.painel-cab:focus-within .janela-btn[data-janela-menu],.janela-btn[data-janela-menu][aria-expanded="true"]{width:20px;border-width:1px;margin-right:0;opacity:1}
+body:not(.movendo-janela) .painel-cab:hover .janela-btn[data-janela-menu],.painel-cab:focus-within .janela-btn[data-janela-menu],.janela-btn[data-janela-menu][aria-expanded="true"]{width:20px;border-width:1px;margin-right:0;opacity:1}
 /* ícones desenhados no CSS, pixel a pixel: três pontos (menu), traço (minimizar) e moldura (restaurar) */
 .ic-menu{width:2px;height:2px;background:currentColor;box-shadow:0 -4px 0 currentColor,0 4px 0 currentColor}
 .ic-min{width:10px;height:2px;margin-top:6px;background:currentColor}
@@ -165,6 +165,7 @@ body.movendo-janela,body.movendo-janela *{cursor:grabbing!important}
 .menu-op .dica-op{margin-left:auto;font:500 var(--fs-13)/1 var(--f-texto);color:var(--texto-mudo);text-shadow:none}
 .menu-op .caixa{flex:0 0 16px;width:16px;height:16px;border:2px solid var(--bronze-400);background:#140c08;box-shadow:inset 1px 1px 0 #000}
 .menu-op[aria-checked="true"] .caixa{background:linear-gradient(var(--ouro-300),var(--ouro-300)) center/8px 8px no-repeat,#140c08}
+.menu-op[role="menuitemradio"] .caixa{border-radius:50%}
 @media (pointer:coarse){ .janela-btn{width:32px;height:28px} .menu-op{min-height:44px} }
 .nota{margin:6px 0 0;font:500 var(--fs-13)/1.35 var(--f-texto);color:var(--texto-mudo)}
 
@@ -872,8 +873,9 @@ body.dialogo-aberto #toque{visibility:hidden}
  .btn-icone{padding:0 8px;white-space:nowrap}
  #atalhos-dica{max-width:200px}
 }
-/* médio estreito: os rótulos não cabem e se sobrepunham; os botões ficam só com o ícone (têm aria-label/title) */
-@media (min-width:761px) and (max-width:1023px){
+/* médio: com o nome da região e o botão Janelas no topo, os rótulos não cabem; os botões ficam só com o ícone
+   (têm aria-label/title) */
+@media (min-width:761px) and (max-width:1279px){
  .btn-icone .rotulo{display:none}
  .btn-icone{min-width:34px;justify-content:center}
 }
@@ -1026,7 +1028,7 @@ body.toque-forcado #dpad{display:block}
     <button class="btn-icone mana-btn" id="btnMana" type="button" aria-label="Maná e descanso (N)" title="Maná e descanso (N)"><img class="px g16" data-glifo="ui_mana" alt=""><span class="rotulo">Maná</span><b class="mana-qtd" id="manaQtd" hidden></b></button>
     <button class="btn-icone" id="btnBestiario" type="button" aria-label="Bestiário (B)" title="Bestiário (B)"><img class="px g16" data-glifo="ui_bestiario" alt=""><span class="rotulo">Bestiário</span></button>
     <button class="btn-icone" id="btnMapa" type="button" aria-label="Mostrar ou ocultar o mapa (M)" aria-pressed="true"><img class="px g16" data-glifo="ui_rosa" alt=""><span class="rotulo">Mapa</span></button>
-    <button class="btn-icone so-largo" id="btnJanelas" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="menuJanelas" title="Janelas: mostrar, ocultar e restaurar o layout"><img class="px g16" data-glifo="ui_menu" alt=""><span class="rotulo">Janelas</span></button>
+    <button class="btn-icone so-largo" id="btnJanelas" type="button" aria-label="Janelas: mostrar, ocultar e restaurar o layout" aria-haspopup="menu" aria-expanded="false" aria-controls="menuJanelas" title="Janelas: mostrar, ocultar e restaurar o layout"><img class="px g16" data-glifo="ui_menu" alt=""><span class="rotulo">Janelas</span></button>
     <button class="btn-icone so-largo" id="btnTelaCheia" type="button" aria-label="Tela cheia"><img class="px g16" data-glifo="ui_tela_cheia" alt=""><span class="rotulo">Tela cheia</span></button>
     <button class="btn-icone so-largo" id="btnAjuda" type="button" aria-label="Controles e ajuda (?)"><img class="px g16" data-glifo="ui_ajuda" alt=""><span class="rotulo">Controles</span></button>
   </header>
