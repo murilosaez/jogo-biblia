@@ -77,3 +77,38 @@ const MONTARIAS = {
   cavalo: { nome: "Cavalo", gratuito: false, preco: null, descricao: "Corcel castanho de crina escura." },
   carro: { nome: "Carro", gratuito: false, preco: null, descricao: "Carro de duas rodas puxado por um cavalo." },
 };
+
+// Cores do visual (JGB-49): o jogador pinta 4 partes do boneco com as cores desta paleta, como nos MMORPGs
+// clássicos. cabeca: cabelo (ou o pano da cabeça do traje: turbante, faixa, bandana, nemes, véu);
+// tronco: a veste de cima; pernas: a parte de baixo da veste; detalhe: cinto, gola e barra.
+// No save: p.cosmeticos.cores = { cabeca, tronco, pernas, detalhe } com o id da cor ou null (= a cor do
+// traje, ou a do boneco sem traje). Grátis e só aparência. Para tirar uma cor da paleta basta apagá-la:
+// saves que a usam voltam para null na carga.
+const PARTES_COR_VISUAL = { cabeca: "Cabeça", tronco: "Tronco", pernas: "Pernas", detalhe: "Detalhe" };
+// Tintas e fibras da época (linho, lã, ocres, garança, púrpura, índigo...) e tons de cabelo.
+const CORES_VISUAL = [
+  { id: "linho", nome: "Linho", cor: "#ebdfbe" },
+  { id: "la_crua", nome: "Lã crua", cor: "#cdb48a" },
+  { id: "areia", nome: "Areia", cor: "#d8ae6c" },
+  { id: "ocre", nome: "Ocre", cor: "#c0883c" },
+  { id: "acafrao", nome: "Açafrão", cor: "#e6b02e" },
+  { id: "laranja", nome: "Laranja", cor: "#d8692a" },
+  { id: "garanca", nome: "Garança", cor: "#b4402e" },
+  { id: "escarlate", nome: "Escarlate", cor: "#d6332c" },
+  { id: "rosa", nome: "Rosa", cor: "#dc8c88" },
+  { id: "vinho", nome: "Vinho", cor: "#702234" },
+  { id: "purpura", nome: "Púrpura", cor: "#6c2c6c" },
+  { id: "lilas", nome: "Lilás", cor: "#9c7cbc" },
+  { id: "anil", nome: "Anil", cor: "#2c4a8c" },
+  { id: "celeste", nome: "Celeste", cor: "#5c8ccc" },
+  { id: "turquesa", nome: "Turquesa", cor: "#3a9c96" },
+  { id: "verde", nome: "Verde", cor: "#3e7c44" },
+  { id: "oliva", nome: "Oliva", cor: "#6c7c34" },
+  { id: "musgo", nome: "Musgo", cor: "#3e4a2a" },
+  { id: "terra", nome: "Terra", cor: "#8c5a32" },
+  { id: "castanho", nome: "Castanho", cor: "#5c3a22" },
+  { id: "carvao", nome: "Carvão", cor: "#3a302c" },
+  { id: "cinza", nome: "Cinza", cor: "#8e8882" },
+  { id: "prata", nome: "Prata", cor: "#c4c2bc" },
+  { id: "branco", nome: "Branco", cor: "#f4efe2" },
+];

@@ -66,6 +66,12 @@ function quadroComVista(sprite, q) {
   const def = PIXEL_PATTERNS[sprite.texture?.key];
   return def?.direcoes ? q + DESLOC_VISTA[sprite.getData("vista") || "frente"] : q;
 }
+// Andando: humanos (3 vistas) tocam contato A, passagem (quadro 0), contato B, passagem — no contato o
+// tronco desce 1 px (sprites.js); as criaturas alternam os 2 passos.
+const CICLO_PASSO = [2, 0, 3, 0];
+function quadroAndando(sprite, time) {
+  return PIXEL_PATTERNS[sprite.texture?.key]?.direcoes ? CICLO_PASSO[Math.floor(time / 110) % 4] : 2 + (Math.floor(time / 125) % 2);
+}
 
 // Vizinhos da grade em ordem de ângulo (0°, 45°… com y para baixo), para o joystick analógico.
 const DIRECOES_8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
@@ -1979,7 +1985,7 @@ class Cena extends Phaser.Scene {
     const ej = this.estadoJogador, j = this.jogador;
     if (this.areaAtual === "mar") j.setFrame(Math.floor(time / 600) % 2);
     else if (ej.acaoAte > time) j.setFrame(quadroComVista(j, 4));
-    else if (ej.andandoAte > time) j.setFrame(quadroComVista(j, 2 + (Math.floor(time / 125) % 2)));
+    else if (ej.andandoAte > time) j.setFrame(quadroComVista(j, quadroAndando(j, time)));
     else j.setFrame(quadroComVista(j, reduz ? 0 : Math.floor(time / 600) % 2));
     // setDepth sempre reordena a cena inteira (milhares de obstáculos): só quando a profundidade muda
     if (j.depth !== PROF.entidade + j.y + 1) j.setDepth(PROF.entidade + j.y + 1);
@@ -1990,7 +1996,7 @@ class Cena extends Phaser.Scene {
       const s = ent.sprite;
       let q;
       if (ent.acaoAte > time) q = 4;
-      else if (ent.andandoAte > time) q = 2 + (Math.floor(time / 125) % 2);
+      else if (ent.andandoAte > time) q = quadroAndando(s, time);
       else q = reduz ? 0 : Math.floor((time + ent.fase) / 600) % 2;
       if (ent.dados.id === "jesusGalileia" && q === 4 && ent.acaoAte - time > 400) q = 0;
       s.setFrame(quadroComVista(s, q));
