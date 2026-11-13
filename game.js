@@ -164,6 +164,7 @@ class Cena extends Phaser.Scene {
 
   // ===== criação ======================================================
   create() {
+    const t0Criacao = performance.now();
     this.p = Mundo.entrar(MEU_ID);
     this.areaAtual = this.p.area;
     this.bio = Arte.BIOMAS[this.areaAtual] || Arte.BIOMAS.canaan;
@@ -231,6 +232,7 @@ class Cena extends Phaser.Scene {
     this.criarCamera();
     this.criarAtmosfera();
     this.criarAmbiente();
+    this.msCriacao = performance.now() - t0Criacao; // tempo de montar a cena (medido nas capturas de arte)
 
     window.gameScene = this;
     if (window.Jogo) window.Jogo.pronto = true;
@@ -361,7 +363,7 @@ class Cena extends Phaser.Scene {
         if (!mapa[y][x] || piso[y][x] === PISO.AGUA || piso[y][x] >= PISO.ESTRUTURA) continue;
         if (cais && x === cais.x && y < cais.y) continue; // sob o píer do cais
         const tipo = Arte.tipoObstaculo(this.areaAtual, x, y);
-        if (!tipo || !this.textures.exists(tipo.chave)) continue;
+        if (!tipo || !Arte.garantirTextura(this, tipo.chave)) continue; // a arte dos obstáculos é gerada só para a área atual
         // muro de vila e mureta de pedra: emendam com os vizinhos do mesmo tipo (cenario.js)
         const muro = this.tipoMuro(x, y);
         if (muro) {
@@ -394,7 +396,7 @@ class Cena extends Phaser.Scene {
   criarOrla() {
     if (!window.Cenario) return;
     for (const o of Cenario.obstaculosDaOrla(this.areaAtual)) {
-      if (!this.textures.exists(o.chave)) continue;
+      if (!Arte.garantirTextura(this, o.chave)) continue;
       const def = PIXEL_PATTERNS[o.chave];
       const img = this.add.image(centroX(o.x) + o.dx, o.y * TAM + TAM + o.dy + (def.obstaculo ? 2 * Arte.PX : 0), o.chave, Math.floor(Arte.hash2(o.x, o.y, 4) * def.quadros))
         .setOrigin(0.5, 1).setDepth(PROF.entidade + o.y * TAM + TAM - 2).setFlipX(Arte.hash2(o.x, o.y, 8) < 0.5);
