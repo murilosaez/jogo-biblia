@@ -413,18 +413,29 @@
   }
 
   // -------------------------------------------------------------------
-  // Humanos (§6.2) em 32 px por casa: célula 40 × 48 px de arte (20 × 24 unidades), pés na linha 45.
-  // 3 vistas × 5 quadros (0 parado, 1 respirar, 2 passo A, 3 passo B, 4 ação/fala):
+  // Humanos (§6.2, JGB-49): proporção de MMORPG clássico visto de cima. Célula 40 × 48 px de arte
+  // (20 × 24 unidades), pés na linha 45. Cabeça grande de 16 × 15 px (linhas 7–21), tronco de 16 px com
+  // braços de 4 px de cada lado (24 px de ombro a ombro), pernas curtas e firmes, mãos e sandálias à mostra.
+  // 3 vistas × 5 quadros (0 parado, 1 respirar, 2 contato A, 3 contato B, 4 ação/fala):
   //   quadros 0–4 de lado (virado para a direita; a esquerda é o espelho), 5–9 de frente, 10–14 de costas.
+  //   Andando, game.js toca 2 → 0 → 3 → 0 (o quadro 0 é a passagem): no contato as pernas abrem, o tronco
+  //   desce 1 px e os braços balançam ao contrário das pernas.
   // Moldes: "manto" (veste longa), "curta" (túnica curta, pernas à mostra) e "veu" (veste longa com véu).
-  // Cores (letras de sempre): H cabelo, S/s pele e sombra, B barba, R/r/d veste (clara, média, escura),
-  // A cinto, F sandálias, V/W véu. Acessórios desenham em cada vista (ACESSORIOS, abaixo).
-  // Luz de cima e da esquerda; contorno sépia (amigos) ou carmim (hostis) de 1 px.
+  // Cores (letras): H cabelo, S/s pele e sombra, B barba, R/r/d tronco (claro, médio, escuro), P/p/q parte
+  // de baixo (sem elas, a do tronco), A cinto e detalhes, F sandálias, V/W véu. Cada material vira uma
+  // rampa de 4 tons (realce, base, sombra, sombra funda) com a luz de cima e da esquerda; contorno sépia
+  // (amigos) ou carmim (hostis) de 1 px. Acessórios desenham em cada vista (ACESSORIOS, abaixo).
   // -------------------------------------------------------------------
   const VISTAS = ["lado", "frente", "costas"];
   const QUADROS_POR_VISTA = 5;
   const escuro = (c, t = 0.28) => misturar(c, "#1c1210", t);
   const claro = (c, t = 0.2) => misturar(c, "#fff6e0", t);
+  const BRANCO_OLHO = "#f6efdc";
+  // Rampa de 4 tons a partir de uma cor base: a luz puxa para o creme quente e a sombra para o
+  // púrpura-sépia (sombra colorida, não cinza).
+  function rampaDe(base) {
+    return [misturar(base, "#fff2cc", 0.26), base, misturar(base, "#2e1a2a", 0.3), misturar(base, "#1a0e16", 0.5)];
+  }
   // primitivas em px de arte
   function retF(g, X, Y, W, H, c) {
     for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) g.fino(X + i, Y + j, typeof c === "function" ? c(X + i, Y + j, i, j) : c);
@@ -449,32 +460,46 @@
       if (e2 <= dX) { e += dX; Y0 += sY; }
     }
   }
-  // Membro grosso (manga, perna): segmento de largura w com luz no lado esquerdo.
-  function membro(g, X0, Y0, X1, Y1, w, cores) {
-    const [cl, md, es] = cores;
-    const n = Math.max(Math.abs(X1 - X0), Math.abs(Y1 - Y0)) || 1;
+  // Máscara de px (chave Y * 64 + X) para formas com volume: bastão de largura w entre dois pontos.
+  function bastao(mask, X0, Y0, X1, Y1, w) {
+    const n = Math.max(Math.abs(X1 - X0), Math.abs(Y1 - Y0)) || 1, h = w >> 1;
     for (let t = 0; t <= n; t++) {
       const x = Math.round(X0 + ((X1 - X0) * t) / n), y = Math.round(Y0 + ((Y1 - Y0) * t) / n);
-      for (let k = 0; k < w; k++) g.fino(x + k - Math.floor(w / 2), y, k === 0 ? cl : k === w - 1 ? es : md);
+      for (let j = 0; j < w; j++) for (let i = 0; i < w; i++) if (x - h + i >= 0 && y - h + j >= 0) mask.add((y - h + j) * 64 + x - h + i);
+    }
+    return mask;
+  }
+  // Pinta a máscara com a rampa: realce na borda de cima/esquerda, sombra na de baixo/direita.
+  function pintarMascara(g, mask, R) {
+    const tem = (X, Y) => mask.has(Y * 64 + X);
+    for (const k of mask) {
+      const X = k % 64, Y = (k - X) / 64;
+      const dir = !tem(X + 1, Y), baixo = !tem(X, Y + 1), esq = !tem(X - 1, Y), cima = !tem(X, Y - 1);
+      g.fino(X, Y, dir && baixo ? R[3] : dir || baixo ? R[2] : esq || cima ? R[0] : R[1]);
     }
   }
+  // Tom de pano numa faixa [x0, x1]: luz à esquerda, sombra à direita (4 tons).
+  function tomPano(R, X, x0, x1) {
+    const t = (X - x0 + 0.5) / (x1 - x0 + 1);
+    return t < 0.19 ? R[0] : t < 0.64 ? R[1] : t < 0.88 ? R[2] : R[3];
+  }
 
-  // Pose de cada vista/quadro: deslocamento do tronco (respirar), mãos (arma e escudo), pés.
+  // Pose de cada vista/quadro. dy: o tronco desce 1 px ao respirar e no contato dos passos. passo: 1 no
+  // contato A (pé de perto/da esquerda à frente), -1 no B. Mãos: centro [x, y] (a mão ocupa x-2..x+1).
   function pose(vista, q) {
-    const dy = q === 1 ? 1 : 0;
+    const dy = q >= 1 && q <= 3 ? 1 : 0, passo = q === 2 ? 1 : q === 3 ? -1 : 0;
+    const base = { vista, q, dy, passo, T: 7 + dy, yT: 22 + dy, yC: 31 + dy, yR: 33 + dy };
     if (vista === "lado") {
-      const maoArma = q === 4 ? [28, 24] : q === 2 ? [18, 30] : q === 3 ? [24, 30] : [21, 31 + dy];
-      const maoLonge = q === 2 ? [25, 29] : q === 3 ? [17, 29] : null;
-      return { vista, q, dy, maoArma, maoEscudo: [26, 27 + dy], maoLonge, braco: [21, 22 + dy] };
+      const maoArma = q === 4 ? [30, 27 + dy] : passo === 1 ? [15, 32 + dy] : passo === -1 ? [26, 32 + dy] : [21, 34 + dy];
+      const maoLonge = passo === 1 ? [26, 31 + dy] : passo === -1 ? [15, 31 + dy] : null;
+      return Object.assign(base, { maoArma, maoEscudo: [27, 30 + dy], maoLonge });
     }
     if (vista === "frente") {
-      const balanco = q === 2 ? 1 : q === 3 ? -1 : 0;
-      const maoArma = q === 4 ? [8, 16] : [11, 31 + dy + balanco];
-      return { vista, q, dy, maoArma, maoEscudo: [28, 31 + dy - balanco], braco: [11, 22 + dy] };
+      const maoArma = q === 4 ? [9, 19 + dy] : [9, 34 + dy - passo];
+      return Object.assign(base, { maoArma, maoEscudo: [31, 34 + dy + passo] });
     }
-    const balanco = q === 2 ? -1 : q === 3 ? 1 : 0;
-    const maoArma = q === 4 ? [31, 16] : [28, 31 + dy + balanco];
-    return { vista, q, dy, maoArma, maoEscudo: [11, 31 + dy - balanco], braco: [28, 22 + dy] };
+    const maoArma = q === 4 ? [31, 19 + dy] : [31, 34 + dy + passo];
+    return Object.assign(base, { maoArma, maoEscudo: [9, 34 + dy - passo] });
   }
 
   function coresHumano(cfg) {
@@ -483,320 +508,471 @@
     c.B = c.B || c.H;
     c.R = c.R || "#d4bf8f"; c.r = c.r || escuro(c.R, 0.15); c.d = c.d || escuro(c.R, 0.32);
     c.S = c.S || "#cf9466"; c.s = c.s || escuro(c.S, 0.18);
+    c.pele = [claro(c.S, 0.14), c.S, c.s, misturar(c.s, "#3a1c20", 0.3)];
+    c.cab = [claro(c.H, 0.22), c.H, misturar(c.H, "#1e1018", 0.32), misturar(c.H, "#140a10", 0.55)];
+    c.barba = c.B === c.H ? c.cab : [claro(c.B, 0.2), c.B, misturar(c.B, "#1e1018", 0.3), misturar(c.B, "#140a10", 0.5)];
+    c.tronco = [c.R, c.r, c.d, misturar(c.d, "#1a0e16", 0.35)];
+    c.pernas = c.P ? [c.P, c.p || escuro(c.P, 0.15), c.q || escuro(c.P, 0.32), misturar(c.q || escuro(c.P, 0.32), "#1a0e16", 0.35)] : c.tronco;
+    c.cinto = [claro(c.A, 0.24), c.A, misturar(c.A, "#1a0e16", 0.32)];
+    c.sand = [claro(c.F, 0.2), c.F, misturar(c.F, "#140a10", 0.35)];
+    c.labio = misturar(c.s, "#6a2420", 0.4);
+    c.rosto = misturar(c.S, "#d0503a", 0.22);
     return c;
   }
 
   // ----- cabeça -----
+  // Meia-largura da cabeça de frente/costas por linha (15 linhas, colunas 20 - hw .. 19 + hw) e o perfil
+  // (de lado, virado para a direita) em [x0, x1].
+  const HW_CAB = [4, 6, 7, 7, 8, 8, 8, 8, 8, 8, 8, 7, 7, 6, 4];
+  const PERFIL = [[16, 23], [14, 25], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [14, 26], [14, 26], [15, 25], [17, 24]];
+  // franja (curto, de frente): última linha de cabelo por coluna 12..27
+  const FRANJA = [9, 8, 6, 5, 5, 4, 5, 5, 5, 4, 5, 5, 4, 6, 8, 9];
   function cabeca(g, cfg, c, P) {
-    const v = P.vista, dy = P.dy;
-    const veu = cfg.molde === "veu" || cfg.capuz;
-    const V = cfg.capuz ? cfg.capuz[0] : c.V, W = cfg.capuz ? cfg.capuz[1] : c.W || escuro(c.V || "#888888");
-    const Hc = [escuro(c.H, 0.3), c.H, claro(c.H, 0.18)];
-    const cabeloLongo = cfg.cabelo === "longo";
-    const careca = cfg.cabelo === "careca";
-    const tomCabelo = (nx, ny, X, Y) => {
-      const l = -(0.55 * nx + 0.8 * ny) + (hash2(X, Y, 77) - 0.5) * 0.5;
-      return l > 0.55 ? Hc[2] : l < -0.35 ? Hc[0] : Hc[1];
+    const v = P.vista, T = P.T;
+    const veu = cfg.molde === "veu" || !!cfg.capuz;
+    const Vc = cfg.capuz ? cfg.capuz[0] : c.V || "#888888", Wc = cfg.capuz ? cfg.capuz[1] : c.W || escuro(Vc);
+    const V = [claro(Vc, 0.16), Vc, misturar(Vc, Wc, 0.55), Wc];
+    const H = c.cab, Pl = c.pele;
+    const longo = cfg.cabelo === "longo", careca = cfg.cabelo === "careca";
+    const barba = cfg.barba !== false;
+    // tom do cabelo: luz de cima/esquerda, mechas por hash (nada de ruído: traços verticais de 2 px)
+    const tomCab = (X, Y, nx, ny) => {
+      const l = -(0.6 * nx + 0.85 * ny) + ((hash2(X, Y >> 1, 77) - 0.5) * 0.45);
+      return l > 0.62 ? H[0] : l > -0.15 ? H[1] : l > -0.8 ? H[2] : H[3];
     };
-    const pele = (nx, ny) => (nx > 0.55 || ny > 0.72 ? c.s : nx < -0.55 && ny < 0.3 && ny > -0.4 ? claro(c.S, 0.1) : c.S);
-    if (v === "frente") {
-      const cy = 13 + dy;
-      if (cabeloLongo && !veu) { retF(g, 13, 12 + dy, 3, 11, (X, Y) => (Y % 3 ? Hc[1] : Hc[0])); retF(g, 24, 12 + dy, 3, 11, (X, Y) => (Y % 3 ? Hc[0] : escuro(c.H, 0.4))); }
-      if (veu) elipF(g, 20, 13 + dy, 7.6, 8, (nx, ny) => (nx > 0.45 ? W : nx < -0.5 && ny < 0 ? claro(V, 0.12) : V));
-      elipF(g, 20, cy, 6, 6.5, (nx, ny, X, Y) => {
-        if (veu) return pele(nx, ny);
-        const cabelo = !careca && (ny < -0.3 + 0.12 * nx * nx || (Math.abs(nx) > 0.82 && ny < 0.25));
-        return cabelo ? tomCabelo(nx, ny, X, Y) : pele(nx, ny);
-      });
+    const pele = (X, r, x0, x1) => (X <= x0 + 1 && r >= 4 && r <= 11 ? Pl[0] : X >= x1 - 1 || r >= 13 ? Pl[2] : Pl[1]);
+    if (v === "frente" || v === "costas") {
+      const frente = v === "frente";
+      // cabelo comprido atrás dos ombros
+      if (longo && !veu) {
+        if (frente) for (let Y = T + 5; Y <= T + 18; Y++) { retF(g, 11, Y, 3, 1, (X) => (X === 11 ? H[1] : (X + Y) % 3 ? H[2] : H[3])); retF(g, 26, Y, 3, 1, (X) => (X === 28 ? H[3] : (X + Y) % 3 ? H[2] : H[3])); }
+        else for (let Y = T + 10; Y <= T + 19; Y++) { const k = Y > T + 16 ? Y - T - 16 : 0; retF(g, 13 + k, Y, 14 - 2 * k, 1, (X) => tomPano(H, X, 13 + k, 26 - k)); }
+      }
       if (veu) {
-        // véu cai sobre os ombros; franja do cabelo na testa
-        retF(g, 12, 17 + dy, 4, 7, (X) => (X < 14 ? claro(V, 0.1) : V)); retF(g, 24, 17 + dy, 4, 7, W);
-        retF(g, 16, 19 + dy, 2, 2, V); retF(g, 22, 19 + dy, 2, 2, W);
-        elipF(g, 20, 9 + dy, 6.5, 2.4, (nx) => (nx > 0.5 ? W : V));
-        retF(g, 17, 9 + dy, 6, 1, Hc[1]);
-      } else if (!careca) {
+        // véu: cobre a cabeça e cai sobre os ombros (de costas, até o meio das costas)
+        for (let r = -1; r <= 15; r++) {
+          const hw = r < 0 ? 5 : r < 15 ? Math.min(9, HW_CAB[r] + 1) : 8;
+          for (let X = 20 - hw; X <= 19 + hw; X++) g.fino(X, T + r, tomPano(V, X, 20 - hw, 19 + hw));
+        }
+        const fim = frente ? T + 21 : T + 24;
+        for (let Y = T + 8; Y <= fim; Y++) {
+          const k = frente ? 0 : Math.max(0, Y - (T + 19));
+          if (frente) { retF(g, 10, Y, 4, 1, (X) => (X === 10 ? V[0] : X === 13 ? V[2] : V[1])); retF(g, 26, Y, 4, 1, (X) => (X === 29 ? V[3] : V[2])); }
+          else retF(g, 11 + k, Y, 18 - 2 * k, 1, (X) => ((X - Y) % 6 === 0 ? V[2] : tomPano(V, X, 11 + k, 28 - k)));
+        }
+        if (!frente) return;
+        // rosto na janela do véu, com a franja do cabelo na testa
+        for (let r = 4; r <= 14; r++) {
+          const hw = Math.min(6, HW_CAB[r] - 1);
+          for (let X = 20 - hw; X <= 19 + hw; X++) g.fino(X, T + r, r === 4 ? (X % 2 ? H[1] : H[2]) : pele(X, r, 20 - hw, 19 + hw));
+        }
+        retF(g, 13, T + 2, 14, 1, V[0]);
+      } else {
         // orelhas
-        g.fino(13, 13 + dy, c.s); g.fino(13, 14 + dy, c.s); g.fino(26, 13 + dy, c.s); g.fino(26, 14 + dy, escuro(c.s, 0.15));
+        if (!careca || true) { retF(g, 11, T + 7, 1, 3, (X, Y) => (Y === T + 8 ? Pl[2] : Pl[1])); retF(g, 28, T + 7, 1, 3, (X, Y) => (Y === T + 8 ? Pl[3] : Pl[2])); }
+        for (let r = 0; r < 15; r++) {
+          const hw = HW_CAB[r], x0 = 20 - hw, x1 = 19 + hw, Y = T + r;
+          for (let X = x0; X <= x1; X++) {
+            const nx = (X - 19.5) / 8, ny = (r - 6) / 7;
+            let cabelo;
+            if (careca) cabelo = false;
+            else if (frente) cabelo = r <= FRANJA[X - 12] && (r <= 5 || X <= 13 || X >= 26);
+            else cabelo = r <= 12 || ((X <= 15 || X >= 24) && r <= 13) || (longo && r <= 14);
+            if (!cabelo && frente && careca && r <= 3) { g.fino(X, Y, r <= 1 && X < 19 ? Pl[0] : pele(X, r, x0, x1)); continue; }
+            g.fino(X, Y, cabelo ? tomCab(X, Y, nx, ny) : frente ? pele(X, r, x0, x1) : Pl[2]);
+          }
+        }
+        if (careca) g.fino(16, T + 2, claro(Pl[0], 0.3));
+        if (!frente) {
+          // nuca e a barba aparecendo dos lados
+          if (barba) { retF(g, 12, T + 10, 2, 4, (X, Y) => (X === 12 ? c.barba[1] : c.barba[2])); retF(g, 26, T + 10, 2, 4, c.barba[2]); }
+          return;
+        }
       }
-      // sobrancelhas, olhos (com brilho), nariz e boca
-      const sob = cfg.barba === false && veu ? escuro(c.S, 0.35) : Hc[0];
-      retF(g, 16, 11 + dy, 2, 1, sob); retF(g, 22, 11 + dy, 2, 1, sob);
-      retF(g, 17, 12 + dy, 1, 2, c.o); retF(g, 22, 12 + dy, 1, 2, c.o);
-      g.fino(16, 13 + dy, "#f6efdc"); g.fino(23, 13 + dy, "#f6efdc");
-      g.fino(20, 15 + dy, c.s); g.fino(19, 15 + dy, claro(c.S, 0.08));
-      if (cfg.barba !== false) {
-        elipF(g, 20, 17.5 + dy, 5.2, 3.6, (nx, ny, X, Y) => (Y < 15 + dy ? null : nx > 0.5 ? escuro(c.B, 0.25) : (X + Y) % 3 === 0 ? claro(c.B, 0.12) : c.B));
-        retF(g, 14, 14 + dy, 1, 3, c.B); retF(g, 25, 14 + dy, 1, 3, escuro(c.B, 0.25));
-        retF(g, 19, 16 + dy, 2, 1, escuro(c.B, 0.45));
+      // sobrancelhas, olhos (pálpebra em cima; embaixo o branco para fora e a pupila para dentro), nariz,
+      // bochechas e boca
+      const sob = veu || careca ? misturar(c.S, "#2a1a14", 0.55) : H[3];
+      retF(g, 15, T + 6, 3, 1, sob); retF(g, 22, T + 6, 3, 1, sob);
+      retF(g, 16, T + 7, 2, 1, c.o); retF(g, 22, T + 7, 2, 1, c.o);
+      g.fino(16, T + 8, BRANCO_OLHO); g.fino(17, T + 8, c.o); g.fino(22, T + 8, c.o); g.fino(23, T + 8, BRANCO_OLHO);
+      g.fino(19, T + 9, Pl[0]); g.fino(20, T + 10, Pl[2]); g.fino(19, T + 10, Pl[1]);
+      g.fino(15, T + 10, c.rosto); g.fino(24, T + 10, c.rosto);
+      if (barba) {
+        // barba cheia: do bigode até abaixo do queixo, com mechas e a boca aberta no meio
+        for (let r = 10; r <= 16; r++) {
+          const Y = T + r;
+          const x0 = r === 10 ? 13 : r <= 14 ? 20 - HW_CAB[r] : r === 15 ? 15 : 17, x1 = 39 - x0;
+          for (let X = x0; X <= x1; X++) {
+            if (r === 10 && X > 14 && X < 25) continue;
+            if (r === 11 && X > 14 && X < 17) continue;
+            if (r === 11 && X > 22 && X < 25) continue;
+            const l = X <= x0 + 1 ? 0 : X >= x1 - 1 || r >= 15 ? 2 : (X + r * 3) % 5 === 0 ? 2 : 1;
+            g.fino(X, Y, c.barba[l]);
+          }
+        }
+        retF(g, 19, T + 12, 2, 1, c.labio); g.fino(18, T + 12, c.barba[3]); g.fino(21, T + 12, c.barba[3]);
       } else {
-        retF(g, 19, 17 + dy, 2, 1, misturar(c.s, "#5a2a20", 0.45));
+        retF(g, 19, T + 12, 2, 1, c.labio);
+        if (veu) { g.fino(15, T + 7, c.o); g.fino(24, T + 7, c.o); } // cílios
       }
-    } else if (v === "costas") {
-      if (veu) {
-        elipF(g, 20, 13 + dy, 7.6, 8, (nx, ny) => (nx > 0.45 ? W : nx < -0.5 && ny < 0 ? claro(V, 0.12) : V));
-        retF(g, 12, 18 + dy, 16, 6, (X, Y) => (X > 24 ? W : X < 15 ? claro(V, 0.1) : (Y - X) % 5 === 0 ? escuro(V, 0.1) : V));
-      } else {
-        if (cabeloLongo) retF(g, 15, 15 + dy, 10, 8, (X, Y) => (X % 3 === 0 ? Hc[0] : Hc[1]));
-        elipF(g, 20, 13 + dy, 6, 6.5, (nx, ny, X, Y) => (careca ? pele(nx, ny) : tomCabelo(nx, ny, X, Y)));
-        if (!careca) { g.fino(13, 13 + dy, c.s); g.fino(13, 14 + dy, c.s); g.fino(26, 13 + dy, escuro(c.s, 0.15)); g.fino(26, 14 + dy, escuro(c.s, 0.15)); }
-        if (cfg.barba !== false) { g.fino(14, 17 + dy, c.B); g.fino(25, 17 + dy, escuro(c.B, 0.2)); }
+      return;
+    }
+    // ----- de lado, virado para a direita -----
+    if (longo && !veu) for (let Y = T + 5; Y <= T + 18; Y++) retF(g, 12, Y, 7, 1, (X) => (X === 12 ? H[1] : (X + Y) % 3 === 0 ? H[3] : H[2]));
+    if (veu) {
+      for (let r = -1; r <= 15; r++) {
+        const [a, b] = r < 0 ? [16, 23] : r < 15 ? PERFIL[r] : [14, 22];
+        for (let X = a - 1; X <= b + (r < 4 ? 1 : 0); X++) g.fino(X, T + r, tomPano(V, X, a - 1, b + 1));
+      }
+      for (let Y = T + 8; Y <= T + 22; Y++) { const k = Y > T + 18 ? Y - T - 18 : 0; retF(g, 11 + k, Y, 9 - k, 1, (X) => tomPano(V, X, 11 + k, 19)); }
+      // janela do rosto
+      for (let r = 4; r <= 14; r++) {
+        const [, b] = PERFIL[r];
+        for (let X = 21; X <= b; X++) g.fino(X, T + r, r === 4 ? H[2] : pele(X, r, 21, b));
       }
     } else {
-      // de lado, virado para a direita
-      if (veu) {
-        elipF(g, 19.5, 13 + dy, 7, 8, (nx, ny) => (ny > 0.3 && nx > 0.2 ? W : nx < -0.5 && ny < 0 ? claro(V, 0.12) : V));
-        retF(g, 13, 18 + dy, 9, 6, (X) => (X < 15 ? claro(V, 0.1) : X > 19 ? W : V));
+      for (let r = 0; r < 15; r++) {
+        const [x0, x1] = PERFIL[r], Y = T + r;
+        for (let X = x0; X <= x1; X++) {
+          const nx = (X - 19.5) / 7, ny = (r - 6) / 7;
+          const cabelo = !careca && (r <= 4 || (r === 5 && X <= 23) || (r <= 10 && X <= 19) || (r <= 12 && X <= 16) || (longo && X <= 18));
+          g.fino(X, Y, cabelo ? tomCab(X, Y, nx, ny) : pele(X, r, 20, x1));
+        }
       }
-      if (cabeloLongo && !veu) retF(g, 14, 14 + dy, 4, 9, (X, Y) => (Y % 3 ? Hc[1] : Hc[0]));
-      elipF(g, 20.5, 13 + dy, 5.5, 6.5, (nx, ny, X, Y) => {
-        const rosto = veu ? nx > -0.35 && ny > -0.45 : nx > -0.12 && ny > -0.32;
-        if (veu && !rosto) return null;
-        if (!rosto && !careca) return tomCabelo(nx, ny, X, Y);
-        return nx > 0.7 || ny > 0.72 ? c.s : c.S;
-      });
-      if (veu) elipF(g, 19, 9.5 + dy, 6, 3, (nx) => (nx > 0.6 ? W : V));
-      // nariz, olho, sobrancelha, orelha e boca
-      g.fino(26, 14 + dy, c.S); g.fino(26, 15 + dy, c.s);
-      retF(g, 23, 12 + dy, 1, 2, c.o); g.fino(24, 12 + dy, "#f6efdc");
-      retF(g, 23, 11 + dy, 2, 1, veu ? escuro(c.S, 0.35) : Hc[0]);
-      if (!veu && !careca) { g.fino(19, 13 + dy, c.s); g.fino(19, 14 + dy, escuro(c.s, 0.2)); g.fino(20, 14 + dy, c.s); }
-      if (cfg.barba !== false) {
-        elipF(g, 22.5, 17 + dy, 4, 3.4, (nx, ny, X, Y) => (Y < 15 + dy || X < 19 ? null : ny > 0.4 ? escuro(c.B, 0.22) : (X + Y) % 3 === 0 ? claro(c.B, 0.12) : c.B));
-        retF(g, 19, 14 + dy, 2, 3, c.B);
-        g.fino(25, 16 + dy, escuro(c.B, 0.45));
-      } else g.fino(25, 17 + dy, misturar(c.s, "#5a2a20", 0.45));
+      if (careca) g.fino(17, T + 2, claro(Pl[0], 0.3));
+      // orelha
+      retF(g, 19, T + 7, 2, 3, (X, Y) => (X === 20 && Y === T + 8 ? Pl[2] : Pl[1]));
+    }
+    // nariz, olho, sobrancelha, bochecha e boca
+    g.fino(27, T + 9, Pl[1]); g.fino(27, T + 10, Pl[2]);
+    retF(g, 24, T + 7, 2, 1, c.o); g.fino(24, T + 8, BRANCO_OLHO); g.fino(25, T + 8, c.o);
+    retF(g, 23, T + 6, 3, 1, veu || careca ? misturar(c.S, "#2a1a14", 0.55) : H[3]);
+    g.fino(23, T + 10, c.rosto);
+    if (barba) {
+      for (let r = 10; r <= 16; r++) {
+        const x0 = r <= 14 ? 20 : r === 15 ? 21 : 22, x1 = r <= 12 ? 26 : r <= 14 ? PERFIL[r][1] : r === 15 ? 25 : 24;
+        for (let X = x0; X <= x1; X++) {
+          if (r === 10 && X > 21 && X < 25) continue;
+          if (r === 11 && X > 21 && X < 24) continue;
+          g.fino(X, T + r, X === x0 ? c.barba[0] : r >= 15 || X === x1 ? c.barba[2] : (X + r * 3) % 5 === 0 ? c.barba[2] : c.barba[1]);
+        }
+      }
+      g.fino(26, T + 12, c.labio); g.fino(25, T + 12, c.barba[3]);
+    } else {
+      g.fino(26, T + 12, c.labio);
+      if (veu) g.fino(26, T + 7, c.o);
     }
   }
 
   // ----- tronco, braços e pernas -----
+  // Sandália de frente/costas (5 px): peito do pé (ou calcanhar), a tira e a sola.
+  function pe(g, c, x, ergue, frente) {
+    const y = 43 - ergue;
+    for (let i = 0; i < 5; i++) {
+      g.fino(x + i, y, frente ? (i === 0 ? c.pele[0] : i === 4 ? c.pele[2] : c.pele[1]) : i === 4 ? c.pele[3] : c.pele[2]);
+      g.fino(x + i, y + 1, i === 0 ? c.sand[0] : i === 4 ? c.sand[2] : c.sand[1]);
+      g.fino(x + i, y + 2, ergue && !frente ? c.sand[1] : c.sand[2]);
+    }
+    if (frente) g.fino(x + 2, y, c.sand[1]);
+  }
+  // Sandália de lado (6 px, ponta à direita).
+  function peLado(g, c, x, longe) {
+    const s = longe ? [c.sand[1], c.sand[2], c.sand[2]] : c.sand, p = longe ? c.pele[2] : c.pele[1];
+    for (let i = 0; i < 6; i++) {
+      g.fino(x - 2 + i, 43, i >= 4 ? null : i === 2 ? s[1] : p);
+      g.fino(x - 2 + i, 44, i === 5 ? s[1] : i === 0 ? s[0] : i === 3 ? s[1] : p);
+      g.fino(x - 2 + i, 45, s[2]);
+    }
+    g.fino(x + 3, 44, longe ? c.pele[3] : c.pele[2]);
+  }
   function corpo(g, cfg, c, P) {
-    const v = P.vista, dy = P.dy, q = P.q;
-    const largo = cfg.porte === "grande" ? 1 : 0;
-    const veste = (X, x0, x1) => (X <= x0 + 2 ? c.R : X >= x1 - 2 ? c.d : c.r);
-    const longo = cfg.molde !== "curta";
-    const pele = [claro(c.S, 0.06), c.S, c.s];
-    const sandalia = [claro(c.F, 0.15), c.F, escuro(c.F, 0.3)];
+    const v = P.vista, dy = P.dy, L = cfg.porte === "grande" ? 1 : 0;
+    const T = c.tronco, B = c.pernas, longo = cfg.molde !== "curta";
+    const { yT, yC, yR, passo } = P;
+    const barra = cfg.barra ? c.cinto : null;
     if (v === "lado") {
-      const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
       // braço de longe (atrás do corpo) aparece no balanço
-      if (P.maoLonge) { membro(g, 21, 22 + dy, P.maoLonge[0], P.maoLonge[1] - 2, 3, [c.d, escuro(c.d, 0.15), escuro(c.d, 0.25)]); retF(g, P.maoLonge[0] - 1, P.maoLonge[1] - 1, 3, 3, c.s); }
+      if (P.maoLonge) {
+        pintarMascara(g, bastao(new Set(), 20, yT + 2, P.maoLonge[0], P.maoLonge[1] - 2, 4), [T[2], T[2], T[3], T[3]]);
+        retF(g, P.maoLonge[0] - 2, P.maoLonge[1] - 1, 4, 3, (X, Y) => (Y === P.maoLonge[1] - 1 ? c.pele[2] : c.pele[3]));
+      }
       if (cfg.montado) inferiorMontado(g, cfg, c, P);
       else {
-      // pernas e pés
-      const pes = passo === 1 ? [[24, 13], [26, 15]] : passo === -1 ? [[19, 18], [21, 20]] : [[21, 17], [22, 18]];
-      const [[fx, bx]] = [pes[0]];
-      if (!longo) {
-        membro(g, 19, 37, bx + 1, 43, 3, [c.s, c.s, escuro(c.s, 0.2)]);
-        membro(g, 21, 37, fx, 43, 3, pele);
-      }
-      retF(g, bx - 1, 43, 5, 3, (X, Y) => (Y === 43 ? escuro(c.F, 0.15) : escuro(c.F, 0.3)));
-      retF(g, fx - 1, 43, 6, 3, (X, Y) => (Y === 43 ? (X < fx + 2 ? c.S : sandalia[0]) : X === fx + 4 && Y === 43 ? null : sandalia[1]));
-      // veste inferior
-      if (longo) {
-        for (let Y = 32; Y <= 42; Y++) {
-          const k = Math.floor((Y - 32) / 4), aberto = Math.max(0, passo) * Math.floor((Y - 34) / 3);
-          const x0 = 15 - k - (passo === 1 ? Math.max(0, Math.floor((Y - 35) / 3)) : 0), x1 = 25 + k + aberto;
-          for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 42 ? c.d : (X - x0) % 5 === 3 && Y > 34 ? escuro(c.r, 0.12) : veste(X, x0, x1));
+        // pés: o de perto à frente no contato A, atrás no B; o de longe ao contrário
+        const fPerto = passo === 1 ? 26 : passo === -1 ? 14 : 21, fLonge = passo === 1 ? 14 : passo === -1 ? 26 : 18;
+        if (!longo) {
+          pintarMascara(g, bastao(new Set(), 19, yR + 3, fLonge, 41, 4), [c.pele[2], c.pele[2], c.pele[3], c.pele[3]]);
+          peLado(g, c, fLonge, true);
+          pintarMascara(g, bastao(new Set(), 20, yR + 3, fPerto, 41, 4), c.pele);
+          retF(g, fPerto - 1, 40, 3, 1, c.sand[1]);
+          peLado(g, c, fPerto, false);
+          // saia da túnica
+          for (let Y = yR; Y <= 37; Y++) {
+            const a = 14 - (Y > yR + 1 ? 1 : 0) - (passo && Y > yR + 2 ? 1 : 0), b = 25 + (Y > yR + 1 ? 1 : 0) + (passo && Y > yR + 2 ? 1 : 0);
+            for (let X = a; X <= b; X++) g.fino(X, Y, Y === 37 ? (barra ? barra[1] : B[3]) : (X - a) % 4 === 3 && Y > yR ? B[2] : tomPano(B, X, a, b));
+          }
+        } else {
+          peLado(g, c, fLonge, true);
+          peLado(g, c, fPerto, false);
+          // veste longa: abre em A no passo, com a dobra entre as pernas
+          for (let Y = yR; Y <= 42; Y++) {
+            const t = (Y - yR) / (42 - yR);
+            const abre = passo ? Math.round(t * t * 4) : 0;
+            const a = 14 - Math.round(t) - abre, b = 25 + Math.round(t) + abre;
+            for (let X = a; X <= b; X++) {
+              let cor = tomPano(B, X, a, b);
+              if (passo && t > 0.35 && Math.abs(X - 20) <= (t > 0.75 ? 1 : 0)) cor = B[3];
+              else if (!passo && X === 22 && Y > yR + 2) cor = B[2];
+              if (Y === 42) cor = B[3];
+              else if (Y === 41 && barra) cor = barra[1];
+              g.fino(X, Y, cor);
+            }
+          }
         }
-      } else {
-        for (let Y = 32; Y <= 36; Y++) for (let X = 14 - (Y > 34 ? 1 : 0); X <= 26 + (Y > 33 ? 1 : 0); X++) g.fino(X, Y, Y === 36 ? c.d : veste(X, 14, 26));
       }
+      // tronco (peito um pouco à frente)
+      retF(g, 18, yT - 2, 4, 3, c.pele[2]);
+      for (let Y = yT; Y < yC; Y++) {
+        const i = Y - yT, x0 = (i === 0 ? 15 : 14) - L, x1 = (i === 0 ? 24 : i >= 2 && i <= 5 ? 26 : 25) + L;
+        for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === yC - 1 && X > x0 ? T[2] : tomPano(T, X, x0, x1));
       }
-      // tronco
-      for (let Y = 20 + dy; Y <= 31; Y++) {
-        const x0 = Y === 20 + dy ? 16 : 15 - largo, x1 = Y === 20 + dy ? 24 : 25 + largo;
-        for (let X = x0; X <= x1; X++) g.fino(X, Y, veste(X, x0, x1));
-      }
-      retF(g, 19, 18 + dy, 4, 2, c.s);
-      retF(g, 15 - largo, 30, 11 + 2 * largo, 2, (X, Y) => (Y === 30 ? claro(c.A, 0.12) : c.A));
+      if (cfg.gola) retF(g, 22, yT, 3, 1, cfg.gola);
+      // cinto com a ponta da faixa caindo na frente
+      retF(g, 14 - L, yC, 12 + 2 * L, 2, (X, Y) => (Y === yC ? (X < 17 ? c.cinto[0] : c.cinto[1]) : c.cinto[2]));
+      retF(g, 24, yC + 2, 2, 3, (X) => (X === 24 ? c.cinto[1] : c.cinto[2]));
       return;
     }
-    // frente e costas
+    // ----- frente e costas -----
     const frente = v === "frente";
-    const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
-    const pE = frente ? passo : -passo; // pé da esquerda (da tela) sobe no passo
     if (cfg.montado) inferiorMontado(g, cfg, c, P);
     else {
-    // pés
-    const pe = (x, sobe, cores) => retF(g, x, 43 - sobe, 5, 3 - (sobe ? 1 : 0), (X, Y) => (Y === 43 - sobe && frente ? (X === x || X === x + 4 ? cores[1] : c.S) : cores[X === x ? 0 : X === x + 4 ? 2 : 1]));
-    pe(14, pE === 1 ? 1 : 0, sandalia);
-    pe(21, pE === -1 ? 1 : 0, sandalia);
-    if (longo) {
-      for (let Y = 32; Y <= 42; Y++) {
-        const k = Math.floor((Y - 32) / 4) + largo, bal = Y > 37 ? passo : 0;
-        const x0 = 13 - k + bal, x1 = 26 + k + bal;
-        for (let X = x0; X <= x1; X++) {
-          let cor = veste(X, x0, x1);
-          if (Y > 33 && (X === 17 + bal || X === 22 + bal)) cor = escuro(cor, 0.14);
-          if (Y === 42) cor = c.d;
-          g.fino(X, Y, cor);
+      // no contato A o pé da esquerda (da tela) fica à frente e o outro sobe 1 px; no B, o contrário
+      const ergueE = passo === -1 ? 1 : 0, ergueD = passo === 1 ? 1 : 0;
+      if (!longo) {
+        for (const [x, ergue, lado] of [[14, ergueE, 0], [22, ergueD, 1]]) {
+          for (let Y = 37; Y <= 42 - ergue; Y++) for (let i = 0; i < 4; i++) {
+            const t = lado ? [c.pele[1], c.pele[1], c.pele[2], c.pele[3]] : [c.pele[0], c.pele[1], c.pele[1], c.pele[2]];
+            g.fino(x + i, Y, Y === 41 - ergue && i > 0 && i < 3 ? c.sand[1] : frente ? t[i] : [c.pele[2], c.pele[2], c.pele[2], c.pele[3]][i]);
+          }
+          pe(g, c, x - (lado ? 0 : 1), ergue, frente);
+        }
+        // saia da túnica, com pregas
+        for (let Y = yR; Y <= 37; Y++) {
+          const k = (Y >= yR + 2 ? 1 : 0) + L, x0 = 12 - k, x1 = 27 + k;
+          for (let X = x0; X <= x1; X++) {
+            let cor = tomPano(B, X, x0, x1);
+            if (Y > yR && (X === 16 || X === 23)) cor = B[2];
+            if (Y === 37) cor = barra ? barra[1] : B[3];
+            g.fino(X, Y, cor);
+          }
+        }
+      } else {
+        pe(g, c, 13, ergueE, frente);
+        pe(g, c, 22, ergueD, frente);
+        for (let Y = yR; Y <= 42; Y++) {
+          const k = Math.min(2, Math.floor((Y - yR + 1) / 3)) + L, bal = Y >= 38 ? -passo : 0;
+          const x0 = 12 - k + bal, x1 = 27 + k + bal;
+          for (let X = x0; X <= x1; X++) {
+            let cor = tomPano(B, X, x0, x1);
+            if (Y > yR + 1 && (X === 16 + bal || X === 23 + bal)) cor = cor === B[0] ? B[1] : B[2];
+            if (Y > yR + 3 && X === 17 + bal) cor = B[0];
+            if (Y === 42) cor = B[3];
+            else if (Y === 41 && barra) cor = barra[1];
+            g.fino(X, Y, cor);
+          }
         }
       }
-    } else {
-      retF(g, 15, 37, 4, 6 - (pE === 1 ? 1 : 0), (X) => (X === 15 ? pele[0] : X === 18 ? pele[2] : pele[1]));
-      retF(g, 21, 37, 4, 6 - (pE === -1 ? 1 : 0), (X) => (X === 21 ? pele[1] : pele[2]));
-      g.fino(16, 40, c.F); g.fino(17, 40, c.F); g.fino(22, 40, c.F); g.fino(23, 40, c.F);
-      for (let Y = 32; Y <= 36; Y++) {
-        const k = Y > 34 ? 1 : 0, x0 = 13 - k - largo, x1 = 26 + k + largo;
-        for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 36 ? c.d : (X === 19 || X === 20) && Y > 33 ? escuro(c.r, 0.15) : veste(X, x0, x1));
+    }
+    // tronco e cinto
+    retF(g, 18, yT - 2, 4, 3, c.pele[2]);
+    for (let Y = yT; Y < yC; Y++) {
+      const i = Y - yT, x0 = (i === 0 ? 13 : 12) - L, x1 = (i === 0 ? 26 : 27) + L;
+      for (let X = x0; X <= x1; X++) {
+        let cor = tomPano(T, X, x0, x1);
+        if (Y === yC - 1) cor = cor === T[0] ? T[1] : T[2]; // a veste dobra sobre o cinto
+        g.fino(X, Y, cor);
       }
     }
-    }
-    // tronco (ombros caídos) e cinto
-    for (let Y = 20 + dy; Y <= 31; Y++) {
-      const ombro = Y === 20 + dy;
-      const x0 = (ombro ? 14 : 13) - largo, x1 = (ombro ? 25 : 26) + largo;
-      for (let X = x0; X <= x1; X++) g.fino(X, Y, veste(X, x0, x1));
-    }
     if (frente) {
-      // decote em V e pescoço
-      retF(g, 18, 18 + dy, 4, 2, c.s);
-      retF(g, 18, 20 + dy, 4, 1, c.S); retF(g, 19, 21 + dy, 2, 1, c.s);
-      if (cfg.gola) { retF(g, 17, 20 + dy, 6, 1, cfg.gola); g.fino(18, 21 + dy, cfg.gola); g.fino(21, 21 + dy, cfg.gola); }
-    } else retF(g, 18, 18 + dy, 4, 2, c.s);
-    retF(g, 13 - largo, 30, 14 + 2 * largo, 2, (X, Y) => (Y === 30 ? claro(c.A, 0.12) : X > 23 ? escuro(c.A, 0.15) : c.A));
-    if (frente) { g.fino(19, 30, claro(c.A, 0.45)); g.fino(20, 30, claro(c.A, 0.3)); }
+      // decote em V com a gola
+      const gola = cfg.gola || T[3];
+      for (let i = 0; i < 3; i++) { retF(g, 17 + i, yT + i, 6 - 2 * i, 1, i === 0 ? c.pele[2] : c.pele[1]); g.fino(16 + i, yT + i, gola); g.fino(23 - i, yT + i, gola); }
+      retF(g, 19, yT + 3, 2, 1, gola);
+    } else retF(g, 17, yT, 6, 1, T[3]);
+    retF(g, 12 - L, yC, 16 + 2 * L, 2, (X, Y) => (Y === yC ? (X < 15 ? c.cinto[0] : X > 25 ? c.cinto[2] : c.cinto[1]) : X > 25 ? c.cinto[2] : c.cinto[1]));
+    if (frente) {
+      // nó do cinto e as pontas da faixa
+      retF(g, 18, yC, 3, 2, (X, Y) => (Y === yC && X < 20 ? c.cinto[0] : c.cinto[1]));
+      retF(g, 20, yC + 2, 2, 4, (X, Y) => (X === 20 ? c.cinto[1] : c.cinto[2]));
+    } else retF(g, 19, yC, 2, 1, c.cinto[2]);
   }
 
-  // Montado: veste curta sobre a sela e pernas abertas (de frente/costas) ou dobrada para a frente (de lado).
+  // Montado: veste aberta sobre a sela; de lado, a coxa vai para a frente e a canela desce; de frente e
+  // de costas, as pernas abrem para os lados da montaria.
   function inferiorMontado(g, cfg, c, P) {
-    const longo = cfg.molde !== "curta";
-    const perna = longo ? [c.R, c.r, c.d] : [claro(c.S, 0.06), c.S, c.s];
-    const sand = [claro(c.F, 0.15), c.F, escuro(c.F, 0.3)];
+    const longo = cfg.molde !== "curta", B = c.pernas, yR = P.yR;
+    const perna = longo ? B : c.pele, longe = [perna[2], perna[2], perna[3], perna[3]];
     if (P.vista === "lado") {
-      for (let Y = 32; Y <= 36; Y++) for (let X = 14; X <= 25; X++) g.fino(X, Y, Y === 36 ? c.d : X < 17 ? c.R : X > 22 ? c.d : c.r);
-      membro(g, 20, 34, 25, 36, 4, perna);
-      membro(g, 25, 36, 25, 42, 3, perna);
-      retF(g, 24, 42, 5, 2, (X, Y) => (Y === 42 ? sand[0] : sand[1]));
+      pintarMascara(g, bastao(bastao(new Set(), 19, yR + 1, 26, yR + 2, 5), 26, yR + 2, 26, 40, 4), perna);
+      retF(g, 25, 41, 6, 2, (X, Y) => (Y === 41 ? c.sand[0] : X === 30 ? c.sand[2] : c.sand[1]));
+      for (let Y = yR; Y <= yR + 3; Y++) for (let X = 13; X <= 22; X++) g.fino(X, Y, Y === yR + 3 ? B[3] : tomPano(B, X, 13, 22));
       return;
     }
-    for (let Y = 32; Y <= 36; Y++) for (let X = 12; X <= 27; X++) g.fino(X, Y, Y === 36 ? c.d : X < 15 ? c.R : X > 24 ? c.d : c.r);
-    membro(g, 14, 35, 11, 38, 3, perna); membro(g, 11, 38, 11, 42, 3, perna);
-    membro(g, 26, 35, 29, 38, 3, [perna[1], perna[2], perna[2]]); membro(g, 29, 38, 29, 42, 3, [perna[1], perna[2], perna[2]]);
-    retF(g, 9, 42, 4, 2, sand[1]); retF(g, 28, 42, 4, 2, sand[2]);
+    pintarMascara(g, bastao(bastao(new Set(), 13, yR + 2, 8, yR + 4, 4), 8, yR + 4, 8, 40, 4), P.vista === "frente" ? perna : longe);
+    pintarMascara(g, bastao(bastao(new Set(), 26, yR + 2, 31, yR + 4, 4), 31, yR + 4, 31, 40, 4), P.vista === "frente" ? longe : perna);
+    retF(g, 5, 41, 5, 2, (X, Y) => (Y === 41 ? c.sand[0] : c.sand[1])); retF(g, 30, 41, 5, 2, (X, Y) => (Y === 41 ? c.sand[1] : c.sand[2]));
+    for (let Y = yR; Y <= yR + 3; Y++) for (let X = 10; X <= 29; X++) g.fino(X, Y, Y === yR + 3 ? B[3] : tomPano(B, X, 10, 29));
   }
 
   // Braços na frente/costas (os dois) ou o braço de perto (de lado), com as mãos por cima da arma.
+  function mao(g, c, X, Y, dorso) {
+    for (let j = -1; j <= 1; j++) for (let i = -2; i <= 1; i++) {
+      const t = dorso ? (j === 1 || i === 1 ? 3 : 2) : j === -1 && i < 0 ? 0 : j === 1 || i === 1 ? 2 : 1;
+      g.fino(X + i, Y + j, c.pele[t]);
+    }
+  }
   function bracos(g, cfg, c, P, soMaos) {
-    const v = P.vista, dy = P.dy, largo = cfg.porte === "grande" ? 1 : 0;
-    const manga = cfg.mangaCor ? [claro(cfg.mangaCor, 0.12), cfg.mangaCor, escuro(cfg.mangaCor, 0.2)] : [c.R, c.r, c.d];
-    const mao = (X, Y, sombra) => retF(g, X - 1, Y - 1, 3, 3, (x, y) => (sombra || x === X + 1 || y === Y + 1 ? c.s : c.S));
+    const v = P.vista, L = cfg.porte === "grande" ? 1 : 0, yT = P.yT;
+    const M = cfg.mangaCor ? rampaDe(cfg.mangaCor) : c.tronco;
+    const punho = (mask, R) => { pintarMascara(g, mask, R); };
     if (v === "lado") {
       const [hx, hy] = P.maoArma;
-      if (!soMaos) membro(g, 21, 21 + dy, hx, hy - 2, 4, manga);
-      mao(hx, hy, false);
+      if (!soMaos) {
+        const m = bastao(new Set(), 20, yT + 3, hx, hy - 2, 4);
+        for (let i = 0; i < 3; i++) m.add(yT * 64 + 19 + i);
+        punho(m, M);
+        // vinco escuro do lado de trás do braço, para ele se soltar do tronco
+        for (const k of m) { const X = k % 64, Y = (k - X) / 64; if (Y > yT + 3 && !m.has(k - 1)) g.fino(X, Y, M[3]); }
+      }
+      mao(g, c, hx, hy, false);
       return;
     }
     const frente = v === "frente";
     const [ax, ay] = P.maoArma, [ex, ey] = P.maoEscudo;
-    const xa = frente ? 11 - largo : 28 + largo, xe = frente ? 28 + largo : 11 - largo;
+    const xa = frente ? 10 - L : 30 + L, xe = frente ? 30 + L : 10 - L;
+    const sombra = [M[1], M[2], M[2], M[3]];
+    // braço com o ombro arredondado (2 px a mais na linha dos ombros, colados ao tronco)
+    const braco = (x, hx, hy) => {
+      const m = bastao(new Set(), x, yT + 3, hx, hy - 2, 4);
+      const ombro = x < 20 ? x : x - 2;
+      for (let i = 0; i < 3; i++) m.add(yT * 64 + ombro + i);
+      return m;
+    };
     if (!soMaos) {
-      membro(g, xa, 21 + dy, ax, ay - 2, 3, frente ? manga : [manga[1], manga[1], manga[2]]);
-      membro(g, xe, 21 + dy, ex, ey - 2, 3, frente ? [manga[1], manga[2], escuro(manga[2], 0.15)] : [manga[0], manga[1], manga[1]]);
+      punho(braco(xa, ax, ay), frente ? M : sombra);
+      punho(braco(xe, ex, ey), frente ? sombra : M);
     }
-    mao(ax, ay, !frente);
-    if (!cfg.duasMaosOcupadas) mao(ex, ey, frente);
+    mao(g, c, ax, ay, !frente);
+    if (!cfg.duasMaosOcupadas) mao(g, c, ex, ey, !frente);
   }
 
   // ----- acessórios: f(g, c, P, cfg) por vista; camada "fundo" (antes do corpo), "meio" (depois do
   // corpo, antes dos braços) ou "frente" (por cima de tudo). camada pode ser função da vista.
+  // Âncoras (pose): T topo da cabeça, yT ombros, yC cinto, maoArma e maoEscudo.
   const ACESSORIOS = {};
   function acessorio(nome, camada, f) { ACESSORIOS[nome] = { camada, f }; }
   const camadaPorVista = (lado, frente, costas) => (v) => (v === "lado" ? lado : v === "frente" ? frente : costas);
 
-  // cajados e lanças: haste vertical na mão da arma
-  function haste(g, P, cores, topo, chao, larg = 2) {
+  // cajados e lanças: haste na mão da arma
+  function haste(g, P, cores, topo, chao) {
     const [hx, hy] = P.maoArma;
     const inclina = P.q === 4 ? (P.vista === "frente" ? -1 : 1) : 0;
-    const y0 = Math.max(P.q === 4 ? 3 : 0, hy - topo), y1 = Math.min(45, hy + chao + (P.q === 4 ? 6 : 0));
-    linF(g, hx + inclina * 3, y0, hx, y1, (X, Y) => (X <= hx - 1 + inclina ? cores[0] : escuro(cores[0], 0.25)), 1);
-    linF(g, hx + inclina * 3 + 1, y0, hx + 1, y1, escuro(cores[0], 0.25), 1);
-    if (larg < 2) return [hx + inclina * 3, y0];
-    return [hx + inclina * 3, y0];
+    const x = hx - 1;
+    const y0 = Math.max(P.q === 4 ? 2 : 0, hy - topo), y1 = Math.min(45, hy + chao + (P.q === 4 ? 6 : 0));
+    linF(g, x + inclina * 3, y0, x, y1, cores[0], 1);
+    linF(g, x + inclina * 3 + 1, y0, x + 1, y1, escuro(cores[0], 0.3), 1);
+    return [x + inclina * 3, y0];
   }
-  acessorio("cajado_alto", "frente", (g, c, P) => { const [x, y] = haste(g, P, c, 25, 15); retF(g, x, y - 1, 2, 2, c[1] || claro(c[0], 0.2)); });
+  acessorio("cajado_alto", "frente", (g, c, P) => { const [x, y] = haste(g, P, c, 27, 14); retF(g, x, y - 1, 2, 2, c[1] || claro(c[0], 0.2)); });
   acessorio("cajado_curvo", "frente", (g, c, P) => {
-    const [x, y] = haste(g, P, c, 25, 15);
+    const [x, y] = haste(g, P, c, 27, 14);
     const lado = P.vista === "costas" ? 1 : -1;
     linF(g, x, y, x + lado * 1, y - 3, c[0], 2); linF(g, x + lado, y - 3, x + lado * 4, y - 4, c[1] || c[0], 2); linF(g, x + lado * 5, y - 3, x + lado * 5, y - 1, c[0], 2);
   });
-  acessorio("cajado_curto", "frente", (g, c, P) => { const [x, y] = haste(g, P, c, 15, 14); elipF(g, x + 1, y - 1, 2, 2, (nx, ny) => (nx + ny < -0.3 ? "#ffe08a" : "#e8b94a")); });
+  acessorio("cajado_curto", "frente", (g, c, P) => { const [x, y] = haste(g, P, c, 17, 13); elipF(g, x + 1, y - 1, 2.2, 2.2, (nx, ny) => (nx + ny < -0.3 ? "#ffe08a" : "#e8b94a")); });
   acessorio("lanca", "frente", (g, c, P) => {
-    const [x, y] = haste(g, P, c, 24, 14);
-    for (let i = 0; i < 6; i++) { const w = i < 2 ? 1 : i < 4 ? 2 : 1; retF(g, x + 1 - w + (w > 1 ? 1 : 0), y - 6 + i, w * 2 - (w > 1 ? 0 : 0) || 1, 1, i < 3 ? claro(c[1], 0.2) : c[1]); }
-    retF(g, x, y - 1, 2, 2, escuro(c[1], 0.2));
+    const [x, y] = haste(g, P, c, 27, 13);
+    for (let i = 0; i < 7; i++) { const w = i < 2 ? 1 : i < 5 ? 2 : 1; retF(g, x + (w > 1 ? 0 : i < 2 ? 0 : 1), y - 7 + i, w, 1, i < 3 ? claro(c[1], 0.25) : c[1]); }
+    retF(g, x - 1, y - 1, 4, 1, escuro(c[1], 0.25));
   });
   acessorio("lanca_longa", "frente", (g, c, P) => {
-    const [x, y] = haste(g, P, c, 28, 14);
-    for (let i = 0; i < 7; i++) { const w = i === 0 ? 1 : i < 5 ? 2 : 1; retF(g, x + 1 - Math.floor(w / 2), y - 7 + i, w, 1, i < 3 ? claro(c[1], 0.25) : c[1]); }
+    const [x, y] = haste(g, P, c, 31, 13);
+    for (let i = 0; i < 8; i++) { const w = i === 0 ? 1 : i < 6 ? 2 : 1; retF(g, x + (w > 1 ? 0 : 0), y - 8 + i, w, 1, i < 3 ? claro(c[1], 0.25) : c[1]); }
     retF(g, x - 1, y, 4, 1, escuro(c[1], 0.3));
   });
   acessorio("ankh", "frente", (g, c, P) => {
-    const [hx, hy] = P.maoArma, x = hx + (P.q === 4 ? (P.vista === "frente" ? -3 : 3) : 0), y = hy - 17;
-    elipF(g, x + 1, y - 3, 2, 2.5, (nx, ny) => (nx * nx + ny * ny < 0.3 ? null : c[0]));
+    const [hx, hy] = P.maoArma, x = hx - 1 + (P.q === 4 ? (P.vista === "frente" ? -3 : 3) : 0), y = hy - 18;
+    elipF(g, x + 1, y - 3, 2.2, 2.8, (nx, ny) => (nx * nx + ny * ny < 0.3 ? null : c[0]));
     retF(g, x - 2, y, 6, 1, c[0]); retF(g, x, y, 2, 4, c[0]);
   });
-  // espadas: em pé ao lado do corpo; no golpe vão à frente (de lado) ou ao alto (frente/costas)
+  // espadas: na mão, com a lâmina para cima e para fora do corpo; no golpe vão à frente (de lado) ou ao
+  // alto (frente/costas)
   function lamina(g, P, c, curva) {
     const [hx, hy] = P.maoArma;
     const [esc, cla, guarda, cabo] = [c[0], c[1], c[2] || "#b07a38", c[3] || "#5a3624"];
     const golpe = P.q === 4;
     if (P.vista === "lado" && golpe) {
-      // horizontal, à frente
-      retF(g, hx - 3, hy, 3, 1, cabo); retF(g, hx, hy - 2, 1, 5, guarda);
-      for (let i = 1; i <= 9; i++) { const yy = hy - (curva && i > 5 ? i - 5 : 0); g.fino(hx + i, yy - 1, cla); g.fino(hx + i, yy, esc); }
-      g.fino(hx + 10, hy - (curva ? 5 : 0) - 1, cla);
+      retF(g, hx - 4, hy, 3, 1, cabo); retF(g, hx + 2, hy - 2, 1, 5, guarda); g.fino(hx + 2, hy - 2, claro(guarda, 0.3));
+      for (let i = 3; i <= 12; i++) { const yy = hy - (curva && i > 8 ? i - 8 : 0); g.fino(hx + i, yy - 1, cla); g.fino(hx + i, yy, esc); }
+      g.fino(hx + 13, hy - (curva ? 5 : 0) - 1, cla);
       return;
     }
-    const sobe = golpe ? -6 : 0;
-    const x = hx, gy = hy - 2 + sobe;
+    if (P.vista === "lado") {
+      // de lado, parada ou andando: baixa, com a ponta para a frente e para o chão (fora do tronco)
+      const x = hx + 1, y = hy;
+      retF(g, x - 3, y - 1, 3, 2, cabo); retF(g, x, y - 3, 1, 5, guarda); g.fino(x, y - 3, claro(guarda, 0.3));
+      for (let i = 1; i <= 10; i++) { const X = x + i, Y = y + Math.round(i * 0.75) - (curva && i > 7 ? i - 7 : 0); g.fino(X, Y - 1, cla); g.fino(X, Y, esc); }
+      return;
+    }
+    // direção da lâmina: (sx, -1) por px, para fora do corpo
+    const sx = golpe ? 0 : P.vista === "frente" ? -0.4 : 0.4;
+    const x = hx - 1, gy = hy - 2 - (golpe ? 1 : 0);
     retF(g, x - 2, gy, 5, 1, guarda); g.fino(x - 2, gy, claro(guarda, 0.3));
     retF(g, x, gy + 1, 1, 3, cabo); g.fino(x, gy + 4, guarda);
-    for (let i = 1; i <= 10; i++) {
-      const dx = curva && i > 6 ? Math.floor((i - 6) / 2) * (P.vista === "frente" ? -1 : 1) : 0;
+    for (let i = 1; i <= 11; i++) {
+      const dx = Math.round(sx * i) + (curva && i > 7 ? Math.floor((i - 7) / 2) * (P.vista === "frente" ? -1 : 1) : 0);
       g.fino(x - 1 + dx, gy - i, cla); g.fino(x + dx, gy - i, esc);
     }
-    g.fino(x - 1 + (curva ? (P.vista === "frente" ? -2 : 2) : 0), gy - 11, cla);
+    g.fino(x + Math.round(sx * 12) - (sx < 0 ? 1 : 0), gy - 12, cla);
   }
   acessorio("espada", "frente", (g, c, P) => lamina(g, P, c, false));
   acessorio("espada_curva", "frente", (g, c, P) => lamina(g, P, c, true));
   acessorio("porrete", "frente", (g, c, P) => {
-    const [hx, hy] = P.maoArma, sobe = P.q === 4 ? -5 : 0, ld = P.vista === "lado" && P.q === 4;
-    if (ld) { retF(g, hx, hy - 1, 8, 2, c[1] || c[0]); elipF(g, hx + 9, hy, 2.6, 2.6, (nx, ny) => (nx + ny < -0.4 ? claro(c[0], 0.2) : c[0])); return; }
-    retF(g, hx, hy - 9 + sobe, 2, 9, c[1] || c[0]);
-    elipF(g, hx + 1, hy - 11 + sobe, 2.6, 3, (nx, ny) => (nx + ny < -0.4 ? claro(c[0], 0.2) : nx + ny > 0.6 ? escuro(c[0], 0.2) : c[0]));
+    const [hx, hy] = P.maoArma, sobe = P.q === 4 ? -5 : 0, ld = P.vista === "lado" && P.q === 4, x = hx - 1;
+    if (ld) { retF(g, x, hy - 1, 9, 2, c[1] || c[0]); elipF(g, x + 11, hy, 3, 3, (nx, ny) => (nx + ny < -0.4 ? claro(c[0], 0.2) : c[0])); return; }
+    retF(g, x, hy - 10 + sobe, 2, 10, c[1] || c[0]);
+    elipF(g, x + 1, hy - 12 + sobe, 3, 3.4, (nx, ny) => (nx + ny < -0.4 ? claro(c[0], 0.2) : nx + ny > 0.6 ? escuro(c[0], 0.2) : c[0]));
   });
   // escudos: de frente no braço do escudo; de costas mostram o verso; de lado, à frente do peito
   function escudo(g, P, cores, forma) {
     const [fr, aro, cen] = [cores[0], cores[1], cores[2] || cores[0]];
     const v = P.vista;
+    const [x, y] = P.escudoEm || P.maoEscudo; // montado, o escudo fica pendurado do lado
     if (v === "lado") {
-      const [x, y] = P.maoEscudo;
-      const ry = forma === "alto" ? 8 : 6, rx = forma === "alto" ? 2.2 : 2.6;
-      elipF(g, x + 0.5, y - 1, rx, ry, (nx, ny) => (nx > 0.55 ? aro : nx < -0.6 ? escuro(fr, 0.2) : ny < -0.6 ? claro(fr, 0.2) : fr));
+      const ry = forma === "alto" ? 9.5 : 7, rx = forma === "alto" ? 2.6 : 3;
+      elipF(g, x + 0.5, y - 1, rx, ry, (nx, ny) => (nx > 0.5 ? aro : nx < -0.55 ? escuro(fr, 0.25) : ny < -0.6 ? claro(fr, 0.2) : fr));
       return;
     }
-    const [x, y] = P.maoEscudo;
-    const cx = v === "frente" ? x + 1 : x - 1, cy = y - 3;
+    const cx = v === "frente" ? x + 0.5 : x - 1.5, cy = y - 3;
     if (v === "costas") {
-      elipF(g, cx, cy, forma === "alto" ? 5 : 5.5, forma === "alto" ? 8 : 5.5, (nx, ny) => (nx * nx + ny * ny > 0.7 ? escuro(aro, 0.1) : escuro(fr, 0.3)));
-      retF(g, cx - 3, cy - 1, 7, 2, "#5a3a24");
+      elipF(g, cx, cy, forma === "alto" ? 6 : 6.5, forma === "alto" ? 9.5 : 6.5, (nx, ny) => (nx * nx + ny * ny > 0.72 ? escuro(aro, 0.1) : nx + ny < -0.6 ? escuro(fr, 0.2) : escuro(fr, 0.35)));
+      retF(g, Math.round(cx) - 4, Math.round(cy) - 1, 8, 2, "#5a3a24");
       return;
     }
     if (forma === "alto") {
-      retF(g, cx - 5, cy - 8, 11, 16, (X, Y, i, j) => (i === 0 || j === 0 ? claro(fr, 0.2) : i === 10 || j === 15 ? escuro(fr, 0.3) : (i + j) % 4 === 0 ? aro : fr));
-      retF(g, cx - 1, cy - 8, 2, 16, cen);
+      retF(g, Math.round(cx) - 6, Math.round(cy) - 9, 13, 19, (X, Y, i, j) => (i === 0 || j === 0 ? claro(fr, 0.2) : i === 12 || j === 18 ? escuro(fr, 0.3) : (i + j) % 4 === 0 ? aro : fr));
+      retF(g, Math.round(cx) - 1, Math.round(cy) - 9, 2, 19, cen);
       return;
     }
     if (forma === "oval") {
-      elipF(g, cx, cy, 4.2, 6.5, (nx, ny, X, Y) => (nx * nx + ny * ny > 0.72 ? escuro(fr, 0.2) : Y % 3 === 0 ? aro : nx + ny < -0.5 ? claro(fr, 0.15) : fr));
+      elipF(g, cx, cy, 5, 7.5, (nx, ny, X, Y) => (nx * nx + ny * ny > 0.72 ? escuro(fr, 0.2) : Y % 3 === 0 ? aro : nx + ny < -0.5 ? claro(fr, 0.15) : fr));
       return;
     }
-    elipF(g, cx, cy, 5.6, 5.6, (nx, ny) => {
+    elipF(g, cx, cy, 6.6, 6.6, (nx, ny) => {
       const r = Math.sqrt(nx * nx + ny * ny);
-      if (r > 0.8) return nx + ny < -0.3 ? claro(aro, 0.2) : aro;
-      if (r < 0.28) return nx + ny < 0 ? claro(cen, 0.35) : cen;
-      return tom([escuro(fr, 0.15), fr, claro(fr, 0.18)], -(nx + ny) * 0.9);
+      if (r > 0.8) return nx + ny < -0.3 ? claro(aro, 0.2) : nx + ny > 0.5 ? escuro(aro, 0.2) : aro;
+      if (r < 0.26) return nx + ny < 0 ? claro(cen, 0.35) : cen;
+      return tom([escuro(fr, 0.2), fr, claro(fr, 0.18)], -(nx + ny) * 0.9);
     });
   }
   acessorio("escudo_redondo", "frente", (g, c, P) => escudo(g, P, c, "redondo"));
@@ -804,190 +980,210 @@
   acessorio("escudo_oval", "frente", (g, c, P) => escudo(g, P, c, "oval"));
   // arco nas costas e arco na mão
   acessorio("arco_costas", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => {
-    const corda = c[1];
-    if (P.vista === "lado") { for (let Y = 17; Y <= 37; Y++) { const t = (Y - 27) / 10; g.fino(Math.round(13 + 3 * t * t), Y + P.dy, c[0]); g.fino(Math.round(14 + 3 * t * t), Y + P.dy, escuro(c[0], 0.2)); } linF(g, 16, 17 + P.dy, 16, 37 + P.dy, corda); return; }
-    if (P.vista === "frente") { for (let Y = 16; Y <= 34; Y++) { const t = (Y - 25) / 9; g.fino(Math.round(29 - 2 * t * t), Y, c[0]); } return; }
-    linF(g, 13, 17 + P.dy, 27, 36 + P.dy, (X, Y, i) => (i % 2 ? c[0] : escuro(c[0], 0.2)), 2);
-    linF(g, 16, 15 + P.dy, 29, 33 + P.dy, corda);
+    const corda = c[1], dy = P.dy;
+    if (P.vista === "lado") { for (let Y = 18; Y <= 40; Y++) { const t = (Y - 29) / 11; g.fino(Math.round(12 + 3 * t * t), Y + dy, c[0]); g.fino(Math.round(13 + 3 * t * t), Y + dy, escuro(c[0], 0.25)); } linF(g, 15, 18 + dy, 15, 40 + dy, corda); return; }
+    if (P.vista === "frente") { for (let Y = 16; Y <= 36; Y++) { const t = (Y - 26) / 10; g.fino(Math.round(32 - 2 * t * t), Y + dy, c[0]); g.fino(Math.round(33 - 2 * t * t), Y + dy, escuro(c[0], 0.25)); } return; }
+    linF(g, 12, 18 + dy, 27, 38 + dy, (X, Y, i) => (i % 2 ? c[0] : escuro(c[0], 0.2)), 2);
+    linF(g, 15, 16 + dy, 30, 35 + dy, corda);
   });
   acessorio("arco_mao", "frente", (g, c, P) => {
-    const [hx, hy] = P.maoArma, v = P.vista, puxa = P.q === 4;
+    const [hx0, hy] = P.maoArma, hx = hx0 - 1, v = P.vista, puxa = P.q === 4;
     if (v === "lado") {
-      const x0 = puxa ? hx + 2 : hx;
-      for (let Y = -10; Y <= 10; Y++) { const t = Y / 10; g.fino(Math.round(x0 + 3 - 3 * t * t), hy - 2 + Y, Y % 4 ? c[0] : escuro(c[0], 0.25)); }
-      linF(g, x0 - (puxa ? 4 : 0), hy - 2, x0 + 0, hy - 12, c[1]); linF(g, x0 - (puxa ? 4 : 0), hy - 2, x0, hy + 8, c[1]);
-      if (puxa) linF(g, x0 - 5, hy - 2, x0 + 7, hy - 2, "#c8b48a");
+      const x0 = puxa ? hx + 2 : hx + 1;
+      for (let Y = -11; Y <= 11; Y++) { const t = Y / 11; g.fino(Math.round(x0 + 3 - 3 * t * t), hy - 2 + Y, Y % 4 ? c[0] : escuro(c[0], 0.25)); }
+      linF(g, x0 - (puxa ? 4 : 0), hy - 2, x0, hy - 13, c[1]); linF(g, x0 - (puxa ? 4 : 0), hy - 2, x0, hy + 9, c[1]);
+      if (puxa) linF(g, x0 - 5, hy - 2, x0 + 8, hy - 2, "#c8b48a");
       return;
     }
     const sx = v === "frente" ? -1 : 1;
-    for (let Y = -10; Y <= 10; Y++) { const t = Y / 10; g.fino(Math.round(hx + sx * (3 - 3 * t * t)), hy - 3 + Y, Y % 4 ? c[0] : escuro(c[0], 0.25)); }
-    linF(g, hx, hy - 13, hx, hy + 7, c[1]);
+    for (let Y = -11; Y <= 11; Y++) { const t = Y / 11; g.fino(Math.round(hx + sx * (3 - 3 * t * t)), hy - 3 + Y, Y % 4 ? c[0] : escuro(c[0], 0.25)); }
+    linF(g, hx, hy - 14, hx, hy + 8, c[1]);
   });
   // capas
   function capa(g, c, P, larga) {
-    const v = P.vista, dy = P.dy, sw = P.q === 2 ? 1 : P.q === 3 ? -1 : 0;
-    const [a, b] = [c[0], c[1]];
+    const v = P.vista, dy = P.dy, sw = P.passo;
+    const R = [claro(c[0], 0.14), c[0], misturar(c[0], c[1], 0.5), c[1]];
     if (v === "lado") {
-      for (let Y = 20 + dy; Y <= 42; Y++) { const k = Math.floor((Y - 20) / 5); for (let X = 13 - k + sw * (Y > 34 ? 1 : 0); X <= 17; X++) g.fino(X, Y, X === 17 ? escuro(a, 0.25) : (X + Y) % 6 === 0 ? b : a); }
+      for (let Y = 22 + dy; Y <= 43; Y++) { const k = Math.floor((Y - 22) / 5) + (larga ? 1 : 0), x0 = 13 - k - (Y > 36 ? sw : 0); for (let X = x0; X <= 17; X++) g.fino(X, Y, X === 17 ? R[3] : (X + Y) % 6 === 0 ? R[2] : tomPano(R, X, x0, 17)); }
       return;
     }
     if (v === "frente") {
-      const x0 = larga ? 7 : 9, x1 = larga ? 32 : 30;
-      for (let Y = 21 + dy; Y <= 42; Y++) for (let X = x0; X <= x1; X++) g.fino(X, Y, X < 12 ? claro(a, 0.08) : X > 27 ? escuro(a, 0.25) : b);
+      const x0 = larga ? 5 : 7, x1 = larga ? 34 : 32;
+      for (let Y = 23 + dy; Y <= 43; Y++) for (let X = x0; X <= x1; X++) g.fino(X, Y, X < x0 + 2 ? R[0] : X > x1 - 2 ? R[3] : R[2]);
       return;
     }
-    for (let Y = 19 + dy; Y <= 42; Y++) {
-      const k = Math.floor((Y - 19) / 6) + (larga ? 1 : 0), x0 = 12 - k + (Y > 36 ? sw : 0), x1 = 27 + k + (Y > 36 ? sw : 0);
-      for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 42 ? b : X < x0 + 2 ? claro(a, 0.12) : X > x1 - 2 ? escuro(a, 0.25) : (X - x0) % 5 === 2 && Y > 24 ? escuro(a, 0.12) : a);
+    for (let Y = 21 + dy; Y <= 43; Y++) {
+      const k = Math.floor((Y - 21) / 6) + (larga ? 1 : 0), x0 = 11 - k + (Y > 36 ? sw : 0), x1 = 28 + k + (Y > 36 ? sw : 0);
+      for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 43 ? R[3] : (X - x0) % 5 === 2 && Y > 26 ? R[2] : tomPano(R, X, x0, x1));
     }
-    retF(g, 13, 19 + dy, 14, 1, b);
+    retF(g, 12, 21 + dy, 16, 1, R[3]);
   }
   acessorio("capa", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => capa(g, c, P, false));
   acessorio("capa_larga", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => capa(g, c, P, true));
   // cabeça
   acessorio("turbante", "frente", (g, c, P) => {
-    const dy = P.dy, cx = P.vista === "lado" ? 20 : 20;
-    elipF(g, cx, 9 + dy, 7, 4.2, (nx, ny, X, Y) => ((Y + Math.round(nx * 3)) % 3 === 0 ? escuro(c[0], 0.18) : nx < -0.4 ? claro(c[0], 0.15) : nx > 0.5 ? escuro(c[0], 0.1) : c[0]));
-    if (c[1]) for (let X = cx - 7; X <= cx + 6; X++) g.fino(X, 11 + dy, c[1]);
-    if (c[2]) g.fino(cx - 3, 6 + dy, c[2]);
-    if (P.vista === "lado") retF(g, 13, 9 + dy, 2, 6, escuro(c[0], 0.15));
+    const T = P.T, lado = P.vista === "lado", cx = lado ? 19.5 : 20;
+    elipF(g, cx, T + 2.5, 9, 5.2, (nx, ny, X, Y) => (Y > T + 5 ? null : (Y + Math.round(nx * 3)) % 3 === 0 ? escuro(c[0], 0.2) : nx < -0.45 || ny < -0.6 ? claro(c[0], 0.18) : nx > 0.55 ? escuro(c[0], 0.12) : c[0]));
+    if (c[1]) for (let X = Math.round(cx) - 9; X <= Math.round(cx) + 8; X++) g.fino(X, T + 5, c[1]);
+    if (c[2]) retF(g, Math.round(cx) - 4, T - 1, 2, 2, c[2]);
+    if (lado) retF(g, 11, T + 3, 3, 8, (X) => (X === 11 ? c[0] : escuro(c[0], 0.18)));
+    else if (P.vista === "costas") retF(g, 19, T + 6, 3, 6, (X) => (X === 19 ? c[0] : escuro(c[0], 0.2)));
   });
   acessorio("elmo", "frente", (g, c, P) => {
-    const dy = P.dy, v = P.vista, cx = v === "lado" ? 20.5 : 20;
-    elipF(g, cx, 11 + dy, 6.6, 5.5, (nx, ny, X, Y) => (Y > 10 + dy ? null : nx + ny < -0.6 ? claro(c[1], 0.2) : nx > 0.4 ? escuro(c[0], 0.2) : c[0]));
-    retF(g, Math.round(cx) - 7, 10 + dy, 14, 1, c[1]);
-    if (v === "frente") retF(g, 19, 11 + dy, 2, 4, c[0]);
-    if (v === "lado") { retF(g, 15, 10 + dy, 3, 6, c[0]); g.fino(25, 11 + dy, c[0]); }
-    retF(g, Math.round(cx) - 1, 4 + dy, 2, 2, c[1]);
+    const T = P.T, v = P.vista, cx = v === "lado" ? 19.5 : 20;
+    elipF(g, cx, T + 5.5, 8.8, 7, (nx, ny, X, Y) => (Y > T + 5 ? null : nx + ny < -0.7 ? claro(c[1], 0.25) : nx < -0.3 && ny < 0 ? c[1] : nx > 0.45 ? escuro(c[0], 0.25) : c[0]));
+    retF(g, Math.round(cx) - 9, T + 5, 18, 1, (X) => (X < cx - 4 ? claro(c[1], 0.1) : c[1]));
+    if (v === "frente") retF(g, 19, T + 6, 2, 4, (X) => (X === 19 ? c[1] : c[0]));
+    if (v === "lado") { retF(g, 15, T + 6, 4, 6, (X) => (X === 15 ? c[1] : c[0])); retF(g, 25, T + 6, 1, 1, c[0]); }
+    if (v === "costas") retF(g, 12, T + 6, 16, 3, (X) => (X < 15 ? c[1] : X > 24 ? escuro(c[0], 0.2) : c[0]));
+    retF(g, Math.round(cx) - 1, T - 2, 2, 2, c[1]);
   });
   acessorio("faixa", "frente", (g, c, P) => {
-    const dy = P.dy;
-    if (P.vista === "lado") { retF(g, 15, 9 + dy, 11, 1, c[0]); retF(g, 13, 10 + dy, 2, 3, c[0]); return; }
-    retF(g, 14, 9 + dy, 12, 1, c[0]); if (P.vista === "costas") retF(g, 19, 10 + dy, 2, 4, c[0]);
+    const T = P.T, R = [claro(c[0], 0.2), c[0], escuro(c[0], 0.25)];
+    if (P.vista === "lado") { retF(g, 13, T + 4, 14, 2, (X, Y) => (Y === T + 4 ? R[0] : R[1])); retF(g, 11, T + 5, 2, 5, (X) => (X === 11 ? R[1] : R[2])); return; }
+    retF(g, 12, T + 4, 16, 2, (X, Y) => (Y === T + 4 ? (X > 24 ? R[1] : R[0]) : X > 24 ? R[2] : R[1]));
+    if (P.vista === "costas") { retF(g, 18, T + 6, 2, 5, R[1]); retF(g, 21, T + 6, 2, 4, R[2]); }
   });
   acessorio("bandana", "frente", (g, c, P) => {
-    const dy = P.dy;
-    elipF(g, P.vista === "lado" ? 20.5 : 20, 10 + dy, 6.6, 4.2, (nx, ny, X, Y) => (Y > 10 + dy ? null : nx > 0.4 ? escuro(c[0], 0.2) : (X + Y) % 4 === 0 ? claro(c[0], 0.15) : c[0]));
-    if (P.vista === "lado") { retF(g, 13, 10 + dy, 2, 2, c[0]); retF(g, 12, 12 + dy, 2, 3, escuro(c[0], 0.2)); }
-    if (P.vista === "costas") { retF(g, 18, 11 + dy, 4, 2, c[0]); retF(g, 17, 13 + dy, 2, 3, escuro(c[0], 0.2)); retF(g, 21, 13 + dy, 2, 3, c[0]); }
-    if (P.vista === "frente" && c[1]) g.fino(16, 13 + dy, c[1]);
+    const T = P.T, lado = P.vista === "lado";
+    elipF(g, lado ? 19.5 : 20, T + 5, 8.6, 6, (nx, ny, X, Y) => (Y > T + 5 ? null : nx > 0.45 ? escuro(c[0], 0.22) : nx < -0.4 && ny < 0 ? claro(c[0], 0.18) : c[0]));
+    if (lado) { retF(g, 11, T + 5, 2, 3, c[0]); retF(g, 10, T + 7, 2, 4, escuro(c[0], 0.2)); }
+    if (P.vista === "costas") { retF(g, 18, T + 6, 4, 2, c[0]); retF(g, 17, T + 8, 2, 4, escuro(c[0], 0.2)); retF(g, 21, T + 8, 2, 4, c[0]); }
+    if (P.vista === "frente" && c[1]) { g.fino(15, T + 2, c[1]); g.fino(23, T + 3, c[1]); g.fino(18, T + 1, c[1]); }
   });
   // nemes (toucado listrado do Egito): topo e abas sobre os ombros
   acessorio("nemes", "frente", (g, c, P) => {
-    const dy = P.dy, v = P.vista, faixa = (Y) => ((Y >> 1) % 2 ? c[1] : c[0]);
-    elipF(g, v === "lado" ? 20 : 20, 10 + dy, 7, 4.6, (nx, ny, X, Y) => (Y > 10 + dy ? null : faixa(Y)));
-    retF(g, 13, 9 + dy, 14, 2, faixa(9));
-    if (v === "frente") { retF(g, 12, 11 + dy, 3, 11, (X, Y) => faixa(Y)); retF(g, 25, 11 + dy, 3, 11, (X, Y) => escuro(faixa(Y), 0.15)); retF(g, 14, 10 + dy, 12, 1, c[2] || c[1]); }
-    else if (v === "lado") retF(g, 14, 11 + dy, 5, 10, (X, Y) => faixa(Y));
-    else retF(g, 13, 10 + dy, 14, 11, (X, Y) => (X > 24 ? escuro(faixa(Y), 0.15) : faixa(Y)));
+    const T = P.T, v = P.vista, faixa = (Y) => ((Y >> 1) % 2 ? c[1] : c[0]);
+    elipF(g, v === "lado" ? 19.5 : 20, T + 5, 9, 6.2, (nx, ny, X, Y) => (Y > T + 5 ? null : nx > 0.6 ? escuro(faixa(Y), 0.15) : faixa(Y)));
+    retF(g, 11, T + 4, 18, 2, (X, Y) => faixa(Y));
+    if (v === "frente") { retF(g, 10, T + 6, 3, 13, (X, Y) => faixa(Y)); retF(g, 27, T + 6, 3, 13, (X, Y) => escuro(faixa(Y), 0.15)); retF(g, 12, T + 5, 16, 1, c[2] || c[1]); }
+    else if (v === "lado") retF(g, 12, T + 6, 7, 12, (X, Y) => (X === 18 ? escuro(faixa(Y), 0.15) : faixa(Y)));
+    else retF(g, 11, T + 6, 18, 13, (X, Y) => (X > 25 ? escuro(faixa(Y), 0.15) : faixa(Y)));
   });
   // colar largo (Egito) e peitoral do sumo sacerdote
   acessorio("colar", "meio", (g, c, P) => {
-    const dy = P.dy;
+    const y = P.yT;
     if (P.vista === "costas") return;
-    if (P.vista === "lado") { retF(g, 19, 20 + dy, 6, 2, (X) => (X % 2 ? c[0] : c[1])); return; }
-    for (let Y = 20; Y <= 22; Y++) { const k = Y - 20; for (let X = 15 - k + 2; X <= 24 + k - 2; X++) g.fino(X, Y + dy, (X + Y) % 2 ? c[0] : c[1]); }
+    if (P.vista === "lado") { retF(g, 20, y, 7, 3, (X, Y) => ((X + Y) % 2 ? c[0] : c[1])); return; }
+    for (let j = 0; j < 4; j++) for (let X = 14 + j; X <= 25 - j; X++) g.fino(X, y + j, (X + j) % 2 ? c[0] : c[1]);
   });
   acessorio("peitoral", "meio", (g, c, P) => {
-    const dy = P.dy, pedras = ["#c2452d", "#4fa3a5", "#e8b94a", "#55642c", "#6d8fc4", "#b98ad0"];
+    const y = P.yT + 3, pedras = ["#c2452d", "#4fa3a5", "#e8b94a", "#55642c", "#6d8fc4", "#b98ad0"];
     if (P.vista === "costas") return;
-    const x0 = P.vista === "lado" ? 22 : 17, w = P.vista === "lado" ? 3 : 6;
-    retF(g, x0, 22 + dy, w, 7, c[0]);
-    for (let j = 0; j < 3; j++) for (let i = 0; i < (P.vista === "lado" ? 1 : 3); i++) { g.fino(x0 + 1 + i * 2 - (P.vista === "lado" ? 0 : 0), 23 + j * 2 + dy, pedras[(i + j * 3) % 6]); }
+    const lado = P.vista === "lado", x0 = lado ? 22 : 16, w = lado ? 4 : 8;
+    retF(g, x0, y, w, 8, (X, Y) => (Y === y ? claro(c[0], 0.2) : c[0]));
+    for (let j = 0; j < 3; j++) for (let i = 0; i < (lado ? 1 : 3); i++) retF(g, x0 + 1 + i * 2 + (lado ? 1 : 0), y + 1 + j * 2, 1 + (lado ? 0 : 1) - (lado ? 0 : 1), 1, pedras[(i + j * 3) % 6]);
+    if (!lado) for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) g.fino(x0 + 1 + i * 2 + 1, y + 1 + j * 2, escuro(pedras[(i + j * 3) % 6], 0.2));
   });
   // carga e utensílios
   acessorio("bolsa", "meio", (g, c, P) => {
-    const v = P.vista;
-    const x = v === "lado" ? 21 : v === "frente" ? 15 : 23;
-    if (v === "costas" && false) return;
-    retF(g, x, 32, 4, 4, (X, Y) => (Y === 32 ? c[1] || c[0] : X === x + 3 ? escuro(c[0], 0.2) : c[0])); g.fino(x + 1, 33, c[1] || claro(c[0], 0.2));
+    // alforje pendurado na alça que cruza o peito (do ombro esquerdo ao quadril direito)
+    const v = P.vista, y = P.yC + 1, alca = escuro(c[0], 0.2);
+    const x = v === "lado" ? 14 : v === "frente" ? 23 : 13;
+    if (v === "frente") linF(g, 14, P.yT, x + 1, y - 1, (X, Y, i) => (i % 3 ? alca : c[1] || c[0]));
+    else if (v === "costas") linF(g, 26, P.yT, x + 2, y - 1, alca);
+    else linF(g, 21, P.yT, x + 2, y - 1, alca);
+    retF(g, x, y, 4, 5, (X, Y) => (Y === y ? c[1] || c[0] : X === x + 3 || Y === y + 4 ? escuro(c[0], 0.25) : X === x ? claro(c[0], 0.12) : c[0]));
+    g.fino(x + 1, y + 1, c[1] || claro(c[0], 0.2));
   });
   acessorio("odre", camadaPorVista("meio", "meio", "fundo"), (g, c, P) => {
-    const x = P.vista === "lado" ? 16 : P.vista === "frente" ? 25 : 12;
-    elipF(g, x + 2, 35, 2.6, 3.4, (nx, ny) => (nx + ny < -0.4 ? c[1] || claro(c[0], 0.2) : nx + ny > 0.5 ? escuro(c[0], 0.2) : c[0]));
-    retF(g, x + 1, 30, 2, 2, c[1] || c[0]);
+    const x = P.vista === "lado" ? 15 : P.vista === "frente" ? 27 : 12;
+    elipF(g, x + 1, 36, 3, 4, (nx, ny) => (nx + ny < -0.4 ? c[1] || claro(c[0], 0.2) : nx + ny > 0.5 ? escuro(c[0], 0.25) : c[0]));
+    retF(g, x, 30, 2, 3, c[1] || c[0]);
   });
   acessorio("saco", camadaPorVista("fundo", "meio", "meio"), (g, c, P) => {
-    const [x, y] = P.maoEscudo, cx = P.vista === "lado" ? 15 : x + (P.vista === "frente" ? 2 : -2);
-    elipF(g, cx, y + 3, 3.2, 3.6, (nx, ny) => (nx + ny < -0.4 ? c[1] || claro(c[0], 0.2) : nx + ny > 0.5 ? escuro(c[0], 0.2) : c[0]));
-    retF(g, cx - 1, y - 1, 2, 2, escuro(c[0], 0.2));
+    const [x, y] = P.maoEscudo, cx = P.vista === "lado" ? 13 : x + (P.vista === "frente" ? 1 : -2);
+    const cy = P.vista === "lado" ? 33 : y + 4;
+    elipF(g, cx, cy, 3.8, 4.2, (nx, ny) => (nx + ny < -0.4 ? c[1] || claro(c[0], 0.2) : nx + ny > 0.5 ? escuro(c[0], 0.25) : c[0]));
+    retF(g, Math.round(cx) - 1, cy - 5, 2, 2, escuro(c[0], 0.2));
   });
   acessorio("jarro", camadaPorVista("frente", "frente", "meio"), (g, c, P) => {
-    const [x, y] = P.maoEscudo, cx = P.vista === "lado" ? 27 : x + (P.vista === "frente" ? 2 : -2);
-    elipF(g, cx, y + 1, 3.6, 4, (nx, ny) => tom([c[1], c[0], c[2] || claro(c[0], 0.2)], -(0.6 * nx + 0.8 * ny)));
-    retF(g, cx - 1.5, y - 4, 3, 2, c[1]); retF(g, cx - 2.5, y - 5, 5, 1, c[0]);
-    g.fino(Math.round(cx) - 2, y, c[2] || claro(c[0], 0.3));
+    const [x, y] = P.maoEscudo, cx = P.vista === "lado" ? 28 : x + (P.vista === "frente" ? 1 : -2), cy = P.vista === "lado" ? 31 : y + 1;
+    elipF(g, cx, cy, 4.2, 4.6, (nx, ny) => tom([c[1], c[0], c[2] || claro(c[0], 0.2)], -(0.6 * nx + 0.8 * ny)));
+    retF(g, Math.round(cx) - 2, cy - 6, 4, 2, c[1]); retF(g, Math.round(cx) - 3, cy - 7, 6, 1, c[0]);
+    g.fino(Math.round(cx) - 2, cy - 1, c[2] || claro(c[0], 0.3));
   });
   acessorio("fardo", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => {
-    const dy = P.dy;
-    if (P.vista === "lado") { retF(g, 11, 19 + dy, 6, 12, (X, Y) => (Y % 4 === 0 ? c[1] || escuro(c[0], 0.2) : X === 11 ? claro(c[0], 0.15) : c[0])); return; }
-    if (P.vista === "frente") { retF(g, 12, 15 + dy, 16, 6, (X, Y) => (Y === 15 + dy ? claro(c[0], 0.15) : c[0])); return; }
-    retF(g, 12, 17 + dy, 16, 13, (X, Y) => (Y % 4 === 0 ? c[1] || escuro(c[0], 0.2) : X < 14 ? claro(c[0], 0.15) : X > 25 ? escuro(c[0], 0.2) : c[0]));
-    linF(g, 15, 17 + dy, 15, 29 + dy, "#5a3a24"); linF(g, 24, 17 + dy, 24, 29 + dy, "#5a3a24");
+    const dy = P.dy, R = [claro(c[0], 0.15), c[0], c[1] || escuro(c[0], 0.2), escuro(c[0], 0.35)];
+    if (P.vista === "lado") { retF(g, 9, 20 + dy, 7, 13, (X, Y) => (Y % 4 === 0 ? R[2] : tomPano(R, X, 9, 15))); return; }
+    if (P.vista === "frente") { retF(g, 10, 17 + dy, 20, 6, (X, Y) => (Y === 17 + dy ? R[0] : tomPano(R, X, 10, 29))); return; }
+    retF(g, 11, 19 + dy, 18, 15, (X, Y) => (Y % 4 === 0 ? R[2] : tomPano(R, X, 11, 28)));
+    linF(g, 14, 19 + dy, 14, 33 + dy, "#5a3a24"); linF(g, 25, 19 + dy, 25, 33 + dy, "#5a3a24");
   });
   acessorio("corda", "meio", (g, c, P) => {
-    const dy = P.dy, x = P.vista === "frente" ? 25 : P.vista === "costas" ? 15 : 18;
-    elipF(g, x, 25 + dy, 3.6, 3.6, (nx, ny) => { const r = nx * nx + ny * ny; return r < 0.25 ? null : (Math.round(r * 6) % 2 ? c[0] : c[1]); });
+    const y = P.yT + 5, x = P.vista === "frente" ? 26 : P.vista === "costas" ? 14 : 17;
+    elipF(g, x, y, 4.2, 4.2, (nx, ny) => { const r = nx * nx + ny * ny; return r < 0.22 ? null : (Math.round(r * 6) % 2 ? c[0] : c[1]); });
   });
   acessorio("rede", camadaPorVista("fundo", "meio", "meio"), (g, c, P) => {
-    const dy = P.dy, x0 = P.vista === "frente" ? 24 : P.vista === "costas" ? 10 : 12;
-    for (let j = 0; j < 12; j++) for (let i = 0; i < 7; i++) if ((i + j) % 3 === 0 || (i - j + 30) % 3 === 0) g.fino(x0 + i, 21 + j + dy, (i + j) % 2 ? c[0] : escuro(c[0], 0.2));
+    const y = P.yT, x0 = P.vista === "frente" ? 26 : P.vista === "costas" ? 6 : 9;
+    for (let j = 0; j < 14; j++) for (let i = 0; i < 8; i++) if ((i + j) % 3 === 0 || (i - j + 30) % 3 === 0) g.fino(x0 + i, y + j, (i + j) % 2 ? c[0] : escuro(c[0], 0.2));
   });
   acessorio("shofar", "meio", (g, c, P) => {
     if (P.vista === "costas") return;
-    const x = P.vista === "frente" ? 22 : 16;
-    linF(g, x, 32, x + 4, 34, c[0], 2); g.fino(x - 1, 31, c[1]); g.fino(x, 31, c[1]); g.fino(x + 5, 34, c[2]);
+    const x = P.vista === "frente" ? 23 : 16, y = P.yC + 2;
+    linF(g, x, y, x + 5, y + 2, c[0], 2); g.fino(x - 1, y - 1, c[1]); g.fino(x, y - 1, c[1]); g.fino(x + 6, y + 2, c[2]); g.fino(x + 6, y + 3, c[2]);
   });
   acessorio("pele_leopardo", "meio", (g, c, P) => {
-    if (P.vista === "costas") { retF(g, 22, 20 + P.dy, 5, 9, (X, Y) => ((X * 3 + Y * 5) % 7 === 0 ? "#3a2414" : "#d8a040")); return; }
-    const x0 = P.vista === "frente" ? 13 : 16;
-    retF(g, x0, 20 + P.dy, 6, 10, (X, Y) => ((X * 3 + Y * 5) % 7 === 0 ? "#3a2414" : X === x0 ? "#f0c868" : "#d8a040"));
+    const y = P.yT, mancha = (X, Y) => (X * 3 + Y * 5) % 7 === 0;
+    if (P.vista === "costas") { retF(g, 21, y, 6, 10, (X, Y) => (mancha(X, Y) ? "#3a2414" : "#d8a040")); return; }
+    const x0 = P.vista === "frente" ? 12 : 16;
+    retF(g, x0, y, 7, 10, (X, Y) => (mancha(X, Y) ? "#3a2414" : X === x0 ? "#f0c868" : "#d8a040"));
   });
   acessorio("estola", "meio", (g, c, P) => {
     // manto sobre um ombro, caindo pelo lado direito do corpo
-    const dy = P.dy, [M, m, n] = c;
+    const dy = P.dy, [M, m, n] = c, y0 = 22;
     if (P.vista === "frente") {
-      for (let Y = 20; Y <= 40; Y++) {
-        const x0 = Y < 30 ? Math.round(16 + (Y - 20) * 0.7) : 23, x1 = Y < 22 ? x0 + 4 : 27;
-        for (let X = x0; X <= x1; X++) g.fino(X, Y + (Y < 32 ? dy : 0), X === x0 ? M : X === x1 ? n : m);
+      for (let Y = y0; Y <= 42; Y++) {
+        const x0 = Y < 32 ? Math.round(15 + (Y - y0) * 0.8) : 23, x1 = Y < y0 + 2 ? x0 + 4 : 28;
+        for (let X = x0; X <= x1; X++) g.fino(X, Y + (Y < 34 ? dy : 0), X === x0 ? M : X >= x1 - 1 ? n : m);
       }
     } else if (P.vista === "costas") {
-      for (let Y = 20; Y <= 40; Y++) { const x0 = 13, x1 = Y < 30 ? Math.round(22 - (Y - 20) * 0.4) : 18; for (let X = x0; X <= x1; X++) g.fino(X, Y + (Y < 32 ? dy : 0), X === x0 ? M : X === x1 ? n : m); }
-    } else for (let Y = 20; Y <= 40; Y++) for (let X = 16; X <= 21; X++) g.fino(X, Y + (Y < 32 ? dy : 0), X === 16 ? M : X === 21 ? n : m);
+      for (let Y = y0; Y <= 42; Y++) { const x0 = 11, x1 = Y < 32 ? Math.round(23 - (Y - y0) * 0.4) : 18; for (let X = x0; X <= x1; X++) g.fino(X, Y + (Y < 34 ? dy : 0), X === x0 ? M : X === x1 ? n : m); }
+    } else for (let Y = y0; Y <= 42; Y++) for (let X = 16; X <= 22; X++) g.fino(X, Y + (Y < 34 ? dy : 0), X === 16 ? M : X === 22 ? n : m);
   });
   // efeitos de mão
   acessorio("brilho", "frente", (g, c, P) => {
     if (P.q !== 1 && P.q !== 4) return;
-    const [hx, hy] = P.maoArma, y = hy - (c[1] || 0);
-    g.fino(hx, y - 4, c[0]); g.fino(hx - 2, y - 2, c[0]); g.fino(hx + 2, y - 3, c[0]); g.fino(hx, y - 6, claro(c[0], 0.5));
+    const [hx0, hy] = P.maoArma, hx = hx0 - 1, y = hy - (c[1] || 0);
+    g.fino(hx, y - 4, c[0]); g.fino(hx - 2, y - 2, c[0]); g.fino(hx + 2, y - 3, c[0]); g.fino(hx, y - 6, claro(c[0], 0.5)); g.fino(hx + 3, y - 6, claro(c[0], 0.3));
   });
   acessorio("funda", "frente", (g, c, P) => {
     const [hx, hy] = P.maoArma;
-    const pos = [[30, 4], [24, 2], [14, 4], [22, 6], [33, 6]][P.q];
+    const pos = [[31, 3], [24, 1], [13, 3], [22, 5], [34, 5]][P.q];
     const px = P.vista === "costas" ? 40 - pos[0] : pos[0];
-    linF(g, hx, hy - 1, px, pos[1] + 2, c[0]); elipF(g, px, pos[1], 1.5, 1.5, c[1] || "#8a8478");
+    linF(g, hx - 1, hy - 1, px, pos[1] + 2, c[0]); elipF(g, px, pos[1], 1.6, 1.6, c[1] || "#8a8478");
   });
 
   // Armaduras do jogador (por cima da veste): couro (colete com ombreiras e rebites) e escamas.
+  // f desenha o colete (antes dos braços); ombros, as ombreiras (por cima dos braços).
   const ARMADURAS = {
     tunica_pano: { veste: { R: "#c9d4e0", r: "#a8b8c8", d: "#7f90a4" }, gola: "#3b5a9a" },
     armadura_couro: {
       f: (g, P) => {
-        const dy = P.dy, v = P.vista, L = ["#a8703a", "#7a4a30", "#4f3220"];
-        const x0 = v === "lado" ? 15 : 13, x1 = v === "lado" ? 25 : 26;
-        for (let Y = 21 + dy; Y <= 33; Y++) for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 33 ? L[2] : X <= x0 + 1 ? L[0] : X >= x1 - 1 ? L[2] : (Y - dy) % 4 === 0 ? escuro(L[1], 0.15) : L[1]);
-        if (v !== "lado") { retF(g, 10, 20 + dy, 4, 3, L[0]); retF(g, 26, 20 + dy, 4, 3, L[2]); }
-        else retF(g, 19, 20 + dy, 5, 3, L[0]);
-        if (v === "frente") { for (const [x, y] of [[15, 23], [24, 23], [15, 29], [24, 29]]) g.fino(x, y + dy, "#e8b94a"); retF(g, 19, 21 + dy, 2, 2, "#f0d0a0"); }
+        const v = P.vista, L = ["#b07a42", "#8a5a34", "#5e3a22", "#3e2416"], y0 = P.yT + 1, y1 = P.yC + 2;
+        const x0 = v === "lado" ? 14 : 12, x1 = v === "lado" ? 26 : 27;
+        for (let Y = y0; Y <= y1; Y++) for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === y1 ? L[3] : (Y - y0) % 4 === 3 ? L[2] : tomPano(L, X, x0, x1));
+        if (v === "frente") { for (const [x, y] of [[14, 3], [25, 3], [14, 7], [25, 7]]) g.fino(x, y0 + y, "#e8b94a"); retF(g, 18, y0, 4, 2, "#f0d0a0"); }
+      },
+      ombros: (g, P) => {
+        const L = ["#b07a42", "#8a5a34", "#5e3a22"], y = P.yT - 1;
+        if (P.vista === "lado") { elipF(g, 20, y + 3, 3.4, 2.6, (nx, ny) => (nx + ny < -0.3 ? L[0] : ny > 0.4 ? L[2] : L[1])); return; }
+        elipF(g, 9.5, y + 3, 3.6, 2.6, (nx, ny) => (nx + ny < -0.3 ? L[0] : ny > 0.4 ? L[2] : L[1]));
+        elipF(g, 30.5, y + 3, 3.6, 2.6, (nx, ny) => (ny > 0.3 || nx > 0.3 ? L[2] : L[1]));
       },
     },
     couraca_escamas: {
       f: (g, P) => {
-        const dy = P.dy, v = P.vista, E = ["#d29e52", "#b07a38", "#7a4a24"];
-        const x0 = v === "lado" ? 15 : 13, x1 = v === "lado" ? 25 : 26;
-        for (let Y = 21 + dy; Y <= 31; Y++) for (let X = x0; X <= x1; X++) { const fila = (Y - dy) >> 1, off = fila % 2; g.fino(X, Y, (X + off) % 3 === 0 && (Y - dy) % 2 ? E[2] : (Y - dy) % 2 ? E[1] : E[0]); }
-        for (let X = x0 - 1; X <= x1 + 1; X += 2) retF(g, X, 32, 1, 4, X % 4 === 1 ? E[1] : E[2]);
-        if (v !== "lado") { elipF(g, 11.5, 22 + dy, 2.5, 2, E[0]); elipF(g, 28.5, 22 + dy, 2.5, 2, E[2]); }
+        const v = P.vista, E = ["#e2b264", "#b07a38", "#7a4a24"], y0 = P.yT + 1, y1 = P.yC - 1;
+        const x0 = v === "lado" ? 14 : 12, x1 = v === "lado" ? 26 : 27;
+        for (let Y = y0; Y <= y1; Y++) for (let X = x0; X <= x1; X++) { const fila = (Y - y0) >> 1, off = fila % 2; g.fino(X, Y, (X + off) % 3 === 0 && (Y - y0) % 2 ? E[2] : (Y - y0) % 2 ? E[1] : X < x0 + 3 ? E[0] : misturar(E[0], E[1], 0.4)); }
+        for (let X = x0 - 1; X <= x1 + 1; X += 2) retF(g, X, P.yC + 2, 1, 5, X % 4 === 1 ? E[1] : E[2]);
+      },
+      ombros: (g, P) => {
+        const E = ["#e2b264", "#b07a38", "#7a4a24"], y = P.yT - 1;
+        if (P.vista === "lado") { elipF(g, 20, y + 3, 3.4, 2.6, (nx, ny) => (nx + ny < -0.3 ? E[0] : ny > 0.4 ? E[2] : E[1])); return; }
+        elipF(g, 9.5, y + 3, 3.6, 2.6, (nx, ny) => (nx + ny < -0.3 ? E[0] : ny > 0.4 ? E[2] : E[1]));
+        elipF(g, 30.5, y + 3, 3.6, 2.6, (nx, ny) => (ny > 0.3 || nx > 0.3 ? E[2] : E[1]));
       },
     },
   };
@@ -997,6 +1193,11 @@
     const vista = VISTAS[Math.floor(quadro / QUADROS_POR_VISTA)] || "lado";
     const q = quadro % QUADROS_POR_VISTA;
     const P = pose(vista, q);
+    // montado: as duas mãos seguram as rédeas à frente do corpo
+    if (cfg.montado && q !== 4) {
+      if (vista === "lado") P.maoArma = [25, 31 + P.dy];
+      else { P.escudoEm = P.maoEscudo; P.maoArma = vista === "frente" ? [15, 33 + P.dy] : [26, 33 + P.dy]; P.maoEscudo = vista === "frente" ? [26, 33 + P.dy] : [15, 33 + P.dy]; }
+    }
     const c = coresHumano(cfg);
     const acs = (cfg.acessorios || []).map(([nome, cores]) => [ACESSORIOS[nome], cores, nome]).filter((a) => a[0]);
     const camada = (a) => (typeof a.camada === "function" ? a.camada(vista) : a.camada);
@@ -1008,14 +1209,15 @@
     for (const [a, cores] of acs) if (camada(a) === "meio") a.f(g, cores, P, cfg);
     cabeca(g, cfg, c, P);
     bracos(g, cfg, c, P, false);
+    if (arm && arm.ombros) arm.ombros(g, P);
     for (const [a, cores] of acs) if (camada(a) === "frente") a.f(g, cores, P, cfg);
     // a mão da arma por cima do cabo
     if (acs.some(([a]) => camada(a) === "frente")) bracos(g, cfg, c, P, true);
     if (cfg.extra) cfg.extra(g, P, c);
   }
 
-  // Registra um humano: cfg = { molde, cores, barba, cabelo, porte, gola, capuz, armadura, acessorios,
-  // hostil, duasMaosOcupadas, extra(g, P, c) }.
+  // Registra um humano: cfg = { molde, cores, barba, cabelo, porte, gola, capuz, mangaCor, armadura,
+  // acessorios, barra (barra da veste na cor do cinto), hostil, duasMaosOcupadas, extra(g, P, c) }.
   function humano(chave, cfg) {
     if (cfg.armadura && ARMADURAS[cfg.armadura]?.veste) {
       cfg = Object.assign({}, cfg, { cores: Object.assign({}, cfg.cores, ARMADURAS[cfg.armadura].veste), gola: cfg.gola || ARMADURAS[cfg.armadura].gola });
@@ -1040,28 +1242,47 @@
   };
   const ARCOS = { arco_madeira: ["#9a6a3c", "#eadcb6"], arco_composto: ["#6e3a24", "#f0e4c4"] };
   const base = (id) => String(id || "").split("@")[0];
+  // Cores do visual (JGB-49): cabeça, tronco, pernas e detalhe, ids da paleta CORES_VISUAL
+  // (dados/cosmeticos.js); null ou ausente = a cor do traje (ou a do boneco sem traje).
+  const PARTES_COR = ["cabeca", "tronco", "pernas", "detalhe"];
+  const corDaPaleta = (id) => (id && typeof CORES_VISUAL !== "undefined" && CORES_VISUAL.find((x) => x.id === id)?.cor) || null;
   function chaveJogador(eq = {}, visual = {}) {
+    const cores = PARTES_COR.map((k) => (corDaPaleta(visual.cores?.[k]) ? visual.cores[k] : ""));
     const partes = [base(eq.arma), eq.arco ? base(eq.arco) : "", base(eq.escudo), base(eq.armadura), visual.traje || "", visual.montaria || ""];
+    if (cores.some(Boolean)) partes.push("c:" + cores.join("."));
     return "pj_jogador" + (partes.some(Boolean) ? "|" + partes.join("|") : "");
   }
-  // visual: cosméticos (JGB-27) — traje (outfit) e montaria; só mudam a aparência.
+  // Panos da cabeça que tomam a cor da cabeça (o elmo é metal e fica como é).
+  const PANOS_CABECA = new Set(["turbante", "faixa", "bandana", "nemes"]);
+  // visual: cosméticos (JGB-27) — traje (outfit), montaria e cores (JGB-49); só mudam a aparência.
   function garantirJogador(eq = {}, visual = {}) {
     const chave = chaveJogador(eq, visual);
     if (PIXEL_PATTERNS[chave]) return chave;
     const traje = (visual.traje && typeof TRAJES !== "undefined" && TRAJES[visual.traje]?.visual) || null;
-    const acessorios = [["bolsa", ["#7a4a30", "#a8703a"]]].concat(traje?.acessorios || []);
+    const cab = corDaPaleta(visual.cores?.cabeca), tro = corDaPaleta(visual.cores?.tronco);
+    const per = corDaPaleta(visual.cores?.pernas), det = corDaPaleta(visual.cores?.detalhe);
+    const acessorios = [["bolsa", ["#7a4a30", "#a8703a"]]].concat((traje?.acessorios || []).map(([nome, cores]) =>
+      cab && PANOS_CABECA.has(nome) ? [nome, [cab].concat(cores.slice(1))] : [nome, cores]));
     const arco = base(eq.arco);
     if (arco === "funda") acessorios.push(["shofar", ["#8a6a42", "#5a3a24", "#a8916a"]]);
     else if (arco) acessorios.push(["arco_costas", ARCOS[arco] || ARCOS.arco_madeira]);
     if (eq.arma) acessorios.push(["espada", LAMINAS[base(eq.arma)] || LAMINAS.espada_ferro]);
     if (eq.escudo) acessorios.push(["escudo_redondo", CORES_ESCUDO[base(eq.escudo)] || CORES_ESCUDO.escudo_madeira]);
+    const cores = Object.assign({ H: "#4a2f20", S: "#e0a878", s: "#c68a5c", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", P: "#d4bf8f", p: "#b8a07a", q: "#8a7656", A: "#3b5a9a", F: "#5a3a24" }, traje?.cores);
+    if (traje?.cores && !traje.cores.P) { delete cores.P; delete cores.p; delete cores.q; }
+    if (cab) { cores.H = cab; if (traje?.molde === "veu") { cores.V = cab; cores.W = rampaDe(cab)[2]; } }
+    if (tro) [cores.R, cores.r, cores.d] = rampaDe(tro);
+    if (per) [cores.P, cores.p, cores.q] = rampaDe(per);
+    if (det) cores.A = det;
     const cfg = {
-      molde: traje?.molde || "curta", barba: false,
-      cores: Object.assign({ H: "#4a2f20", S: "#e0a878", s: "#c68a5c", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", A: "#3b5a9a", F: "#5a3a24" }, traje?.cores),
+      molde: traje?.molde || "curta", barba: false, barra: true,
+      cores,
       armadura: traje ? null : base(eq.armadura) || null,
-      gola: traje?.gola, cabelo: traje?.cabelo,
+      gola: det || traje?.gola, cabelo: traje?.cabelo,
       acessorios,
     };
+    // a túnica de pano é pano: com a cor do tronco escolhida, ela toma essa cor (fica só a gola dela)
+    if (tro && ARMADURAS[cfg.armadura]?.veste) { cfg.gola = cfg.gola || ARMADURAS[cfg.armadura].gola; cfg.armadura = null; }
     if (visual.montaria) registrarMontado(chave, cfg, visual.montaria);
     else humano(chave, cfg);
     return chave;
@@ -1069,123 +1290,280 @@
   garantirJogador({});
 
   // -------------------------------------------------------------------
-  // Montarias (JGB-27): jumento, camelo, cavalo e carro, só visuais. Célula 48 × 56 px de arte
-  // (24 × 28 unidades), chão na linha 53; 3 vistas × 5 quadros como os humanos. O cavaleiro é o boneco
-  // do jogador com cfg.montado, desenhado entre as partes de trás e da frente da montaria.
+  // Montarias (JGB-27, redesenhadas na JGB-49): jumento, camelo, cavalo e carro, só visuais. Célula de
+  // 56 × 64 px de arte (28 × 32 unidades), chão na linha 61; 3 vistas × 5 quadros como os humanos (no
+  // passo, as pernas vão em pares diagonais e o corpo desce 1 px). O cavaleiro é o boneco do jogador com
+  // cfg.montado, desenhado entre a parte de trás ("fundo") e a da frente ("frente") da montaria.
   // -------------------------------------------------------------------
+  const CHAO_MT = 61, W_MT = 28, H_MT = 32;
   const MONTARIAS_ARTE = {
-    jumento: { pelo: ["#5e554a", "#857a6c", "#a89e8e"], ventre: "#d8d0c0", focinho: "#ded6c6", crina: "#3e3830", corpo: [22, 39, 10, 5.2], perna: 46, pescoco: [[30, 36], [36, 31]], cabeca: [38.5, 30, 3.6, 2.8], orelhas: "longas", cauda: "tufo", sela: ["#8e2a1f", "#c2452d"] },
-    cavalo: { pelo: ["#5a3418", "#7e4a24", "#a86a38"], ventre: "#a86a38", focinho: "#4a2a14", crina: "#241610", corpo: [21, 36, 11.5, 6], perna: 43, pescoco: [[30, 33], [35, 26]], cabeca: [38.5, 25.5, 4.2, 2.6], orelhas: "curtas", cauda: "longa", sela: ["#3b5a9a", "#6d8fc4"] },
-    camelo: { pelo: ["#9a7444", "#c49a62", "#dcb882"], ventre: "#e8d0a0", focinho: "#b08a58", crina: "#8a6a3e", corpo: [20, 34, 10.5, 5.5], perna: 41, pescoco: [[30, 33], [35, 26], [38, 20]], cabeca: [40.5, 19.5, 3.4, 2.2], orelhas: "curtas", cauda: "tufo", corcova: true, sela: ["#8e2a1f", "#e8b94a"] },
+    // cavalo castanho de crina escura, meia branca na pata de trás, manta azul com franja de ouro
+    cavalo: {
+      pelo: ["#c8874c", "#9c5c30", "#6e3c20", "#48250f"], ventre: "#b87a46", focinho: "#4e3020", crina: ["#4a3020", "#2a1a12", "#160c08"], casco: "#2e2018",
+      corpo: [27, 41, 12, 6.5], anca: [16, 39.5, 7.5, 7.2], peito: [37, 40.5, 6.5, 7], pernas: { topo: 45, joelho: 53, larg: 4 },
+      pescoco: [[38, 36, 5.2], [40.5, 31, 4.4], [43, 26.5, 3.8]], testa: [45.5, 23.5, 3.8, 3.4], focinho2: [50, 27.5, 3.2, 2.8],
+      orelhas: [[43, 20], [45, 19.5]], cauda: "longa", meia: true, mancha: true,
+      manta: ["#6d8fc4", "#3b5a9a", "#22356a"], franja: "#e8b94a", couro: ["#a8703a", "#7a4a24", "#4f3220"], sela: [25, 33],
+    },
+    // jumento cinzento, focinho e barriga claros, cruz escura no lombo e orelhas compridas
+    jumento: {
+      pelo: ["#b4aa9a", "#8c8274", "#655c50", "#463e36"], ventre: "#ddd6c6", focinho: "#e6dfd0", crina: ["#5a524a", "#3e3830", "#2a2420"], casco: "#2a2420",
+      corpo: [26, 44, 11, 6], anca: [16.5, 43, 6.5, 6.5], peito: [35, 43.5, 6, 6.5], pernas: { topo: 48, joelho: 54, larg: 4 },
+      pescoco: [[36, 40, 4.8], [39, 36, 4.2], [41.5, 32.5, 3.8]], testa: [43.5, 30.5, 3.8, 3.4], focinho2: [48, 34, 3.4, 3.2],
+      orelhas: [[41, 23], [44, 22.5]], orelhaLonga: true, cauda: "tufo", cruz: true,
+      manta: ["#e2774f", "#c2452d", "#8e2a1f"], franja: "#e8b94a", couro: ["#a8703a", "#7a4a24", "#4f3220"], sela: [24, 37],
+    },
+    // camelo de uma corcova, pernas compridas de joelho grosso, tapete listrado com borlas sobre a corcova
+    camelo: {
+      pelo: ["#e8c890", "#c8a066", "#9c7646", "#6e5030"], ventre: "#ecd8ae", focinho: "#b08a58", crina: ["#a8824e", "#8a6a3e", "#6a4e2c"], casco: "#7a5a3a",
+      corpo: [25, 37, 11.5, 6.2], anca: [15.5, 37, 6.5, 6.4], peito: [34.5, 37.5, 6, 6.5], pernas: { topo: 41, joelho: 51, larg: 3 },
+      pescoco: [[37, 37.5, 4.2], [41, 38, 3.6], [44, 34, 3.3], [45.5, 29, 3], [46.5, 24.5, 2.9]], testa: [48, 21.5, 3.6, 3], focinho2: [51.5, 23.5, 2.8, 2.4],
+      orelhas: [[46, 18.5]], cauda: "tufo", corcova: [24, 29, 7, 5.5], patas: true,
+      manta: ["#e2774f", "#c2452d", "#8e2a1f"], franja: "#e8b94a", listra: "#3b5a9a", couro: ["#a8703a", "#7a4a24", "#4f3220"], sela: [24, 27],
+    },
   };
-  const CHAO_MT = 53;
-  function animalLado(g, a, q) {
-    const [A, B, C] = a.pelo, [cx, cy, rx, ry] = a.corpo;
-    const passo = q === 2 ? 1 : q === 3 ? -1 : 0, resp = q === 1 ? 1 : 0;
-    const tomP = (nx, ny) => (ny > 0.55 ? a.ventre : tom([A, B, C], -(0.4 * nx + 0.9 * ny)));
-    const perna = (x, d, longe) => {
-      const cor = longe ? [escuro(A, 0.15), A] : [B, A];
-      elipF(g, x, cy + ry * 0.4, 2.4, ry * 0.75, (nx) => (nx < -0.2 ? cor[0] : cor[1]));
-      linF(g, x - 1, cy + ry, x - 1 + d * 2, CHAO_MT - 1, cor[0], 2);
-      linF(g, x + 1, cy + ry, x + 1 + d * 2, CHAO_MT - 1, escuro(cor[0], 0.2));
-      retF(g, x - 2 + d * 2, CHAO_MT - 1, 4, 2, escuro(A, 0.45));
-    };
-    perna(cx - rx + 4, -passo, true); perna(cx + rx - 4, passo, true);
-    // cauda
-    if (a.cauda === "longa") for (let k = 0; k < 14; k++) retF(g, cx - rx - 1 - Math.round(k * 0.35) + (k > 9 ? passo : 0), cy - 3 + k, 3 - (k > 10 ? 1 : 0), 1, k % 3 ? a.crina : escuro(a.crina, 0.2));
-    else { linF(g, cx - rx, cy - 2, cx - rx - 2, cy + 6, B); elipF(g, cx - rx - 2, cy + 8, 1.6, 2.2, a.crina); }
-    // corpo
-    elipF(g, cx, cy + resp * 0.5, rx, ry, tomP);
-    elipF(g, cx - rx * 0.55, cy - 0.5, rx * 0.45, ry * 1.02, tomP);
-    elipF(g, cx + rx * 0.55, cy, rx * 0.45, ry * 1.08, tomP);
-    if (a.corcova) elipF(g, cx - 1, cy - ry - 1, 5.5, 4.2, (nx, ny) => tom([A, B, C], -(0.5 * nx + 0.9 * ny)));
-    perna(cx - rx + 3, passo, false); perna(cx + rx - 5, -passo, false);
-    // pescoço, crina e cabeça
-    const pts = a.pescoco;
-    for (let i = 0; i < pts.length - 1; i++) for (let t = 0; t <= 1; t += 0.2) {
-      const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t;
-      elipF(g, x, y, 2.6, 2.8, tomP);
-      if (a !== MONTARIAS_ARTE.camelo) { g.fino(Math.round(x - 2), Math.round(y - 2), a.crina); g.fino(Math.round(x - 1), Math.round(y - 3), a.crina); }
+  const tomAnimal = (a, ventre = true) => (nx, ny) => (ventre && ny > 0.62 ? a.ventre : tom(a.pelo, -(0.45 * nx + 0.95 * ny) + 0.1));
+  // Perna de lado: coxa/antebraço (larg px) até o joelho, canela mais fina, boleto e casco (ou pata larga).
+  function pernaMt(g, a, x, sw, dy, longe, tras) {
+    const R = longe ? [a.pelo[2], a.pelo[2], a.pelo[3], a.pelo[3]] : a.pelo;
+    const p = a.pernas, kx = x + Math.round(sw / 2) + (tras ? -1 : 0), fx = x + sw;
+    const m = bastao(new Set(), x, p.topo + dy, kx, p.joelho, p.larg);
+    bastao(m, kx, p.joelho, fx, CHAO_MT - 3, Math.max(2, p.larg - 1));
+    pintarMascara(g, m, R);
+    if (a.meia && !longe && tras) retF(g, fx - 1, CHAO_MT - 6, 3, 3, (X) => (X === fx - 1 ? "#f4ecdc" : "#d8ccb6"));
+    if (a.patas) retF(g, fx - 2, CHAO_MT - 2, 5, 2, (X, Y) => (Y === CHAO_MT - 2 ? claro(a.casco, longe ? 0 : 0.2) : a.casco));
+    else retF(g, fx - 2, CHAO_MT - 3, 4, 3, (X, Y) => (Y === CHAO_MT - 3 ? claro(a.casco, longe ? 0.05 : 0.25) : X === fx + 1 ? escuro(a.casco, 0.3) : a.casco));
+  }
+  function mantaLado(g, a, sx, sy) {
+    const [M0, M1, M2] = a.manta, [C0, C1, C2] = a.couro;
+    // manta (com a franja embaixo) e a sela de couro por cima
+    for (let Y = sy - 1; Y <= sy + 6; Y++) for (let X = sx - 7; X <= sx + 6; X++) {
+      let cor = X <= sx - 6 ? M0 : X >= sx + 5 ? M2 : M1;
+      if (Y === sy + 5) cor = a.franja;
+      if (Y === sy + 6) cor = X % 2 ? a.franja : null;
+      if (a.listra && (Y === sy + 1 || Y === sy + 3) && Y < sy + 5) cor = a.listra;
+      if (cor) g.fino(X, Y, cor);
     }
-    const [hx, hy, hrx, hry] = a.cabeca;
-    elipF(g, hx, hy, hrx, hry, (nx, ny) => (nx > 0.45 ? a.focinho : tom([A, B, C], -(0.5 * nx + 0.8 * ny))));
-    retF(g, Math.round(hx - 1), Math.round(hy - 1), 2, 1, "#1c1210"); g.fino(Math.round(hx - 1), Math.round(hy - 1), "#fff6e0");
-    g.fino(Math.round(hx + hrx - 1), Math.round(hy), escuro(a.focinho, 0.45));
-    if (a.orelhas === "longas") { linF(g, hx - 2, hy - 2, hx - 4, hy - 8, B, 2); linF(g, hx - 1, hy - 2, hx - 1, hy - 8, C, 2); g.fino(Math.round(hx - 1), Math.round(hy - 6), "#c88a7a"); }
-    else { linF(g, hx - 2, hy - 2, hx - 3, hy - 5, B, 2); }
-    // sela
-    const sx = cx + 1, sy = cy - ry - (a.corcova ? 3 : 0);
-    retF(g, sx - 6, sy - 1, 12, 5, (X, Y) => (Y === sy - 1 ? claro(a.sela[0], 0.15) : (X + Y) % 4 === 0 ? a.sela[1] : a.sela[0]));
-    retF(g, sx - 6, sy + 4, 12, 1, a.sela[1]);
-    return [sx, sy + 1];
+    retF(g, sx - 5, sy - 2, 10, 2, (X, Y) => (Y === sy - 2 ? C0 : X > sx + 2 ? C2 : C1));
+    retF(g, sx + 4, sy - 4, 2, 3, (X) => (X === sx + 4 ? C0 : C1));
+    retF(g, sx - 6, sy - 3, 2, 2, C1);
+    linF(g, sx + 1, sy + 6, sx + 1, sy + 10, C2); // loro do estribo
+  }
+  function animalLado(g, a, q) {
+    const passo = q === 2 ? 1 : q === 3 ? -1 : 0, dy = q >= 1 && q <= 3 ? 1 : 0;
+    const [cx, cy0, rx, ry] = a.corpo, cy = cy0 + dy;
+    const tomP = tomAnimal(a);
+    const xa = Math.round(a.anca[0]) + 1, xp = Math.round(a.peito[0]) - 1;
+    // pernas de longe (mais escuras): par diagonal ao contrário das de perto
+    pernaMt(g, a, xp - 2, 4 * -passo, dy, true, false);
+    pernaMt(g, a, xa + 2, 4 * passo, dy, true, true);
+    // cauda
+    if (a.cauda === "longa") {
+      for (let k = 0; k < 17; k++) { const x = Math.round(a.anca[0] - a.anca[2] + 1 - k * 0.32 + (k > 10 ? -passo : 0)); retF(g, x - 1, cy - 5 + k, 3 + (k > 4 && k < 13 ? 1 : 0), 1, (X) => (X === x - 1 ? a.crina[0] : (X + k) % 3 ? a.crina[1] : a.crina[2])); }
+    } else {
+      const x0 = Math.round(a.anca[0] - a.anca[2]);
+      linF(g, x0 + 1, cy - 4, x0 - 1, cy + 5, a.pelo[2], 2);
+      elipF(g, x0 - 0.5, cy + 7, 1.8, 2.6, (nx, ny) => (nx < -0.2 ? a.crina[0] : a.crina[1]));
+    }
+    // corpo: anca, barriga e peito
+    elipF(g, a.anca[0], a.anca[1] + dy, a.anca[2], a.anca[3], tomP);
+    elipF(g, cx, cy, rx, ry, tomP);
+    elipF(g, a.peito[0], a.peito[1] + dy, a.peito[2], a.peito[3], tomP);
+    if (a.corcova) { const [hx, hy, hrx, hry] = a.corcova; elipF(g, hx, hy + dy, hrx, hry, (nx, ny) => tom(a.pelo, -(0.5 * nx + 0.9 * ny) + 0.15)); }
+    // pescoço, crina e cabeça
+    for (let i = 0; i < a.pescoco.length - 1; i++) for (let t = 0; t <= 1; t += 0.125) {
+      const [x0, y0, r0] = a.pescoco[i], [x1, y1, r1] = a.pescoco[i + 1];
+      elipF(g, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t + dy, r0 + (r1 - r0) * t, r0 + (r1 - r0) * t, tomAnimal(a, false));
+    }
+    const [tx, ty, trx, try_] = a.testa, [fx, fy, frx, fry] = a.focinho2;
+    for (let t = 0; t <= 1; t += 0.2) elipF(g, tx + (fx - tx) * t, ty + (fy - ty) * t + dy, trx + (frx - trx) * t, try_ + (fry - try_) * t, tomAnimal(a, false));
+    elipF(g, fx, fy + dy, frx, fry, (nx, ny) => (nx + ny < -0.6 ? claro(a.focinho, 0.15) : a.focinho));
+    if (a.mancha) for (let t = 0.1; t <= 0.7; t += 0.15) g.fino(Math.round(tx + (fx - tx) * t + 1), Math.round(ty + (fy - ty) * t + dy - 2), "#f4ecdc");
+    g.fino(Math.round(fx + frx - 1), Math.round(fy + dy - 1), escuro(a.focinho, 0.5)); // narina
+    linF(g, Math.round(fx), Math.round(fy + fry + dy - 1), Math.round(fx + frx - 1), Math.round(fy + fry + dy - 1), escuro(a.focinho, 0.45)); // boca
+    const ox = Math.round(tx - 0.5), oy = Math.round(ty + dy - 1);
+    retF(g, ox, oy, 2, 1, "#1c1210"); g.fino(ox, oy - 1, "#1c1210"); g.fino(ox + 1, oy, "#3a2a24"); g.fino(ox, oy, "#fff6e0");
+    for (const [ex, ey] of a.orelhas) {
+      if (a.orelhaLonga) { linF(g, ex, ey + dy + 9, ex - 2, ey + dy, a.pelo[1], 2); g.fino(ex - 1, ey + dy + 3, "#d89a8a"); g.fino(ex - 2, ey + dy, a.crina[1]); }
+      else { linF(g, ex, ey + dy + 4, ex - 1, ey + dy, a.pelo[1], 2); g.fino(ex - 1, ey + dy, a.pelo[2]); }
+    }
+    // crina ao longo do pescoço (e o topete)
+    if (a.crina && !a.corcova) {
+      const pts = a.pescoco;
+      for (let i = 0; i < pts.length - 1; i++) for (let t = 0; t <= 1; t += 0.2) {
+        const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t + dy, r = pts[i][2];
+        const X = Math.round(x - r * 0.75), Y = Math.round(y - r * 0.75);
+        retF(g, X, Y, 2, 2, a.crina[1]); g.fino(X - 1, Y + 1, a.crina[2]); if ((i + t * 5) % 2 < 1) g.fino(X + 1, Y + 2, a.crina[1]);
+        g.fino(X, Y, a.crina[0]);
+      }
+      retF(g, Math.round(tx) - 1, Math.round(ty + dy - try_), 2, 2, a.crina[1]);
+    } else if (a.corcova) { retF(g, 44, 25 + dy, 2, 6, a.crina[1]); g.fino(47, 18 + dy, a.crina[1]); }
+    if (a.cruz) { linF(g, 18, cy - ry + 1, 33, cy - ry, a.pelo[3]); linF(g, 34, cy - ry - 1, 33, cy - ry + 5, a.pelo[3]); }
+    // pernas de perto
+    pernaMt(g, a, xp - 1, 4 * passo, dy, false, false);
+    pernaMt(g, a, xa, 4 * -passo, dy, false, true);
+    // manta, sela, cabeçada e rédeas
+    const [sx, sy0] = a.sela, sy = sy0 + dy;
+    mantaLado(g, a, sx, sy);
+    const [C0, , C2] = a.couro;
+    linF(g, Math.round(tx), Math.round(ty + dy - try_ + 1), Math.round(fx - 1), Math.round(fy + dy + 1), C2);
+    linF(g, Math.round(fx), Math.round(fy + dy - fry + 1), Math.round(fx), Math.round(fy + dy + fry - 1), C2);
+    // rédeas com folga: descem da boca e sobem até a mão do cavaleiro
+    const mx = Math.round((fx + sx + 6) / 2), my = Math.max(Math.round(fy + dy + 1), sy - 2) + 3;
+    linF(g, Math.round(fx - 1), Math.round(fy + dy + 1), mx, my, C0); linF(g, mx, my, sx + 6, sy - 2, C0);
+    return [sx, sy];
+  }
+  // De frente: o lombo e as patas de trás atrás do cavaleiro; peito, pescoço, cabeça e patas da frente
+  // por cima dele. Cabeça de frente (comprida, as orelhas em pé), pintada como uma forma só: luz da esquerda, focinho
+  // embaixo, olhos nos lados, narinas, topete e a cabeçada com o frontal colorido.
+  function cabecaFrenteMt(g, a, xs, y0, curta) {
+    const P = a.pelo, F = [claro(a.focinho, 0.18), a.focinho, escuro(a.focinho, 0.25), escuro(a.focinho, 0.45)];
+    const camelo = !!a.corcova, jumento = !!a.orelhaLonga;
+    const HW = curta ? [3, 4, 5, 5, 5, 4, 4, 4, 4, 4, 3, 3] : [5, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 4, 4, 4, 4, 3];
+    const n = HW.length, fz = n - (curta ? 4 : 5);
+    // orelhas
+    for (const s of [-1, 1]) {
+      const ox = xs + s * (jumento ? 5 : 4) - (s > 0 ? 2 : 0), comp = jumento ? 7 : camelo ? 2 : 5;
+      const m = bastao(new Set(), ox + 1, y0, ox + 1 + s * (jumento ? 5 : 1), y0 - comp, 2);
+      pintarMascara(g, m, s < 0 ? [P[0], P[1], P[2], P[2]] : [P[1], P[2], P[3], P[3]]);
+      if (jumento) { g.fino(ox + s + (s < 0 ? 1 : 0), y0 - 4, "#d89a8a"); g.fino(ox + 1 + s * 5, y0 - comp, a.crina[1]); }
+    }
+    for (let i = 0; i < n; i++) {
+      const hw = HW[i], x0 = xs - hw, x1 = xs + hw - 1, Y = y0 + i;
+      for (let X = x0; X <= x1; X++) g.fino(X, Y, i >= fz ? tomPano(F, X, x0, x1) : tomPano(P, X, x0, x1));
+    }
+    if (a.mancha) retF(g, xs - 1, y0 + 1, 2, fz - 1, (X, Y) => (X === xs - 1 ? "#f4ecdc" : "#d8ccb6"));
+    // olhos nos lados, narinas, topete
+    const ye = y0 + 3;
+    retF(g, xs - HW[3], ye, 1, 2, "#1c1210"); g.fino(xs - HW[3] + 1, ye, "#fff6e0");
+    retF(g, xs + HW[3] - 1, ye, 1, 2, "#1c1210");
+    g.fino(xs - 2, y0 + n - 2, F[3]); g.fino(xs + 1, y0 + n - 2, F[3]);
+    if (!camelo) retF(g, xs - 2, y0 - 1, 4, 3, (X, Y) => (Y === y0 - 1 ? a.crina[0] : (X + Y) % 2 ? a.crina[1] : a.crina[2]));
+    else retF(g, xs - 2, y0 + n - 1, 4, 1, F[2]); // beiço caído do camelo
+    // cabeçada
+    const C = a.couro[2];
+    for (let X = xs - HW[1]; X <= xs + HW[1] - 1; X++) g.fino(X, y0 + 1, C);
+    for (let X = xs - HW[fz]; X <= xs + HW[fz] - 1; X++) g.fino(X, y0 + fz, C);
+    retF(g, xs - 1, y0 + 1, 2, 1, a.franja);
   }
   function animalFrente(g, a, q, parte) {
-    const [A, B, C] = a.pelo, passo = q === 2 ? 1 : q === 3 ? -1 : 0;
-    const tomP = (nx, ny) => (ny > 0.6 ? a.ventre : tom([A, B, C], -(0.5 * nx + 0.8 * ny)));
-    if (parte === "fundo") {
-      // lombo atrás do cavaleiro (corcova do camelo) e as pernas
-      for (const [x, d] of [[18, passo], [30, -passo]]) { retF(g, x - 1, 42 - d, 4, CHAO_MT - 42 + d, (X) => (X === x - 1 ? B : A)); retF(g, x - 1, CHAO_MT - 1, 4, 2, escuro(A, 0.45)); }
-      elipF(g, 24, 38, 9, 6, tomP);
-      if (a.corcova) elipF(g, 24, 31, 6, 4.5, tomP);
-      retF(g, 15, 32, 18, 4, (X, Y) => ((X + Y) % 4 === 0 ? a.sela[1] : a.sela[0]));
-      return [24, 33];
-    }
-    // cabeça e pescoço à frente do cavaleiro
-    const hy = a === MONTARIAS_ARTE.camelo ? 38 : 39;
-    elipF(g, 24, hy - 2, 3.4, 5, tomP);
-    elipF(g, 24, hy + 3, 3.2, 3.6, (nx, ny) => (ny > 0.2 ? a.focinho : tom([A, B, C], -(0.5 * nx + 0.8 * ny))));
-    g.fino(22, hy, "#1c1210"); g.fino(26, hy, "#1c1210"); g.fino(22, hy - 1, "#fff6e0"); g.fino(23, hy + 5, escuro(a.focinho, 0.5)); g.fino(25, hy + 5, escuro(a.focinho, 0.5));
-    if (a.orelhas === "longas") { linF(g, 21, hy - 5, 18, hy - 11, B, 2); linF(g, 27, hy - 5, 30, hy - 11, A, 2); }
-    else { linF(g, 21, hy - 6, 20, hy - 9, B, 2); linF(g, 27, hy - 6, 28, hy - 9, A, 2); }
-    if (a.crina && a !== MONTARIAS_ARTE.camelo) retF(g, 23, hy - 8, 2, 3, a.crina);
-  }
-  function animalCostas(g, a, q, parte) {
-    const [A, B, C] = a.pelo, passo = q === 2 ? -1 : q === 3 ? 1 : 0;
-    const tomP = (nx, ny) => tom([A, B, C], -(0.5 * nx + 0.8 * ny));
-    if (parte === "fundo") {
-      if (a.orelhas === "longas") { linF(g, 21, 26, 18, 20, B, 2); linF(g, 27, 26, 30, 20, A, 2); }
-      elipF(g, 24, 29, 3, 3, tomP);
-      return [24, 33];
-    }
-    for (const [x, d] of [[18, passo], [30, -passo]]) { retF(g, x - 1, 44 - d, 4, CHAO_MT - 44 + d, (X) => (X === x - 1 ? B : A)); retF(g, x - 1, CHAO_MT - 1, 4, 2, escuro(A, 0.45)); }
-    elipF(g, 24, 41, 9.5, 6.5, tomP);
-    linF(g, 24, 37, 24, 47, escuro(A, 0.25));
-    if (a.cauda === "longa") retF(g, 23, 40, 3, 11, (X, Y) => (Y % 3 ? a.crina : escuro(a.crina, 0.2)));
-    else { retF(g, 23, 40, 2, 6, B); elipF(g, 24, 47, 1.6, 2, a.crina); }
-  }
-  // Carro: cavalo à frente, caixa de vime e roda de raios atrás; o cavaleiro vai de pé dentro.
-  function carroVista(g, vista, q, parte) {
-    const cav = MONTARIAS_ARTE.cavalo, [A, B] = cav.pelo;
-    const roda = (cx, cy, r) => {
-      elipF(g, cx, cy, r, r, (nx, ny) => { const d = Math.sqrt(nx * nx + ny * ny); return d > 0.78 ? (d > 0.92 ? "#3e2a1a" : "#7a5530") : d < 0.25 ? "#b07a38" : null; });
-      for (let k = 0; k < 6; k++) { const ang = (k / 6) * Math.PI + q * 0.5; linF(g, cx - Math.cos(ang) * (r - 1), cy - Math.sin(ang) * (r - 1), cx + Math.cos(ang) * (r - 1), cy + Math.sin(ang) * (r - 1), "#6b4a2e"); }
+    const passo = q === 2 ? 1 : q === 3 ? -1 : 0, dy = q >= 1 && q <= 3 ? 1 : 0;
+    const P = a.pelo, tomP = (nx, ny) => tom(P, -(0.55 * nx + 0.85 * ny) + 0.15);
+    const camelo = !!a.corcova, jumento = !!a.orelhaLonga, pequeno = !!a.pequeno;
+    const yb = (camelo ? 38 : jumento ? 44 : 42) + dy, xs = 28;
+    const perna = (x, ergue, longe, topo) => {
+      const R = longe ? [P[2], P[2], P[3], P[3]] : [P[0], P[1], P[1], P[2]];
+      pintarMascara(g, bastao(new Set(), x, topo, x, CHAO_MT - 3 - ergue, a.pernas.larg + 1), R);
+      if (camelo) retF(g, x - 3, CHAO_MT - 2 - ergue, 6, 2, (X, Y) => (Y === CHAO_MT - 2 - ergue ? claro(a.casco, 0.2) : a.casco));
+      else retF(g, x - 2, CHAO_MT - 3 - ergue, 5, 3, (X, Y) => (Y === CHAO_MT - 3 - ergue ? claro(a.casco, 0.2) : X === x + 2 ? escuro(a.casco, 0.3) : a.casco));
     };
+    if (parte === "fundo") {
+      // o corpo visto de frente vai para trás: o lombo largo (com a manta) e as patas de trás dos lados
+      perna(xs - 10, passo === -1 ? 1 : 0, true, yb + 4); perna(xs + 9, passo === 1 ? 1 : 0, true, yb + 4);
+      elipF(g, xs, yb + 2, pequeno ? 9 : 14, pequeno ? 6 : 8, (nx, ny) => (ny > 0.55 ? a.ventre : tomP(nx, ny)));
+      if (camelo) elipF(g, xs, yb - 5, 8, 6, tomP);
+      if (pequeno) return [xs, yb];
+      const [M0, M1, M2] = a.manta, ym = yb - (camelo ? 9 : 6);
+      for (let Y = ym; Y <= ym + 10; Y++) for (let X = xs - 14; X <= xs + 13; X++) {
+        let cor = X < xs - 11 ? M0 : X > xs + 10 ? M2 : M1;
+        if (Y === ym + 9) cor = a.franja;
+        if (Y === ym + 10) cor = X % 2 ? a.franja : null;
+        if (a.listra && (Y === ym + 3 || Y === ym + 5)) cor = a.listra;
+        if (cor) g.fino(X, Y, cor);
+      }
+      return [xs, ym];
+    }
+    // patas da frente, peito largo e a cabeça baixa diante do cavaleiro
+    perna(xs - 6, passo === 1 ? 1 : 0, false, yb + 10); perna(xs + 5, passo === -1 ? 1 : 0, false, yb + 10);
+    elipF(g, xs, yb + 10, pequeno ? 7 : camelo ? 7.5 : 10, 5, tomP);
+    if (camelo) elipF(g, xs, yb + 5, 4, 5, tomP); // pescoço
+    cabecaFrenteMt(g, a, xs, yb + (camelo ? -1 : pequeno ? 3 : -3), pequeno || camelo);
+  }
+  // De costas: cabeça e orelhas atrás do cavaleiro; garupa, cauda e patas de trás por cima dele.
+  function animalCostas(g, a, q, parte) {
+    const passo = q === 2 ? -1 : q === 3 ? 1 : 0, dy = q >= 1 && q <= 3 ? 1 : 0;
+    const P = a.pelo, tomP = (nx, ny) => tom(P, -(0.55 * nx + 0.85 * ny) + 0.15);
+    const camelo = !!a.corcova, jumento = !!a.orelhaLonga;
+    const yb = (camelo ? 38 : jumento ? 44 : 42) + dy, xs = 28;
+    if (parte === "fundo") {
+      const hy = yb - (camelo ? 19 : 14);
+      elipF(g, xs, hy + 3, 5, 5, tomP);
+      for (const s of [-1, 1]) linF(g, xs + s * 3 - (s > 0 ? 1 : 0), hy, xs + s * (jumento ? 6 : 4) - (s > 0 ? 1 : 0), hy - (jumento ? 10 : 5), s < 0 ? P[1] : P[2], 2);
+      if (!camelo) retF(g, xs - 1, hy - 2, 2, 12, (X) => (X === xs - 1 ? a.crina[0] : a.crina[1]));
+      elipF(g, xs, yb - 2, 12, 6, tomP);
+      if (camelo) elipF(g, xs, yb - 6, 8, 6, tomP);
+      const [M0, M1, M2] = a.manta, ym = yb - (camelo ? 9 : 6);
+      for (let Y = ym; Y <= ym + 10; Y++) for (let X = xs - 14; X <= xs + 13; X++) {
+        let cor = X < xs - 11 ? M0 : X > xs + 10 ? M2 : M1;
+        if (Y === ym + 9) cor = a.franja;
+        if (Y === ym + 10) cor = X % 2 ? a.franja : null;
+        if (a.listra && (Y === ym + 3 || Y === ym + 5)) cor = a.listra;
+        if (cor) g.fino(X, Y, cor);
+      }
+      return [xs, ym];
+    }
+    const perna = (x, ergue) => {
+      pintarMascara(g, bastao(new Set(), x, yb + 8, x, CHAO_MT - 3 - ergue, a.pernas.larg + 1), P);
+      if (camelo) retF(g, x - 3, CHAO_MT - 2 - ergue, 6, 2, a.casco);
+      else retF(g, x - 2, CHAO_MT - 3 - ergue, 5, 3, (X, Y) => (Y === CHAO_MT - 1 - ergue ? escuro(a.casco, 0.2) : a.casco));
+    };
+    perna(xs - 7, passo === 1 ? 1 : 0); perna(xs + 6, passo === -1 ? 1 : 0);
+    // garupa redonda com o vinco no meio
+    for (const s of [-1, 1]) elipF(g, xs + s * 5 - (s > 0 ? 1 : 0), yb + 5, 8, 7.5, (nx, ny) => tom(P, -(0.55 * nx + 0.85 * ny) + (s < 0 ? 0.3 : -0.05)));
+    linF(g, xs, yb, xs, yb + 11, P[3]); linF(g, xs - 1, yb, xs - 1, yb + 11, P[2]);
+    if (a.cauda === "longa") for (let Y = yb - 1; Y <= yb + 17; Y++) { const w = Y < yb + 2 ? 2 : Y < yb + 13 ? 4 : 3, x = xs - (w >> 1) + (Y > yb + 11 ? passo : 0); retF(g, x, Y, w, 1, (X) => (X === x ? a.crina[0] : (X + Y) % 3 ? a.crina[1] : a.crina[2])); }
+    else { retF(g, xs - 1, yb, 2, 9, (X) => (X === xs - 1 ? P[1] : P[2])); elipF(g, xs, yb + 11, 2, 2.8, (nx) => (nx < 0 ? a.crina[0] : a.crina[1])); }
+  }
+  // Carro: cavalo à frente, caixa de vime e a roda de raios; o cavaleiro vai de pé dentro.
+  function roda(g, cx, cy, r, q) {
+    elipF(g, cx, cy, r, r, (nx, ny) => { const d = Math.sqrt(nx * nx + ny * ny); return d > 0.8 ? (nx + ny < -0.4 ? "#a8703a" : d > 0.93 ? "#3e2a1a" : "#7a5530") : d < 0.24 ? (nx + ny < 0 ? "#e8b94a" : "#b07a38") : null; });
+    for (let k = 0; k < 4; k++) { const ang = (k / 4) * Math.PI + (q % 2) * 0.4; linF(g, cx - Math.cos(ang) * (r - 1.2), cy - Math.sin(ang) * (r - 1.2), cx + Math.cos(ang) * (r - 1.2), cy + Math.sin(ang) * (r - 1.2), "#6b4a2e"); }
+  }
+  function carroVista(g, vista, q, parte) {
+    const cav = MONTARIAS_ARTE.cavalo, dy = q >= 1 && q <= 3 ? 1 : 0;
+    const vime = (X, Y, x0) => ((X + Y) % 3 === 0 ? "#7a5530" : (X - Y) % 4 === 0 ? "#c8964e" : X < x0 + 2 ? "#c08a48" : "#9a6a38");
     if (vista === "lado") {
       if (parte === "fundo") {
-        // cavalo menor à frente (direita), puxando pelo varal
+        // cavalo à frente (direita), menor, puxando pelo varal
+        const pequeno = Object.assign({}, cav, {
+          corpo: [41, 45, 8, 4.8], anca: [34.5, 44, 5, 5], peito: [47.5, 44.5, 4.5, 5], pernas: { topo: 48, joelho: 54, larg: 3 },
+          pescoco: [[48.5, 40.5, 3.6], [50.5, 36.5, 3], [52, 33, 2.7]], testa: [53, 30.5, 2.8, 2.6], focinho2: [54.5, 34, 2.2, 2], orelhas: [[51, 27]],
+          sela: [41, 41], meia: false,
+        });
         const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
-        const tomP = (nx, ny) => tom([A, B, cav.pelo[2]], -(0.4 * nx + 0.9 * ny));
-        for (const [x, d] of [[31, -passo], [41, passo]]) { linF(g, x, 42, x + d * 2, CHAO_MT - 1, A, 2); retF(g, x - 1 + d * 2, CHAO_MT - 1, 3, 2, "#2a1a14"); }
-        elipF(g, 36, 40, 7.5, 4.4, tomP);
-        for (let t = 0; t <= 1; t += 0.2) elipF(g, 41 + 3 * t, 37 - 7 * t, 2.2, 2.4, tomP);
-        elipF(g, 45.5, 29.5, 2.6, 1.8, (nx) => (nx > 0.4 ? cav.focinho : B)); g.fino(45, 29, "#1c1210");
-        linF(g, 43, 28, 42, 25, B, 2); retF(g, 41, 30, 2, 6, cav.crina);
-        for (const [x, d] of [[33, passo], [39, -passo]]) { linF(g, x, 42, x + d * 2, CHAO_MT - 1, B, 2); retF(g, x - 1 + d * 2, CHAO_MT - 1, 3, 2, "#2a1a14"); }
-        linF(g, 18, 40, 31, 38, "#6b4a2e", 2);
-        return [14, 33];
+        for (let k = 0; k < 11; k++) retF(g, Math.round(29.5 - k * 0.25), 41 + k + dy, 2, 1, k % 3 ? cav.crina[1] : cav.crina[2]);
+        elipF(g, pequeno.anca[0], pequeno.anca[1] + dy, pequeno.anca[2], pequeno.anca[3], tomAnimal(cav));
+        elipF(g, 41, 45 + dy, 8, 4.8, tomAnimal(cav));
+        elipF(g, 47.5, 44.5 + dy, 4.5, 5, tomAnimal(cav));
+        for (const [x, s, longe, tras] of [[45, -passo, true, false], [35, passo, true, true], [47, passo, false, false], [33, -passo, false, true]]) pernaMt(g, pequeno, x, 3 * s, dy, longe, tras);
+        for (let t = 0; t <= 1; t += 0.2) elipF(g, 48.5 + 3.5 * t, 40.5 - 7.5 * t + dy, 3.6 - t, 3.6 - t, tomAnimal(cav, false));
+        elipF(g, 53, 31 + dy, 2.8, 2.6, tomAnimal(cav, false)); elipF(g, 54.5, 34 + dy, 2.2, 2, cav.focinho);
+        g.fino(52, 30 + dy, "#1c1210"); linF(g, 51, 28 + dy, 50, 25 + dy, cav.pelo[1], 2);
+        for (let t = 0; t <= 1; t += 0.25) retF(g, Math.round(47.5 + 3.5 * t), Math.round(38 - 7 * t + dy), 2, 2, cav.crina[1]);
+        // arreio e varal
+        retF(g, 44, 40 + dy, 3, 9, (X) => (X === 44 ? "#e8b94a" : "#b07a38"));
+        linF(g, 14, 47 + dy, 44, 44 + dy, "#6b4a2e", 2);
+        linF(g, 54, 34 + dy, 26, 36 + dy, "#4f3220");
+        return [14, 47 + dy];
       }
-      retF(g, 4, 34, 20, 10, (X, Y) => (Y === 34 ? "#d29e52" : (X + Y) % 3 === 0 ? "#7a5530" : X < 7 ? "#b07a38" : "#8a5a32"));
-      retF(g, 4, 34, 20, 1, "#e8b94a");
-      roda(13, 46, 7);
+      // caixa do carro por cima das pernas do cavaleiro e a roda
+      for (let Y = 37 + dy; Y <= 50 + dy; Y++) { const x0 = Y < 40 + dy ? 4 + (40 + dy - Y) : 4, x1 = 26; for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 37 + dy || X === x1 ? "#e8b94a" : Y === 50 + dy ? "#5e3c1c" : vime(X, Y, x0)); }
+      retF(g, 4, 43 + dy, 23, 1, "#b07a38");
+      roda(g, 15, 52, 9, q);
       return;
     }
     if (parte === "fundo") {
-      roda(7, 45, 5.5); roda(41, 45, 5.5);
-      if (vista === "frente") return [24, 33];
-      return [24, 33];
+      roda(g, 6, 51, 7.5, q); roda(g, 49, 51, 7.5, q);
+      if (vista === "costas") { elipF(g, 28, 26 + dy, 3.6, 4, tomAnimal(cav, false)); linF(g, 25, 23 + dy, 24, 19 + dy, cav.pelo[1], 2); linF(g, 30, 23 + dy, 31, 19 + dy, cav.pelo[2], 2); }
+      return [28, 49 + dy];
     }
-    retF(g, 10, 38, 28, 8, (X, Y) => (Y === 38 ? "#d29e52" : (X + Y) % 3 === 0 ? "#7a5530" : "#8a5a32"));
-    if (vista === "frente") animalFrente(g, cav, q, "frente");
+    for (let Y = 41 + dy; Y <= 52 + dy; Y++) for (let X = 11; X <= 44; X++) g.fino(X, Y, Y === 41 + dy ? "#e8b94a" : Y === 52 + dy ? "#5e3c1c" : X === 11 ? "#c8964e" : X === 44 ? "#6b4a2e" : vime(X, Y, 11));
+    retF(g, 11, 46 + dy, 34, 1, "#b07a38");
+    if (vista === "frente") {
+      // o cavalo, menor, de frente diante da caixa
+      const pequeno = Object.assign({}, cav, { pequeno: true, pernas: { topo: 46, joelho: 54, larg: 3 } });
+      animalFrente(g, pequeno, q, "frente");
+    }
   }
   function desenharMontaria(g, tipo, vista, q, parte) {
     if (tipo === "carro") return carroVista(g, vista, q, parte);
@@ -1196,32 +1574,32 @@
   }
   // Montaria sozinha (para a loja): de lado, parada.
   for (const tipo of ["jumento", "cavalo", "camelo", "carro"])
-    registrar("mt_" + tipo, { w: 24, h: 28, quadros: 1, contorno: "amigo", origem: [0.5, 1], desenhar(g) { desenharMontaria(g, tipo, "lado", 0, "fundo"); desenharMontaria(g, tipo, "lado", 0, "frente"); } });
+    registrar("mt_" + tipo, { w: W_MT, h: H_MT, quadros: 1, contorno: "amigo", origem: [0.5, 1], desenhar(g) { desenharMontaria(g, tipo, "lado", 0, "fundo"); desenharMontaria(g, tipo, "lado", 0, "frente"); } });
 
   // Jogador montado: montaria (fundo) + boneco sentado (ou de pé no carro) + montaria (frente).
+  // A sela devolve [x, y] onde fica o quadril (linha yR = 33 do boneco); no carro, o chão da caixa.
   function registrarMontado(chave, cfg, tipo) {
     const cav = Object.assign({}, cfg, { montado: tipo !== "carro" });
     return registrar(chave, {
-      w: 24, h: 28, quadros: QUADROS_POR_VISTA * VISTAS.length, direcoes: VISTAS.length, contorno: "amigo", origem: [0.5, 1],
-      humano: true, montado: tipo, retratoQuadro: QUADROS_POR_VISTA, busto: [4, 0, 16, 13],
+      w: W_MT, h: H_MT, quadros: QUADROS_POR_VISTA * VISTAS.length, direcoes: VISTAS.length, contorno: "amigo", origem: [0.5, 1],
+      humano: true, montado: tipo, retratoQuadro: QUADROS_POR_VISTA, busto: [6, 0, 16, 14], limiteCores: 32,
       desenhar(g, quadro) {
         const vista = VISTAS[Math.floor(quadro / QUADROS_POR_VISTA)], q = quadro % QUADROS_POR_VISTA;
         const [sx, sy] = desenharMontaria(g, tipo, vista, q, "fundo");
         const r = new Grade(20, 24);
-        desenharHumano(r, cav, quadro - (q >= 2 && q <= 3 ? q : 0)); // montado não dá passos
-        const ox = Math.round(sx) - 20, oy = Math.round(sy) - (tipo === "carro" ? 40 : 33);
+        desenharHumano(r, cav, quadro - (q >= 1 && q <= 3 ? q : 0)); // montado não dá passos: balança com a montaria
+        const ox = Math.round(sx) - 20, oy = Math.round(sy) - (tipo === "carro" ? 45 : 33);
         for (let Y = 0; Y < r.h; Y++) for (let X = 0; X < r.w; X++) { const c = r.d[Y * r.w + X]; if (c) g.fino(X + ox, Y + oy, c); }
         desenharMontaria(g, tipo, vista, q, "frente");
       },
     });
   }
-
   // ----- NPCs (§6.4) -----
   humano("pj_eliabe", {
     molde: "manto", cabelo: "curto",
     cores: { H: "#e8dcc0", S: "#cf9466", s: "#b07548", B: "#e8dcc0", R: "#b08a5a", r: "#8a6a42", d: "#5e4630", A: "#8e2a1f", F: "#5e4630" },
     // faixa de linho claro descendo pela veste e tira vermelha na testa
-    extraCorpo: (g, P) => { if (P.vista === "frente") retF(g, 16, 22 + P.dy, 2, 20 - P.dy, "#e8dcc0"); },
+    extraCorpo: (g, P) => { if (P.vista === "frente") retF(g, 15, P.yT + 2, 2, 41 - P.yT - 2, (X) => (X === 15 ? "#f4ead2" : "#d8ccae")); },
     acessorios: [["faixa", ["#8e2a1f"]], ["cajado_curvo", ["#7a5530", "#9a7048"]]],
   });
   humano("pj_micael", {
@@ -1557,7 +1935,7 @@
     molde: "curta", hostil: true, barba: false,
     cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#e8b94a", F: "#4f3220" },
     // peito nu com colar largo, saiote de linho e nemes listrado
-    extraCorpo: (g, P, c) => { const x0 = P.vista === "lado" ? 15 : 13, x1 = P.vista === "lado" ? 25 : 26; retF(g, x0, 21 + P.dy, x1 - x0 + 1, 9 - P.dy, (X) => (X < x0 + 2 ? c.S : X > x1 - 2 ? c.s : c.S)); },
+    extraCorpo: (g, P, c) => { const x0 = P.vista === "lado" ? 14 : 12, x1 = P.vista === "lado" ? 26 : 27; retF(g, x0, P.yT, x1 - x0 + 1, P.yC - P.yT, (X, Y) => (Y === P.yC - 1 ? c.pele[2] : tomPano(c.pele, X, x0, x1))); },
     mangaCor: "#b97a4c",
     acessorios: [["colar", ["#e8b94a", "#3b5a9a"]], ["nemes", ["#f0e8d8", "#3b5a9a", "#e8b94a"]], ["escudo_alto", ["#8a5a32", "#e8dcc0", "#5e3c1c"]], ["lanca", ["#6b4a2e", "#b07a38"]]],
   });
@@ -1905,7 +2283,7 @@
     molde: "curta", hostil: true,
     cores: { H: "#1e1a1a", S: "#a86e44", s: "#86542e", B: "#2a2420", R: "#c8b48a", r: "#a8916a", d: "#7d6a4a", A: "#c2452d", F: "#2a1a14" },
     // tapa-olho e faixa vermelha na cintura
-    extra: (g, P) => { if (P.vista === "frente") { retF(g, 16, 12 + P.dy, 3, 2, "#1e1a1a"); linF(g, 14, 10 + P.dy, 25, 9 + P.dy, "#1e1a1a"); } else if (P.vista === "lado") retF(g, 22, 12 + P.dy, 3, 2, "#1e1a1a"); },
+    extra: (g, P) => { if (P.vista === "frente") { retF(g, 15, P.T + 6, 4, 3, "#1e1a1a"); linF(g, 12, P.T + 5, 27, P.T + 4, "#1e1a1a"); } else if (P.vista === "lado") { retF(g, 23, P.T + 6, 3, 3, "#1e1a1a"); linF(g, 19, P.T + 5, 23, P.T + 6, "#1e1a1a"); } },
     acessorios: [["bandana", ["#c2452d", "#e2774f"]], ["corda", ["#a8916a", "#7d6a4a"]], ["espada_curva", ["#a8b4bc", "#e4ecf0", "#5a3a24"]]],
   });
   humano("in_auriga", {
@@ -3736,7 +4114,7 @@
         linhas.forEach((l, i) => { if (l.length !== def.w) problemas.push(`${chave}: linha ${i} com ${l.length} != ${def.w}`); });
         for (const l of linhas) for (const ch of l) if (ch !== "." && !def.cores[ch]) problemas.push(`${chave}: '${ch}' sem cor`);
       }
-      const limite = def.res === 1 ? (chave.startsWith("ui_") ? 6 : 12) : chave.startsWith("fx_") ? 999 : LIMITE_CORES + 1;
+      const limite = def.limiteCores ? def.limiteCores + 1 : def.res === 1 ? (chave.startsWith("ui_") ? 6 : 12) : chave.startsWith("fx_") ? 999 : LIMITE_CORES + 1;
       for (let q = 0; q < def.quadros; q++) {
         const px = pixels(chave, { quadro: q });
         const n = new Set(px.data.filter(Boolean)).size;

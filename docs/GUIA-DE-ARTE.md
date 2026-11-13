@@ -1,8 +1,8 @@
 # Guia de arte — Jornada · RPG Bíblico
 
 Toda a arte é pixel art **original**, gerada em código por `sprites.js` (nenhum sprite copiado de outro jogo,
-nenhuma imagem externa). Este guia descreve as regras de desenho desde a versão 16 (JGB-48, JGB-27 e JGB-12)
-e documenta a paleta de cada região.
+nenhuma imagem externa). Este guia descreve as regras de desenho desde a versão 16 (JGB-48, JGB-27 e JGB-12),
+com os personagens, as cores do visual e as montarias da JGB-49, e documenta a paleta de cada região.
 
 ## 1. Resolução
 
@@ -28,31 +28,75 @@ e documenta a paleta de cada região.
   nunca em "ruído de TV".
 - Até 24 cores por sprite (o contorno não entra na fusão das cores raras).
 
-## 3. Personagens (humanos)
+## 3. Personagens (humanos) — proporção de MMORPG clássico (JGB-49)
 
-- Célula de **40 × 48 px** (20 × 24 unidades), pés na linha 45, corpo de ~28 × 40 px (cabeça de 12 × 12).
+Vale para o jogador, os NPCs e os inimigos humanos (todos saem de `humano(chave, cfg)` em `sprites.js`).
+Capturas: `docs/capturas/humanos-antes-depois.jpg` e `docs/capturas/passos-3vistas.jpg`.
+
+- Célula de **40 × 48 px** (20 × 24 unidades), pés na linha 45, contorno de 1 px por fora. O boneco é
+  atarracado e lê de longe: **cabeça de 16 × 15 px** (linhas 7–21, colunas 12–27, orelhas de 1 px para fora),
+  **tronco de 16 px** (linhas 22–30) com o cinto em 31–32, **braços de 4 px** de cada lado (24 px de ombro a
+  ombro, ombro arredondado), pernas curtas (saia até a linha 37 e pernas de 4 px na túnica curta; veste até a
+  42 no manto), **mãos de 4 × 3 px** e sandálias de 5 px (6 px de lado, com a tira e a sola). Altura total
+  ~40 px: a cabeça é ~38% do corpo.
+- Rosto de frente: sobrancelha de 3 px, olho de 2 × 2 (pálpebra escura em cima; embaixo o branco para fora e
+  a pupila para dentro), nariz de luz e sombra, bochecha rosada de 1 px e boca de 2 px. Barba cheia do bigode
+  até 2 px abaixo do queixo, com mechas e a boca aberta no meio. Cabelo curto com franja recortada e
+  costeletas; `longo` cai atrás dos ombros; `careca` mostra o brilho do crânio. Véu (`molde: "veu"` ou
+  `capuz`) enquadra o rosto e cai sobre os ombros (de costas, até o meio das costas).
+- **4 tons por material** (`rampaDe`, ou as letras R/r/d + uma sombra funda): realce, base, sombra e sombra
+  funda, com a luz de cima e da esquerda. A sombra puxa para o púrpura-sépia e a luz para o creme quente (nada
+  de cinza). Pano em faixas (`tomPano`): realce nas 2 colunas da esquerda, sombra na direita; dobras
+  verticais no manto, pregas na túnica curta, a veste dobra 1 px escuro sobre o cinto. Braços, pernas e mãos
+  são máscaras pintadas com a rampa (`pintarMascara`: realce em cima/esquerda, sombra embaixo/direita).
+- Cores por letra: H cabelo, S/s pele e sombra, B barba, R/r/d tronco (claro, médio, escuro), **P/p/q parte
+  de baixo** (sem elas, a do tronco), A cinto e detalhes, F sandálias, V/W véu. Opções: `cabelo` (curto,
+  longo, careca), `porte: "grande"` (+1 px de cada lado), `gola`, `capuz`, `mangaCor` (braço nu ou de outra
+  cor), `barra` (barra da veste na cor do cinto), `armadura`, `acessorios`, `extraCorpo` e `extra`.
 - **15 quadros**: 0–4 de lado (virado para a direita; a esquerda é o espelho), 5–9 de frente e 10–14 de
-  costas. Em cada vista: 0 parado, 1 respirar, 2 e 3 passos, 4 ação/fala. `game.js` escolhe a vista pelo
-  último passo ou pelo alvo (`virar`): lado se o passo for mais horizontal.
-- Moldes: `manto` (veste longa), `curta` (túnica curta, pernas à mostra) e `veu` (veste longa com véu).
-  Cores por letra: H cabelo, S/s pele e sombra, B barba, R/r/d veste clara/média/escura, A cinto,
-  F sandálias, V/W véu. Opções: `cabelo` (curto, longo, careca), `porte: "grande"`, `gola`, `capuz`,
-  `mangaCor`, `armadura` e `acessorios`.
-- Acessórios desenham nas 3 vistas, em camadas (`fundo`, `meio`, `frente`): cajados, lanças, espadas,
-  porrete, escudos (redondo, alto, oval), arco nas costas e na mão, capas, turbante, elmo, faixa, bandana,
-  nemes, colar, peitoral, bolsa, odre, saco, jarro, fardo, corda, rede, shofar, pele de leopardo, estola,
-  brilho de feitiço e funda.
+  costas. Em cada vista: 0 parado (é também a passagem do passo), 1 respirar (tronco desce 1 px), 2 contato A,
+  3 contato B, 4 ação/fala. **Andando, `game.js` toca 2 → 0 → 3 → 0** (`CICLO_PASSO`, 110 ms por quadro):
+  no contato as pernas abrem (de lado, um pé 5 px à frente e o outro 6 px atrás; de frente/costas, o pé de
+  trás sobe 1 px e a barra balança), o tronco e a cabeça descem 1 px e os braços balançam ao contrário das
+  pernas (de lado, o braço de longe aparece atrás do corpo). As criaturas continuam alternando 2 e 3.
+- Âncoras da pose para acessórios: `T` topo da cabeça, `yT` ombros, `yC` cinto, `maoArma` e `maoEscudo`
+  (centro da mão; a mão ocupa x−2..x+1). Acessórios desenham nas 3 vistas, em camadas (`fundo`, `meio`,
+  `frente`): cajados, lanças, espadas (de frente e de costas a lâmina sai do punho para fora do corpo; de
+  lado vai baixa, apontando para a frente), porrete, escudos (redondo, alto, oval), arco nas costas e na mão,
+  capas, turbante, elmo, faixa, bandana, nemes, colar, peitoral, alforje com a alça cruzando o peito, odre,
+  saco, jarro, fardo, corda, rede, shofar, pele de leopardo, estola, brilho de feitiço, funda e remo.
 - Equipamento visível no jogador: espada (madeira, ferro, temperada), escudo (madeira, bronze, ferro),
-  arco ou funda nas costas e armadura (túnica de pano, armadura de couro, couraça de escamas).
+  arco ou funda e armadura (túnica de pano, armadura de couro com ombreiras, couraça de escamas com
+  ombreiras — as ombreiras ficam por cima dos braços).
 
-## 4. Cosméticos (JGB-27)
+## 4. Cosméticos (JGB-27) e cores do visual (JGB-49)
 
-- Trajes (`dados/cosmeticos.js`, `TRAJES[id].visual`) usam o mesmo boneco: molde, cores, gola, cabelo e
-  acessórios que não são arma nem escudo. Com traje, a armadura vestida não aparece (a defesa continua).
-- Montarias: jumento, camelo, cavalo e carro, em célula de **48 × 56 px** (24 × 28 unidades), chão na linha
-  53, nas 3 vistas. O cavaleiro é o boneco do jogador montado (`cfg.montado`), desenhado entre as partes de
-  trás e da frente da montaria; no carro ele vai de pé. Prévia da loja: `mt_<montaria>`.
-- Nenhum cosmético muda dano, defesa, vida, carga, velocidade, XP ou saque.
+- **Cores do visual**: o jogador pinta 4 partes do boneco — **cabeça** (cabelo, ou o pano da cabeça do traje:
+  turbante, faixa, bandana, nemes, véu; o elmo é metal e fica), **tronco** (veste de cima, R/r/d),
+  **pernas** (parte de baixo, P/p/q) e **detalhe** (cinto A, gola e barra) — com a paleta fixa de 24 cores de
+  `CORES_VISUAL` (`dados/cosmeticos.js`: tintas e fibras da época e tons de cabelo). Cada cor vira a rampa
+  de 4 tons. No save: `p.cosmeticos.cores = { cabeca, tronco, pernas, detalhe }` com o id da cor ou `null`
+  (= a cor do traje, ou a do boneco sem traje); a carga normaliza (sem cores, ou cor fora da paleta → `null`)
+  e não precisou de versão nova do save. Comando: `{ tipo: "definirCores", cores: { parte: id | null } }`.
+  As cores entram na chave da textura (`pj_jogador|…|c:cabeca.tronco.pernas.detalhe`) e valem por cima dos
+  trajes; a túnica de pano (que é pano) toma a cor do tronco. Captura: `docs/capturas/cores-do-visual.jpg`.
+- Janela Visual (tecla U), aba **Cores**: prévia do boneco de frente, de lado e de costas (3 px de tela por px
+  de arte) e uma fileira de amostras por parte, com a amostra listrada "Cor do traje" e o botão "Voltar às
+  cores do traje". Captura: `docs/capturas/janela-visual-cores.jpg`.
+- Trajes (`TRAJES[id].visual`) usam o mesmo boneco: molde, cores, gola, cabelo e acessórios que não são
+  arma nem escudo. Com traje, a armadura vestida não aparece (a defesa continua).
+- **Montarias**: jumento (cinzento, focinho claro, cruz escura no lombo, orelhas compridas), camelo (uma
+  corcova, pernas compridas de joelho grosso e patas largas, tapete listrado com borlas), cavalo (castanho,
+  crina e cauda escuras, mancha na testa, meia branca) e carro (caixa de vime, roda de raios e o cavalo menor
+  no varal), em célula de **56 × 64 px** (28 × 32 unidades), chão na linha 61, nas 3 vistas e com passo
+  (pernas em pares diagonais, corpo desce 1 px). Manta com franja de ouro, sela de couro com o loro do
+  estribo, cabeçada e rédeas com folga até as mãos do cavaleiro. De frente, a cabeça comprida (orelhas,
+  olhos dos lados, narinas, frontal colorido) e as patas da frente ficam por cima do cavaleiro; de costas, a
+  garupa, a cauda e as patas de trás. O cavaleiro é o boneco do jogador montado (`cfg.montado`): de lado a
+  coxa vai para a frente e a canela desce; de frente e de costas as pernas abrem para os lados; as mãos
+  seguram as rédeas (o escudo fica pendurado do lado). No carro ele vai de pé. Prévia da loja:
+  `mt_<montaria>`. Captura: `docs/capturas/montarias-antes-depois.jpg`.
+- Nenhum cosmético (nem as cores) muda dano, defesa, vida, carga, velocidade, XP ou saque.
 
 ## 5. Criaturas e itens
 
@@ -95,6 +139,15 @@ e documenta a paleta de cada região.
   a estrada de terra tem a beira irregular (amostra deslocada por ruído, ±9 px) com um fio escuro e tufos;
   dentro das vilas o caminho é rua de pedra (fiadas de 8 px, junta escura, luz em cima/esquerda); em volta
   das portas, poços, tendas e moradores o chão fica pisado; a beira da água é areia molhada.
+- **Portas**: a folha da porta é uma imagem à parte (`texturaPorta`): fechada (tábuas com ferragens e argola;
+  na tenda, a aba de pano baixada) e aberta (encostada à esquerda). Abre sozinha com o jogador a uma casa dela.
+- **Orla**: a borda do mapa e as 4 casas de fora viram mata, palmeiral ou pedregal do bioma (`ORLAS`), com o
+  chão da região por baixo e as peças mais escuras para fora, no lugar da faixa chapada. Água e muralha da
+  borda continuam no Tilemap. Árvores e pedras de todo o mapa saem da grade (deslocamento e espelho por casa).
+- **Dia e noite** (`CICLO_DIA` em `game.js`): um dia dura 40 min de relógio; a noite escurece até 70% em azul
+  profundo, com buracos de luz suaves no jogador, nas fogueiras, nas candeias das portas, nos interiores
+  (com o telhado aberto) e nos portais, e um brilho quente por cima. Nomes, barras e números ficam acima da
+  noite. Só aparência.
 - **Muros contínuos**: o muro da vila e as muretas de pedra (`muro`, `tijolos`) emendam com os vizinhos
   (máscara N/L/S/O): topo de pedras de cobertura e face de 20 px onde o muro não continua para o sul.
 

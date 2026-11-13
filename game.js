@@ -30,6 +30,16 @@ function dprAtual() {
 function ajusteZoomSalvo() {
   try { const v = Number(localStorage.getItem(CHAVE_ZOOM)); return Number.isInteger(v) && Math.abs(v) <= 6 ? v : 0; } catch (e) { return 0; }
 }
+// Dia e noite: um dia inteiro dura CICLO_DIA.minutos de relógio (o mesmo para todos, pela hora real).
+// Fases (fração do dia): manhã e tarde claras, entardecer, noite e amanhecer. escuroMax: quanto a noite
+// escurece (sem esconder o que importa: nomes, barras e números ficam por cima). Só aparência.
+const CICLO_DIA = { minutos: 40, entardecer: [0.5, 0.58], amanhecer: [0.92, 1.0], escuroMax: 0.7, cor: 0x080c26 };
+function escuridaoDoDia(agora = Date.now()) {
+  const f = ((agora / 60000) % CICLO_DIA.minutos) / CICLO_DIA.minutos;
+  const [e0, e1] = CICLO_DIA.entardecer, [a0, a1] = CICLO_DIA.amanhecer;
+  const k = f < e0 ? 0 : f < e1 ? (f - e0) / (e1 - e0) : f < a0 ? 1 : f < a1 ? 1 - (f - a0) / (a1 - a0) : 0;
+  return { fracao: f, escuro: CICLO_DIA.escuroMax * (k * k * (3 - 2 * k)) };
+}
 const BLOCO = 16; // lado (em casas) dos blocos de cenário ligados e desligados conforme a câmera
 const MINIMAPA_JANELA = { colunas: 80, linhas: 60 }; // casas mostradas no minimapa, em volta do jogador
 // Texto do mundo (nomes, rótulos, números): condensada em negrito com contorno escuro, legível sobre qualquer chão.
@@ -65,6 +75,12 @@ function virar(sprite, dx, dy) {
 function quadroComVista(sprite, q) {
   const def = PIXEL_PATTERNS[sprite.texture?.key];
   return def?.direcoes ? q + DESLOC_VISTA[sprite.getData("vista") || "frente"] : q;
+}
+// Andando: humanos (3 vistas) tocam contato A, passagem (quadro 0), contato B, passagem — no contato o
+// tronco desce 1 px (sprites.js); as criaturas alternam os 2 passos.
+const CICLO_PASSO = [2, 0, 3, 0];
+function quadroAndando(sprite, time) {
+  return PIXEL_PATTERNS[sprite.texture?.key]?.direcoes ? CICLO_PASSO[Math.floor(time / 110) % 4] : 2 + (Math.floor(time / 125) % 2);
 }
 
 // Vizinhos da grade em ordem de ângulo (0°, 45°… com y para baixo), para o joystick analógico.
@@ -168,6 +184,7 @@ class Cena extends Phaser.Scene {
     this.copasTranslucidas = [];
     this.blocos = new Map(); // "bx,by" → imagens do cenário daquele bloco (culling)
     this.pedacosChao = new Map(); // "bx,by" → pedaço do chão contínuo (cenario.js)
+    this.luzes = []; // fontes de luz da noite: { x, y, r, quente, tremula, predio }
     this.predios = [];
     this.blocosVisiveis = "";
     this.animados = [];
@@ -197,6 +214,7 @@ class Cena extends Phaser.Scene {
     this.criarTecladoEPonteiro();
     this.criarChao();
     this.criarObstaculos();
+    this.criarOrla();
     this.criarEstruturas();
     this.criarDecoracao();
     this.criarMarcadores();
@@ -273,6 +291,7 @@ class Cena extends Phaser.Scene {
     this.tileset = ts;
     const W = COLS + MOLDURA * 2, H = ROWS + MOLDURA * 2;
     const proibido = this.casasProibidasParaDeco();
+    const orla = !!window.Cenario?.temOrla?.(this.areaAtual);
     const chao = [], deco = [], sombra = [];
     for (let y = 0; y < H; y++) {
       const a = [], b = [], c = [];
@@ -280,7 +299,7 @@ class Cena extends Phaser.Scene {
         const mx = x - MOLDURA, my = y - MOLDURA;
         a.push(ts.indice(mx, my));
         b.push(ts.indiceDeco(mx, my, proibido));
-        c.push(ts.indiceSombra(mx, my));
+        c.push(orla ? -1 : ts.indiceSombra(mx, my)); // com a orla (cenario.js) a borda não é mais uma parede
       }
       chao.push(a); deco.push(b); sombra.push(c);
     }
@@ -355,15 +374,33 @@ class Cena extends Phaser.Scene {
         }
         const def = PIXEL_PATTERNS[tipo.chave];
         const variante = tipo.animado ? 0 : Math.floor(Arte.hash2(x, y, 4) * def.quadros);
-        const desloc = tipo.animado ? 0 : (Math.floor(Arte.hash2(x, y, 5) * 3) - 1) * 2;
-        const img = this.add.image(centroX(x) + desloc, y * TAM + TAM + (def.obstaculo ? 2 * Arte.PX : 0), tipo.chave, variante)
+        // árvores e pedras fora da grade: deslocamento e espelho sorteados por casa (bosque natural)
+        const solto = !tipo.animado && !muro;
+        const desloc = solto ? Math.round((Arte.hash2(x, y, 5) - 0.5) * (tipo.alto ? 14 : 8)) : 0;
+        const descer = solto ? Math.round((Arte.hash2(x, y, 7) - 0.5) * 6) : 0;
+        const img = this.add.image(centroX(x) + desloc, y * TAM + TAM + (def.obstaculo ? 2 * Arte.PX : 0) + descer, tipo.chave, variante)
           .setOrigin(0.5, 1)
-          .setDepth(PROF.entidade + y * TAM + TAM - 2);
+          .setDepth(PROF.entidade + y * TAM + TAM - 2)
+          .setFlipX(solto && Arte.hash2(x, y, 8) < 0.5);
         if (!def.obstaculo) img.y = y * TAM + TAM; // fogueira etc.
         if (tipo.alto) this.copas.set(`${x},${y}`, img);
         if (tipo.animado) this.animados.push({ img, quadros: tipo.animado, fps: 6 });
+        if (tipo.chave === "fx_fogueira") this.luzes.push({ x: centroX(x), y: y * TAM + 20, r: 120, quente: 1, tremula: true });
         this.noBloco(img, x, y);
       }
+  }
+
+  // Orla (cenario.js): mata, palmeiral ou pedregal na borda do mapa e nas casas de fora, mais escuro para fora.
+  criarOrla() {
+    if (!window.Cenario) return;
+    for (const o of Cenario.obstaculosDaOrla(this.areaAtual)) {
+      if (!this.textures.exists(o.chave)) continue;
+      const def = PIXEL_PATTERNS[o.chave];
+      const img = this.add.image(centroX(o.x) + o.dx, o.y * TAM + TAM + o.dy + (def.obstaculo ? 2 * Arte.PX : 0), o.chave, Math.floor(Arte.hash2(o.x, o.y, 4) * def.quadros))
+        .setOrigin(0.5, 1).setDepth(PROF.entidade + o.y * TAM + TAM - 2).setFlipX(Arte.hash2(o.x, o.y, 8) < 0.5);
+      if (o.escuro) { const c = Math.round(255 * (1 - o.escuro)); img.setTint(Phaser.Display.Color.GetColor(c, c, Math.round(c * 0.95))); }
+      this.noBloco(img, o.x, o.y);
+    }
   }
 
   // Tipo de muro contínuo da casa (muro, tijolos) ou null.
@@ -410,8 +447,15 @@ class Cena extends Phaser.Scene {
       const chave = Cenario.texturaMovel(this, m.tipo, e.variante, viz, m.x * 7 + m.y * 3 + i);
       imgs.push(this.add.image(centroX(m.x), m.y * TAM + TAM, chave).setOrigin(0.5, 1).setDepth(PROF.entidade + m.y * TAM + TAM - 2));
     });
+    // folha da porta: fecha e abre conforme o jogador chega perto (fica na fachada, some com o telhado)
+    const porta = this.add.image(e.porta.x * TAM, e.porta.y * TAM, Cenario.texturaPorta(this, e.variante, false)).setOrigin(0, 0)
+      .setDepth(PROF.entidade + Y0 + H - 1.4);
+    imgs.push(porta);
     for (const img of imgs) this.noBloco(img, meio, fim);
-    this.predios.push({ e, fora, alvo: 1, bloqueado });
+    this.predios.push({ e, fora, porta, aberta: false, alvo: 1, bloqueado });
+    // candeia na porta e a luz de dentro (que só conta com o telhado aberto)
+    this.luzes.push({ x: centroX(e.porta.x), y: e.porta.y * TAM + 8, r: 56, quente: 0.8, tremula: true });
+    this.luzes.push({ x: X0 + W / 2, y: Y0 + H / 2, r: Math.max(W, H) * 0.75, quente: 0.6, predio: this.predios[this.predios.length - 1] });
   }
 
   // Telhado: some com o jogador dentro (chão de dentro ou porta), fica translúcido com ele logo atrás
@@ -424,11 +468,20 @@ class Cena extends Phaser.Scene {
       const dentro = p.x > e.x && p.x < e.x + e.largura - 1 && p.y > e.y && (p.y < e.y + e.altura - 1 || (p.x === e.porta.x && p.y === e.porta.y));
       const atras = !dentro && p.y === e.y - 1 && p.x >= e.x - 1 && p.x <= e.x + e.largura;
       const alvo = dentro ? 0 : atras ? 0.5 : 1;
+      // a porta abre com o jogador a uma casa dela (ou nela) e fecha quando ele se afasta
+      const aberta = cheb(p, e.porta) <= 1;
+      if (aberta !== pr.aberta) {
+        pr.aberta = aberta;
+        pr.porta.setTexture(Cenario.texturaPorta(this, e.variante, aberta));
+        const ctx = Som.contexto();
+        if (ctx) Som.nota(ctx, aberta ? 220 : 165, ctx.currentTime, 0.08, "triangle", 0.03);
+      }
       const a = pr.fora.alpha;
       if (a !== alvo) {
         const passo = Math.min(1, (delta || 16) / 140);
         const novo = Math.abs(alvo - a) < 0.02 ? alvo : a + (alvo - a) * passo * 1.6;
         pr.fora.setAlpha(Math.max(0, Math.min(1, novo)));
+        pr.porta.setAlpha(pr.fora.alpha);
       }
       if (dentro !== pr.dentro) {
         pr.dentro = dentro;
@@ -441,9 +494,11 @@ class Cena extends Phaser.Scene {
   atualizarChaoContinuo() {
     if (this.areaAtual === "mar" || !window.Cenario) return;
     const v = this.cameras.main.worldView, lado = Cenario.LADO_PEDACO * TAM;
-    const bx0 = Math.max(0, Math.floor((v.x - lado / 2) / lado)), by0 = Math.max(0, Math.floor((v.y - lado / 2) / lado));
-    const bx1 = Math.min(Math.ceil(COLS / Cenario.LADO_PEDACO) - 1, Math.floor((v.x + v.width + lado / 2) / lado));
-    const by1 = Math.min(Math.ceil(ROWS / Cenario.LADO_PEDACO) - 1, Math.floor((v.y + v.height + lado / 2) / lado));
+    // inclui a orla de fora do mapa (MOLDURA_CASAS casas além da borda)
+    const m = Cenario.MOLDURA_CASAS * TAM;
+    const bx0 = Math.max(Math.floor(-m / lado), Math.floor((v.x - lado / 2) / lado)), by0 = Math.max(Math.floor(-m / lado), Math.floor((v.y - lado / 2) / lado));
+    const bx1 = Math.min(Math.floor((COLS * TAM + m - 1) / lado), Math.floor((v.x + v.width + lado / 2) / lado));
+    const by1 = Math.min(Math.floor((ROWS * TAM + m - 1) / lado), Math.floor((v.y + v.height + lado / 2) / lado));
     this.pedacosChao = this.pedacosChao || new Map();
     let feitos = 0;
     // o pedaço mais perto do centro primeiro; no máximo 2 por quadro (sem engasgar ao andar)
@@ -506,6 +561,7 @@ class Cena extends Phaser.Scene {
       const chave = Arte.garantirTextura(this, `mk_portal_${a}_${p.destino}`);
       const img = this.add.sprite(centroX(p.x), p.y * TAM + TAM + 2, chave, fechado ? 4 : 0).setOrigin(0.5, 1).setDepth(PROF.entidade + p.y * TAM + TAM - 3);
       if (!fechado) this.animados.push({ img, quadros: 4, fps: 6 });
+      this.luzes.push({ x: centroX(p.x), y: p.y * TAM, r: 110, quente: 0.3 });
       const oeste = p.x < COLS / 2;
       const s = setas(p.x + (oeste ? 1 : -1), p.y, oeste, fechado);
       this.add.image(centroX(p.x) + 6, baseY(p.y) - 1, "fx_sombra_g").setDepth(PROF.sombra);
@@ -988,8 +1044,60 @@ class Cena extends Phaser.Scene {
       return im;
     };
     vinheta("fx_vinheta_" + this.areaAtual, bio.vinheta.cor, bio.vinheta.forca);
+    this.criarNoite();
     this.vinhetaVida = vinheta("fx_vinheta_vida", "#8e2a1f", 0.9).setAlpha(0);
     for (const f of this.sobreposicoes) f();
+  }
+  // Noite: uma camada escura do tamanho da vista, com buracos suaves nas fontes de luz (jogador, fogueiras,
+  // candeias das portas, interiores e portais) e um brilho quente por cima. Fica abaixo dos nomes e barras.
+  criarNoite() {
+    if (!this.textures.exists("fx_luz_noite")) {
+      const c = this.textures.createCanvas("fx_luz_noite", 128, 128), ctx = c.getContext();
+      const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.3, "rgba(255,255,255,0.8)"); g.addColorStop(0.7, "rgba(255,255,255,0.25)"); g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128); c.refresh();
+    }
+    this.pincelLuz = this.make.image({ key: "fx_luz_noite", add: false }).setOrigin(0.5);
+    this.noite = this.add.renderTexture(0, 0, 8, 8).setScrollFactor(0).setOrigin(0.5).setDepth(PROF.barra - 2).setVisible(false);
+    this.brilhoNoite = this.add.renderTexture(0, 0, 8, 8).setScrollFactor(0).setOrigin(0.5).setDepth(PROF.barra - 1)
+      .setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    this.proximaNoite = 0;
+    this.faseAnterior = null;
+  }
+  atualizarNoite(time) {
+    if (!this.noite || time < this.proximaNoite) return;
+    this.proximaNoite = time + 50;
+    const { escuro, fracao } = escuridaoDoDia();
+    // aviso ao anoitecer e ao amanhecer
+    const fase = escuro > 0.3 ? "noite" : "dia";
+    if (this.faseAnterior && fase !== this.faseAnterior) this.mensagem(fase === "noite" ? `Anoitece em ${areas[this.areaAtual]?.nome || "toda parte"}.` : "Amanhece. O sol volta a clarear a estrada.");
+    this.faseAnterior = fase;
+    this.fracaoDia = fracao;
+    const ver = escuro > 0.01;
+    this.noite.setVisible(ver); this.brilhoNoite.setVisible(ver);
+    if (!ver) return;
+    const cam = this.cameras.main, v = cam.worldView;
+    const W = Math.ceil(v.width) + 2, H = Math.ceil(v.height) + 2;
+    for (const rt of [this.noite, this.brilhoNoite]) {
+      if (rt.width !== W || rt.height !== H) rt.resize(W, H);
+      rt.setPosition(cam.width / 2, cam.height / 2).setDisplaySize(W * cam.zoom, H * cam.zoom);
+    }
+    this.noite.clear().fill(CICLO_DIA.cor, escuro);
+    this.brilhoNoite.clear();
+    const fontes = [{ x: this.jogador.x, y: this.jogador.y - 20, r: 84, quente: 0.25 }, ...this.luzes];
+    const b = this.pincelLuz;
+    for (const l of fontes) {
+      if (l.predio && l.predio.fora.alpha > 0.5) continue;
+      const lx = l.x - v.x + 1, ly = l.y - v.y + 1;
+      if (lx < -l.r || ly < -l.r || lx > W + l.r || ly > H + l.r) continue;
+      const r = l.r * (l.tremula && !reduzMovimento() ? 1 + 0.05 * Math.sin(time / 90 + l.x) : 1);
+      b.setScale((r * 2) / 128).setAlpha(1).clearTint();
+      this.noite.erase(b, lx, ly);
+      if (l.quente) {
+        b.setScale((r * 1.4) / 128).setAlpha(0.22 * l.quente * (escuro / CICLO_DIA.escuroMax)).setTint(0xffa040);
+        this.brilhoNoite.draw(b, lx, ly);
+      }
+    }
   }
   pulsoVinheta(alfa = 0.35, ms = 150) {
     if (!this.vinhetaVida || this.vidaBaixa) return;
@@ -1979,7 +2087,7 @@ class Cena extends Phaser.Scene {
     const ej = this.estadoJogador, j = this.jogador;
     if (this.areaAtual === "mar") j.setFrame(Math.floor(time / 600) % 2);
     else if (ej.acaoAte > time) j.setFrame(quadroComVista(j, 4));
-    else if (ej.andandoAte > time) j.setFrame(quadroComVista(j, 2 + (Math.floor(time / 125) % 2)));
+    else if (ej.andandoAte > time) j.setFrame(quadroComVista(j, quadroAndando(j, time)));
     else j.setFrame(quadroComVista(j, reduz ? 0 : Math.floor(time / 600) % 2));
     // setDepth sempre reordena a cena inteira (milhares de obstáculos): só quando a profundidade muda
     if (j.depth !== PROF.entidade + j.y + 1) j.setDepth(PROF.entidade + j.y + 1);
@@ -1990,7 +2098,7 @@ class Cena extends Phaser.Scene {
       const s = ent.sprite;
       let q;
       if (ent.acaoAte > time) q = 4;
-      else if (ent.andandoAte > time) q = 2 + (Math.floor(time / 125) % 2);
+      else if (ent.andandoAte > time) q = quadroAndando(s, time);
       else q = reduz ? 0 : Math.floor((time + ent.fase) / 600) % 2;
       if (ent.dados.id === "jesusGalileia" && q === 4 && ent.acaoAte - time > 400) q = 0;
       s.setFrame(quadroComVista(s, q));
@@ -2017,6 +2125,7 @@ class Cena extends Phaser.Scene {
     this.atualizarBlocos();
     this.atualizarChaoContinuo();
     this.atualizarPredios(time - (this.ultimoQuadro || time));
+    this.atualizarNoite(time);
     this.ultimoQuadro = time;
     this.desenharAlvoEBarras(time);
     if (time >= this.proximosRotulos) {

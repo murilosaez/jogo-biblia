@@ -250,7 +250,6 @@
   const jogador = () => (typeof Mundo !== "undefined" && Mundo.jogadores ? Mundo.jogadores[ID] : null) || null;
   const temArte = () => typeof Arte !== "undefined" && !!Arte;
   const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const inicioSessao = Date.now();
 
   // ------------------------------------------------------------------
   // Arte (com proteção: a UI funciona sem sprites.js, sem emoji)
@@ -323,6 +322,8 @@
   };
   const ROTULO_SLOT = { arma: "Arma", arco: "Arco", escudo: "Escudo", armadura: "Armadura" };
   const SILHUETA_SLOT = { arma: "espada_ferro", arco: "arco_madeira", escudo: "escudo_madeira", armadura: "armadura_couro" };
+  // Onde cada espaço fica no boneco do painel Equipamento (o arco vai às costas, como uma aljava).
+  const LUGAR_SLOT = { arma: "na mão direita", arco: "nas costas", escudo: "na mão esquerda", armadura: "no peito" };
   const slotDoTipo = (tipo) => {
     const mapa = typeof SLOTS_EQUIPAMENTO !== "undefined" ? SLOTS_EQUIPAMENTO : { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
     return Object.keys(mapa).find((s) => mapa[s] === tipo) || null;
@@ -451,7 +452,7 @@
   // ------------------------------------------------------------------
   // Personagem
   // ------------------------------------------------------------------
-  let assinaturaRetrato = "";
+  let assinaturaRetrato = "", urlBoneco = "";
   function atualizarPersonagem(p) {
     $("#seloNivel").textContent = p.nivel;
     $("#fichaNivel").textContent = `Nível ${p.nivel}`;
@@ -461,9 +462,13 @@
     if (ass !== assinaturaRetrato && temArte()) {
       assinaturaRetrato = ass;
       let chave = "pj_jogador";
-      try { chave = Arte.garantirJogador ? Arte.garantirJogador(eq, { traje: visualPj.traje }) : chave; } catch (e) { chave = "pj_jogador"; }
+      try { chave = Arte.garantirJogador ? Arte.garantirJogador(eq, { traje: visualPj.traje, cores: visualPj.cores }) : chave; } catch (e) { chave = "pj_jogador"; }
       const url = retratoURL(chave, { escala: 3, recorte: "busto" }) || retratoURL("pj_jogador", { escala: 3 });
       if (url) $("#retratoJogador").src = url;
+      // Boneco do painel Equipamento: o corpo inteiro, de frente, com o que está vestido.
+      urlBoneco = retratoURL(chave, { escala: 6, recorte: "inteiro" }) || retratoURL("pj_jogador", { escala: 6, recorte: "inteiro" });
+      const fig = $("#gradeEquip .boneco-figura");
+      if (fig && urlBoneco) fig.innerHTML = `<img class="px" src="${urlBoneco}" alt="">`;
     }
     if (typeof estatisticasCombate !== "function") return;
     const s = estatisticasCombate(p);
@@ -598,19 +603,29 @@
     const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
     $("#pesoTexto").textContent = `${Number(peso).toFixed(1)} / ${cap} kg`;
 
-    // Equipamento
+    // Equipamento: boneco com cada espaço no lugar do corpo (arco nas costas, arma e escudo nas
+    // mãos, armadura no peito) e a munição ao lado, só mostrando as flechas da mochila (não é espaço).
     const eq = p.equipamento || {};
-    $("#gradeEquip").innerHTML = Object.keys(ROTULO_SLOT).map((slot) => {
+    const htmlSlot = (slot) => {
       const id = eq[slot];
       const sel = selecao && selecao.origem === "equip" && selecao.slot === slot ? " selecionado" : "";
+      const lugar = `${ROTULO_SLOT[slot]} (${LUGAR_SLOT[slot]})`;
       if (id && info(id)) {
-        return `<button type="button" class="equip cheio${sel}" draggable="true" data-equip-slot="${slot}" data-dica="${esc(id)}" data-dica-origem="equip" aria-label="${ROTULO_SLOT[slot]}: ${esc(nomeDoItem(id))}">
+        return `<button type="button" class="equip e-${slot} cheio${sel}" draggable="true" data-equip-slot="${slot}" data-dica="${esc(id)}" data-dica-origem="equip" aria-label="${lugar}: ${esc(nomeDoItem(id))}">
           <span class="slot"${attrRaridade(id)}>${htmlItem(id)}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>${esc(atributoCurto(id))}</em></span></button>`;
       }
       const sil = silhuetaURL(SILHUETA_SLOT[slot]);
-      return `<button type="button" class="equip vazio${sel}" data-equip-slot="${slot}" aria-label="Espaço de ${ROTULO_SLOT[slot].toLowerCase()} vazio">
+      return `<button type="button" class="equip e-${slot} vazio${sel}" data-equip-slot="${slot}" aria-label="${lugar}: vazio" title="${ROTULO_SLOT[slot]} ${LUGAR_SLOT[slot]}">
         <span class="slot">${sil ? `<img class="px silhueta" src="${sil}" width="32" height="32" alt="">` : ""}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>vazio</em></span></button>`;
-    }).join("");
+    };
+    const flechas = g.get("flecha") || 0;
+    const semMunicao = !!(eq.arco && info(eq.arco)?.semMunicao);
+    const textoMunicao = semMunicao ? "não usa" : flechas === 1 ? "1 flecha" : `${flechas} flechas`;
+    const municao = `<div class="equip e-municao${flechas ? " tem" : " vazio"}" role="img" data-dica="flecha" aria-label="Munição: ${flechas} flechas na mochila${semMunicao ? " (a arma à distância equipada não usa flechas)" : ""}">
+        <span class="slot">${flechas ? htmlItem("flecha") : (() => { const s = silhuetaURL("flecha"); return s ? `<img class="px silhueta" src="${s}" width="32" height="32" alt="">` : ""; })()}${flechas ? `<span class="qtd">${flechas}</span>` : ""}</span>
+        <span class="equip-txt"><small>Munição</small><em>${esc(textoMunicao)}</em></span></div>`;
+    $("#gradeEquip").innerHTML = `<div class="boneco-figura" aria-hidden="true">${urlBoneco ? `<img class="px" src="${urlBoneco}" alt="">` : ""}</div>
+      ${htmlSlot("arco")}${htmlSlot("arma")}${htmlSlot("armadura")}${htmlSlot("escudo")}${municao}`;
 
     // Atalhos (com vocação, as teclas 1 a 8 são das habilidades e os itens ficam em Shift + 1 a 6)
     const hk = p.hotkeys || [];
@@ -776,19 +791,42 @@
     return (TIPOS[tipo] || TIPOS.sistema).glifo;
   }
 
+  // ------------------------------------------------------------------
+  // Console (conversa e registro): abas Geral (tudo), NPCs (falas, o que o
+  // jogador disse e as palavras-chave) e Servidor (saque, XP, níveis, avisos).
+  // Cada linha tem a hora (HH:MM) e a cor do tipo; a mais nova fica embaixo.
+  // ------------------------------------------------------------------
   const registro = [];
-  function registrar(texto, tipo) {
-    const s = Math.floor((Date.now() - inicioSessao) / 1000);
-    const hora = `${String(Math.floor(s / 60) % 100).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-    registro.unshift({ texto, tipo, hora });
-    if (registro.length > 30) registro.length = 30;
-    const li = document.createElement("li");
-    if (tipo === "anuncio") li.className = "anuncio";
-    li.innerHTML = `<span class="marca-tipo" style="--cor:${(TIPOS[tipo] || TIPOS.sistema).cor}">${imgGlifo(glifoDoTipo(tipo, texto), "px g16", (TIPOS[tipo] || TIPOS.sistema).nome)}</span><time>${hora}</time><span>${esc(texto)}</span>`;
+  const MAX_LINHAS = 200;
+  const canalDoTipo = (tipo) => (tipo === "fala" || tipo === "voce" || tipo === "dica" ? "npcs" : "servidor");
+  const horaAgora = () => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+  function htmlPalavras(npcId, palavras) {
+    return palavras.map((k) => `<button type="button" class="palavra" data-palavra="${esc(k.palavra)}" data-npc="${esc(npcId)}" title="Dizer “${esc(k.palavra)}”">${esc(k.palavra)}</button>`).join("");
+  }
+  // extra: { quem, npc, palavras } — fala com o nome de quem fala em destaque e as palavras-chave clicáveis.
+  function registrar(texto, tipo, extra = {}) {
+    const hora = horaAgora();
+    const canal = canalDoTipo(tipo);
+    registro.push({ texto, tipo, hora, canal });
+    if (registro.length > MAX_LINHAS) registro.shift();
     const ol = $("#listaRegistro");
-    ol.prepend(li);
-    while (ol.children.length > 30) ol.lastElementChild.remove();
-    $("#registroQtd").textContent = String(registro.length);
+    if (!ol) return;
+    // Só acompanha a mensagem nova se o jogador não subiu a lista para ler as antigas.
+    const noFim = ol.scrollHeight - ol.scrollTop - ol.clientHeight < 32;
+    let quem = extra.quem || "";
+    if (!quem && tipo === "fala") quem = (String(texto).match(/^([^:]{1,40}):\s+/) || [])[1] || "";
+    const corpo = quem ? textoSemPrefixo(quem, texto) : texto;
+    const li = document.createElement("li");
+    li.className = `c-${canal} t-${TIPOS[tipo] || ["voce", "dica"].includes(tipo) ? tipo : "sistema"}`;
+    li.innerHTML = `<time datetime="${hora}">${hora}</time>${quem ? `<b class="quem">${esc(quem)}:</b> ` : ""}<span class="msg">${esc(corpo)}</span>${
+      extra.palavras?.length ? ` <span class="palavras" role="group" aria-label="Palavras-chave">${htmlPalavras(extra.npc, extra.palavras)}</span>` : ""}`;
+    ol.appendChild(li);
+    while (ol.children.length > MAX_LINHAS) ol.firstElementChild.remove();
+    if (noFim) ol.scrollTop = ol.scrollHeight;
+    marcarNaoLida(canal);
   }
 
   function aviso(texto, tipo) {
@@ -851,18 +889,27 @@
     if (mm("(pointer: coarse)") && /^Bem-vindo! Arraste os itens/.test(texto))
       texto = "Bem-vindo! Toque num item da mochila e depois no espaço de equipamento.";
     tipo = TIPOS[tipo] ? tipo : classificar(texto);
-    registrar(texto, tipo);
     if (tipo === "fala") {
-      // O MUNDO chama UI.dialogo logo depois de uma fala; se não chamar, vira aviso.
+      // O MUNDO chama UI.dialogo logo depois de uma fala (que a registra com o NPC e as
+      // palavras-chave); se não chamar, ela entra no console assim e vira aviso.
       falaPendente = texto;
-      setTimeout(() => { if (falaPendente === texto) { falaPendente = null; aviso(texto, "fala"); } }, 0);
+      setTimeout(() => {
+        if (falaPendente !== texto) return;
+        falaPendente = null;
+        registrar(texto, "fala");
+        if (!consoleVisivel()) aviso(texto, "fala");
+      }, 0);
       return;
     }
+    registrar(texto, tipo);
     aviso(texto, tipo);
   }
 
   // ------------------------------------------------------------------
-  // Diálogo com retrato (máquina de escrever a 40 caracteres/s)
+  // Falas dos NPCs: entram no console (aba NPCs) com as palavras-chave.
+  // A caixa de diálogo com retrato (máquina de escrever a 40 caracteres/s)
+  // só abre quando o console não está à vista: no celular (folha fechada)
+  // ou com o console recolhido. Assim a mesma fala nunca aparece em dois lugares.
   // ------------------------------------------------------------------
   const PAPEIS = {
     viajante1: "pastor", guia_canaa: "guia de caravanas", guia_deserto: "guia de caravanas", mercador1: "mercador",
@@ -870,6 +917,9 @@
     josueSinai: "comandante", pedroGalileia: "pescador", jesusGalileia: "Médico dos médicos",
   };
   const dlg = { id: null, texto: "", mostrado: 0, timer: null, fechar: null, npc: null };
+  // Última fala de cada conversa: as janelas do mercador, do guia e do barqueiro a repetem no topo.
+  let ultimaFala = { id: null, texto: "", quando: 0 };
+  const falaRecente = (id) => (id && ultimaFala.id === id && Date.now() - ultimaFala.quando < 20000 ? ultimaFala.texto : "");
 
   function textoSemPrefixo(nome, texto) {
     const m = String(texto).match(/^([^:]{1,40}):\s+/);
@@ -879,27 +929,34 @@
     return texto;
   }
 
-  function dialogo({ id, nome, papel, texto }) {
+  // palavras: as palavras-chave a oferecer (sem o campo, as do NPC agora, por palavrasChaveDoNpc).
+  function dialogo({ id, nome, papel, texto, palavras }) {
     if (falaPendente === texto) falaPendente = null;
-    const caixa = $("#dialogo");
-    const corpo = textoSemPrefixo(nome || "", texto || "");
-    // Mesmo NPC e mesma fala: completa e, depois, fecha (clique ou F).
-    if (caixa.classList.contains("aberto") && dlg.id === id && dlg.texto === corpo) {
-      if (dlg.mostrado < corpo.length) completarDialogo();
-      else fecharDialogo();
+    const npc = typeof npcs !== "undefined" ? npcs[id] : null;
+    nome = nome || npc?.nome || "";
+    const corpo = textoSemPrefixo(nome, texto || "");
+    const lista = palavras ?? (typeof palavrasChaveDoNpc === "function" ? palavrasChaveDoNpc(jogador(), id) : []);
+    ultimaFala = { id, texto: corpo, quando: Date.now() };
+    conversaCom = id;
+    registrar(texto || "", "fala", { quem: nomeCurto(nome), npc: id, palavras: lista });
+    if (consoleVisivel()) {
+      if (canalAtual === "servidor") escolherCanal("npcs");
+      if (dlg.id) fecharDialogo();
       return;
     }
+    const caixa = $("#dialogo");
     dlg.id = id;
     dlg.texto = corpo;
-    dlg.npc = typeof npcs !== "undefined" ? npcs[id] : null;
-    $("#dlgNome").textContent = nomeCurto(nome || dlg.npc?.nome || "");
+    dlg.npc = npc;
+    $("#dlgNome").textContent = nomeCurto(nome);
     const reserva = papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : papel === "mural" ? "vigia · mural de caçadas"
-      : papel === "ambiente" ? String(nome || dlg.npc?.nome || "").split(",").slice(1).join(",").trim() : "";
+      : papel === "barqueiro" ? "barqueiro" : papel === "ambiente" ? String(nome).split(",").slice(1).join(",").trim() : "";
     $("#dlgPapel").textContent = PAPEIS[id] || reserva;
     const url = retratoURL(visualDe(id), { escala: 3, recorte: "busto" });
     const img = $("#dlgRetrato");
     if (url) img.src = url; else img.removeAttribute("src");
-    img.alt = `Retrato de ${nomeCurto(nome || "")}`;
+    img.alt = `Retrato de ${nomeCurto(nome)}`;
+    $("#dlgPalavras").innerHTML = htmlPalavras(id, lista);
     caixa.classList.add("aberto");
     document.body.classList.add("dialogo-aberto");
     clearInterval(dlg.timer);
@@ -914,7 +971,8 @@
         if (dlg.mostrado >= corpo.length) completarDialogo();
       }, 50);
     }
-    dlg.fechar = setTimeout(fecharDialogo, 9000 + corpo.length * 45);
+    // Com palavras para escolher, a caixa espera mais antes de fechar sozinha.
+    dlg.fechar = setTimeout(fecharDialogo, (lista.length > 2 ? 16000 : 9000) + corpo.length * 45);
   }
   // F ou clique no NPC com a fala dele aberta: completa o texto e, se já
   // estiver completo, fecha. Retorna false se não há fala aberta desse NPC.
@@ -935,6 +993,217 @@
     $("#dialogo").classList.remove("aberto");
     document.body.classList.remove("dialogo-aberto");
     dlg.id = null;
+  }
+
+  // ------------------------------------------------------------------
+  // Conversa por palavras-chave (as palavras de cada NPC vêm de
+  // palavrasChaveDoNpc, em logica.js; cada uma usa uma ação que já existe)
+  // ------------------------------------------------------------------
+  let conversaCom = null; // último NPC com quem se falou (tem a vez se ainda estiver perto)
+  const historicoFala = [];
+  let posHistorico = 0;
+  const perto = (p, id) => !!(p && id && Mundo.npcProximo?.(p, (n) => n.id === id));
+
+  // O jogador disse algo (digitado no console ou palavra clicada; npcId: de quem era a palavra).
+  function falarNoConsole(texto, npcId) {
+    texto = String(texto || "").trim().slice(0, 80);
+    if (!texto) return;
+    registrar(texto, "voce", { quem: "Você" });
+    const p = jogador();
+    if (!p || typeof palavrasChaveDoNpc !== "function") return;
+    const npc = npcId && perto(p, npcId) ? npcs[npcId] : !npcId && perto(p, conversaCom) ? npcs[conversaCom] : !npcId ? Mundo.npcProximo?.(p) : null;
+    if (!npc) {
+      const longe = npcId && npcs[npcId];
+      mensagem(longe && longe.area === p.area ? `Chegue mais perto de ${nomeCurto(longe.nome)} para conversar.` : "Não há ninguém por perto para conversar.", "sistema");
+      return;
+    }
+    const lista = palavrasChaveDoNpc(p, npc.id);
+    const k = palavraChaveDoTexto(lista, texto);
+    if (!k) {
+      registrar(`${nomeCurto(npc.nome)} não entendeu. Diga:`, "dica", { npc: npc.id, palavras: lista });
+      return;
+    }
+    dizerPalavra(npc, k);
+  }
+  function dizerPalavra(npc, k) {
+    conversaCom = npc.id;
+    if (k.acao === "interagir") {
+      // A mesma conversa do clique e do F (missão, morador, mural, vocação), com a caixa já fechada.
+      if (dlg.id === npc.id) fecharDialogo();
+      executar({ tipo: "interagir", alvoId: npc.id });
+      return;
+    }
+    const p = jogador();
+    dialogo({ id: npc.id, papel: npc.papel, texto: k.fala, palavras: k.acao === "fala" ? palavrasChaveDoNpc(p, npc.id) : [] });
+    if (k.acao === "despedir") conversaCom = null;
+    else if (k.acao === "loja") abrirLoja(npc.id, k.aba);
+    else if (k.acao === "viagem") abrirViagem(npc.id);
+    else if (k.acao === "barco") abrirBarco(npc.id);
+  }
+
+  // Estado do console: canal, recolhido e altura (largo e médio). Fica neste navegador.
+  const CHAVE_CONSOLE = "jornada_console";
+  let canalAtual = "geral";
+  let prefConsole = {};
+  try { prefConsole = JSON.parse(localStorage.getItem(CHAVE_CONSOLE) || "{}") || {}; } catch (e) { prefConsole = {}; }
+  const salvarConsole = () => { try { localStorage.setItem(CHAVE_CONSOLE, JSON.stringify(prefConsole)); } catch (e) { /* sem armazenamento */ } };
+
+  function consoleVisivel() {
+    const c = painel("pRegistro");
+    if (!c) return false;
+    if (modo === "estreito") return folhaAtual === "registro";
+    return c.dataset.aberto === "true" && c.parentElement?.id === "mundo";
+  }
+  function marcarNaoLida(canal) {
+    if (consoleVisivel() && (canalAtual === "geral" || canalAtual === canal)) return;
+    $(`.console-abas [data-canal="${canal}"]`)?.classList.add("nao-lido");
+    if (canal === "npcs" && modo === "estreito") $("#naoLidaCel").hidden = false;
+  }
+  function limparNaoLidas() {
+    if (!consoleVisivel()) return;
+    for (const b of $$(".console-abas [data-canal]")) if (canalAtual === "geral" || b.dataset.canal === canalAtual) b.classList.remove("nao-lido");
+    if (modo === "estreito") $("#naoLidaCel").hidden = true;
+  }
+  function rolarConsole() {
+    const ol = $("#listaRegistro");
+    if (ol) ol.scrollTop = ol.scrollHeight;
+  }
+  function escolherCanal(c) {
+    canalAtual = ["geral", "npcs", "servidor"].includes(c) ? c : "geral";
+    painel("pRegistro").dataset.canal = canalAtual;
+    for (const b of $$(".console-abas [data-canal]")) b.setAttribute("aria-selected", String(b.dataset.canal === canalAtual));
+    limparNaoLidas();
+    rolarConsole();
+    prefConsole.canal = canalAtual;
+    salvarConsole();
+  }
+  function abrirConsole(aberto, salvar = true) {
+    const c = painel("pRegistro");
+    c.dataset.aberto = String(aberto);
+    const b = $("#btnRegistro");
+    const rot = aberto ? "Recolher o console" : "Abrir o console";
+    b.setAttribute("aria-expanded", String(aberto));
+    b.setAttribute("aria-label", rot);
+    b.title = rot;
+    encaixarConsole();
+    if (aberto) { limparNaoLidas(); rolarConsole(); }
+    if (salvar) { prefConsole.aberto = aberto; salvarConsole(); }
+  }
+  // Altura do console embaixo do mundo. O zoom do mapa (game.js) é inteiro e arredondado: com o
+  // palco abaixo de 1,5 × as 11 casas de altura, ele cai para 1 px de tela por pixel de arte (tudo
+  // pela metade). Por isso o console fica PRESO embaixo do mundo (o palco encolhe) quando ainda
+  // sobram pelo menos 2 px de tela por pixel de arte; senão, em telas baixas (1366 × 768), só a barra
+  // fica presa e as mensagens ficam SOBRE a borda de baixo do mundo, com o mesmo couro. Sem altura
+  // escolhida, ele pega a maior (até 168 px) que cabe presa, ou 112 px sobre o mundo.
+  const ALTURA_MIN_CONSOLE = 112, ALTURA_MAX_CONSOLE = 168;
+  function palcoMinimo() {
+    const dpr = typeof dprAtual === "function" ? dprAtual() : window.devicePixelRatio || 1;
+    const casas = (typeof VISAO !== "undefined" ? VISAO.deitada[1] : 11) * (typeof PIXELS_ARTE_POR_CASA !== "undefined" ? PIXELS_ARTE_POR_CASA : 32);
+    return Math.ceil((casas * (Math.ceil(2 * dpr) - 0.5)) / dpr) + 2;
+  }
+  // Altura do palco com o console recolhido (só a barra presa).
+  function espacoDoConsole() {
+    const c = painel("pRegistro"), barra = $(".console-barra", c);
+    const preso = c.parentElement?.id === "mundo" ? c.offsetHeight - (barra?.offsetHeight || 0) : 0;
+    return $("#palco").clientHeight + (c.classList.contains("sobre") ? 0 : preso);
+  }
+  const alturaConsole = () => parseInt(painel("pRegistro").style.getPropertyValue("--altura-console"), 10) || ALTURA_MAX_CONSOLE;
+  function encaixarConsole() {
+    const c = painel("pRegistro");
+    const noMundo = c.parentElement?.id === "mundo";
+    const sobre = noMundo && c.dataset.aberto === "true" && espacoDoConsole() - alturaConsole() + 40 < palcoMinimo();
+    c.classList.toggle("sobre", sobre);
+    document.body.classList.toggle("console-sobre", sobre);
+    document.documentElement.style.setProperty("--console-sobre", sobre ? `${alturaConsole() - ($(".console-barra", c)?.offsetHeight || 40)}px` : "0px");
+  }
+  function definirAlturaConsole(h) {
+    const max = Math.max(ALTURA_MIN_CONSOLE, Math.round(espacoDoConsole() * 0.6));
+    h = Math.max(ALTURA_MIN_CONSOLE, Math.min(max, Math.round(h)));
+    painel("pRegistro").style.setProperty("--altura-console", `${h}px`);
+    encaixarConsole();
+    return h;
+  }
+  function ajustarConsole() {
+    const c = painel("pRegistro");
+    if (modo === "estreito") { abrirConsole(true, false); return; }
+    if (c.parentElement?.id !== "mundo") return;
+    let h = prefConsole.altura;
+    if (!h) {
+      const sobra = espacoDoConsole() - palcoMinimo() + 40;
+      h = sobra >= ALTURA_MIN_CONSOLE ? Math.min(ALTURA_MAX_CONSOLE, sobra) : ALTURA_MIN_CONSOLE;
+    }
+    definirAlturaConsole(h);
+    abrirConsole(prefConsole.aberto !== false, false);
+  }
+  function focarConsole() {
+    if (modo === "estreito" && folhaAtual !== "registro") abrirFolha("registro");
+    $("#entradaConversa")?.focus();
+  }
+  function ligarConsole() {
+    const c = painel("pRegistro"), entrada = $("#entradaConversa");
+    escolherCanal(prefConsole.canal || "geral");
+    $(".console-abas").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-canal]");
+      if (b) escolherCanal(b.dataset.canal);
+    });
+    $("#btnRegistro").addEventListener("click", () => abrirConsole(c.dataset.aberto !== "true"));
+    $("#formConversa").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const t = entrada.value.trim();
+      entrada.value = "";
+      if (!t) { entrada.blur(); return; }
+      if (historicoFala[historicoFala.length - 1] !== t) historicoFala.push(t);
+      if (historicoFala.length > 20) historicoFala.shift();
+      posHistorico = historicoFala.length;
+      falarNoConsole(t);
+    });
+    // Escrevendo, as teclas não andam nem atacam; ↑ e ↓ trazem as últimas falas; Esc volta ao jogo.
+    entrada.addEventListener("focus", () => { teclado(false); if (window.Jogo) Jogo.entrada = { dx: 0, dy: 0 }; });
+    entrada.addEventListener("blur", () => { if (!modalAberto) teclado(true); });
+    entrada.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); entrada.blur(); return; }
+      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && historicoFala.length) {
+        e.preventDefault();
+        posHistorico = Math.max(0, Math.min(historicoFala.length, posHistorico + (e.key === "ArrowUp" ? -1 : 1)));
+        entrada.value = historicoFala[posHistorico] || "";
+      }
+    });
+    // Palavras-chave clicáveis (console e caixa de diálogo)
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest?.("[data-palavra]");
+      if (!b) return;
+      e.preventDefault();
+      falarNoConsole(b.dataset.palavra, b.dataset.npc);
+    });
+    // Alça: arrastar (ou ↑ e ↓ com o foco nela) muda a altura, que fica salva.
+    const alca = $("#consoleAlca");
+    alca.tabIndex = 0;
+    let y0 = null, h0 = 0;
+    alca.addEventListener("pointerdown", (e) => {
+      y0 = e.clientY;
+      h0 = c.offsetHeight;
+      alca.classList.add("arrastando");
+      try { alca.setPointerCapture(e.pointerId); } catch (erro) { /* ignora */ }
+      e.preventDefault();
+    });
+    alca.addEventListener("pointermove", (e) => { if (y0 !== null) definirAlturaConsole(h0 + y0 - e.clientY); });
+    const soltar = () => {
+      if (y0 === null) return;
+      y0 = null;
+      alca.classList.remove("arrastando");
+      prefConsole.altura = c.offsetHeight;
+      prefConsole.aberto = true;
+      salvarConsole();
+    };
+    alca.addEventListener("pointerup", soltar);
+    alca.addEventListener("pointercancel", soltar);
+    alca.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      prefConsole.altura = definirAlturaConsole(c.offsetHeight + (e.key === "ArrowUp" ? 16 : -16));
+      prefConsole.aberto = true;
+      salvarConsole();
+    });
   }
 
   // ------------------------------------------------------------------
@@ -1000,7 +1269,8 @@
   // ----- Loja -----
   let abaLoja = "comprar", falaLoja = "";
   let lojaAtual = null;
-  function abrirLoja(mercId) {
+  // aba: "comprar" ou "vender" (palavras-chave do console); sem ela, a última aba usada.
+  function abrirLoja(mercId, aba) {
     const p = jogador();
     const merc = typeof npcs !== "undefined"
       ? (typeof mercId === "string" && npcs[mercId]) || (p && Mundo.mercadorProximo?.(p)) || Object.values(npcs).find((n) => n.papel === "loja" && n.area === p?.area)
@@ -1009,7 +1279,8 @@
     $("#lojaTitulo").textContent = nomeCurto(merc?.nome || "Mercador");
     const url = retratoURL(visualDe(merc?.id || "mercador1"), { escala: 3, recorte: "busto" });
     if (url) $("#lojaRetrato").src = url;
-    falaLoja = dlg.id === merc?.id ? dlg.texto : "";
+    falaLoja = falaRecente(merc?.id);
+    if (aba === "comprar" || aba === "vender") abaLoja = aba;
     if (dlg.id === merc?.id) fecharDialogo();
     desenharLoja();
     abrirModal("modalLoja");
@@ -1060,8 +1331,8 @@
     if (!p || !temCacadas()) return;
     const npc = npcId && typeof npcs !== "undefined" ? npcs[npcId] : null;
     muralNpc = npc?.papel === "mural" ? npcId : null;
-    falaMural = muralNpc && dlg.id === muralNpc ? dlg.texto : "";
-    if (falaMural) fecharDialogo();
+    falaMural = falaRecente(muralNpc);
+    if (muralNpc && dlg.id === muralNpc) fecharDialogo();
     const img = $("#muralRetrato");
     let url;
     if (muralNpc) {
@@ -1526,10 +1797,51 @@
     atualizar();
   }
 
-  // ----- Visual: trajes e montarias (JGB-27) -----
-  // Só lê cosmeticosDoJogador (função pura); vestir, montar e comprar são comandos. Nada aqui muda combate.
+  // ----- Visual: cores, trajes e montarias (JGB-27, cores na JGB-49) -----
+  // Só lê cosmeticosDoJogador e visualDoJogador (funções puras); pintar, vestir, montar e comprar são
+  // comandos. Nada aqui muda combate.
   const temVisual = () => typeof cosmeticosDoJogador === "function";
-  let abaVisual = "traje", retornoVisual = null, htmlVisual = "";
+  const temCores = () => typeof CORES_VISUAL !== "undefined" && typeof PARTES_COR_VISUAL !== "undefined" && typeof visualDoJogador === "function";
+  let abaVisual = "cores", retornoVisual = null, htmlVisual = "";
+  // Prévia do boneco (de frente, de lado e de costas) com as cores escolhidas: 3 px de tela por px de arte.
+  const cachePreviaCores = new Map();
+  function previaBoneco(chave, quadro) {
+    const id = chave + "#" + quadro;
+    if (!cachePreviaCores.has(id)) {
+      let url = "";
+      try { url = Arte.canvas(chave, { quadro, escala: 6 })?.toDataURL("image/png") || ""; } catch (e) { url = ""; }
+      if (cachePreviaCores.size > 120) cachePreviaCores.clear();
+      cachePreviaCores.set(id, url);
+    }
+    return cachePreviaCores.get(id);
+  }
+  function montarCores(p) {
+    const visual = visualDoJogador(p);
+    const cores = visual.cores || {};
+    let previa = "";
+    if (temArte() && Arte.garantirJogador) {
+      try {
+        const chave = Arte.garantirJogador(p.equipamento || {}, { traje: visual.traje, cores });
+        previa = [[5, "De frente"], [0, "De lado"], [10, "De costas"]].map(([q, nome]) => {
+          const url = previaBoneco(chave, q);
+          return url ? `<figure><img class="px" src="${url}" alt="Seu personagem ${nome.toLowerCase()}"><figcaption>${nome}</figcaption></figure>` : "";
+        }).join("");
+      } catch (e) { previa = ""; }
+    }
+    const nomeCor = (id) => CORES_VISUAL.find((c) => c.id === id)?.nome || "Cor do traje";
+    const partes = Object.entries(PARTES_COR_VISUAL).map(([parte, nome]) => {
+      const atual = cores[parte] || null;
+      const amostras = [{ id: "", nome: "Cor do traje", cor: "" }].concat(CORES_VISUAL).map((c) => {
+        const marcada = (c.id || null) === atual;
+        return `<button type="button" class="amostra-cor${c.id ? "" : " padrao"}" data-cor-parte="${parte}" data-cor="${esc(c.id)}" aria-pressed="${marcada}" title="${esc(c.nome)}" aria-label="${esc(nome)}: ${esc(c.nome)}"${c.cor ? ` style="--cor:${c.cor}"` : ""}></button>`;
+      }).join("");
+      return `<fieldset class="parte-cor"><legend>${esc(nome)} <small>${esc(nomeCor(atual))}</small></legend><div class="amostras">${amostras}</div></fieldset>`;
+    }).join("");
+    const traje = visual.traje && typeof TRAJES !== "undefined" ? TRAJES[visual.traje]?.nome : null;
+    return `<div class="cores-visual"><div class="previa-cores" aria-live="polite">${previa}</div><div class="partes-cores">${partes}
+      <p class="oficio-pe">${traje ? `Pintando o traje ${esc(traje)}. ` : ""}Cabeça: cabelo ou pano da cabeça · Tronco: veste de cima · Pernas: parte de baixo · Detalhe: cinto, gola e barra. Grátis e só aparência.</p>
+      <button type="button" class="btn secundario" data-cores-padrao>Voltar às cores do traje</button></div></div>`;
+  }
   function abrirVisual() {
     if (!jogador() || !temVisual()) return;
     retornoVisual = null;
@@ -1549,11 +1861,23 @@
     const corpo = $("#visualCorpo");
     if (!p || !corpo || !temVisual()) return;
     const lista = cosmeticosDoJogador(p);
+    if (abaVisual === "cores" && !temCores()) abaVisual = "traje";
     const itens = lista.filter((x) => x.tipo === abaVisual);
-    const abas = `<div class="abas-modal" role="tablist" aria-label="Visual">${[["traje", "Trajes"], ["montaria", "Montarias"]].map(([id, nome]) =>
-      `<button type="button" class="aba-modal" role="tab" data-aba-visual="${id}" aria-selected="${id === abaVisual}">${nome}<small>${lista.filter((x) => x.tipo === id && x.possui).length}/${lista.filter((x) => x.tipo === id).length}</small></button>`).join("")}</div>`;
+    const abas = `<div class="abas-modal" role="tablist" aria-label="Visual">${(temCores() ? [["cores", "Cores"]] : []).concat([["traje", "Trajes"], ["montaria", "Montarias"]]).map(([id, nome]) =>
+      `<button type="button" class="aba-modal" role="tab" data-aba-visual="${id}" aria-selected="${id === abaVisual}">${nome}${id === "cores" ? "" : `<small>${lista.filter((x) => x.tipo === id && x.possui).length}/${lista.filter((x) => x.tipo === id).length}</small>`}</button>`).join("")}</div>`;
     const r = retornoVisual;
-    const retorno = r ? `<p class="retorno${r.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(r.mensagem || "")}</p>` : "";
+    const retorno = r && r.mensagem ? `<p class="retorno${r.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(r.mensagem || "")}</p>` : "";
+    if (abaVisual === "cores") {
+      const html = `${abas}${retorno}${montarCores(p)}`;
+      if (!forcar && html === htmlVisual) return;
+      htmlVisual = html;
+      const foco = document.activeElement && corpo.contains(document.activeElement) && document.activeElement.dataset.corParte
+        ? `[data-cor-parte="${document.activeElement.dataset.corParte}"][data-cor="${document.activeElement.dataset.cor}"]` : null;
+      corpo.innerHTML = html;
+      preencherGlifos(corpo);
+      if (foco) $(foco, corpo)?.focus({ preventScroll: true });
+      return;
+    }
     const nomeVoc = (v) => (typeof VOCACOES !== "undefined" && VOCACOES[v]?.nome) || v;
     const linhas = itens.map((x) => {
       const url = previaCosmetico(x);
@@ -1576,7 +1900,13 @@
   function acaoVisual(botao) {
     const d = botao.dataset;
     if (d.abaVisual) { abaVisual = d.abaVisual; retornoVisual = null; desenharVisual(true); $(`#visualCorpo [data-aba-visual="${abaVisual}"]`)?.focus(); return; }
-    if (d.cosmeticoTirar) retornoVisual = executar(d.cosmeticoTirar === "traje" ? { tipo: "vestirTraje", traje: null } : { tipo: "usarMontaria", montaria: null });
+    if (d.corParte) {
+      const r = executar({ tipo: "definirCores", cores: { [d.corParte]: d.cor || null } });
+      retornoVisual = r && !r.ok ? r : null;
+    } else if ("coresPadrao" in d) {
+      const r = executar({ tipo: "definirCores", cores: Object.fromEntries(Object.keys(PARTES_COR_VISUAL).map((k) => [k, null])) });
+      retornoVisual = r && !r.ok ? r : null;
+    } else if (d.cosmeticoTirar) retornoVisual = executar(d.cosmeticoTirar === "traje" ? { tipo: "vestirTraje", traje: null } : { tipo: "usarMontaria", montaria: null });
     else if (d.cosmeticoUsar) retornoVisual = executar(d.tipo === "traje" ? { tipo: "vestirTraje", traje: d.cosmeticoUsar } : { tipo: "usarMontaria", montaria: d.cosmeticoUsar });
     else if (d.cosmeticoComprar) retornoVisual = executar({ tipo: "comprarCosmetico", cosmetico: d.cosmeticoComprar });
     desenharVisual(true);
@@ -1845,8 +2175,8 @@
     const url = retratoURL(visualDe(guia?.id || "guia_canaa"), { escala: 3, recorte: "busto" });
     if (url) $("#viagemRetrato").src = url;
     $("#viagemTitulo").textContent = guia ? `Viagem com ${nomeCurto(guia.nome)}` : "Viagem rápida";
-    const fala = guia && dlg.id === guia.id ? dlg.texto : "";
-    if (fala) fecharDialogo();
+    const fala = falaRecente(guia?.id);
+    if (guia && dlg.id === guia.id) fecharDialogo();
     desenharViagem(fala);
     abrirModal("modalViagem");
   }
@@ -1885,8 +2215,8 @@
     const url = retratoURL(visualDe(b?.id || "barqueiro_canaa"), { escala: 3, recorte: "busto" });
     if (url) $("#barcoRetrato").src = url;
     $("#barcoTitulo").textContent = b ? nomeCurto(b.nome) : "Barqueiro";
-    const fala = b && dlg.id === b.id ? dlg.texto : "";
-    if (fala) fecharDialogo();
+    const fala = falaRecente(b?.id);
+    if (b && dlg.id === b.id) fecharDialogo();
     const preco = REGRAS_BARCO.passagem, moedas = p.moedas, falta = Math.max(0, preco - moedas);
     const mar = (typeof areas !== "undefined" && areas.mar?.nome) || "Mar das Rotas";
     const moeda = imgGlifo("ui_moeda", "px g16");
@@ -1948,6 +2278,7 @@
       [k("W", "A", "S", "D") + " " + k("setas"), "Andar"],
       [k("Q", "E", "Z", "C"), "Andar na diagonal"],
       [k("F"), "Ação ao lado: falar, embarcar, desembarcar ou seguir a rota"],
+      [k("Enter"), "Escrever no console: diga oi, comprar, vender, viajar, caçadas, embarcar, preço, missão ou tchau a quem está perto (ou clique nas palavras entre colchetes); Esc volta ao jogo"],
       ["Clique no chão", "Anda até lá (contorna obstáculos); num personagem ou saque, vai até ele"],
       ["Clique no inimigo", "Escolhe o alvo, vai até ele e ataca sozinho a cada 2 s"],
       [k("Espaço"), "Golpe corpo a corpo no alvo (também na diagonal)"],
@@ -1997,7 +2328,7 @@
         (sem atacar por 2,5 s). Golpe em quem está atordoado é sempre crítico; com medo, leva +25%; veneno e sangramento
         juntos infeccionam (+50% nos tiques). Os status ativos aparecem como selos na ficha. Às vezes uma
         criatura renasce campeã (nome dourado, 1 ou 2 modificadores, saque reforçado), e cada região tem um raro nomeado que
-        aparece algumas vezes por dia, com anúncio no Registro.</p>
+        aparece algumas vezes por dia, com anúncio no console (aba Servidor).</p>
       <p>Bestiário: cada abate conta para a espécie. Com 10, 100 e 1000 abates ela chega aos estágios Avistada (ficha),
         Estudada (fraquezas e saque) e Dominada (chances do saque). Com todas as espécies de uma família Estudadas (sem os raros
         nomeados), você ganha o amuleto dela: +5% de dano contra a família, para sempre.</p>
@@ -2041,7 +2372,7 @@
     personagem: { rotulo: "Personagem", glifo: "ui_personagem", paineis: ["pPersonagem"] },
     // Equipamento junto da mochila: dá para arrastar de um para o outro.
     mochila: { rotulo: "Mochila", glifo: "ui_mochila", paineis: ["pEquip", "pMochila", "pBolsa"] },
-    batalha: { rotulo: "Batalha", glifo: "ui_espadas", paineis: ["pAnalisador", "pBatalha", "pRegistro"] },
+    batalha: { rotulo: "Batalha", glifo: "ui_espadas", paineis: ["pAnalisador", "pBatalha"] },
   };
   const FOLHAS = {
     mochila: { titulo: "Mochila e bolsa", paineis: ["pEquip", "pMochila", "pBolsa"] },
@@ -2049,7 +2380,8 @@
     // O analisador vem antes: a lista de Batalha pode ser longa.
     batalha: { titulo: "Batalha e caçada", paineis: ["pAnalisador", "pBatalha"] },
     missao: { titulo: "Missão", paineis: ["pMissao"] },
-    registro: { titulo: "Registro", paineis: ["pRegistro"] },
+    // O console (conversa e registro): no largo e no médio ele fica preso embaixo do mundo.
+    registro: { titulo: "Conversa e registro", paineis: ["pRegistro"] },
   };
   const calcModo = () => (mm("(min-width: 1280px)") ? "largo" : mm("(max-width: 760px)") ? "estreito" : "medio");
   // Largo em tela baixa (até 760 px de altura, ex.: 1280×720): o minimapa vai
@@ -2058,12 +2390,6 @@
   const TELA_BAIXA = "(max-height: 760px)";
   let chaveLayout = null;
   const painel = (id) => document.getElementById(id);
-
-  function abrirRegistro(aberto) {
-    const p = painel("pRegistro");
-    p.dataset.aberto = String(aberto);
-    $("#btnRegistro").setAttribute("aria-expanded", String(aberto));
-  }
 
   function montar() {
     const novo = calcModo();
@@ -2080,10 +2406,10 @@
     fecharFolha();
     const moldura = $("#mapaMoldura");
     if (modo === "largo") {
-      for (const id of ["pMissao", "pMochila", "pBolsa", "pAnalisador", "pRegistro"]) $("#colEsq").appendChild(painel(id));
+      for (const id of ["pMissao", "pMochila", "pBolsa", "pAnalisador"]) $("#colEsq").appendChild(painel(id));
       for (const id of [...(baixa ? [] : ["pMapa"]), "pPersonagem", "pEquip", "pBatalha"]) $("#colDir").appendChild(painel(id));
       (baixa ? $("#mapaSobre") : $("#mapaCasa")).appendChild(moldura);
-      abrirRegistro(true);
+      $("#mundo").appendChild(painel("pRegistro"));
     } else if (modo === "medio") {
       $("#colDir").appendChild(painel("pMissao"));
       const nav = document.createElement("div");
@@ -2100,11 +2426,11 @@
       $("#colDir").appendChild(caixa);
       mostrarAbaMedia(abaMedia);
       $("#mapaSobre").appendChild(moldura);
-      abrirRegistro(true);
+      $("#mundo").appendChild(painel("pRegistro"));
     } else {
       $("#mapaSobre").appendChild(moldura);
-      abrirRegistro(true);
     }
+    ajustarConsole();
     const visivel = modo === "estreito" ? document.body.classList.contains("mapa-visivel-cel") : !document.body.classList.contains("mapa-oculto");
     $("#btnMapa").setAttribute("aria-pressed", String(visivel));
     medirRodape();
@@ -2134,6 +2460,7 @@
     f.setAttribute("aria-hidden", "false");
     document.body.classList.add("folha-aberta");
     for (const b of $$("#abasCel [data-folha]")) b.setAttribute("aria-expanded", String(b.dataset.folha === k));
+    if (k === "registro") { limparNaoLidas(); rolarConsole(); if (dlg.id) fecharDialogo(); }
     medirRodape();
     posicionarAvisos();
   }
@@ -2534,8 +2861,11 @@
     $("#btnTelaCheia").addEventListener("click", telaCheia);
     $("#btnAjuda").addEventListener("click", abrirAjuda);
     $("#btnMenu").addEventListener("click", abrirAjuda);
-    $("#btnRegistro").addEventListener("click", () => abrirRegistro(painel("pRegistro").dataset.aberto !== "true"));
-    $("#dialogo").addEventListener("click", () => (dlg.mostrado < dlg.texto.length ? completarDialogo() : fecharDialogo()));
+    $("#dialogo").addEventListener("click", (e) => {
+      if (e.target.closest("[data-palavra]")) return; // a palavra-chave responde (ligarConsole)
+      if (dlg.mostrado < dlg.texto.length) completarDialogo();
+      else fecharDialogo();
+    });
     $("#pontos").addEventListener("click", () => abrirMural(null));
     $("#btnBestiario").addEventListener("click", abrirBestiario);
     $("#btnOficios")?.addEventListener("click", () => abrirOficios());
@@ -2612,7 +2942,7 @@
           if (!voc.disabled) acaoVocacao(voc);
           return;
         }
-        const vis = e.target.closest("[data-aba-visual], [data-cosmetico-usar], [data-cosmetico-tirar], [data-cosmetico-comprar]");
+        const vis = e.target.closest("[data-aba-visual], [data-cosmetico-usar], [data-cosmetico-tirar], [data-cosmetico-comprar], [data-cor-parte], [data-cores-padrao]");
         if (vis) {
           if (!vis.disabled) acaoVisual(vis);
           return;
@@ -2675,6 +3005,7 @@
         if ($("#dicaItem").classList.contains("visivel")) { esconderDica(); return; }
         if (selecao) { selecionar(null); return; }
         if (dlg.id) { fecharDialogo(); return; }
+        if (document.activeElement?.id === "entradaConversa") { document.activeElement.blur(); return; }
         if (folhaAtual) { fecharFolha(); return; }
         return;
       }
@@ -2695,6 +3026,8 @@
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target && e.target.tagName) || "";
       if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+      // Enter: escrever no console (como nos MMORPGs clássicos); num botão focado, Enter continua sendo o clique.
+      if (e.key === "Enter" && !e.repeat && (tag === "BODY" || e.target.closest?.("#game-root"))) { e.preventDefault(); focarConsole(); return; }
       if ((e.key === "m" || e.key === "M") && !e.repeat) { e.preventDefault(); alternarMinimapa(); return; }
       if (e.key === "?") { e.preventDefault(); abrirAjuda(); return; }
       // Zoom do mapa: + aproxima, − afasta (a roda do mouse faz o mesmo).
@@ -2754,6 +3087,7 @@
     montar();
     ligarBotoes();
     ligarItens();
+    ligarConsole();
     ligarToque();
     observarMochila();
     observarFolha();
@@ -2763,7 +3097,8 @@
       const mq = matchMedia(q);
       (mq.addEventListener ? mq.addEventListener("change", re) : mq.addListener(re));
     }
-    addEventListener("resize", medirRodape);
+    // O console acompanha o tamanho da janela (preso embaixo do mundo ou sobre a borda dele).
+    addEventListener("resize", () => { medirRodape(); ajustarConsole(); });
     setInterval(tique, 250);
     requestAnimationFrame(laçoRecarga);
     atualizar();

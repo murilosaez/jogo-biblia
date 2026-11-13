@@ -194,7 +194,6 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .marca-tier.cura{background:#8fd16a}
 .linha-inimigo.campeao .nome-txt{color:#f2c94c}
 .linha-inimigo.nomeado .nome-txt{color:#c99af0}
-#listaRegistro li.anuncio span:last-child{font-weight:700;color:#5a1f7a}
 .aviso.anuncio{font-weight:700;box-shadow:0 0 0 2px #b46be0,0 2px 8px #0006}
 .slot .letras{font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto)}
 .slot.selecionado{outline:2px solid var(--ouro-200);outline-offset:0;animation:pisca 0.8s steps(2) infinite}
@@ -205,7 +204,21 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 @keyframes entra{0%{filter:brightness(2)}100%{filter:none}}
 
 /* equipamento */
-#gradeEquip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px}
+/* Boneco (como nos MMORPGs clássicos): a figura no meio e cada espaço onde ele fica no corpo —
+   arco nas costas (no alto, à esquerda), arma na mão direita, escudo na esquerda, armadura sobre o
+   peito; a munição (as flechas da mochila) no alto, à direita. Cabe na coluna de 272 px e no celular. */
+#gradeEquip{display:grid;grid-template-columns:60px 104px 60px;grid-template-areas:"arco figura municao" "arma figura escudo";justify-content:center;gap:6px 4px;padding:2px 0}
+.equip.e-arco{grid-area:arco} .equip.e-arma{grid-area:arma} .equip.e-escudo{grid-area:escudo}
+.equip.e-municao{grid-area:municao;cursor:default}
+.equip.e-municao.tem .slot{border-color:var(--bronze-500)}
+.boneco-figura,.equip.e-armadura{grid-area:figura}
+.boneco-figura{position:relative;display:flex;justify-content:center;align-items:flex-start;border:1px solid #0007;box-shadow:inset 0 0 14px #000a;pointer-events:none;
+ background:radial-gradient(ellipse 34% 4% at 50% 76%,#000b,transparent 75%),radial-gradient(ellipse 60% 48% at 50% 42%,#7a4a3040,transparent 72%),#0003}
+.boneco-figura img{flex:none;width:120px;height:144px;margin-top:-10px} /* retrato inteiro em escala 6 (3 px por pixel de arte) */
+/* a armadura fica por cima do peito da figura; o rótulo, abaixo dos pés */
+.equip.e-armadura{z-index:1;align-self:stretch;justify-content:flex-start;padding-top:49px;gap:47px;background:none;border:0}
+.equip.e-armadura .slot{box-shadow:inset 2px 2px 0 #0008,0 0 0 2px #120a0699}
+.equip.e-armadura.vazio .slot{background:radial-gradient(circle at 35% 30%,#4a2e1fd9,#24150ed9)}
 .equip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:4px 0 3px;border:solid transparent;border-width:2px 0;background:#0003;cursor:pointer;color:var(--texto);text-align:center}
 .equip .slot{flex:0 0 auto;width:44px;height:44px}
 .equip.cheio .slot{border-color:var(--bronze-500)}
@@ -213,7 +226,7 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .equip-txt{min-width:0;max-width:100%;display:flex;flex-direction:column;gap:2px}
 /* "ARMADURA" é o rótulo mais longo: sem espaçamento extra cabe na célula; a
    reticência só aparece com a fonte de reserva (sem internet) */
-.equip-txt small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 var(--fs-12)/1 var(--f-ui);color:var(--texto-2);text-transform:uppercase;letter-spacing:.02em}
+.equip-txt small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto-2);text-transform:uppercase;letter-spacing:.02em}
 .equip-txt em{font:700 var(--fs-13)/1 var(--f-ui);font-style:normal;color:var(--texto);white-space:nowrap}
 .equip.vazio .equip-txt em{color:var(--texto-mudo)}
 .equip.selecionado{outline:2px solid var(--ouro-200);animation:pisca .8s steps(2) infinite}
@@ -245,16 +258,59 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .linha-inimigo .vida b{font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto)}
 .vazio-txt{padding:10px 8px;font:italic 500 var(--fs-14)/1.3 var(--f-texto);color:var(--texto-mudo)}
 
-/* registro */
-#pRegistro{display:flex;flex-direction:column}
-#pRegistro .painel-corpo{max-height:240px;overflow-y:auto;padding:6px 8px}
-#colEsq #pRegistro{flex:1 1 auto;min-height:120px}
-#colEsq #pRegistro .painel-corpo{max-height:none;flex:1;min-height:0}
-#pRegistro[data-aberto="false"] .painel-corpo{display:none}
-#listaRegistro{list-style:none;margin:0;padding:0}
-#listaRegistro li{display:grid;grid-template-columns:16px 34px 1fr;gap:6px;align-items:start;padding:3px 0;border-bottom:1px dotted #b8975e;font:500 var(--fs-14)/1.3 var(--f-texto)}
-#listaRegistro time{font:700 var(--fs-12)/1.6 var(--f-ui);color:var(--tinta-suave)}
-#listaRegistro .marca-tipo{width:16px;height:16px;margin-top:1px;border-left:3px solid var(--cor,var(--tinta-suave))}
+/* ---------- console: conversa e registro ----------
+   Largo e médio: preso embaixo do mundo (o palco encolhe; --altura-console vem do interface.js e a
+   alça no topo muda a altura). Recolhido, fica só a barra: abas, entrada e o botão. Celular: na folha
+   "Conversa". Couro escuro com texto claro; cada tipo tem a sua cor (todas AA sobre o couro). */
+.console{display:flex;flex-direction:column;min-height:0;color:var(--texto);
+ background:var(--tex-couro),linear-gradient(var(--couro-800),var(--couro-900));background-blend-mode:soft-light,normal}
+#mundo>.console{position:relative;flex:0 0 auto;height:var(--altura-console,150px);border-top:2px solid var(--bronze-700);box-shadow:0 -2px 0 #0008}
+#mundo>.console[data-aberto="false"]{height:auto}
+.console[data-aberto="false"] .console-lista,.console[data-aberto="false"] .console-alca{display:none}
+/* tela baixa: só a barra fica presa; as mensagens ficam sobre a borda de baixo do mundo (o zoom não cai) */
+#mundo>.console.sobre{height:auto}
+.console.sobre .console-lista{position:absolute;left:0;right:0;bottom:100%;z-index:calc(var(--z-toque) + 2);height:calc(var(--altura-console) - 40px);
+ background:linear-gradient(#1c1210e0,#1c1210f5);border-top:2px solid var(--bronze-700);box-shadow:0 -2px 0 #0008}
+.console.sobre .console-alca{top:calc(34px - var(--altura-console))}
+body.console-sobre #dpad,body.console-sobre #acoes{bottom:calc(var(--console-sobre,0px) + 12px)}
+.console-alca{position:absolute;left:0;right:0;top:-6px;height:10px;z-index:2;cursor:ns-resize;touch-action:none}
+.console-alca:hover,.console-alca:focus-visible,.console-alca.arrastando{outline:none;background:linear-gradient(transparent 4px,var(--ouro-300) 4px 6px,transparent 6px)}
+.console-lista{flex:1 1 auto;min-height:0;margin:0;padding:4px 10px 6px;list-style:none;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--bronze-600) transparent;
+ font:500 var(--fs-14)/1.4 var(--f-texto)}
+.console-lista:focus-visible{outline:2px solid var(--foco);outline-offset:-2px}
+.console-lista li{padding:1px 0;color:var(--cor-linha,var(--texto-2));overflow-wrap:anywhere}
+.console-lista time{display:inline-block;min-width:40px;margin-right:4px;font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto-mudo)}
+.console-lista .quem{font:700 var(--fs-14)/1 var(--f-ui);letter-spacing:.01em;color:var(--ouro-300)}
+.console[data-canal="npcs"] .console-lista li:not(.c-npcs),.console[data-canal="servidor"] .console-lista li:not(.c-servidor){display:none}
+.t-fala{--cor-linha:#b4cdf5} .t-voce{--cor-linha:var(--texto)} .t-voce .quem{color:var(--texto-2)} .t-dica{--cor-linha:var(--texto-mudo);font-style:italic}
+.t-saque{--cor-linha:var(--moeda)} .t-perigo{--cor-linha:#ff8f75} .t-combate{--cor-linha:var(--texto-mudo)} .t-missao{--cor-linha:var(--cura)}
+.t-sistema{--cor-linha:var(--texto-2)} .t-anuncio{--cor-linha:#d9b8f7;font-weight:700}
+/* palavras-chave: clicáveis, entre colchetes (também na caixa de diálogo) */
+.palavras{display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:baseline}
+.palavra{display:inline-flex;align-items:center;min-height:24px;padding:1px 7px;border:1px solid var(--bronze-500);border-radius:var(--raio);background:var(--couro-700);
+ color:var(--ouro-200);font:700 var(--fs-14)/1.1 var(--f-ui);letter-spacing:.01em;cursor:pointer;box-shadow:var(--relevo)}
+.palavra::before{content:"[";margin-right:1px;color:var(--bronze-400)}
+.palavra::after{content:"]";margin-left:1px;color:var(--bronze-400)}
+.palavra:hover{background:var(--couro-500);border-color:var(--ouro-300);color:#fff6e0}
+.palavra:active{transform:translateY(1px)}
+/* barra: abas, entrada e recolher */
+.console-barra{flex:0 0 auto;display:flex;align-items:center;gap:8px;min-height:40px;padding:5px 6px;border-top:1px solid #0009;background:linear-gradient(var(--couro-700),var(--couro-800));box-shadow:var(--relevo)}
+.console-abas{display:flex;gap:2px;flex:0 0 auto}
+.console-abas button{position:relative;height:30px;padding:0 10px;border:1px solid var(--bronze-700);border-radius:var(--raio);background:var(--couro-800);color:var(--texto-2);font:700 var(--fs-14)/1 var(--f-ui);text-shadow:1px 1px 0 #120a06}
+.console-abas button:hover{border-color:var(--bronze-400);color:#fff6e0}
+.console-abas button[aria-selected="true"]{background:linear-gradient(var(--couro-500),var(--couro-600));border-color:var(--bronze-500);color:var(--ouro-300);box-shadow:inset 0 -2px 0 var(--ouro-300)}
+.console-abas button.nao-lido::after{content:"";position:absolute;top:3px;right:3px;width:7px;height:7px;background:var(--ouro-300);box-shadow:0 0 0 1px #120a06}
+.console-entrada{flex:1 1 auto;display:flex;gap:6px;min-width:0;margin:0}
+.console-entrada input{flex:1 1 auto;min-width:72px;height:30px;padding:0 8px;border:2px solid var(--bronze-700);border-radius:var(--raio);background:#140c08;color:var(--texto);box-shadow:inset 2px 2px 0 #0008;
+ font:500 var(--fs-14)/1 var(--f-texto)}
+.console-entrada input::placeholder{color:#c2ab80;opacity:1}
+.console-entrada input:focus{border-color:var(--ouro-300);outline:none}
+.console-enviar{min-height:30px;padding:0 12px}
+.console-recolher{flex:0 0 auto;width:32px;height:30px;justify-content:center;padding:0}
+.console-recolher .seta{width:0;height:0;border:6px solid transparent;border-top-color:var(--ouro-300);margin-top:6px}
+.console-recolher[aria-expanded="false"] .seta{border-top-color:transparent;border-bottom-color:var(--ouro-300);margin:-6px 0 0}
+/* toque: palavras do tamanho do dedo */
+@media (pointer:coarse){ .palavra{min-height:40px;padding:4px 12px} .palavras{gap:6px} }
 
 /* minimapa */
 #pMapa .painel-corpo{display:flex;justify-content:center;padding:6px}
@@ -335,6 +391,9 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .dlg-txt .papel{font:italic 500 var(--fs-14)/1.2 var(--f-texto);color:var(--tinta-suave)}
 .dlg-txt p{margin:6px 0 0;font:500 var(--fs-16)/1.45 var(--f-texto);color:var(--tinta);max-width:70ch}
 .dlg-dica{align-self:flex-end;font:700 var(--fs-13)/1 var(--f-ui);color:var(--tinta-suave);white-space:nowrap}
+/* palavras-chave na caixa (celular, ou console recolhido): tocar responde sem fechar a caixa */
+.dlg-palavras{display:flex;margin-top:8px}
+.dlg-palavras:empty{display:none}
 
 /* HUD do celular (sobre o mundo) */
 #hud{display:none}
@@ -409,6 +468,24 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja.cosmetico .preco{font-style:italic}
 .item-loja.cosmetico > span:nth-child(2) > span{display:block}
 .item-loja.cosmetico.em-uso{border-color:var(--ouro-500,#e8b94a);box-shadow:inset 0 0 0 1px #e8b94a}
+/* Visual: cores do boneco (JGB-49) — prévia de frente, de lado e de costas e uma fileira de amostras por parte */
+.cores-visual{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--e-4);align-items:start}
+.previa-cores{display:flex;flex-direction:column;gap:6px;padding:8px;border:2px solid var(--bronze-700);background:radial-gradient(circle at 40% 30%,#8fa34e,#5d7234)}
+.previa-cores figure{margin:0;display:grid;justify-items:center;gap:2px}
+.previa-cores img{width:120px;height:144px;image-rendering:pixelated}
+.previa-cores figcaption{font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto);text-shadow:var(--contorno)}
+.partes-cores{display:flex;flex-direction:column;gap:8px;min-width:0}
+.parte-cor{margin:0;padding:4px 8px 8px;border:1px solid var(--perg-400);background:#fff2}
+.parte-cor legend{padding:0 4px;font:700 var(--fs-16)/1.2 var(--f-ui);color:var(--tinta)}
+.parte-cor legend small{font:italic 500 var(--fs-14)/1 var(--f-texto);color:var(--tinta-suave);margin-left:4px}
+.amostras{display:grid;grid-template-columns:repeat(13,minmax(24px,34px));gap:5px}
+.amostra-cor{aspect-ratio:1;min-width:24px;padding:0;border:2px solid var(--tinta);border-radius:var(--raio);background:var(--cor);box-shadow:inset 0 2px 0 #fff5,inset 0 -2px 0 #0004;cursor:pointer}
+.amostra-cor.padrao{background:repeating-linear-gradient(135deg,var(--perg-100) 0 4px,var(--perg-300) 4px 8px)}
+.amostra-cor:hover{outline:2px solid var(--bronze-500);outline-offset:1px}
+.amostra-cor:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
+.amostra-cor[aria-pressed="true"]{outline:3px solid var(--tinta);outline-offset:2px;box-shadow:inset 0 0 0 2px var(--ouro-300)}
+.partes-cores > .btn{align-self:flex-start}
+@media (max-width:760px){ .cores-visual{grid-template-columns:1fr} .previa-cores{flex-direction:row;justify-content:center} .previa-cores img{width:80px;height:96px} .amostra-cor{min-width:32px} .amostras{grid-template-columns:repeat(auto-fill,minmax(32px,1fr))} }
 /* passagem do barco: bilhete com preço, saldo e o que sobra */
 .bilhete{margin:0 0 12px;border:2px solid var(--tinta);background:#fff8e6;box-shadow:inset 0 0 0 2px #e6cf9c}
 .bilhete-linha{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 12px;font:600 var(--fs-16)/1.2 var(--f-ui);color:var(--tinta)}
@@ -757,6 +834,18 @@ body.dialogo-aberto #toque{visibility:hidden}
  #abasCel button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:0;border-right:1px solid #0008;background:none;color:var(--texto);font:700 var(--fs-12)/1 var(--f-ui);min-height:var(--toque)}
  #abasCel button img{width:16px;height:16px}
  #abasCel button[aria-expanded="true"]{background:linear-gradient(var(--couro-500),var(--couro-700));color:var(--ouro-300);box-shadow:inset 0 2px 0 var(--ouro-300)}
+ #abasCel button{position:relative}
+ #abasCel .nao-lida{position:absolute;top:6px;left:calc(50% + 10px);width:8px;height:8px;background:var(--ouro-300);box-shadow:0 0 0 2px #120a06}
+ #abasCel .nao-lida[hidden]{display:none}
+ /* console na folha Conversa: lista com altura própria e barra em duas linhas (abas em cima) */
+ #folha .console{min-height:0;border:2px solid var(--bronze-700)}
+ #folha .console-lista{flex:0 1 auto;height:38dvh;min-height:120px}
+ #folha .console-alca,#folha .console-recolher{display:none}
+ #folha .console-barra{flex-wrap:wrap;gap:6px}
+ #folha .console-abas{width:100%}
+ #folha .console-abas button{flex:1;height:40px}
+ #folha .console-entrada input{height:44px;font-size:var(--fs-16)}
+ #folha .console-enviar{min-height:44px}
  /* folha inferior */
  #folha{display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:var(--altura-rodape,104px);z-index:var(--z-gaveta);max-height:60dvh;transform:translateY(calc(100% + var(--altura-rodape,104px)));transition:transform .2s steps(5);
   background:var(--tex-couro),var(--couro-800);border-top:2px solid var(--bronze-500);box-shadow:0 -4px 12px #000a}
@@ -833,7 +922,7 @@ body.toque-forcado #dpad{display:block}
         <div id="avisos" role="status" aria-live="polite"></div>
         <div id="dialogo" class="perg" role="dialog" aria-live="polite" aria-label="Conversa">
           <div class="retrato"><img class="px" id="dlgRetrato" alt=""></div>
-          <div class="dlg-txt"><h3 id="dlgNome"></h3><span class="papel" id="dlgPapel"></span><p id="dlgTexto"></p></div>
+          <div class="dlg-txt"><h3 id="dlgNome"></h3><span class="papel" id="dlgPapel"></span><p id="dlgTexto"></p><div class="palavras dlg-palavras" id="dlgPalavras" role="group" aria-label="Palavras-chave"></div></div>
           <span class="dlg-dica">clique ou F</span>
         </div>
         <div id="toque" aria-label="Controles de toque">
@@ -863,7 +952,7 @@ body.toque-forcado #dpad{display:block}
       <button type="button" data-folha="equip" aria-expanded="false"><img class="px" data-glifo="ui_personagem" alt="">Equip.</button>
       <button type="button" data-folha="batalha" aria-expanded="false"><img class="px" data-glifo="ui_espadas" alt="">Batalha</button>
       <button type="button" data-folha="missao" aria-expanded="false"><img class="px" data-glifo="ui_pergaminho" alt="">Missão</button>
-      <button type="button" data-folha="registro" aria-expanded="false"><img class="px" data-glifo="ui_registro" alt="">Registro</button>
+      <button type="button" data-folha="registro" aria-expanded="false"><img class="px" data-glifo="ui_falar" alt="">Conversa<span class="nao-lida" id="naoLidaCel" hidden></span></button>
     </nav>
   </footer>
 </div>
@@ -898,9 +987,24 @@ body.toque-forcado #dpad{display:block}
       <div class="analise-pe"><p id="analiseEspecies">Nenhum abate ainda.</p><button type="button" class="btn secundario" data-zerar-analisador title="Zera a sessão: o relógio volta a contar no próximo golpe">Zerar</button></div></div>
   </section>
 
-  <section class="perg" id="pRegistro" data-aberto="false" aria-labelledby="tRegistro">
-    <div class="painel-cab"><button class="recolher" type="button" id="btnRegistro" aria-expanded="false" aria-controls="corpoRegistro"><img class="px g16" data-glifo="ui_registro" alt=""><h2 id="tRegistro">REGISTRO</h2><span class="extra" id="registroQtd">0</span><span class="seta"></span></button></div>
-    <div class="painel-corpo" id="corpoRegistro"><ol id="listaRegistro" aria-live="off"></ol></div>
+  <!-- Console: conversa com os NPCs por palavras-chave e registro do servidor (interface.js, "Console").
+       Largo e médio: preso embaixo do mundo; celular: na folha Conversa. -->
+  <section class="console" id="pRegistro" data-aberto="true" data-canal="geral" aria-label="Conversa e registro">
+    <div class="console-alca" id="consoleAlca" role="separator" aria-orientation="horizontal" aria-label="Altura do console (arraste)" title="Arraste para mudar a altura"></div>
+    <ol id="listaRegistro" class="console-lista" role="log" aria-live="polite" aria-label="Mensagens" tabindex="0"></ol>
+    <div class="console-barra">
+      <div class="console-abas" role="tablist" aria-label="Canais">
+        <button type="button" role="tab" data-canal="geral" aria-selected="true" aria-controls="listaRegistro">Geral</button>
+        <button type="button" role="tab" data-canal="npcs" aria-selected="false" aria-controls="listaRegistro">NPCs</button>
+        <button type="button" role="tab" data-canal="servidor" aria-selected="false" aria-controls="listaRegistro">Servidor</button>
+      </div>
+      <form class="console-entrada" id="formConversa" autocomplete="off">
+        <label class="sr" for="entradaConversa">Falar com quem está perto</label>
+        <input id="entradaConversa" type="text" maxlength="80" enterkeyhint="send" spellcheck="false" placeholder="Enter: falar (oi, comprar, tchau…)">
+        <button type="submit" class="btn console-enviar">Falar</button>
+      </form>
+      <button type="button" class="btn-icone console-recolher" id="btnRegistro" aria-expanded="true" aria-controls="listaRegistro" aria-label="Recolher o console" title="Recolher o console"><span class="seta"></span></button>
+    </div>
   </section>
 
   <section class="painel" id="pMapa" aria-labelledby="tMapa">
@@ -979,7 +1083,7 @@ body.toque-forcado #dpad{display:block}
 <div class="modal" id="modalVisual" aria-hidden="true">
   <div class="modal-caixa perg larga" role="dialog" aria-modal="true" aria-labelledby="visualTitulo">
     <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_personagem" data-escala="4" alt=""></span><div><h2 id="visualTitulo">Visual</h2>
-      <p class="sub">Trajes e montarias: só aparência, nenhuma vantagem em combate</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+      <p class="sub">Cores, trajes e montarias: só aparência, nenhuma vantagem em combate</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
     <div class="modal-corpo" id="visualCorpo"></div>
   </div>
 </div>
