@@ -553,14 +553,14 @@
       const livre = Math.max(0, c.maximo - c.atual);
       preencherLinha(med, "carga", {
         nome: "Capacidade", valor: c.texto, pct: c.pct,
-        dica: c.pct >= 100 ? "Mochila cheia: venda, largue ou guarde algo para pegar mais." : `Livre: ${kg(livre)} kg. Sobe 3 kg por nível e com os alforjes.`,
+        dica: c.pct >= 100 ? "Mochila cheia: venda, largue ou guarde algo para pegar mais." : `Livre: ${kg(livre)} kg. Sobe ${kg(typeof CARGA_POR_NIVEL !== "undefined" ? CARGA_POR_NIVEL : 3)} kg por nível e com os alforjes.`,
         classes: { quase: c.pct >= 90 && c.pct < 100, cheia: c.pct >= 100 },
       });
       const cair = v.proxima ? ` Cai para ${v.proxima.nome.toLowerCase()} (${v.proxima.texto}) em ${typeof textoVigor === "function" ? textoVigor(v.ateCair) : ""} de caçada.` : "";
       preencherLinha(med, "vigor", {
         nome: `Vigor <small>${esc(v.faixa.nome.toLowerCase())}</small>`, rotulo: `Vigor, ${v.faixa.nome.toLowerCase()}`,
         valor: v.texto, pct: v.pct,
-        dica: `${v.faixa.nome}: ${v.faixa.texto}.${cair} Gasta só caçando; volta longe do jogo (1 minuto a cada 3) e enche no descanso do Sábado.`,
+        dica: `${v.faixa.nome}: ${v.faixa.texto}.${cair} Gasta só caçando; volta longe do jogo (1 minuto a cada ${typeof REGRAS_VIGOR !== "undefined" ? REGRAS_VIGOR.regenCadaMinutos : 3}) e enche no descanso do Sábado.`,
         dados: { faixa: v.faixa.id },
       });
     }
@@ -2178,7 +2178,8 @@
         <p>${esc(descanso + agoraSabado)}</p></section>
       <p class="nota">O maná cai todo dia ao amanhecer (dobrado na sexta, nada no sábado); colha uma vez e coma quando
         precisar. O que sobra estraga no amanhecer seguinte, e perder um dia não tira nada. O tempo em que você fica longe do jogo
-        de sexta às 18 h a sábado às 18 h vira reserva de XP (um Sábado inteiro vale o XP de um nível; ela não expira).</p>`;
+        de sexta às 18 h a sábado às 18 h vira reserva de XP (um Sábado inteiro vale o XP de um nível; ela não expira); uma hora
+        dele já enche o vigor.</p>`;
   }
   function acaoMana(botao) {
     const tipo = botao.dataset.acaoMana === "colher" ? "colherMana" : "comerMana";
@@ -2515,9 +2516,17 @@
       <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
     // No toque, a seção de toque vem primeiro.
     const toque = comToque || mm("(pointer: coarse)");
+    // Vigor: as faixas e a volta saem de REGRAS_VIGOR (dados/mundo.js).
+    const textoAjudaVigor = () => {
+      if (typeof REGRAS_VIGOR === "undefined" || typeof textoVigor !== "function") return "";
+      const R = REGRAS_VIGOR, F = R.faixas;
+      const faixas = F.map((f, i) => `${f.nome} (${i < F.length - 1 ? `a partir de ${textoVigor(f.desde)}` : `abaixo de ${textoVigor(F[i - 1].desde)}`}): ${f.texto}`).join("; ");
+      return `<p>${esc(`Vigor (painel Personagem, até ${textoVigor(R.maximoMinutos)}): gasta só caçando e volta longe do jogo (1 minuto a cada ${R.regenCadaMinutos}); o descanso do Sábado o enche. ${faixas}.`)}</p>`;
+    };
     $("#ajudaCorpo").innerHTML = `${toque ? secToque + secItens + secTeclado : secTeclado + secItens + secToque}
       <h3>Regras</h3>
       <p>As habilidades (corpo, arco, defesa e oração) melhoram com o uso. Fora de combate, a vida volta aos poucos. ${esc(regra)}</p>
+      ${textoAjudaVigor()}
       <p>Caçadas: depois da missão principal de cada região, o atalaia oferece rondas (voltam 20 h depois da entrega) e grandes caçadas
         (voltam 6 d 20 h depois). Até 3 ao mesmo tempo; cada abate conta para todas as que pedem aquela criatura. Entregue a qualquer
         atalaia e troque os pontos de tarefa por melhorias.</p>
