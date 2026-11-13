@@ -518,6 +518,110 @@ function estatisticasCombate(p) {
 }
 
 // ---------------------------------------------------------------------
+// Janela de habilidades (painel Personagem): tudo o que ela mostra, sem DOM
+// ---------------------------------------------------------------------
+const NOMES_FICHA_HABILIDADES = { corpo: "Corpo a corpo", distancia: "Distância", defesa: "Defesa (escudo)", oracao: "Oração" };
+// Como cada habilidade treina: [singular, plural] do uso que rende XP_HABILIDADE_POR_USO.
+const USOS_HABILIDADE = {
+  corpo: ["golpe corpo a corpo", "golpes corpo a corpo"],
+  distancia: ["disparo", "disparos"],
+  defesa: ["golpe recebido", "golpes recebidos"],
+  oracao: ["oração", "orações"],
+};
+
+// % até o próximo nível, para baixo (só mostra 100 no máximo).
+function pctProgresso(xp, necessario, maximo) {
+  if (maximo) return 100;
+  return necessario > 0 ? Math.max(0, Math.min(99, Math.floor((100 * xp) / necessario))) : 0;
+}
+
+// O que a habilidade dá agora (texto curto da dica).
+function efeitoHabilidade(p, chave) {
+  const pct = (n) => `${String(Math.round(n * 10) / 10).replace(".", ",")}%`;
+  if (chave === "corpo" || chave === "distancia") return `+${bonusHabilidade(p, chave)} de dano, crítico ${pct(chanceCritico(p, chave))}`;
+  if (chave === "defesa") return `+${bonusHabilidade(p, "defesa")} de defesa`;
+  const purifica = nivelHabilidade(p, "oracao") >= NIVEL_ORACAO.purificar;
+  return `cura ${curaOracao(p)}${purifica ? " e tira veneno e sangramento" : ` (tira veneno e sangramento no nível ${NIVEL_ORACAO.purificar})`}`;
+}
+
+// Janela de habilidades (pura): nível e XP, vida, fé, carga, vigor, as 4 habilidades de combate e os ofícios,
+// cada um com nível, XP no nível, XP para o próximo, falta, % (para baixo) e a dica do que falta.
+function fichaDeHabilidades(p, agora = Date.now()) {
+  const nivel = p.nivel || 1;
+  const nivelMaximo = nivel >= NIVEL_MAXIMO;
+  const base = nivel > 1 ? limiarNivel(nivel - 1) : 0;
+  const custo = nivelMaximo ? 0 : limiarNivel(nivel) - base;
+  const noNivel = nivelMaximo ? 0 : Math.max(0, Math.min(custo, (p.xp || 0) - base));
+  const peso = pesoCarregado(p);
+  const capacidade = capacidadeCarga(p);
+  const combate = HABILIDADES.map((chave) => {
+    const pr = progressoHabilidade(p, chave);
+    const falta = pr.maximo ? 0 : Math.max(0, pr.necessario - pr.xp);
+    const porUso = XP_HABILIDADE_POR_USO[chave] || 1;
+    const usos = Math.ceil(falta / porUso);
+    const [um, varios] = USOS_HABILIDADE[chave];
+    const bloqueada = chave === "oracao" && !p.oracaoDesbloqueada;
+    let dica;
+    if (bloqueada) dica = "Aprenda a Oração com Jesus, na Galileia.";
+    else if (pr.maximo) dica = `Nível máximo (${HABILIDADE_MAXIMA}).`;
+    else dica = `Faltam ${falta} de ${pr.necessario} XP (cerca de ${usos} ${usos === 1 ? um : varios}) para o nível ${pr.nivel + 1}.`;
+    return {
+      chave,
+      nome: NOMES_FICHA_HABILIDADES[chave],
+      nivel: pr.nivel,
+      xp: pr.xp,
+      necessario: pr.necessario,
+      falta,
+      usos,
+      pct: pctProgresso(pr.xp, pr.necessario, pr.maximo),
+      maximo: pr.maximo,
+      bloqueada,
+      efeito: efeitoHabilidade(p, chave),
+      dica,
+    };
+  });
+  const oficios = ORDEM_OFICIOS.map((id) => {
+    const pr = progressoOficio(p, id);
+    const falta = pr.maximo ? 0 : Math.max(0, pr.xpParaProximo - pr.xpNoNivel);
+    return {
+      id,
+      nome: OFICIOS[id].nome,
+      icone: OFICIOS[id].icone,
+      nivel: pr.nivel,
+      xp: pr.xpNoNivel,
+      necessario: pr.xpParaProximo,
+      falta,
+      pct: pctProgresso(pr.xpNoNivel, pr.xpParaProximo, pr.maximo),
+      maximo: pr.maximo,
+      dica: pr.maximo ? `Nível máximo (${REGRAS_OFICIOS.nivelMaximo}).` : `Faltam ${falta} de ${pr.xpParaProximo} XP para o nível ${pr.nivel + 1}.`,
+    };
+  });
+  return {
+    nivel: {
+      nivel,
+      xp: p.xp || 0,
+      noNivel,
+      custo,
+      falta: nivelMaximo ? 0 : custo - noNivel,
+      pct: pctProgresso(noNivel, custo, nivelMaximo),
+      maximo: nivelMaximo,
+      descanso: Math.max(0, Math.floor(p.descanso?.xp || 0)),
+    },
+    vida: { atual: p.vida, maximo: vidaMaxima(p) },
+    fe: { atual: p.oracaoDesbloqueada ? p.fe || 0 : 0, maximo: FE_MAXIMA, aprendida: !!p.oracaoDesbloqueada },
+    carga: {
+      atual: peso,
+      maximo: capacidade,
+      pct: capacidade > 0 ? Math.min(100, (100 * peso) / capacidade) : 100,
+      texto: `${textoKg(peso)} / ${textoKg(capacidade)} kg`,
+    },
+    vigor: estadoVigor(p, agora),
+    combate,
+    oficios,
+  };
+}
+
+// ---------------------------------------------------------------------
 // Regra de morte
 // ---------------------------------------------------------------------
 function regraMorte(nivel) {
@@ -2118,6 +2222,95 @@ function gastarDescanso(p, xp) {
 }
 
 // ---------------------------------------------------------------------
+// Vigor (REGRAS_VIGOR, dados/mundo.js): gasta caçando, volta longe do jogo, enche no Sábado e muda o XP
+// das criaturas pela faixa. Save: p.vigor = { minutos, vistoEm } (minutos com fração; vistoEm: a última
+// gravação, como a presença do descanso). Sem campo (save antigo ou novo), começa cheio.
+// ---------------------------------------------------------------------
+const MINUTO_MS = 60_000;
+
+// "40:00", "7:05": horas e minutos inteiros (para baixo).
+function textoVigor(minutos) {
+  const m = Math.max(0, Math.floor(Number(minutos) || 0));
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+}
+
+// Faixa do vigor (a primeira de REGRAS_VIGOR.faixas com minutos >= desde).
+function faixaVigor(minutos) {
+  const lista = REGRAS_VIGOR.faixas;
+  return lista.find((f) => (Number(minutos) || 0) >= f.desde) || lista[lista.length - 1];
+}
+
+function normalizarVigor(p, agora) {
+  const v = objetoValido(p.vigor) ? p.vigor : {};
+  const maximo = REGRAS_VIGOR.maximoMinutos;
+  p.vigor = {
+    minutos: Number.isFinite(v.minutos) ? Math.max(0, Math.min(maximo, Math.round(v.minutos * 1000) / 1000)) : maximo,
+    // Sem marca (save sem vigor), a ausência conta de agora; relógio atrasado também recomeça de agora.
+    vistoEm: Number.isFinite(v.vistoEm) && v.vistoEm > 0 ? Math.min(v.vistoEm, agora) : agora,
+  };
+}
+
+// O que a ausência desde v.vistoEm devolve (puro): { minutos, ganho, sabado }. Abaixo da carência, nada;
+// com o Sábado mínimo dentro dela, enche.
+function vigorRecuperado(v, agora) {
+  const R = REGRAS_VIGOR;
+  const antes = Math.max(0, Math.min(R.maximoMinutos, Number(v?.minutos) || 0));
+  const desde = Number(v?.vistoEm) || agora;
+  const longe = agora - desde;
+  if (!(longe >= R.carenciaMinutos * MINUTO_MS)) return { minutos: antes, ganho: 0, sabado: false };
+  const sabado = tempoNoSabado(desde, agora) >= R.sabadoMinimoMinutos * MINUTO_MS;
+  const minutos = sabado ? R.maximoMinutos : Math.min(R.maximoMinutos, antes + (longe / MINUTO_MS - R.carenciaMinutos) / R.regenCadaMinutos);
+  return { minutos, ganho: minutos - antes, sabado };
+}
+
+// Converte em vigor a ausência desde a última gravação e marca a presença (Mundo.salvar). Devolve
+// { ganho, sabado } (sabado: o descanso do Sábado encheu o vigor).
+function creditarVigor(p, agora) {
+  if (!objetoValido(p.vigor)) normalizarVigor(p, agora);
+  const r = vigorRecuperado(p.vigor, agora);
+  p.vigor.minutos = r.minutos;
+  p.vigor.vistoEm = agora;
+  return { ganho: r.ganho, sabado: r.sabado };
+}
+
+// Gasta minutos de vigor (caçando). Devolve o que gastou.
+function gastarVigor(p, minutos) {
+  if (!objetoValido(p.vigor) || !(minutos > 0)) return 0;
+  const antes = p.vigor.minutos;
+  p.vigor.minutos = Math.max(0, antes - minutos);
+  return antes - p.vigor.minutos;
+}
+
+// Visão do vigor para a interface (pura; inclui o que a ausência em curso já devolveu).
+function estadoVigor(p, agora = Date.now()) {
+  const R = REGRAS_VIGOR;
+  const r = objetoValido(p?.vigor) ? vigorRecuperado(p.vigor, agora) : { minutos: R.maximoMinutos };
+  const faixa = faixaVigor(r.minutos);
+  const i = R.faixas.indexOf(faixa);
+  const abaixo = R.faixas[i + 1];
+  return {
+    minutos: r.minutos,
+    maximo: R.maximoMinutos,
+    texto: textoVigor(r.minutos),
+    textoMaximo: textoVigor(R.maximoMinutos),
+    pct: Math.max(0, Math.min(100, (100 * r.minutos) / R.maximoMinutos)),
+    faixa: { id: faixa.id, nome: faixa.nome, xp: faixa.xp, texto: faixa.texto },
+    // Minutos de caçada até cair para a faixa de baixo (null na última).
+    ateCair: abaixo ? Math.max(0, r.minutos - faixa.desde) : null,
+    proxima: abaixo ? { id: abaixo.id, nome: abaixo.nome, texto: abaixo.texto } : null,
+  };
+}
+
+// XP de um abate antes do descanso (pura). Ordem: XP da criatura (xpDoAbate, com a queda por nível) × campeão
+// × vigor, arredondado; o descanso do Sábado dobra este resultado depois (gastarDescanso). Vocação e talentos
+// não multiplicam XP (só dano, cura, defesa e recarga). Devolve { xp, semVigor, fatorVigor, faixa }.
+function composicaoXpAbate(p, e, campeao, agora = Date.now()) {
+  const criatura = xpDoAbate(p, e) * (campeao ? CAMPEAO.xp : 1);
+  const faixa = estadoVigor(p, agora).faixa;
+  return { xp: Math.round(criatura * faixa.xp), semVigor: Math.round(criatura), fatorVigor: faixa.xp, faixa };
+}
+
+// ---------------------------------------------------------------------
 // Missões (dados/missoes.js) — motor genérico, sem missões escritas como código
 // ---------------------------------------------------------------------
 // Estado no save: p.missoes[id] = { status, etapa, progresso }.
@@ -2960,6 +3153,8 @@ const Mundo = {
   // Toda gravação marca a presença do jogador: a ausência desde a anterior que caiu no Sábado vira
   // reserva de XP de descanso (JGB-11).
   salvar(p) {
+    const vigor = creditarVigor(p, Date.now()); // a mesma presença devolve o vigor (e o Sábado o enche)
+    if (vigor.sabado && vigor.ganho >= 1) this.adicionarAviso(p, "vigor", `O descanso do Sábado renovou o seu vigor: ${textoVigor(p.vigor.minutos)}.`);
     const descanso = creditarDescanso(p, Date.now());
     if (descanso > 0) this.avisarDescanso(p, descanso);
     this.avisarVocacao(p);
@@ -3099,6 +3294,8 @@ const Mundo = {
     // Maná e descanso (save v11). Saves até a v10 começam com o jarro vazio e a ausência contando de agora.
     normalizarMana(p, agora);
     normalizarDescanso(p, agora);
+    // Vigor (sem versão nova): quem não tem o campo começa cheio, com a ausência contando de agora.
+    normalizarVigor(p, agora);
 
     // Fé e Oração.
     p.oracaoDesbloqueada = !!p.oracaoDesbloqueada;
@@ -5033,8 +5230,11 @@ const Mundo = {
       .filter((t) => t.cumpridaAgora)
       .map((t) => ` Caçada cumprida: ${t.nome} (${t.meta}/${t.meta})! Entregue a qualquer atalaia.`)
       .join("");
-    const xpBase = Math.round(xpDoAbate(p, e) * (at.campeao ? CAMPEAO.xp : 1));
-    const xpDescanso = gastarDescanso(p, xpBase); // reserva do Sábado: XP em dobro enquanto durar
+    // XP da criatura × campeão × vigor; a reserva do Sábado dobra o resultado enquanto durar.
+    const composicao = composicaoXpAbate(p, e, at.campeao, agora);
+    const xpBase = composicao.xp;
+    const xpVigor = xpBase - composicao.semVigor;
+    const xpDescanso = gastarDescanso(p, xpBase);
     const xpGanho = xpBase + xpDescanso;
     const niveis = adicionarXP(p, xpGanho);
     const bestiario = this.registrarAbateBestiario(p, e);
@@ -5076,6 +5276,7 @@ const Mundo = {
     const alvoTexto = at.campeao || e.nomeado ? nome : nome.toLowerCase();
     const fraca = xpDoAbate(p, e) < e.xpRecompensa ? " (criatura fraca para o seu nível)" : "";
     const descanso = xpDescanso ? ` (${xpDescanso} do descanso; reserva: ${p.descanso.xp})` : "";
+    const vigor = xpVigor > 0 ? ` (${xpVigor} do vigor)` : xpVigor < 0 ? ` (${composicao.faixa.nome.toLowerCase()}: ${Math.round(composicao.fatorVigor * 100)}% do XP)` : "";
     const reaparece = e.nomeado ? "" : ` ${e.genero === "f" ? "Ela" : "Ele"} reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
     return {
       saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id),
@@ -5088,7 +5289,8 @@ const Mundo = {
       bestiario,
       xpGanho,
       xpDescanso,
-      mensagem: `Você derrotou ${alvoTexto}! +${xpGanho} XP${descanso}${fraca}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
+      xpVigor,
+      mensagem: `Você derrotou ${alvoTexto}! +${xpGanho} XP${descanso}${vigor}${fraca}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
     };
   },
 
@@ -6061,6 +6263,17 @@ const Mundo = {
     return null;
   },
 
+  // Vigor: gasta em tempo real enquanto houve golpe dado ou recebido há pouco (REGRAS_VIGOR.janelaCombateSegundos).
+  // Passos longos (aba parada, sem quadros) não contam além de passoMaximoSegundos. Grava com o próximo salvar.
+  passoVigor(p, estado, agora) {
+    const R = REGRAS_VIGOR;
+    const desde = estado.vigorEm || agora;
+    estado.vigorEm = agora;
+    if (!(estado.ultimoCombate > 0) || agora - estado.ultimoCombate > R.janelaCombateSegundos * 1000) return;
+    const ms = Math.min(agora - desde, R.passoMaximoSegundos * 1000);
+    if (ms > 0) gastarVigor(p, ms / MINUTO_MS);
+  },
+
   // Buffs com regeneração (Incenso): cura a cada intervalo. E os buffs vencidos saem.
   atualizarBuffs(p, agora, eventos) {
     if (!objetoValido(p.buffs)) return;
@@ -6273,6 +6486,7 @@ const Mundo = {
     this.atualizarNomeados(p, agora, eventos);
     this.atualizarAliados(id, p, estado, agora, eventos);
     this.atualizarBuffs(p, agora, eventos);
+    this.passoVigor(p, estado, agora);
 
     const estragou = this.estragarMana(p, agora);
     if (estragou) eventos.push({ tipo: "manaEstragou", quantidade: estragou, mensagem: this.textoManaEstragou(p, estragou, agora) });

@@ -221,3 +221,27 @@ const REGRAS_DESCANSO = {
   limite: 1.5,
   multiplicador: 2,
 };
+
+// Vigor: o fôlego para a caçada, em minutos, mostrado em horas:minutos ("40:00", os quarenta dias). Todo
+// personagem começa cheio.
+//   Gasta só caçando: enquanto houve golpe dado ou recebido nos últimos janelaCombateSegundos, o vigor cai em
+//     tempo real (1 minuto por minuto). Com a aba parada (sem quadros), passos maiores que passoMaximoSegundos
+//     não contam.
+//   Volta longe da caçada: o tempo longe do jogo (página fechada, ou nenhuma ação por carenciaMinutos ou mais)
+//     devolve 1 minuto a cada regenCadaMinutos, sem contar a carência. Uma ausência com pelo menos
+//     sabadoMinimoMinutos dentro do Sábado (a janela de REGRAS_DESCANSO) enche o vigor.
+//   Faixas (vale a primeira, de cima para baixo, com minutos >= desde): xp multiplica o XP das criaturas
+//     (o descanso do Sábado dobra depois); o id dá a cor da barra (data-faixa no index.html).
+const REGRAS_VIGOR = {
+  maximoMinutos: 40 * 60,
+  janelaCombateSegundos: 60,
+  passoMaximoSegundos: 5,
+  carenciaMinutos: 10,
+  regenCadaMinutos: 3,
+  sabadoMinimoMinutos: 60,
+  faixas: [
+    { id: "descansado", nome: "Descansado", desde: 38 * 60, xp: 1.1, texto: "+10% de XP das criaturas" },
+    { id: "disposto", nome: "Disposto", desde: 12 * 60, xp: 1, texto: "XP normal das criaturas" },
+    { id: "exausto", nome: "Exausto", desde: 0, xp: 0.5, texto: "metade do XP das criaturas" },
+  ],
+};
