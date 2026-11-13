@@ -57,8 +57,7 @@ const CURA_POCAO = 30; // mínimo
 const CURA_POCAO_PERCENTUAL = 0.25; // da vida máxima
 const CURA_POCAO_FE = 40;
 const QUANTIDADE_POCOES_INICIAIS = 3;
-const CARGA_BASE = 50;
-const CARGA_POR_NIVEL = 10;
+// CARGA_BASE e CARGA_POR_NIVEL vêm de dados/itens.js (ajustadas aos pesos reais dos itens).
 
 // Combate: dano bruto = base + 3 por nível acima do 1º + arma + habilidade/4.
 // A defesa mitiga em proporção: dano final = bruto × 20 / (20 + defesa), mínimo 1.
@@ -317,16 +316,22 @@ function atributoEquipado(p, chave) {
   return Object.values(p?.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.atributos[chave] || 0 : 0), 0);
 }
 
-// Carga máxima: base + 10 kg por nível acima do 1º + melhorias da troca de pontos (bonusCarga)
+// Carga máxima: base + CARGA_POR_NIVEL por nível acima do 1º + melhorias da troca de pontos (bonusCarga)
 // + atributo de carga do equipamento.
 function capacidadeCarga(p) {
   return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL + bonusCarga(p) + atributoEquipado(p, "carga");
 }
 
+// Peso total (mochila + corpo), arredondado a 10 g: há itens de 0,01 kg (pedras, penas) e 0,03 kg (flecha).
 function pesoCarregado(p) {
   const pesoBolsa = p.inventario.reduce((soma, item) => soma + pesoItem(item), 0);
   const pesoEquipado = Object.values(p.equipamento || {}).reduce((soma, item) => soma + (item ? pesoItem(item) : 0), 0);
-  return Math.round((pesoBolsa + pesoEquipado) * 10) / 10;
+  return Math.round((pesoBolsa + pesoEquipado) * 100) / 100;
+}
+
+// "12,35", "0,03", "5": quilos com vírgula, até 2 casas (sem zeros sobrando).
+function textoKg(kg) {
+  return String(Math.round((Number(kg) || 0) * 100) / 100).replace(".", ",");
 }
 
 function defesaEquipamento(p) {
@@ -2236,8 +2241,8 @@ function variaveisMissao(p, missao, estado) {
     npc: npcs[receptorMissao(missao)]?.nome || "o líder",
     etapa: indice + 1,
     etapas: missao.etapas.length,
-    peso: pesoCarregado(p),
-    capacidade: capacidadeCarga(p),
+    peso: textoKg(pesoCarregado(p)),
+    capacidade: textoKg(capacidadeCarga(p)),
     recompensa: resumoRecompensa(etapa.recompensa),
     proximaArea: proxima ? areas[npcs[proxima.npc]?.area]?.nome || "" : "",
   };
@@ -3057,6 +3062,9 @@ const Mundo = {
     for (const s of p.saqueNoChao) {
       if (!Number.isFinite(s.criadoEm)) s.criadoEm = agora;
       if ("destaque" in s && (!s.item || !registroDe(RARIDADES, s.destaque))) delete s.destaque;
+      // Itens jogados no chão (largarItem): largado só true; pilha só com 2 ou mais (senão vale 1 unidade).
+      if ("largado" in s && (s.largado !== true || !s.item)) delete s.largado;
+      if ("quantidade" in s && (!s.item || !Number.isSafeInteger(s.quantidade) || s.quantidade < 2)) delete s.quantidade;
     }
 
     // Itens iniciais (uma única vez).
@@ -3440,7 +3448,7 @@ const Mundo = {
   },
 
   mensagemMochilaCheia(p, complemento) {
-    return `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). ${complemento}`;
+    return `Mochila cheia (${textoKg(pesoCarregado(p))}/${textoKg(capacidadeCarga(p))} kg). ${complemento}`;
   },
 
   equiparItem(id, itemId, slot) {
@@ -3604,9 +3612,10 @@ const Mundo = {
     if (!s) return { ok: false, mensagem: "Esse saque não está mais no chão." };
     if (distanciaChebyshev(p, s) > ALCANCE_INTERACAO)
       return { ok: false, mensagem: "Chegue ao lado do item para pegá-lo." };
-    // O item que caiu na morte do próprio jogador não é saque novo: não entra no analisador.
+    // O item que caiu na morte do próprio jogador, ou que ele mesmo jogou no chão, não é saque novo: não
+    // entra no analisador (nem, o jogado no chão, nas missões).
     const analisador = this.estado[id]?.analisador;
-    const conta = analisador?.inicio && !s.id.startsWith("morte_");
+    const conta = analisador?.inicio && !s.id.startsWith("morte_") && !s.largado;
     if (s.moedas) {
       p.moedas += s.moedas;
       if (conta) analisador.moedas += s.moedas;
@@ -3614,18 +3623,29 @@ const Mundo = {
       this.salvar(p);
       return { ok: true, moedas: s.moedas, itemColetado: s.id, mensagem: `Você pegou ${s.moedas} moedas.` };
     }
-    if (!this.adicionarItem(p, s.item)) {
-      return { ok: false, mensagem: this.mensagemMochilaCheia(p, "Libere espaço para pegar o item.") };
-    }
-    p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id);
+    // Pilha (itens jogados no chão): leva o que couber na carga; o resto continua no chão.
+    const total = Number.isSafeInteger(s.quantidade) && s.quantidade > 1 ? s.quantidade : 1;
+    const folga = capacidadeCarga(p) - pesoCarregado(p) + 0.0001;
+    const pegos = itemValido(s.item) ? Math.max(0, Math.min(total, Math.floor(folga / pesoItem(s.item)))) : 0;
+    if (!pegos) return { ok: false, mensagem: this.mensagemMochilaCheia(p, "Libere espaço para pegar o item.") };
+    for (let i = 0; i < pegos; i++) p.inventario.push(s.item);
+    const restante = total - pegos;
+    if (restante > 1) s.quantidade = restante;
+    else if (restante === 1) delete s.quantidade;
+    else p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id);
     if (conta) {
       analisador.itens += 1;
       analisador.valorItens += valorDeVenda(s.item);
       if (TIPOS_COM_RARIDADE.has(infoItem(s.item)?.tipo)) analisador.equipamentos += 1;
     }
-    this.registrarColeta(p, s.item, s.id, "saque");
+    if (!s.largado) this.registrarColeta(p, s.item, s.id, "saque");
     this.salvar(p);
-    return { ok: true, itemColetado: s.id, mensagem: `Você pegou: ${nomeItem(s.item)}.` };
+    const nome = pegos > 1 ? `${pegos}× ${nomeItem(s.item)}` : nomeItem(s.item);
+    if (restante) {
+      const ficou = this.mensagemMochilaCheia(p, `${restante === 1 ? "1 ficou" : `${restante} ficaram`} no chão.`);
+      return { ok: true, saqueId: s.id, quantidade: pegos, restante, mensagem: `Você pegou: ${nome}. ${ficou}` };
+    }
+    return { ok: true, itemColetado: s.id, quantidade: pegos, mensagem: `Você pegou: ${nome}.` };
   },
 
   // Ao pisar numa casa, recolhe toda a pilha de saque (item e moedas caem
@@ -3634,8 +3654,9 @@ const Mundo = {
   coletarPilhaDeSaque(id, p) {
     const deMissao = this.itensDeMissaoPendentes(p);
     const prioridade = (s) => (s.item && deMissao.includes(s.item) ? 1 : 0);
+    // O que o próprio jogador jogou no chão (largado) fica lá: só volta clicando no item.
     const pilha = p.saqueNoChao
-      .filter((s) => s.area === p.area && s.x === p.x && s.y === p.y)
+      .filter((s) => s.area === p.area && s.x === p.x && s.y === p.y && !s.largado)
       .sort((a, b) => prioridade(b) - prioridade(a));
     if (!pilha.length) return null;
     const coletados = [];
@@ -3666,37 +3687,163 @@ const Mundo = {
     };
   },
 
+  // ----- Reserva de missão e quantidades (vender, comprar, jogar no chão) -----
+  // Unidades de um item que as missões em andamento ainda pedem na entrega (objetivo "entregar"): não saem
+  // da mochila pela venda nem pelo chão, para a entrega não travar por descuido (o excedente sai normalmente).
+  // { quantidade, missao (nome), npc (nome de quem recebe) }.
+  reservaDeMissao(p, item) {
+    let quantidade = 0;
+    let missao = null;
+    for (const { missao: m, objetivo: o } of this.objetivosAbertos(p)) {
+      if (o.tipo !== "entregar" || o.item !== item) continue;
+      quantidade += o.quantidade || 1;
+      missao = missao || m;
+    }
+    return { quantidade, missao: missao?.nome || null, npc: missao ? npcs[receptorMissao(missao)]?.nome || null : null };
+  },
+
+  // Quantas unidades do item podem sair da mochila (vender ou jogar no chão): as que sobram da reserva.
+  quantidadeLivre(id, item) {
+    const p = this.jogadores[id];
+    if (!p) return 0;
+    return Math.max(0, this.contarItem(id, item) - this.reservaDeMissao(p, item).quantidade);
+  },
+
+  // Confere a quantidade pedida para tirar um item da mochila: inteiro de 1 até o que se tem, sem mexer na
+  // reserva de missão. verbo: "vender" ou "jogar no chão". Devolve { ok, quantidade } ou { ok: false, mensagem }.
+  conferirSaida(p, item, quantidadeBruta, verbo) {
+    const q = quantidadeBruta === undefined || quantidadeBruta === null ? 1 : Number(quantidadeBruta);
+    if (!Number.isSafeInteger(q) || q < 1) return { ok: false, mensagem: "Quantidade inválida: escolha 1 ou mais." };
+    const tem = p.inventario.filter((x) => x === item).length;
+    if (q > tem) return { ok: false, mensagem: `Você só tem ${tem}× ${nomeItem(item)}.` };
+    const reserva = this.reservaDeMissao(p, item);
+    const livre = tem - reserva.quantidade;
+    if (q > livre) {
+      const pede = `A missão “${reserva.missao}” pede ${reserva.quantidade}× ${nomeItem(item)} na entrega a ${reserva.npc}.`;
+      return { ok: false, reservado: true, mensagem: livre > 0 ? `${pede} Você pode ${verbo} até ${livre}.` : `${pede} Guarde para entregar.` };
+    }
+    return { ok: true, quantidade: q };
+  },
+
+  // ----- Jogar itens no chão -----
+  // Casa que leva a outro lugar (trilha, cais, portal): o item deixado ali não poderia ser buscado.
+  casaDeTransicao(areaId, x, y) {
+    const a = areas[areaId];
+    if (!a) return false;
+    if (a.passagem && a.passagem.x === x && a.passagem.y === y) return true;
+    if (a.cais && a.cais.x === x && a.cais.y === y) return true;
+    return PORTAIS.some((t) => t.area === areaId && t.x === x && t.y === y);
+  },
+
+  // Onde o item jogado cai: a casa pedida, se for a do jogador ou uma vizinha e for chão livre; senão uma
+  // vizinha reta livre (abaixo, à direita, à esquerda, acima: o item fica à vista, não escondido sob o
+  // personagem); senão a casa do jogador; senão uma diagonal (por último: pode ser do outro lado de uma quina
+  // de parede). null se não houver chão.
+  casaParaLargar(p, x, y) {
+    const serve = (cx, cy) => this.casaParaFicar(p.area, cx, cy) && !this.casaDeTransicao(p.area, cx, cy);
+    if (Number.isInteger(x) && Number.isInteger(y) && distanciaChebyshev(p, { x, y }) <= ALCANCE_INTERACAO && serve(x, y)) return { x, y };
+    for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1], [0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      if (serve(p.x + dx, p.y + dy)) return { x: p.x + dx, y: p.y + dy };
+    }
+    return null;
+  },
+
+  // Joga itens da mochila no chão para liberar espaço (comando largarItem). Ficam em p.saqueNoChao como saque
+  // "largado" (com quantidade, se mais de 1; o mesmo item jogado na mesma casa se junta à pilha): pisar em
+  // cima não os recolhe (só clicar no item, ao lado), não contam como saque novo no analisador nem nas missões
+  // e somem em TEMPO_EXPIRACAO_SAQUE como os outros. Equipamento vestido precisa voltar à mochila antes.
+  largarItem(id, item, quantidade, x, y) {
+    const p = this.jogadores[id];
+    if (!itemValido(item)) return { ok: false, mensagem: "Item inválido." };
+    if (!p.inventario.includes(item)) {
+      const noCorpo = Object.values(p.equipamento || {}).includes(item);
+      return {
+        ok: false,
+        mensagem: noCorpo ? `${nomeItem(item)} está no corpo: guarde na mochila antes de jogar no chão.` : "O item não está na mochila.",
+      };
+    }
+    const conferido = this.conferirSaida(p, item, quantidade, "jogar no chão");
+    if (!conferido.ok) return conferido;
+    if (p.area === "mar") return { ok: false, mensagem: "No barco não há onde deixar itens. Desembarque primeiro." };
+    const casa = this.casaParaLargar(p, Number(x), Number(y));
+    if (!casa) return { ok: false, mensagem: "Não há chão livre aqui para deixar o item." };
+    const q = conferido.quantidade;
+    this.removerItens(p, item, q);
+    const agora = Date.now();
+    let s = p.saqueNoChao.find((c) => c.largado && c.item === item && c.area === p.area && c.x === casa.x && c.y === casa.y);
+    if (s) {
+      s.quantidade = (s.quantidade || 1) + q;
+      s.criadoEm = agora;
+    } else {
+      s = { id: `largado_${agora}_${Math.floor(Math.random() * 1e6).toString(36)}`, area: p.area, x: casa.x, y: casa.y, item, criadoEm: agora, largado: true };
+      if (q > 1) s.quantidade = q;
+      p.saqueNoChao.push(s);
+    }
+    this.salvar(p);
+    const minutos = Math.round(TEMPO_EXPIRACAO_SAQUE / 60000);
+    return {
+      ok: true,
+      saqueId: s.id,
+      quantidade: q,
+      mensagem: `Você jogou no chão: ${q > 1 ? `${q}× ` : ""}${nomeItem(item)}. Para pegar de volta, clique no item (ele some em ${minutos} minutos).`,
+    };
+  },
+
   // ----- Comércio -----
   mercadorProximo(p) {
     return this.npcProximo(p, (n) => n.papel === "loja");
   },
 
-  comprarItem(id, item) {
+  // Compra "quantidade" do catálogo (de flechas, lotes de FLECHAS_POR_PACOTE), de 1 até
+  // QUANTIDADE_MAXIMA_COMPRA, se houver moedas e carga para tudo.
+  comprarItem(id, item, quantidade) {
     const p = this.jogadores[id];
     const merc = p && this.mercadorProximo(p);
     if (!merc) return { ok: false, mensagem: "Aproxime-se do mercador para comprar." };
     const preco = catalogoDaLoja(merc.id).find((x) => x.item === item)?.preco;
     if (!preco) return { ok: false, mensagem: "Esse mercador não vende esse item." };
-    const lista = item === "flechas" ? Array(FLECHAS_POR_PACOTE).fill("flecha") : [item];
-    if (p.moedas < preco) return { ok: false, mensagem: `Você precisa de ${preco} moedas.` };
-    if (!this.podeReceberComRemocao(p, lista)) return { ok: false, mensagem: "A mochila está cheia." };
-    p.moedas -= preco;
-    for (const x of lista) this.adicionarItem(p, x);
+    const q = quantidade === undefined || quantidade === null ? 1 : Number(quantidade);
+    if (!Number.isSafeInteger(q) || q < 1 || q > QUANTIDADE_MAXIMA_COMPRA) {
+      return { ok: false, mensagem: `Quantidade inválida: de 1 a ${QUANTIDADE_MAXIMA_COMPRA} por compra.` };
+    }
+    const unidade = item === "flechas" ? "flecha" : item;
+    const porLote = item === "flechas" ? FLECHAS_POR_PACOTE : 1;
+    const total = preco * q;
+    const nome = item === "flechas" ? `${porLote * q} flechas` : q > 1 ? `${q}× ${nomeItem(item)}` : nomeItem(item);
+    if (p.moedas < total) {
+      return { ok: false, mensagem: q > 1 ? `Você precisa de ${total} moedas para ${nome} (tem ${p.moedas}).` : `Você precisa de ${preco} moedas.` };
+    }
+    const pesoLote = pesoItem(unidade) * porLote;
+    const folga = capacidadeCarga(p) - pesoCarregado(p) + 0.0001;
+    if (pesoLote * q > folga) {
+      const cabem = Math.max(0, Math.floor(folga / pesoLote));
+      return { ok: false, mensagem: q > 1 && cabem ? `A mochila não comporta tudo: cabem mais ${cabem}.` : "A mochila está cheia." };
+    }
+    p.moedas -= total;
+    for (let i = 0; i < porLote * q; i++) p.inventario.push(unidade);
     this.salvar(p);
-    const nome = item === "flechas" ? `${FLECHAS_POR_PACOTE} flechas` : nomeItem(item);
-    return { ok: true, mensagem: `Compra realizada: ${nome} por ${preco} moedas.` };
+    return { ok: true, quantidade: q, mensagem: `Compra realizada: ${nome} por ${total} moedas.` };
   },
 
-  venderItem(id, item) {
+  // Vende "quantidade" unidades iguais da mochila (padrão 1). O equipamento vestido não está na mochila e não
+  // entra; cada raridade de um equipamento é um item à parte; a reserva de missão fica (conferirSaida).
+  venderItem(id, item, quantidade) {
     const p = this.jogadores[id];
     const valor = registroDe(VALORES_VENDA, item);
     if (!p || !this.mercadorProximo(p)) return { ok: false, mensagem: "Aproxime-se do mercador para vender." };
-    const i = p.inventario.indexOf(item);
-    if (!valor || i < 0) return { ok: false, mensagem: "O mercador não compra esse item ou você não o tem." };
-    p.inventario.splice(i, 1);
-    p.moedas += valor;
+    if (!valor || !p.inventario.includes(item)) return { ok: false, mensagem: "O mercador não compra esse item ou você não o tem." };
+    const conferido = this.conferirSaida(p, item, quantidade, "vender");
+    if (!conferido.ok) return conferido;
+    const q = conferido.quantidade;
+    this.removerItens(p, item, q);
+    p.moedas += valor * q;
     this.salvar(p);
-    return { ok: true, mensagem: `Você vendeu ${nomeItem(item)} por ${valor} moedas.` };
+    return {
+      ok: true,
+      quantidade: q,
+      moedas: valor * q,
+      mensagem: q > 1 ? `Você vendeu ${q}× ${nomeItem(item)} por ${valor * q} moedas (${valor} cada).` : `Você vendeu ${nomeItem(item)} por ${valor} moedas.`,
+    };
   },
 
   // ----- Comandos -----
@@ -3715,9 +3862,11 @@ const Mundo = {
       case "coletarSaque":
         return this.coletarSaque(id, comando.saqueId);
       case "comprar":
-        return this.comprarItem(id, comando.item);
+        return this.comprarItem(id, comando.item, comando.quantidade);
       case "vender":
-        return this.venderItem(id, comando.item);
+        return this.venderItem(id, comando.item, comando.quantidade);
+      case "largarItem":
+        return this.largarItem(id, comando.item, comando.quantidade, comando.x, comando.y);
       case "viajar":
         return this.viajar(id, comando.areaDestino);
       case "embarcar":
@@ -3725,9 +3874,9 @@ const Mundo = {
       case "pescar":
         return this.pescar(id);
       case "usarPocao":
-        return this.usarPocao(id);
+        return this.usarPocao(id, comando.mesmoCheio === true);
       case "usarPocaoFe":
-        return this.usarPocaoFe(id);
+        return this.usarPocaoFe(id, comando.mesmoCheio === true);
       case "orar":
         return this.orar(id, comando.acao);
       case "alternarEquipamento":
@@ -4089,16 +4238,22 @@ const Mundo = {
     if (a?.inicio) a.gastos += valor;
   },
 
-  usarPocao(id) {
+  // mesmoCheio: beber com a vida cheia, só para liberar espaço (pedido pela bolsa: duplo clique ou menu do
+  // item). Sem ele (tecla H, atalhos, botão de toque), a vida cheia recusa sem gastar a poção.
+  usarPocao(id, mesmoCheio = false) {
     const p = this.jogadores[id];
     const i = p.inventario.indexOf("pocao");
     if (i < 0) return { ok: false, mensagem: "Você não tem poções." };
-    if (p.vida >= vidaMaxima(p)) return { ok: false, mensagem: "Sua vida já está cheia. A poção não foi consumida." };
+    const cheia = p.vida >= vidaMaxima(p);
+    if (cheia && !mesmoCheio) {
+      return { ok: false, mensagem: "Sua vida já está cheia: a poção não foi consumida. Para beber assim mesmo, use-a pela bolsa." };
+    }
     p.inventario.splice(i, 1);
     this.gastoNoAnalisador(id, PRECOS_LOJA.pocao || 0);
     const antes = p.vida;
     p.vida = Math.min(vidaMaxima(p), p.vida + curaPocao(p));
     this.salvar(p);
+    if (cheia) return { ok: true, cura: 0, mensagem: "Você bebeu a poção, mas já estava com a vida cheia." };
     return {
       ok: true,
       cura: p.vida - antes,
@@ -4106,16 +4261,20 @@ const Mundo = {
     };
   },
 
-  usarPocaoFe(id) {
+  usarPocaoFe(id, mesmoCheio = false) {
     const p = this.jogadores[id];
     const i = p.inventario.indexOf("pocao_fe");
     if (i < 0) return { ok: false, mensagem: "Você não tem poções de fé." };
-    if (p.fe >= FE_MAXIMA) return { ok: false, mensagem: "Sua fé já está cheia; a poção não foi consumida." };
+    const cheia = p.fe >= FE_MAXIMA;
+    if (cheia && !mesmoCheio) {
+      return { ok: false, mensagem: "Sua fé já está cheia: a poção não foi consumida. Para beber assim mesmo, use-a pela bolsa." };
+    }
     p.inventario.splice(i, 1);
     this.gastoNoAnalisador(id, PRECOS_LOJA.pocao_fe || 0);
     const antes = p.fe;
     p.fe = Math.min(FE_MAXIMA, p.fe + CURA_POCAO_FE);
     this.salvar(p);
+    if (cheia) return { ok: true, feCurada: 0, mensagem: "Você bebeu a poção de fé, mas a sua fé já estava cheia." };
     return {
       ok: true,
       feCurada: p.fe - antes,

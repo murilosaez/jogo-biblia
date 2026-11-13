@@ -132,8 +132,15 @@ Controles — teclado e mouse
   Shift + F1: Milagre (Oração nível 100). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
   bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
 - Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
-  de volta para a mochila para guardar. Duplo clique equipa armas e usa poções. Também funciona
-  clicar/tocar no item e depois no destino. Espada e arco ocupam as mãos: equipar um guarda o outro.
+  de volta para a mochila para guardar. Duplo clique equipa armas e bebe poções (pela bolsa, mesmo com a
+  vida ou a fé cheia, para liberar espaço). Também funciona clicar/tocar no item e depois no destino.
+  Espada e arco ocupam as mãos: equipar um guarda o outro.
+- Jogar no chão: arraste um item da mochila ou da bolsa para o mundo (cai na casa solta, se for ao lado do
+  personagem; senão, ao lado dele), ou abra o menu do item com o botão direito (Shift + F10 no teclado; toque
+  longo no celular): Beber/Equipar e Jogar 1, Jogar X (− número +) ou Jogar tudo. Uma pilha solta no mundo
+  também abre o menu. O que você jogou fica no chão por 10 minutos e não volta ao pisar em cima: clique no
+  item para buscá-lo (com a mochila cheia, leva o que couber). Equipamento vestido volta à mochila antes; as
+  unidades que uma missão em andamento pede na entrega (ervas, odres, venenos, insígnia) ficam guardadas.
 
 Controles — toque (celular e tablet)
 - Aparecem sozinhos em telas de toque (ou pelo botão "Mostrar controles de toque" na ajuda).
@@ -150,7 +157,8 @@ Controles — toque (celular e tablet)
   avisos no topo são menores e não seguram o dedo.
 - Barra inferior: Mochila, Equipamento, Batalha, Missão e Conversa abrem em folhas recolhíveis (o
   analisador de caçada fica na folha Batalha; a folha Conversa é o console, com as abas e a entrada).
-  Toque num item e depois no espaço de equipamento ou no atalho; toque longo mostra a descrição.
+  Toque num item e depois no espaço de equipamento ou no atalho; toque longo num item da mochila ou da
+  bolsa abre o menu dele (descrição, beber ou equipar, jogar no chão); nos outros, mostra a descrição.
 
 Interface e visual
 - Toda a arte (personagens, itens, ícones, cenário) é pixel art original gerada em código por
@@ -322,8 +330,19 @@ Níveis e XP
 Vida, poções e veneno
 - Vida máxima = 100 + 10 por nível acima do 1º.
 - Poção de vida: recupera 25% da vida máxima (mínimo 30). Poção de fé: +40 de fé.
+- Com a vida (ou a fé) cheia, a tecla H, os atalhos e o botão de toque não gastam a poção. Pela bolsa
+  (duplo clique ou o menu do item), ela é bebida assim mesmo, para liberar espaço ("Você bebeu a poção,
+  mas já estava com a vida cheia.").
 - Fora de combate (8 s sem golpes), a vida regenera 2% da vida máxima a cada 3 s.
 - Veneno do escorpião: 3 de dano a cada 3 s por 15 s (5 vezes, 15 de dano). Cada nova picada recomeça os 15 s.
+
+Peso e carga
+- Os itens pesam o que pesariam de verdade (kg; referências em dados/itens.js): túnica de linho 0,5, armadura
+  de couro 5, couraça de escamas 12, espada de ferro 1,3, escudo de madeira 3 e de bronze 5,5, arco 0,7,
+  flecha 0,03, poção 0,3, odre cheio 2,5, pele de lobo 1,5, couro grosso 3, pedra preciosa 0,01.
+- Carga máxima = 35 kg + 3 kg por nível acima do 1º + alforjes (+5 kg cada) + atributo de carga do
+  equipamento (+1 a +5). O equipamento inicial pesa 5,2 kg: sobram 30 kg no nível 1. Nível 10: 62 kg.
+- A carga aparece em "x / y kg" (com vírgula) no painel Mochila: âmbar acima de 90%, vermelha cheia.
 
 Habilidades
 Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
@@ -359,6 +378,10 @@ variam: escudo de madeira 35 (todos menos o do Egito), armadura de couro 65 e ar
 menos a de Canaã); Hadassa (Canaã) vende também a funda (60). Todos compram pele de lobo (5), erva (2), odre (3), peixe (6), veneno de escorpião (4),
 insígnia do bando (6), presa de lobo (10), ferrão de escorpião (12), linho egípcio (8), ponta de lança (9),
 bracelete de cobre (16) e as pedras do peitoral (150 a 200).
+- Vender: com mais de uma unidade, Vender 1, Vender X (− número +, até o que você tem) ou Vender tudo; o
+  total em moedas aparece no botão antes de confirmar. Só a mochila conta (o vestido não é vendido) e cada
+  raridade de um equipamento é um item à parte. Unidades que uma missão pede na entrega ficam guardadas.
+- Comprar: poções e flechas têm o mesmo seletor (até 100 de uma vez, ou o que as moedas e a carga permitem).
 
 Viagem rápida, barco e mar
 - Guias de caravanas: Micael (Canaã), Tamar (Deserto), Natanael (Egito), Abigail (Mar Vermelho), Hobabe
@@ -390,9 +413,9 @@ quando a missão principal da região é concluída.
     Ronda ........... 20 h (dá para jogar mais cedo no dia seguinte)
     Grande caçada ... 164 h = 6 d 20 h (uma por semana, com folga)
 - Troca de pontos de tarefa, em qualquer atalaia com o mural aberto:
-    Alforje de couro (+10 kg de carga, para sempre; uma vez) ......... 60 pontos
+    Alforje de couro (+5 kg de carga, para sempre; uma vez) .......... 60 pontos
     Escudo de ferro (defesa 7; requer a missão do Egito) ............. 150 pontos
-    Alforje de viagem (+10 kg de carga; requer o Alforje de couro) ... 180 pontos
+    Alforje de viagem (+5 kg de carga; requer o Alforje de couro) .... 180 pontos
     Couraça de escamas (defesa 8; requer a missão do Monte Sinai) .... 300 pontos
   Os pontos não expiram nem se perdem na morte; pontos e moedas nunca se convertem, e os mercadores não
   compra itens da troca. Trocar de novo um item que você já tem (na mochila ou equipado) pede
@@ -506,7 +529,7 @@ oculta; a escolha fica no navegador.
   pelo preço dos mercadores; equipamento não tem preço de venda e só é contado), lucro (saque − poções e
   flechas gastas, pelo preço da loja, − moedas perdidas na morte) e abates; também as mortes, as espécies
   mais caçadas e o tempo até o próximo nível no ritmo atual. As taxas por hora aparecem depois de 1 minuto.
-- O item que você deixou cair ao morrer não conta como saque quando você o recolhe.
+- O item que você deixou cair ao morrer, ou que jogou no chão, não conta como saque quando você o recolhe.
 
 Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
@@ -519,8 +542,15 @@ Para desenvolvedores
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
   estadoDescanso(p, agora), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
   visaoTalentos(p), pontosTalentoLivres(p), visaoOficios(p), cosmeticosDoJogador(p), visualDoJogador(p), extracoesDaArea(areaId), Mundo.extracaoDisponivel(id, area, pontoId),
-  Mundo.aliados(id), infoItem(id) (item com raridade,
+  Mundo.aliados(id), textoKg(kg) ("12,35"), Mundo.quantidadeLivre(id, item) (unidades que podem ser vendidas
+  ou jogadas no chão), Mundo.reservaDeMissao(p, item) ({ quantidade, missao, npc }), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
+- Inventário: comandos { tipo: "largarItem", item, quantidade, x?, y? } (vira um saque com largado: true e
+  quantidade, se mais de 1, em p.saqueNoChao; devolve saqueId), { tipo: "vender", item, quantidade },
+  { tipo: "comprar", item, quantidade } e { tipo: "usarPocao" | "usarPocaoFe", mesmoCheio } de Mundo.executar.
+  coletarSaque de uma pilha devolve quantidade e, se a mochila encheu no meio, restante. Os campos largado
+  e quantidade são limpos na carga do save (sem versão nova). O teste 72 confere pesos, carga, chão, reserva
+  de missão, poções e quantidades.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
   som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
   são puras; o teste 49 simula 60 mil abates por criatura e confere a frequência de cada linha da tabela.

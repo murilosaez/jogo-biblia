@@ -432,6 +432,29 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 #dicaItem .atr-item li{display:list-item}
 #dicaItem .acao{margin-top:4px;font:500 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
 
+/* ---------- menu do item (botão direito ou toque longo na mochila/bolsa): usar e jogar no chão ---------- */
+#menuItem{position:fixed;z-index:calc(var(--z-modal) + 4);width:min(284px,calc(100vw - 16px));padding:8px 10px 10px;display:none}
+#menuItem.aberto{display:block}
+#menuItem .menu-cab{display:flex;align-items:center;gap:8px}
+#menuItem .menu-cab .slot{flex:0 0 auto}
+#menuItem .menu-nome{min-width:0;flex:1}
+#menuItem h4{margin:0;font:700 var(--fs-14)/1.2 var(--f-titulo);color:var(--tinta)}
+#menuItem h4.rar{border-left:4px solid var(--rar);padding-left:6px}
+#menuItem .menu-nome p{margin:2px 0 0;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--tinta-suave)}
+#menuItem .menu-fechar{flex:0 0 auto;align-self:flex-start;width:32px;height:32px;display:grid;place-items:center;padding:0;border:2px solid var(--tinta);background:linear-gradient(var(--bronze-600),var(--bronze-700));box-shadow:var(--relevo)}
+#menuItem .menu-info{margin:6px 0 0;font:500 var(--fs-14)/1.35 var(--f-texto);color:var(--tinta)}
+#menuItem .menu-reserva{margin:6px 0 0;font:italic 500 var(--fs-14)/1.35 var(--f-texto);color:var(--tinta-perigo)}
+#menuItem .menu-grupo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--perg-400)}
+#menuItem .menu-rotulo{flex:1 0 100%;font:700 var(--fs-13)/1 var(--f-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--tinta-suave)}
+#menuItem .menu-x{display:flex;align-items:center;gap:6px;flex:1 0 100%}
+@media (pointer:coarse){#menuItem .menu-fechar{width:44px;height:44px} #menuItem .btn{min-height:44px}}
+/* Arrastar um item da mochila para o mundo: jogar no chão. */
+#palco.alvo-chao::before{content:"";position:absolute;inset:4px;z-index:12;border:2px dashed var(--ouro-300);pointer-events:none}
+#palco.alvo-chao::after{content:"Solte para jogar no chão";position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:12;padding:8px 14px;border:2px solid var(--ouro-300);background:#1c1210eb;font:700 var(--fs-16)/1 var(--f-ui);color:var(--texto);white-space:nowrap;pointer-events:none}
+/* Carga da mochila: âmbar acima de 90%, vermelha cheia. */
+#pesoTexto.quase-cheia{color:#f6a84a}
+#pesoTexto.cheia{color:var(--recebido)}
+
 /* ---------- modais (componente único) ---------- */
 .modal{position:fixed;inset:0;z-index:var(--z-modal);display:none;align-items:center;justify-content:center;padding:16px;background:var(--veu)}
 .modal.aberto{display:flex}
@@ -468,6 +491,19 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja.cosmetico .preco{font-style:italic}
 .item-loja.cosmetico > span:nth-child(2) > span{display:block}
 .item-loja.cosmetico.em-uso{border-color:var(--ouro-500,#e8b94a);box-shadow:inset 0 0 0 1px #e8b94a}
+/* Quantidade (loja e menu do item): − número +, e o botão "Vender X / Comprar X / Jogar X" ao lado. */
+.qtd-sel{display:inline-flex;align-items:stretch;flex:0 0 auto;height:36px;border:2px solid var(--tinta);background:var(--perg-100);box-shadow:inset 1px 1px 0 #0003}
+.qtd-sel input{width:52px;min-width:0;padding:0 2px;border:0;border-inline:1px solid var(--perg-400);background:#fffaf0;text-align:center;font:700 var(--fs-16)/1 var(--f-ui);color:var(--tinta);-moz-appearance:textfield;appearance:textfield}
+.qtd-sel input::-webkit-inner-spin-button,.qtd-sel input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.qtd-sel input:focus-visible{outline:2px solid var(--bronze-600);outline-offset:-2px}
+.qtd-passo{width:30px;padding:0;border:0;background:linear-gradient(var(--perg-200),var(--perg-300));color:var(--tinta);font:700 var(--fs-20)/1 var(--f-ui);text-shadow:none}
+.qtd-passo:hover:not([disabled]){background:var(--perg-100)}
+.qtd-passo[disabled]{color:#1e120c59;cursor:not-allowed}
+@media (pointer:coarse){.qtd-sel{height:44px}.qtd-passo{width:40px}}
+#modalLoja .modal-caixa{width:min(600px,100%)} /* cabe "− n +", "Vender X" e "Vender tudo" numa linha */
+.item-loja.com-qtd{row-gap:6px}
+.item-loja .linha-qtd{grid-column:2/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px}
+.item-loja .linha-qtd .btn{min-width:0}
 /* Visual: cores do boneco (JGB-49) — prévia de frente, de lado e de costas e uma fileira de amostras por parte */
 .cores-visual{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--e-4);align-items:start}
 .previa-cores{display:flex;flex-direction:column;gap:6px;padding:8px;border:2px solid var(--bronze-700);background:radial-gradient(circle at 40% 30%,#8fa34e,#5d7234)}
@@ -973,12 +1009,12 @@ body.toque-forcado #dpad{display:block}
 
   <section class="painel" id="pMochila" aria-labelledby="tMochila">
     <div class="painel-cab"><img class="px g16" data-glifo="ui_mochila" alt=""><h2 id="tMochila">MOCHILA</h2><span class="extra" id="pesoTexto" title="Carga">0 / 0 kg</span></div>
-    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeMochila" role="list" aria-label="Equipamentos e munição"></div><p class="nota">Armas, escudos, armaduras e flechas.</p></div>
+    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeMochila" role="list" aria-label="Equipamentos e munição"></div><p class="nota">Armas, escudos, armaduras e flechas. Arraste para o mundo para jogar no chão.</p></div>
   </section>
 
   <section class="painel" id="pBolsa" aria-labelledby="tBolsa">
     <div class="painel-cab"><img class="px g16" data-glifo="ui_bolsa" alt=""><h2 id="tBolsa">BOLSA</h2><span class="extra">consumíveis</span></div>
-    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeBolsa" role="list" aria-label="Consumíveis e recursos"></div><p class="nota">Duplo clique usa a poção.</p></div>
+    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeBolsa" role="list" aria-label="Consumíveis e recursos"></div><p class="nota">Duplo clique bebe a poção. Botão direito ou toque longo: mais ações.</p></div>
   </section>
 
   <section class="perg" id="pAnalisador" data-aberto="true" aria-labelledby="tAnalisador">
@@ -1043,6 +1079,8 @@ body.toque-forcado #dpad{display:block}
 
 <!-- dica de item -->
 <div id="dicaItem" class="perg" role="tooltip"></div>
+<!-- menu do item da mochila/bolsa (interface.js, abrirMenuItem) -->
+<div id="menuItem" class="perg" role="dialog" aria-label="Ações do item"></div>
 
 <!-- modais: um componente só -->
 <div class="modal" id="modalAjuda" aria-hidden="true">

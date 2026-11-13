@@ -707,13 +707,31 @@ class Cena extends Phaser.Scene {
       const textura = s.moedas ? (s.moedas >= 10 ? "moeda_pilha" : "moeda") : s.item;
       const raridade = s.moedas ? "comum" : s.destaque || raridadeItem(s.item);
       const sprite = this.addItemVisual(s.id, s.x, s.y, textura, 0, raridade);
+      // O que o jogador jogou fora fica parado no chão (só o saque novo flutua); a pilha ganha cópias atrás.
+      if (s.largado) { this.tweens.killTweensOf(sprite); sprite.y = s.y * TAM + 24; }
+      if (s.quantidade > 1) this.desenharPilha(sprite, s);
       sprite.setInteractive({ useHandCursor: true });
       sprite.on("pointerdown", () => this.irAteSaque(s.id));
       if (pular && !reduzMovimento()) {
-        sprite.x += (Math.random() - 0.5) * 10;
+        if (!s.largado) sprite.x += (Math.random() - 0.5) * 10;
         this.tweens.add({ targets: sprite, scaleY: 1.15, duration: 120, yoyo: true });
       }
     }
+  }
+  // Pilha de itens jogados no chão (s.quantidade): cópias do mesmo desenho atrás do item, deslocadas em pixels
+  // inteiros (2 a partir de 2 unidades, 3 a partir de 5), como um montinho; somem junto com ele.
+  desenharPilha(sprite, s) {
+    const copias = [[-5, 2], [5, 3]].slice(0, s.quantidade >= 5 ? 2 : 1).map(([dx, dy]) =>
+      this.add.image(sprite.x + dx, sprite.y + dy, sprite.texture.key, 0).setOrigin(0.5, 0.75).setDepth(sprite.depth - 1));
+    const destruir = sprite.destroy.bind(sprite);
+    sprite.destroy = (...args) => { for (const c of copias) c.destroy(); destruir(...args); };
+  }
+  // O saque mudou na lógica (pilha que cresceu ou diminuiu): redesenha só ele.
+  redesenharSaque(id) {
+    this.spritesItens[id]?.destroy();
+    delete this.spritesItens[id];
+    this.p = Mundo.jogadores[MEU_ID];
+    this.criarSaques(true);
   }
   pegarSaque(id) {
     const r = Mundo.executar(MEU_ID, { tipo: "coletarSaque", saqueId: id });
@@ -721,8 +739,11 @@ class Cena extends Phaser.Scene {
     if (r.ok) {
       const s = this.spritesItens[id];
       if (s && r.moedas) this.numero(s.x, s.y - 16, `+${r.moedas}`, "moeda");
-      s?.destroy();
-      delete this.spritesItens[id];
+      if (r.restante) this.redesenharSaque(id); // a mochila encheu no meio da pilha: o resto fica
+      else {
+        s?.destroy();
+        delete this.spritesItens[id];
+      }
       this.p = Mundo.jogadores[MEU_ID];
       window.atualizarInterface?.();
     }
@@ -1404,15 +1425,16 @@ class Cena extends Phaser.Scene {
     const alvo = inimigos[id];
     this.mensagem(`${Mundo.nomeInimigo(MEU_ID, id) || alvo.nome} ${alvo.genero === "f" ? "selecionada" : "selecionado"}; autoataque a cada 2 segundos.`);
   }
-  usarPocao() {
-    const r = Mundo.executar(MEU_ID, { tipo: "usarPocao" });
+  // mesmoCheio (pela bolsa): bebe mesmo com a vida ou a fé cheia, para liberar espaço; teclas e atalhos não.
+  usarPocao(mesmoCheio = false) {
+    const r = Mundo.executar(MEU_ID, { tipo: "usarPocao", mesmoCheio });
     this.mensagem(r.mensagem);
     if (r.ok && r.cura) this.efeitoCura(r.cura);
     window.atualizarInterface?.();
     return r;
   }
-  usarPocaoFe() {
-    const r = Mundo.executar(MEU_ID, { tipo: "usarPocaoFe" });
+  usarPocaoFe(mesmoCheio = false) {
+    const r = Mundo.executar(MEU_ID, { tipo: "usarPocaoFe", mesmoCheio });
     this.mensagem(r.mensagem);
     if (r.ok && r.feCurada) this.numero(this.jogador.x, this.jogador.y - 46, `+${r.feCurada} fé`, "fe");
     window.atualizarInterface?.();
@@ -1523,12 +1545,13 @@ class Cena extends Phaser.Scene {
     if (comando.tipo === "atacar") return this.atacarAlvo(false);
     if (comando.tipo === "atacarDistancia") return this.atacarAlvo(true);
     if (comando.tipo === "pescar") { this.pescar(); return { ok: true }; }
-    if (comando.tipo === "usarPocao") return this.usarPocao();
-    if (comando.tipo === "usarPocaoFe") return this.usarPocaoFe();
+    if (comando.tipo === "usarPocao") return this.usarPocao(comando.mesmoCheio === true);
+    if (comando.tipo === "usarPocaoFe") return this.usarPocaoFe(comando.mesmoCheio === true);
     if (comando.tipo === "usarHabilidade") return this.usarHabilidade(comando.habilidade, comando.alvoId);
     const r = Mundo.executar(MEU_ID, comando);
     if (r.mensagem) this.mensagem(r.mensagem);
     if (r.areaAlterada) { this.trocarArea(null); return r; }
+    if (comando.tipo === "largarItem" && r.ok && r.saqueId) this.redesenharSaque(r.saqueId); // o item cai no chão
     if (comando.tipo === "comerMana" && r.ok && r.cura) this.efeitoCura(r.cura);
     this.oficioSubiu(r.oficioSubiu);
     if (comando.tipo === "orar" && r.ok) {
@@ -1751,6 +1774,11 @@ class Cena extends Phaser.Scene {
     const s = this.p.saqueNoChao.find((x) => x.id === id);
     if (!s) return;
     if (cheb(this.p, s) <= 1) { this.pararRota(); this.pegarSaque(id); return; }
+    // O que o jogador jogou no chão não é recolhido ao pisar: anda até o lado e pega ao chegar.
+    if (s.largado) {
+      this.iniciarRota((x, y) => cheb({ x, y }, s) <= 1, () => { if (this.p.saqueNoChao.some((x) => x.id === id)) this.pegarSaque(id); }, s);
+      return;
+    }
     this.iniciarRota((x, y) => x === s.x && y === s.y, null, s);
   }
   irAtePesca(ponto) {
@@ -2425,6 +2453,16 @@ window.Jogo = {
     }
   },
   usarAtalho(i) { return window.gameScene?.usarHotkey(i); },
+  // Casa do mapa sob um ponto da tela (clientX, clientY), ou null fora do mundo. A interface usa para soltar
+  // um item arrastado da mochila no chão.
+  casaNaTela(cx, cy) {
+    const s = window.gameScene, canvas = s?.game?.canvas;
+    if (!canvas || !s.cameras?.main) return null;
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || cx < r.left || cy < r.top || cx > r.right || cy > r.bottom) return null;
+    const ponto = s.cameras.main.getWorldPoint((cx - r.left) * (canvas.width / r.width), (cy - r.top) * (canvas.height / r.height));
+    return { x: Math.floor(ponto.x / TAM), y: Math.floor(ponto.y / TAM) };
+  },
   usarHabilidade(i) { return window.gameScene?.usarHabilidadeDaBarra(i); },
   alvoAtual() { return window.gameScene?.alvoId || null; },
   podeInteragir() {

@@ -363,7 +363,11 @@
   function htmlDica(id, origem) {
     const d = info(id);
     if (!d) return "";
-    const partes = [NOME_TIPO[d.tipo] || "Item", atributoItem(id), `${typeof pesoItem === "function" ? pesoItem(id) : d.peso} kg`].filter(Boolean);
+    // Peso em kg com vírgula; na mochila, com o total da pilha.
+    const pesoUm = typeof pesoItem === "function" ? pesoItem(id) : d.peso;
+    const naPilha = origem === "mochila" ? contarNaMochila(id) : 0;
+    const pesoTxt = naPilha > 1 ? `${kg(pesoUm)} kg cada (${kg(pesoUm * naPilha)} kg)` : `${kg(pesoUm)} kg`;
+    const partes = [NOME_TIPO[d.tipo] || "Item", atributoItem(id), pesoTxt].filter(Boolean);
     const r = raridadeDe(id);
     const nomeR = typeof RARIDADES !== "undefined" ? RARIDADES[r]?.nome : "";
     const linhaRaridade = r !== "comum" && nomeR ? `<p class="raridade" style="--rar:${corRaridade(r)}">${esc(nomeR)}</p>` : "";
@@ -372,8 +376,9 @@
     let acao = "";
     if (origem === "equip") acao = "Arraste para a mochila, ou dê duplo clique, para guardar.";
     else if (slotDoTipo(d.tipo)) acao = "Duplo clique equipa. Também pode arrastar ou tocar e escolher o espaço.";
-    else if (d.tipo === "consumivel") acao = "Duplo clique usa. Arraste para uma tecla de atalho.";
+    else if (d.tipo === "consumivel") acao = "Duplo clique bebe (mesmo sem precisar, para liberar espaço). Arraste para uma tecla de atalho.";
     else if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) acao = "Venda a qualquer mercador (há um em cada cidade).";
+    if (origem === "mochila") acao += " Botão direito ou toque longo: jogar no chão.";
     const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
     return `<h4${titulo}>${esc(nomeDoItem(id))}</h4>${linhaRaridade}<p>${esc([...new Set(partes)].join(" · "))}</p>${linhaAtributos}${acao ? `<p class="acao">${esc(acao)}</p>` : ""}`;
   }
@@ -488,7 +493,7 @@
       ["Defesa", `${s.defesa} (−${s.reducaoDano}%)`],
       ["Crítico", `${s.critico}%`],
       ["Flechas", s.flechas],
-      ["Carga", `${peso}/${cap}`],
+      ["Carga", `${kg(peso)}/${kg(cap)}`],
       ["Pontos de tarefa", p.pontosTarefa || 0, "largo"], // nas duas colunas: numa só, quebrava em 2 linhas
     ];
     const html = linhas.map(([k, v, cls]) => `<div${cls ? ` class="${cls}"` : ""}><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
@@ -577,7 +582,7 @@
   function htmlSlotItem(id, qtd) {
     const nome = nomeDoItem(id);
     const sel = selecao && selecao.origem === "item" && selecao.id === id ? " selecionado" : "";
-    return `<button type="button" class="slot cheio${sel}" role="listitem" draggable="true" data-item="${esc(id)}" data-dica="${esc(id)}"${attrRaridade(id)} aria-label="${esc(nome)}${qtd > 1 ? `, ${qtd} unidades` : ""}">${htmlItem(id)}${qtd > 1 ? `<span class="qtd">${qtd}</span>` : ""}</button>`;
+    return `<button type="button" class="slot cheio${sel}" role="listitem" draggable="true" data-item="${esc(id)}" data-dica="${esc(id)}" data-dica-origem="mochila"${attrRaridade(id)} aria-label="${esc(nome)}${qtd > 1 ? `, ${qtd} unidades` : ""}">${htmlItem(id)}${qtd > 1 ? `<span class="qtd">${qtd}</span>` : ""}</button>`;
   }
 
   function atualizarItens(p, forcar) {
@@ -601,7 +606,12 @@
     $("#gradeMochila").innerHTML = encher(mochila, 15);
     $("#gradeBolsa").innerHTML = encher(bolsa, 15);
     const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
-    $("#pesoTexto").textContent = `${Number(peso).toFixed(1)} / ${cap} kg`;
+    // Carga em kg com vírgula; acima de 90% fica âmbar e, cheia, vermelha (é hora de vender ou jogar no chão).
+    const pesoEl = $("#pesoTexto");
+    pesoEl.textContent = `${kg(peso)} / ${kg(cap)} kg`;
+    pesoEl.classList.toggle("quase-cheia", cap > 0 && peso >= cap * 0.9 && peso < cap);
+    pesoEl.classList.toggle("cheia", cap > 0 && peso >= cap);
+    pesoEl.title = `Carga: ${kg(peso)} de ${kg(cap)} kg${cap > peso ? ` (livres: ${kg(cap - peso)} kg)` : ""}`;
 
     // Equipamento: boneco com cada espaço no lugar do corpo (arco nas costas, arma e escudo nas
     // mãos, armadura no peito) e a munição ao lado, só mostrando as flechas da mochila (não é espaço).
@@ -1282,30 +1292,79 @@
     falaLoja = falaRecente(merc?.id);
     if (aba === "comprar" || aba === "vender") abaLoja = aba;
     if (dlg.id === merc?.id) fecharDialogo();
-    desenharLoja();
+    desenharLoja(true);
     abrirModal("modalLoja");
   }
-  function desenharLoja() {
+  // Redesenha só quando o que a loja mostra muda (moedas, mochila, carga, aba): a interface se atualiza a cada
+  // passo de criatura, e redesenhar apagaria o número que o jogador está digitando no seletor de quantidade.
+  let assinaturaLoja = "";
+  function desenharLoja(forcar = false) {
     const p = jogador();
     if (!p) return;
     const corpo = $("#lojaCorpo");
     const g = contar(p.inventario);
+    const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
+    const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
+    const vendaveis = Object.entries(typeof VALORES_VENDA !== "undefined" ? VALORES_VENDA : {}).filter(([id]) => g.get(id));
+    const livres = vendaveis.map(([id]) => Math.min(g.get(id), livreParaSair(id)));
+    const ass = JSON.stringify([abaLoja, lojaAtual, falaLoja, p.moedas, p.inventario.length, vendaveis.map(([id]) => g.get(id)), livres, peso, cap]);
+    if (!forcar && ass === assinaturaLoja && corpo.innerHTML) return;
+    assinaturaLoja = ass;
+    // Foco: o mesmo botão (ou seletor) depois de redesenhar.
+    const ativo = document.activeElement;
+    const focoAntes = corpo.contains(ativo)
+      ? ativo.closest(".qtd-sel")?.dataset.qtd ? `.qtd-sel[data-qtd="${ativo.closest(".qtd-sel").dataset.qtd}"] input`
+        : ativo.dataset.qtdAcao ? `[data-qtd-acao="${ativo.dataset.qtdAcao}"]`
+          : ativo.dataset.comprar ? `[data-comprar="${ativo.dataset.comprar}"]:not([data-qtd-acao])`
+            : ativo.dataset.vender ? `[data-vender="${ativo.dataset.vender}"][data-quantidade="${ativo.dataset.quantidade}"]` : null
+      : null;
     const moeda = imgGlifo("ui_moeda", "px g16");
     let lista = "";
     if (abaLoja === "comprar") {
       const catalogo = typeof catalogoDaLoja === "function" && lojaAtual ? catalogoDaLoja(lojaAtual) : [];
+      const maxCompra = typeof QUANTIDADE_MAXIMA_COMPRA !== "undefined" ? QUANTIDADE_MAXIMA_COMPRA : 100;
       for (const { item: id, preco } of catalogo) {
         const falta = preco - p.moedas;
-        lista += `<li class="item-loja"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>${esc(atributoItem(id, p))}</span></span>
-          <button type="button" class="btn primario" data-comprar="${esc(id)}" ${falta > 0 ? `disabled title="Faltam ${falta} moedas"` : ""} aria-label="Comprar ${esc(nomeDoItem(id))} por ${preco} moedas${falta > 0 ? `; faltam ${falta}` : ""}">${falta > 0 ? `faltam ${falta}` : `${preco} ${moeda}`}</button></li>`;
+        // Provisões (poções e lotes de flechas): seletor de quantidade até o que as moedas e a carga permitem.
+        const flechas = id === "flechas";
+        const porLote = flechas ? (typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5) : 1;
+        const pesoLote = (typeof pesoItem === "function" ? pesoItem(flechas ? "flecha" : id) : 0) * porLote;
+        const empilha = flechas || ["consumivel", "municao"].includes(info(id)?.tipo);
+        const max = Math.min(maxCompra, Math.floor(p.moedas / preco), pesoLote > 0 ? Math.floor((cap - peso + 0.0001) / pesoLote) : maxCompra);
+        const chave = `comprar:${id}`;
+        const x = qtdEscolhida(chave, Math.max(1, max), Math.min(5, max));
+        const linhaQtd = empilha && max >= 2
+          ? `<div class="linha-qtd">${htmlQtd(chave, x, max, flechas ? "Lotes de 5 flechas a comprar" : `Quantidade a comprar: ${nomeDoItem(id)}`)}${htmlAcaoQtd(chave, x, "", ` data-comprar="${esc(id)}"`)}</div>`
+          : "";
+        const pesoTxt = pesoLote ? ` · ${kg(pesoLote)} kg${flechas ? " o lote" : ""}` : "";
+        lista += `<li class="item-loja${linhaQtd ? " com-qtd" : ""}"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>${esc(atributoItem(id, p) + pesoTxt)}</span></span>
+          <button type="button" class="btn primario" data-comprar="${esc(id)}" ${falta > 0 ? `disabled title="Faltam ${falta} moedas"` : ""} aria-label="Comprar ${esc(nomeDoItem(id))} por ${preco} moedas${falta > 0 ? `; faltam ${falta}` : ""}">${falta > 0 ? `faltam ${falta}` : `${preco} ${moeda}`}</button>${linhaQtd}</li>`;
       }
     } else {
-      for (const [id, valor] of Object.entries(typeof VALORES_VENDA !== "undefined" ? VALORES_VENDA : {})) {
-        const n = g.get(id) || 0;
-        if (!n) continue;
-        lista += `<li class="item-loja"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>Você tem ${n}</span></span>
-          <button type="button" class="btn primario" data-vender="${esc(id)}" aria-label="Vender um ${esc(nomeDoItem(id))} por ${valor} moedas">+${valor} ${moeda}</button></li>`;
-      }
+      vendaveis.forEach(([id, valor], i) => {
+        const n = g.get(id);
+        const livre = livres[i];
+        const reserva = n - livre;
+        const nome = esc(nomeDoItem(id));
+        const temTxt = `Você tem ${n}${reserva ? ` (${reserva} para a missão)` : ""} · ${valor} cada`;
+        let botao, linhaQtd = "";
+        if (!livre) {
+          const res = Mundo.reservaDeMissao?.(p, id);
+          botao = `<button type="button" class="btn primario" disabled title="A missão “${esc(res?.missao || "")}” pede este item">Guardado</button>`;
+        } else if (livre === 1) {
+          botao = `<button type="button" class="btn primario" data-vender="${esc(id)}" data-quantidade="1" aria-label="Vender um ${nome} por ${valor} moedas">+${valor} ${moeda}</button>`;
+        } else {
+          // Vender 1, Vender X (seletor até o que se pode vender) ou Vender tudo; o total aparece no botão.
+          botao = `<button type="button" class="btn primario" data-vender="${esc(id)}" data-quantidade="1" aria-label="Vender um ${nome} por ${valor} moedas">Vender 1 · +${valor} ${moeda}</button>`;
+          const chave = `vender:${id}`;
+          const x = qtdEscolhida(chave, livre, Math.max(2, Math.floor(livre / 2)));
+          const tudo = reserva ? `Vender as livres (${livre})` : `Vender tudo (${livre})`;
+          linhaQtd = `<div class="linha-qtd">${livre > 2 ? htmlQtd(chave, x, livre, `Quantidade a vender: ${nomeDoItem(id)}`) + htmlAcaoQtd(chave, x, "secundario", ` data-vender="${esc(id)}"`) : ""}`
+            + `<button type="button" class="btn secundario" data-vender="${esc(id)}" data-quantidade="${livre}" aria-label="${esc(tudo)}: ${nome} por ${valor * livre} moedas">${tudo} · +${valor * livre} ${moeda}</button></div>`;
+        }
+        lista += `<li class="item-loja${linhaQtd ? " com-qtd" : ""}"><span class="icone">${htmlItem(id)}</span><span><strong>${nome}</strong><span>${esc(temTxt)}</span></span>
+          ${botao}${linhaQtd}</li>`;
+      });
       if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">Você não tem nada que o mercador compre. Ele aceita recursos: peles, presas, ferrões, linho, ervas, odres, peixe e as pedras preciosas.</li>';
     }
     corpo.innerHTML = `${falaLoja ? `<p class="fala-modal">${esc(falaLoja)}</p>` : ""}
@@ -1315,7 +1374,8 @@
         <button type="button" class="aba-modal" role="tab" data-aba-loja="vender" aria-selected="${abaLoja === "vender"}">Vender</button>
       </div>
       <ul class="lista-loja" role="tabpanel">${lista}</ul>
-      <p class="nota" style="color:var(--tinta-suave)">Flechas são vendidas em lotes de ${typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5}. Fique ao lado do mercador para negociar.</p>`;
+      <p class="nota" style="color:var(--tinta-suave)">Carga: ${kg(peso)} / ${kg(cap)} kg. Flechas são vendidas em lotes de ${typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5}. Fique ao lado do mercador para negociar.</p>`;
+    if (focoAntes) (corpo.querySelector(focoAntes) || corpo.querySelector(`[data-aba-loja=${abaLoja}]`))?.focus({ preventScroll: true });
   }
 
   // ----- Mural de caçadas (atalaia) -----
@@ -2553,8 +2613,9 @@
   function usarItem(id) {
     const d = info(id);
     if (!d) return;
-    if (id === "pocao") return window.Jogo ? Jogo.acao("pocao") : executar({ tipo: "usarPocao" });
-    if (id === "pocao_fe") return window.Jogo ? Jogo.acao("pocaoFe") : executar({ tipo: "usarPocaoFe" });
+    // Pela bolsa, a poção é bebida mesmo com a vida (ou a fé) cheia: serve para liberar espaço.
+    if (id === "pocao") return executar({ tipo: "usarPocao", mesmoCheio: true });
+    if (id === "pocao_fe") return executar({ tipo: "usarPocaoFe", mesmoCheio: true });
     const slot = slotDoTipo(d.tipo);
     if (slot) return equipar(id, slot);
     mensagem(`${nomeDoItem(id)}: ${atributoItem(id) || "recurso"}.`, "sistema");
@@ -2646,7 +2707,8 @@
       const d = e.target.closest?.("[data-dica]");
       if (!d || e.pointerType === "mouse") return;
       const x0 = e.clientX, y0 = e.clientY;
-      toqueLongo = { t: setTimeout(() => { mostrarDica(d); suprimirClique = true; }, 450), x0, y0 };
+      // Item da mochila/bolsa: o toque longo abre o menu do item (descrição, usar e jogar no chão).
+      toqueLongo = { t: setTimeout(() => { if (d.matches(".slot[data-item]")) abrirMenuItem(d.dataset.item, d); else mostrarDica(d); suprimirClique = true; }, 450), x0, y0 };
     });
     const cancelar = (e) => {
       if (!toqueLongo) return;
@@ -2662,6 +2724,7 @@
   let suprimirClique = false;
 
   function mostrarDica(el) {
+    if (menuItem) return; // com o menu do item aberto, a dica não cobre os botões dele
     const id = el.dataset.dica;
     const html = htmlDica(id, el.dataset.dicaOrigem);
     if (!html) return;
@@ -2678,6 +2741,257 @@
     d.style.top = `${Math.round(Math.max(8, y))}px`;
   }
   function esconderDica() { $("#dicaItem").classList.remove("visivel"); }
+
+  // ------------------------------------------------------------------
+  // Quantidades (seletor − n +) e menu do item: usar e jogar no chão
+  // ------------------------------------------------------------------
+  // Valor de cada seletor entre um redesenho e outro, pela chave "<ação>:<item>" (vender, comprar, largar).
+  const quantidades = new Map();
+  const kg = (n) => (typeof textoKg === "function" ? textoKg(n) : String(n));
+  const contarNaMochila = (id, p = jogador()) => (p?.inventario || []).filter((x) => x === id).length;
+  const livreParaSair = (id) => (typeof Mundo !== "undefined" && Mundo.quantidadeLivre ? Mundo.quantidadeLivre(ID, id) : contarNaMochila(id));
+  function qtdEscolhida(chave, max, padrao) {
+    const v = quantidades.has(chave) ? quantidades.get(chave) : padrao;
+    return Math.max(1, Math.min(max, Math.floor(v) || 1));
+  }
+  // Seletor de quantidade; o botão com data-qtd-acao="<chave>" usa o valor e mostra o total (rotuloQtd).
+  function htmlQtd(chave, valor, max, rotulo) {
+    return `<span class="qtd-sel" data-qtd="${esc(chave)}"><button type="button" class="qtd-passo" data-passo="-1" aria-label="Um a menos"${valor <= 1 ? " disabled" : ""}>−</button>`
+      + `<input type="number" inputmode="numeric" min="1" max="${max}" step="1" value="${valor}" aria-label="${esc(rotulo)}">`
+      + `<button type="button" class="qtd-passo" data-passo="1" aria-label="Um a mais"${valor >= max ? " disabled" : ""}>+</button></span>`;
+  }
+  // Texto do botão de cada ação com a quantidade n (o total em moedas aparece antes de confirmar).
+  function rotuloQtd(chave, n) {
+    const [acao, id] = chave.split(/:(.*)/s);
+    const moeda = imgGlifo("ui_moeda", "px g16");
+    if (acao === "vender") {
+      const total = (typeof VALORES_VENDA !== "undefined" ? VALORES_VENDA[id] || 0 : 0) * n;
+      return { html: `Vender ${n} · +${total} ${moeda}`, texto: `Vender ${n} ${nomeDoItem(id)} por ${total} moedas` };
+    }
+    if (acao === "comprar") {
+      const preco = (typeof catalogoDaLoja === "function" && lojaAtual ? catalogoDaLoja(lojaAtual).find((x) => x.item === id)?.preco : 0) || 0;
+      const lote = id === "flechas" ? `${n * (typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5)} flechas` : `${n}`;
+      return { html: `Comprar ${lote} · ${preco * n} ${moeda}`, texto: `Comprar ${id === "flechas" ? lote : `${n} ${nomeDoItem(id)}`} por ${preco * n} moedas` };
+    }
+    return { html: `Jogar ${n}`, texto: `Jogar ${n} ${nomeDoItem(id)} no chão` };
+  }
+  function htmlAcaoQtd(chave, n, classe, extra = "") {
+    const r = rotuloQtd(chave, n);
+    return `<button type="button" class="btn ${classe}" data-qtd-acao="${esc(chave)}" aria-label="${esc(r.texto)}"${extra}>${r.html}</button>`;
+  }
+  // Muda o valor de um seletor (passo ou digitação) e o texto dos botões dele, sem redesenhar a lista.
+  function definirQtd(sel, valor, escrever = true) {
+    const input = sel.querySelector("input");
+    const max = Math.max(1, Number(input.max) || 1);
+    const n = Math.max(1, Math.min(max, Math.floor(Number(valor)) || 1));
+    const chave = sel.dataset.qtd;
+    quantidades.set(chave, n);
+    if (escrever && input.value !== String(n)) input.value = String(n);
+    sel.querySelector('[data-passo="-1"]').disabled = n <= 1;
+    sel.querySelector('[data-passo="1"]').disabled = n >= max;
+    for (const b of $$("[data-qtd-acao]")) {
+      if (b.dataset.qtdAcao !== chave) continue;
+      const r = rotuloQtd(chave, n);
+      b.innerHTML = r.html;
+      b.setAttribute("aria-label", r.texto);
+    }
+    return n;
+  }
+  // Quantidade escolhida para a ação (lida do seletor na tela, limitada ao máximo dele).
+  function quantidadeDe(chave) {
+    const sel = $$(".qtd-sel").find((s) => s.dataset.qtd === chave);
+    return sel ? definirQtd(sel, sel.querySelector("input").value) : quantidades.get(chave) || 1;
+  }
+  function ligarQuantidades() {
+    document.addEventListener("click", (e) => {
+      const passo = e.target.closest?.(".qtd-passo");
+      if (!passo || passo.disabled) return;
+      const sel = passo.closest(".qtd-sel");
+      definirQtd(sel, (Number(sel.querySelector("input").value) || 1) + Number(passo.dataset.passo));
+    });
+    document.addEventListener("input", (e) => {
+      const sel = e.target.closest?.(".qtd-sel");
+      // Digitando: o texto só é corrigido quando passa do máximo (vazio ou 0 esperam o resto do número).
+      if (sel && e.target.value !== "") definirQtd(sel, e.target.value, Number(e.target.value) > Number(e.target.max));
+    });
+    document.addEventListener("change", (e) => {
+      const sel = e.target.closest?.(".qtd-sel");
+      if (sel) definirQtd(sel, e.target.value);
+    });
+    // Enter no número: faz a ação do seletor (vender, comprar ou jogar essa quantidade).
+    document.addEventListener("keydown", (e) => {
+      const sel = e.key === "Enter" && e.target.closest?.(".qtd-sel");
+      if (!sel) return;
+      e.preventDefault();
+      definirQtd(sel, e.target.value);
+      $$("[data-qtd-acao]").find((b) => b.dataset.qtdAcao === sel.dataset.qtd)?.click();
+    });
+  }
+
+  // Menu do item (botão direito, toque longo ou Shift+F10 num item da mochila/bolsa; ou ao soltar uma pilha no
+  // mundo): descrição, usar (beber mesmo com a vida cheia, equipar) e jogar no chão 1, X ou tudo.
+  let menuItem = null; // { id, ancora (elemento ou {x, y} da tela), casa (casa do mundo onde soltar) }
+  function abrirMenuItem(id, ancora, casa = null) {
+    if (!info(id) || !contarNaMochila(id)) return;
+    esconderDica();
+    if (selecao) selecionar(null);
+    const reabrir = menuItem?.id === id;
+    // rect: onde o menu nasceu (o espaço da mochila é recriado quando ela muda; o menu fica no lugar).
+    const rect = ancora instanceof Element ? ancora.getBoundingClientRect() : { left: ancora.x, right: ancora.x, top: ancora.y, bottom: ancora.y };
+    menuItem = { id, ancora, casa, rect };
+    if (!reabrir) quantidades.delete(`largar:${id}`);
+    desenharMenuItem(true);
+    teclado(false);
+  }
+  function fecharMenuItem(devolverFoco = false) {
+    if (!menuItem) return;
+    const { ancora, id } = menuItem;
+    menuItem = null;
+    const m = $("#menuItem");
+    m.classList.remove("aberto");
+    m.innerHTML = "";
+    if (!modalAberto) teclado(true);
+    if (!devolverFoco || !(ancora instanceof Element)) return;
+    // O espaço pode ter sido recriado (a mochila mudou): volta ao do mesmo item.
+    const alvo = document.contains(ancora) ? ancora : $$(".slot[data-item]").find((b) => b.dataset.item === id);
+    alvo?.focus?.({ preventScroll: true });
+  }
+  function desenharMenuItem(focar) {
+    const p = jogador();
+    const id = menuItem?.id;
+    const d = id && info(id);
+    const n = d ? contarNaMochila(id, p) : 0;
+    if (!n) return fecharMenuItem();
+    const livre = Math.min(n, livreParaSair(id));
+    const reserva = n - livre;
+    const peso = typeof pesoItem === "function" ? pesoItem(id) : d.peso;
+    const tipo = NOME_TIPO[d.tipo] || "Item";
+    const pesoTxt = n > 1 ? `${kg(peso)} kg cada · ${kg(peso * n)} kg ao todo` : `${kg(peso)} kg`;
+    const r = raridadeDe(id);
+    const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
+    let usar = "";
+    if (id === "pocao" || id === "pocao_fe") usar = `<button type="button" class="btn primario" data-menu-usar>Beber</button>`;
+    else if (slotDoTipo(d.tipo)) usar = `<button type="button" class="btn primario" data-menu-usar>Equipar</button>`;
+    const chave = `largar:${id}`;
+    let largar;
+    if (!livre) largar = "";
+    else if (livre === 1) largar = `<button type="button" class="btn" data-menu-largar="1">Jogar no chão</button>`;
+    else {
+      const x = qtdEscolhida(chave, livre, Math.max(2, Math.floor(livre / 2)));
+      largar = `<button type="button" class="btn secundario" data-menu-largar="1">Jogar 1</button>`
+        + `<button type="button" class="btn secundario" data-menu-largar="${livre}">Jogar ${reserva ? "as livres" : "tudo"} (${livre})</button>`
+        + (livre > 2 ? `<span class="menu-x">${htmlQtd(chave, x, livre, `Quantidade a jogar no chão: ${nomeDoItem(id)}`)}${htmlAcaoQtd(chave, x, "")}</span>` : "");
+    }
+    const reservaTxt = reserva
+      ? (() => { const res = Mundo.reservaDeMissao?.(p, id); return `<p class="menu-reserva">${reserva === n ? "Todos guardados" : `${reserva} guardados`} para a missão “${esc(res?.missao || "")}” (entrega a ${esc(res?.npc || "")}).</p>`; })()
+      : "";
+    const m = $("#menuItem");
+    m.innerHTML = `<div class="menu-cab"><span class="slot"${attrRaridade(id)}>${htmlItem(id)}${n > 1 ? `<span class="qtd">${n}</span>` : ""}</span>`
+      + `<div class="menu-nome"><h4${titulo}>${esc(nomeDoItem(id))}</h4><p>${esc(tipo)}${n > 1 ? ` · ${n} unidades` : ""}</p></div>`
+      + `<button type="button" class="menu-fechar" data-menu-fechar aria-label="Fechar o menu"><img class="px g16" src="${glifoURL("ui_fechar", 2)}" alt=""></button></div>`
+      + `<p class="menu-info">${esc([atributoItem(id, p), pesoTxt].filter(Boolean).join(" · "))}</p>${reservaTxt}`
+      + (usar ? `<div class="menu-grupo">${usar}</div>` : "")
+      + (largar ? `<div class="menu-grupo" role="group" aria-label="Jogar no chão"><span class="menu-rotulo">Jogar no chão${menuItem.casa ? " (onde você soltou)" : ""}</span>${largar}</div>` : "");
+    m.setAttribute("aria-label", `Ações: ${nomeDoItem(id)}`);
+    m.classList.add("aberto");
+    posicionarMenuItem();
+    if (focar) setTimeout(() => (m.querySelector("[data-menu-largar], [data-menu-usar]") || m.querySelector("button"))?.focus({ preventScroll: true }), 0);
+  }
+  function posicionarMenuItem() {
+    const m = $("#menuItem"), a = menuItem.ancora;
+    const r = a instanceof Element && document.contains(a) ? a.getBoundingClientRect() : menuItem.rect;
+    const w = m.offsetWidth, h = m.offsetHeight;
+    let x = r.right + 8, y = r.top;
+    if (x + w > innerWidth - 8) x = r.left - w - 8;
+    if (x < 8) x = Math.max(8, Math.min(innerWidth - w - 8, r.left));
+    if (y + h > innerHeight - 8) y = innerHeight - h - 8;
+    m.style.left = `${Math.round(x)}px`;
+    m.style.top = `${Math.round(Math.max(8, y))}px`;
+  }
+  // Joga no chão: na casa onde o item foi solto no mundo (se for ao lado), senão aos pés do personagem.
+  function largarItem(id, quantidade, casa) {
+    const cmd = { tipo: "largarItem", item: id, quantidade };
+    if (casa) Object.assign(cmd, { x: casa.x, y: casa.y });
+    const r = executar(cmd);
+    if (r?.ok) fecharMenuItem();
+    else if (menuItem) desenharMenuItem(false);
+    atualizar();
+    return r;
+  }
+  function ligarMenuItem() {
+    const m = $("#menuItem");
+    m.addEventListener("click", (e) => {
+      if (!menuItem) return;
+      const id = menuItem.id;
+      if (e.target.closest("[data-menu-fechar]")) return fecharMenuItem(true);
+      if (e.target.closest("[data-menu-usar]")) {
+        usarItem(id);
+        // Beber deixa o menu aberto (para beber mais de uma); equipar o fecha.
+        if (slotDoTipo(info(id)?.tipo) || !contarNaMochila(id)) fecharMenuItem();
+        else desenharMenuItem(false);
+        return;
+      }
+      const b = e.target.closest("[data-menu-largar], [data-qtd-acao]");
+      if (!b || b.disabled) return;
+      const q = b.dataset.qtdAcao ? quantidadeDe(b.dataset.qtdAcao) : Number(b.dataset.menuLargar) || 1;
+      largarItem(id, q, menuItem.casa);
+    });
+    m.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fecharMenuItem(true); }
+    });
+    // Tab para fora do menu também o fecha.
+    m.addEventListener("focusout", (e) => { if (menuItem && e.relatedTarget && !m.contains(e.relatedTarget)) fecharMenuItem(); });
+    // Fecha ao clicar fora (no próprio item, o botão direito reabre), ao rolar a coluna do item (o menu ficaria
+    // solto) ou ao mudar a janela. A rolagem do console (mensagem nova) não fecha.
+    document.addEventListener("pointerdown", (e) => {
+      if (menuItem && !e.target.closest?.("#menuItem")) fecharMenuItem();
+    }, true);
+    document.addEventListener("scroll", (e) => {
+      const a = menuItem?.ancora;
+      if (a instanceof Element && e.target instanceof Node && e.target !== a && e.target.contains(a)) fecharMenuItem();
+    }, true);
+    addEventListener("resize", () => fecharMenuItem());
+    document.addEventListener("contextmenu", (e) => {
+      const it = e.target.closest?.(".slot[data-item]");
+      if (!it) return;
+      e.preventDefault();
+      // Teclado (Shift+F10, tecla de menu): ancora no espaço; mouse: também.
+      abrirMenuItem(it.dataset.item, it);
+    });
+  }
+
+  // Arrastar um item da mochila ou da bolsa para o mundo joga no chão (na casa solta, se for ao lado; senão
+  // aos pés do personagem). Pilha: abre o menu para escolher 1, X ou tudo. Equipamento vestido: guardar antes.
+  function ligarChao() {
+    const palco = $("#palco");
+    const arrastandoItem = (e) => Array.from(e.dataTransfer?.types || []).some((t) => t === "text/item" || t === "text/equip");
+    // O mundo: o mapa e o que flutua sobre ele, menos painéis, janelas e alvos de soltar (equipamento, atalho, mochila).
+    const noMundo = (e) => !!e.target.closest?.("#game-root")
+      || !e.target.closest?.(".painel, .perg, .console, #folha, [data-equip-slot], [data-atalho], .zona-soltar");
+    palco.addEventListener("dragover", (e) => {
+      if (!arrastandoItem(e) || !noMundo(e)) return palco.classList.remove("alvo-chao");
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      palco.classList.add("alvo-chao");
+    });
+    palco.addEventListener("dragleave", (e) => { if (!palco.contains(e.relatedTarget)) palco.classList.remove("alvo-chao"); });
+    document.addEventListener("dragend", () => palco.classList.remove("alvo-chao"));
+    palco.addEventListener("drop", (e) => {
+      palco.classList.remove("alvo-chao");
+      if (!arrastandoItem(e) || !noMundo(e)) return;
+      e.preventDefault();
+      const item = e.dataTransfer.getData("text/item"), slotEq = e.dataTransfer.getData("text/equip");
+      if (slotEq) {
+        const vestido = jogador()?.equipamento?.[slotEq];
+        mensagem(`${vestido ? nomeDoItem(vestido) : "O equipamento"} está no corpo: arraste-o para a mochila antes de jogar no chão.`, "perigo");
+        return;
+      }
+      if (!item || !contarNaMochila(item)) return;
+      const casa = window.Jogo?.casaNaTela?.(e.clientX, e.clientY) || null;
+      if (livreParaSair(item) > 1) abrirMenuItem(item, { x: e.clientX, y: e.clientY }, casa);
+      else largarItem(item, 1, casa);
+    });
+  }
 
   // ------------------------------------------------------------------
   // Controles de toque (direcional + ações)
@@ -2916,12 +3230,14 @@
     for (const m of $$(".modal")) {
       m.addEventListener("click", (e) => {
         if (e.target === m || e.target.closest("[data-fechar]")) { fecharModal(); return; }
+        // Loja: 1 unidade, a do seletor (data-qtd-acao) ou a do botão (data-quantidade, "Vender tudo").
+        const qtdLoja = (b) => (b.dataset.qtdAcao ? quantidadeDe(b.dataset.qtdAcao) : Number(b.dataset.quantidade) || 1);
         const comprar = e.target.closest("[data-comprar]");
-        if (comprar && !comprar.disabled) { executar({ tipo: "comprar", item: comprar.dataset.comprar }); desenharLoja(); return; }
+        if (comprar && !comprar.disabled) { executar({ tipo: "comprar", item: comprar.dataset.comprar, quantidade: qtdLoja(comprar) }); desenharLoja(); return; }
         const vender = e.target.closest("[data-vender]");
-        if (vender) { executar({ tipo: "vender", item: vender.dataset.vender }); desenharLoja(); $("#lojaCorpo [data-aba-loja=vender]")?.focus(); return; }
+        if (vender && !vender.disabled) { executar({ tipo: "vender", item: vender.dataset.vender, quantidade: qtdLoja(vender) }); desenharLoja(); return; }
         const abaL = e.target.closest("[data-aba-loja]");
-        if (abaL) { abaLoja = abaL.dataset.abaLoja; desenharLoja(); $(`#lojaCorpo [data-aba-loja=${abaLoja}]`)?.focus(); return; }
+        if (abaL) { abaLoja = abaL.dataset.abaLoja; desenharLoja(true); $(`#lojaCorpo [data-aba-loja=${abaLoja}]`)?.focus(); return; }
         // Mural: aba, aceitar/retomar, guardar (sem confirmação: nada se perde) e trocar pontos.
         const abaM = e.target.closest("[data-aba-mural]");
         if (abaM) {
@@ -3002,6 +3318,7 @@
       prenderFoco(e);
       if (e.key === "Escape") {
         if (modalAberto) { e.preventDefault(); fecharModal(); return; }
+        if (menuItem) { e.preventDefault(); fecharMenuItem(true); return; }
         if ($("#dicaItem").classList.contains("visivel")) { esconderDica(); return; }
         if (selecao) { selecionar(null); return; }
         if (dlg.id) { fecharDialogo(); return; }
@@ -3087,6 +3404,9 @@
     montar();
     ligarBotoes();
     ligarItens();
+    ligarQuantidades();
+    ligarMenuItem();
+    ligarChao();
     ligarConsole();
     ligarToque();
     observarMochila();

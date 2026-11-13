@@ -107,6 +107,10 @@ Capturas: `docs/capturas/humanos-antes-depois.jpg` e `docs/capturas/passos-3vist
   o desenho do dorso.
 - Itens: célula de 16 × 16 unidades (32 × 32 px), arte de até 24 × 24 px apoiada na linha 28, contorno
   sépia de 1 px e sombra de apoio suave.
+- Item que o jogador jogou fora (`game.js` desenharPilha): fica parado no chão (só o saque novo flutua) e, em
+  pilha, o mesmo desenho do item se repete atrás dele, deslocado em pixels inteiros (−5, +2) a partir de 2
+  unidades e (+5, +3) a partir de 5, como um montinho; sem número escrito no mundo (a quantidade aparece no
+  menu do item e na mensagem).
 
 ## 6. Cenário (JGB-12)
 
