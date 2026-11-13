@@ -456,11 +456,12 @@
     $("#seloNivel").textContent = p.nivel;
     $("#fichaNivel").textContent = `Nível ${p.nivel}`;
     const eq = p.equipamento || {};
-    const ass = JSON.stringify(eq);
+    const visualPj = typeof visualDoJogador === "function" ? visualDoJogador(p) : {};
+    const ass = JSON.stringify([eq, visualPj]);
     if (ass !== assinaturaRetrato && temArte()) {
       assinaturaRetrato = ass;
       let chave = "pj_jogador";
-      try { chave = Arte.garantirJogador ? Arte.garantirJogador(eq) : chave; } catch (e) { chave = "pj_jogador"; }
+      try { chave = Arte.garantirJogador ? Arte.garantirJogador(eq, { traje: visualPj.traje }) : chave; } catch (e) { chave = "pj_jogador"; }
       const url = retratoURL(chave, { escala: 3, recorte: "busto" }) || retratoURL("pj_jogador", { escala: 3 });
       if (url) $("#retratoJogador").src = url;
     }
@@ -1525,6 +1526,63 @@
     atualizar();
   }
 
+  // ----- Visual: trajes e montarias (JGB-27) -----
+  // Só lê cosmeticosDoJogador (função pura); vestir, montar e comprar são comandos. Nada aqui muda combate.
+  const temVisual = () => typeof cosmeticosDoJogador === "function";
+  let abaVisual = "traje", retornoVisual = null, htmlVisual = "";
+  function abrirVisual() {
+    if (!jogador() || !temVisual()) return;
+    retornoVisual = null;
+    desenharVisual(true);
+    abrirModal("modalVisual");
+  }
+  function previaCosmetico(x) {
+    if (!temArte()) return "";
+    try {
+      if (x.tipo === "montaria") return Arte.iconeURL("mt_" + x.id, 2);
+      const chave = Arte.garantirJogador({}, { traje: x.id });
+      return Arte.retratoURL(chave, { escala: 2, recorte: "inteiro" });
+    } catch (e) { return ""; }
+  }
+  function desenharVisual(forcar) {
+    const p = jogador();
+    const corpo = $("#visualCorpo");
+    if (!p || !corpo || !temVisual()) return;
+    const lista = cosmeticosDoJogador(p);
+    const itens = lista.filter((x) => x.tipo === abaVisual);
+    const abas = `<div class="abas-modal" role="tablist" aria-label="Visual">${[["traje", "Trajes"], ["montaria", "Montarias"]].map(([id, nome]) =>
+      `<button type="button" class="aba-modal" role="tab" data-aba-visual="${id}" aria-selected="${id === abaVisual}">${nome}<small>${lista.filter((x) => x.tipo === id && x.possui).length}/${lista.filter((x) => x.tipo === id).length}</small></button>`).join("")}</div>`;
+    const r = retornoVisual;
+    const retorno = r ? `<p class="retorno${r.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(r.mensagem || "")}</p>` : "";
+    const nomeVoc = (v) => (typeof VOCACOES !== "undefined" && VOCACOES[v]?.nome) || v;
+    const linhas = itens.map((x) => {
+      const url = previaCosmetico(x);
+      const tags = [x.gratuito ? "Gratuito" : x.possui ? "Seu" : x.preco == null ? "Preço a definir" : `R$ ${String(x.preco.toFixed(2)).replace(".", ",")}`];
+      if (x.vocacao) tags.push(`Vocação: ${esc(nomeVoc(x.vocacao))}`);
+      let acao;
+      if (x.emUso) acao = `<button type="button" class="btn secundario" data-cosmetico-tirar="${x.tipo}">${x.tipo === "traje" ? "Tirar" : "Descer"}</button>`;
+      else if (x.podeUsar) acao = `<button type="button" class="btn primario" data-cosmetico-usar="${x.id}" data-tipo="${x.tipo}">${x.tipo === "traje" ? "Vestir" : "Montar"}</button>`;
+      else if (x.possui) acao = `<button type="button" class="btn secundario" disabled title="${esc(x.motivo || "")}">${x.tipo === "traje" ? "Vestir" : "Montar"}</button>`;
+      else acao = `<button type="button" class="btn secundario" data-cosmetico-comprar="${x.id}"${x.aVenda ? "" : ` title="${esc(typeof REGRAS_COSMETICOS !== "undefined" ? REGRAS_COSMETICOS.textoSemPagamento : "")}"`}>${x.aVenda ? "Comprar" : "Em breve"}</button>`;
+      return `<li class="item-loja cosmetico${x.emUso ? " em-uso" : ""}"><span class="icone">${url ? `<img class="px" src="${url}" alt="">` : ""}</span>
+        <span><strong>${esc(x.nome)}${x.emUso ? " <small>em uso</small>" : ""}</strong><span>${esc(x.descricao || "")}</span><span class="preco">${tags.join(" · ")}</span>${x.possui && x.motivo ? `<span class="motivo">${esc(x.motivo)}</span>` : ""}</span>${acao}</li>`;
+    }).join("");
+    const html = `${abas}${retorno}<ul class="lista-loja">${linhas}</ul><p class="oficio-pe">Compra única, sem assinatura. Cosméticos não mudam dano, defesa, vida, carga nem velocidade.</p>`;
+    if (!forcar && html === htmlVisual) return;
+    htmlVisual = html;
+    corpo.innerHTML = html;
+    preencherGlifos(corpo);
+  }
+  function acaoVisual(botao) {
+    const d = botao.dataset;
+    if (d.abaVisual) { abaVisual = d.abaVisual; retornoVisual = null; desenharVisual(true); $(`#visualCorpo [data-aba-visual="${abaVisual}"]`)?.focus(); return; }
+    if (d.cosmeticoTirar) retornoVisual = executar(d.cosmeticoTirar === "traje" ? { tipo: "vestirTraje", traje: null } : { tipo: "usarMontaria", montaria: null });
+    else if (d.cosmeticoUsar) retornoVisual = executar(d.tipo === "traje" ? { tipo: "vestirTraje", traje: d.cosmeticoUsar } : { tipo: "usarMontaria", montaria: d.cosmeticoUsar });
+    else if (d.cosmeticoComprar) retornoVisual = executar({ tipo: "comprarCosmetico", cosmetico: d.cosmeticoComprar });
+    desenharVisual(true);
+    atualizar();
+  }
+
   // ----- Maná diário e descanso do Sábado (JGB-11) -----
   // Só lê p.mana e p.descanso pelas funções puras (estadoMana, estadoDescanso); colher e comer são comandos.
   const temMana = () => typeof estadoMana === "function" && typeof estadoDescanso === "function";
@@ -2389,6 +2447,7 @@
     if (modalAberto?.id === "modalMana") desenharMana();
     if (modalAberto?.id === "modalVocacao") desenharVocacao();
     if (modalAberto?.id === "modalOficios") desenharOficios();
+    if (modalAberto?.id === "modalVisual") desenharVisual();
   }
 
   function areaMudou(area) {
@@ -2448,6 +2507,7 @@
     $("#pontos").addEventListener("click", () => abrirMural(null));
     $("#btnBestiario").addEventListener("click", abrirBestiario);
     $("#btnOficios")?.addEventListener("click", () => abrirOficios());
+    $("#btnVisual")?.addEventListener("click", abrirVisual);
     $("#btnMana").addEventListener("click", abrirMana);
     $("#btnVocacao").addEventListener("click", () => abrirVocacao(null));
     $("#barraHab").addEventListener("click", (e) => {
@@ -2520,6 +2580,11 @@
           if (!voc.disabled) acaoVocacao(voc);
           return;
         }
+        const vis = e.target.closest("[data-aba-visual], [data-cosmetico-usar], [data-cosmetico-tirar], [data-cosmetico-comprar]");
+        if (vis) {
+          if (!vis.disabled) acaoVisual(vis);
+          return;
+        }
         const ofi = e.target.closest("[data-fabricar], [data-aba-oficio]");
         if (ofi) {
           if (!ofi.disabled) acaoOficio(ofi);
@@ -2582,6 +2647,8 @@
       if (teclaB && modalAberto?.id === "modalBestiario") { e.preventDefault(); fecharModal(); return; }
       const teclaO = (e.key === "o" || e.key === "O") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaO && modalAberto?.id === "modalOficios") { e.preventDefault(); fecharModal(); return; }
+      const teclaU = (e.key === "u" || e.key === "U") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (teclaU && modalAberto?.id === "modalVisual") { e.preventDefault(); fecharModal(); return; }
       const teclaV = (e.key === "v" || e.key === "V") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (teclaV && modalAberto?.id === "modalVocacao") { e.preventDefault(); fecharModal(); return; }
       const teclaN = (e.key === "n" || e.key === "N") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
@@ -2601,6 +2668,7 @@
       if (teclaT) { e.preventDefault(); abrirMural(null); return; }
       if (teclaB) { e.preventDefault(); abrirBestiario(); return; }
       if (teclaO) { e.preventDefault(); abrirOficios(); return; }
+      if (teclaU) { e.preventDefault(); abrirVisual(); return; }
       if (teclaN) { e.preventDefault(); abrirMana(); return; }
       if (teclaV) { e.preventDefault(); abrirVocacao(null); return; }
       // Com vocação: 1 a 8 usam as habilidades e Shift + 1 a 6 os atalhos de itens. Sem vocação, 1 a 6 são os itens.

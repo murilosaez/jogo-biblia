@@ -42,14 +42,18 @@ Conteúdo do jogo (pasta dados/)
   grande, qualidade dos equipamentos e respawn da extração; OFICIOS: os 6 ofícios, de onde vêm os materiais e
   o XP de cada coleta; RECEITAS: ofício, nível, materiais, produto e XP). Os pontos de extração (madeira,
   argila, minério e resina) ficam em dados/mundo.js (pontosExtracao) e os itens novos em dados/itens.js.
-O progresso fica no save (save versão 15): missoes[id] = { status, etapa, progresso },
+- dados/cosmeticos.js: trajes (TRAJES: nome, vocação, gratuito, preço e o visual do boneco) e montarias
+  (MONTARIAS: jumento, camelo, cavalo e carro), só de aparência, e a regra da loja (REGRAS_COSMETICOS:
+  pagamento, null enquanto o meio de pagamento não for definido). Os ids ficam no save; para tirar da
+  loja, use oculto: true.
+O progresso fica no save (save versão 16): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
 mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte } e status[tipo] =
 { ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
 vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica pronta) e talentos[id] = graus
 (só os da vocação atual; os pontos saem do nível), oficios[id] = { xp } (o nível sai do XP) e
-extracaoRespawn[ponto] (quando o ponto de extração brota de novo). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos = { possui, traje, montaria }. Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -63,7 +67,8 @@ Instalação
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
-   para a versão 15, sem perder itens, moedas, nível ou progresso. A versão 15 traz os ofícios (todos começam
+   para a versão 16, sem perder itens, moedas, nível ou progresso. A versão 16 traz a arte em 32 px por casa e
+   os cosméticos (trajes e montarias, só de aparência; o traje Peregrino é de todos). A versão 15 trouxe os ofícios (todos começam
    no nível 1, com um aviso da novidade). A versão 14 trouxe os talentos (a árvore
    começa vazia, com os pontos do seu nível livres, e quem já tem vocação recebe um aviso). A versão 13 trouxe
    as vocações (quem já passou do nível 8 recebe um aviso para escolher a sua). A versão 12 juntou os status num motor só
@@ -95,6 +100,8 @@ Controles — teclado e mouse
   ponto de talento livre).
 - P: pescar (no barco, ao lado de um ponto de pesca). A pesca rende XP de Pescador.
 - O: janela Ofícios (também pelo botão Ofícios, no topo).
+- U: janela Visual (também pelo botão Visual): trajes e montarias, só de aparência. Vestir, montar,
+  tirar e descer; a compra única aparece como "Em breve" até o meio de pagamento ser definido.
 - + e −, ou a roda do mouse sobre o mapa: aproximar ou afastar a câmera (a escolha fica salva neste
   navegador). Sem ajuste, a câmera mostra cerca de 15 × 11 casas na tela deitada e 9 × 13 em pé, como no
   Tibia, e cada pixel da arte ocupa um número inteiro de pixels da tela (nada borrado nem esticado). O mapa
@@ -133,7 +140,10 @@ Controles — toque (celular e tablet)
 
 Interface e visual
 - Toda a arte (personagens, itens, ícones, cenário) é pixel art original gerada em código por
-  sprites.js; não há imagens externas nem emojis. Os ícones da mochila, bolsa, equipamento, atalhos,
+  sprites.js; não há imagens externas nem emojis. Desde a versão 16 a arte é desenhada em 32 px por casa
+  (1 px de arte por px de mundo); personagens têm 3 vistas (de lado, de frente e de costas) e mostram a
+  arma, o escudo, o arco e a armadura vestidos. As regras de desenho e as paletas de cada região estão
+  em docs/GUIA-DE-ARTE.md. Os ícones da mochila, bolsa, equipamento, atalhos,
   loja e lista de batalha usam os mesmos desenhos do mundo.
 - Estilo "iluminura viva": couro, pergaminho e bronze; fontes Cinzel (títulos), Alegreya Sans
   (textos) e Pixelify Sans (números, rótulos e textos do mundo). Os dígitos 0–9 da Pixelify são
@@ -484,7 +494,7 @@ Para desenvolvedores
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
   estadoDescanso(p, agora), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
-  visaoTalentos(p), pontosTalentoLivres(p), visaoOficios(p), extracoesDaArea(areaId), Mundo.extracaoDisponivel(id, area, pontoId),
+  visaoTalentos(p), pontosTalentoLivres(p), visaoOficios(p), cosmeticosDoJogador(p), visualDoJogador(p), extracoesDaArea(areaId), Mundo.extracaoDisponivel(id, area, pontoId),
   Mundo.aliados(id), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
