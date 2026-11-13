@@ -1597,6 +1597,7 @@ function carregarComMissaoDeTeste() {
 teste("28. motor: falar, chegar, derrotar, coletar e entregar, com variáveis e recompensa", () => {
   const j = carregarComMissaoDeTeste();
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const balao = (npcId) => j.g("estadoMissaoNpc")(p, npcId);
   const m = () => p.missoes.teste;
   igual(m(), { status: "nao_iniciada", etapa: 0, progresso: [0] }, "missão registrada entra no save");
@@ -2045,6 +2046,7 @@ teste("34. caçadas: cada abate conta para todas as ativas que casam (golpe, fle
   j.entrar();
   concluirMissoes(j);
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   for (const id of ["deserto_ferroes", "deserto_rotas", "deserto_bando"]) assert.ok(aceitarCacada(j, id).ok, id);
   // 1 escorpião: as duas caçadas de escorpião avançam; a do bando, não. Sem "Caçada" na mensagem.
   const r1 = abater(j, "escorpiao1");
@@ -2245,6 +2247,7 @@ teste("36. caçadas: entrega em qualquer atalaia, espera contada da entrega e a 
   j.entrar();
   concluirMissoes(j);
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const limiar = j.g("limiarNivel");
   p.nivel = 20;
   p.xp = limiar(19); // os 420 XP (abate + entrega) não sobem de nível
@@ -3563,6 +3566,7 @@ teste("53. campeões (JGB-6): 5% ao renascer, modificadores no nome, mais fortes
   const j = carregarJogo({ semente: 21 });
   j.entrar();
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const [CAMPEAO, MODS, atributos, nomeDe] = ["CAMPEAO", "MODIFICADORES_CAMPEAO", "atributosInimigo", "nomeInimigo"].map(j.g);
   // Frequência: em muitos renascimentos, perto de 5%, com 1 ou 2 modificadores diferentes.
   const e = j.g("inimigos").hiena1;
@@ -4513,6 +4517,7 @@ teste("61. descanso do Sábado (JGB-11): a ausência no Sábado vira reserva e o
   j.g("Storage").flush();
   const j2 = carregarJogo({ store: j.store, inicio: local(14, 12) });
   const p2 = j2.entrar();
+  vigorNeutro(j2); // o XP do vigor (e o descanso junto) fica no teste 74
   assert.strictEqual(p2.descanso.xp, Math.round(0.75 * custo));
   const aviso = p2.avisosPendentes.find((a) => a.id === "descanso");
   assert.ok(aviso && /\+75 XP de descanso/.test(aviso.texto) && /dobro/.test(aviso.texto), "aviso do descanso");
@@ -6360,6 +6365,15 @@ teste("72. inventário (e): vender 1, X ou tudo e comprar provisões em quantida
 // ---------------------------------------------------------------------
 // Janela de habilidades e vigor (teste 74)
 // ---------------------------------------------------------------------
+// Põe o vigor no meio da faixa de XP normal (×1): os testes de outras regras de XP (missão, caçadas, campeões,
+// descanso) continuam conferindo só a regra deles. O personagem novo começa cheio, na faixa de +10%.
+function vigorNeutro(j, p = j.p) {
+  const faixas = j.g("REGRAS_VIGOR").faixas;
+  const i = faixas.findIndex((f) => f.xp === 1);
+  const topo = i > 0 ? faixas[i - 1].desde : j.g("REGRAS_VIGOR").maximoMinutos;
+  p.vigor.minutos = (faixas[i].desde + topo) / 2;
+}
+
 teste("74. janela de habilidades (a): fichaDeHabilidades traz nível, vida, fé, carga, vigor, habilidades e ofícios", () => {
   const j = carregarJogo({ inicio: local(10, 9) }); // terça
   j.entrar();

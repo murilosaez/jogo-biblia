@@ -492,7 +492,7 @@
       ["Dano corpo", s.danoCorpo],
       ["Dano arco", s.temArco ? s.danoDistancia : "—"],
       ["Defesa", `${s.defesa} (−${s.reducaoDano}%)`],
-      ["Crítico", `${s.critico}%`],
+      ["Crítico", `${String(s.critico).replace(".", ",")}%`],
     ];
     const html = linhas.map(([k, v, cls]) => `<div${cls ? ` class="${cls}"` : ""}><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
     const dl = $("#atributos");
