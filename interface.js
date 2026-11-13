@@ -588,6 +588,13 @@
   // vestido e o ataque da mão. Arrastar, duplo clique e tocar-e-escolher usam data-equip-slot.
   // ------------------------------------------------------------------
   const ORDEM_BONECO = ["colar", "cabeca", "mochila", "arma", "armadura", "escudo", "anel", "pernas", "municao", "pes"];
+  // O que vai num espaço, pela 1ª palavra dos itens dele: "espada, arco ou funda", "turbante, capacete ou elmo".
+  const exemplosDoEspaco = (slot) => {
+    const tipos = typeof tiposDoSlot === "function" ? tiposDoSlot(slot) : [];
+    const todos = typeof ITENS !== "undefined" ? Object.values(ITENS) : [];
+    const nomes = [...new Set(todos.filter((d) => tipos.includes(d.tipo)).map((d) => d.nome.split(" ")[0].toLowerCase()))];
+    return nomes.length > 1 ? `${nomes.slice(0, -1).join(", ")} ou ${nomes[nomes.length - 1]}` : nomes[0] || "";
+  };
   const imgSilhueta = (chave) => {
     const s = silhuetaURL(chave);
     return s ? `<img class="px silhueta" src="${s}" width="32" height="32" alt="">` : "";
@@ -612,7 +619,8 @@
         <span class="slot">${htmlItem(naMao)}</span></button>`;
     }
     const semMunicao = slot === "municao" && eq.arma && info(eq.arma)?.semMunicao;
-    const dica = semMunicao ? `${nome}: vazio (a ${nomeDoItem(eq.arma).toLowerCase()} não usa munição)` : `${nome}: vazio`;
+    const exemplos = exemplosDoEspaco(slot);
+    const dica = semMunicao ? `${nome}: vazio (a ${nomeDoItem(eq.arma).toLowerCase()} não usa munição)` : `${nome}: vazio${exemplos ? ` (${exemplos})` : ""}`;
     return `<button type="button" class="equip e-${slot} vazio${sel}" data-equip-slot="${slot}" aria-label="${esc(dica)}" title="${esc(dica)}">
       <span class="slot">${imgSilhueta(ESPACOS[slot]?.silhueta)}</span></button>`;
   }

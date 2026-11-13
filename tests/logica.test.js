@@ -6475,6 +6475,7 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   igual([r.ok, p.quantidadeMunicao, j.M.contarItem(ID, "flecha"), g("pesoCarregado")(p)], [true, 11, 0, peso1], r.mensagem);
   assert.ok(j.exec({ tipo: "alternarEquipamento", slot: "municao" }).ok && j.M.contarItem(ID, "flecha") === 11, "alternar guarda a pilha");
   assert.ok(j.exec({ tipo: "alternarEquipamento", slot: "municao" }).ok && p.quantidadeMunicao === 11, "e equipa de novo");
+  assert.strictEqual(g("unidadesDoItem")(p, "flecha"), 11, "a pilha do espaço de munição conta inteira (troca de pontos)");
   // Habilidade à distância (Fundibulário) com o arco gasta as flechas do espaço; sem arma à distância, recusa.
   comVocacao(j, "fundibulario", 25);
   j.avancar(2000);
@@ -6555,6 +6556,9 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   assert.notStrictEqual(quadro({ arma: "arco_madeira" }), quadro({ arma: "espada_ferro" }), "o arco vai na mão");
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
   assert.match(ui, /data-abrir-mochila/, "o espaço da mochila abre o painel Mochila");
+  assert.match(ui, /function abrirMenuEquip\(/, "botão direito (ou toque longo) numa peça vestida abre o menu dela");
+  assert.match(ui, /data-menu-guardar/, "o menu da peça vestida tem Guardar na mochila");
+  assert.match(FONTE_GAME, /r\.projetil === "pedra"/, "a funda atira uma pedra, o arco uma flecha");
   assert.doesNotMatch(ui + FONTE_GAME, /equipamento\.arco\b|eq\.arco\b/, "ninguém lê o espaço antigo do arco");
   assert.match(FONTE_GAME, /podeAtirar\(/, "o autoataque pergunta à lógica se dá para atirar");
 });
