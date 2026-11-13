@@ -1523,6 +1523,17 @@
     cores: { H: "#4a2f20", S: "#b97a4c", s: "#93603a", B: "#4a2f20", R: "#c8b48a", r: "#a8916a", d: "#7d6a4a", A: "#2f7680", F: "#93603a" },
     acessorios: [["rede", ["#c9b48a"]], ["saco", ["#4fa3a5", "#a9dccf"]]],
   });
+  // Barqueiro do cais: túnica curta azul-mar, faixa na cabeça, rolo de corda e o remo na mão.
+  acessorio("remo", "frente", (g, c, P) => {
+    const [x, y] = haste(g, P, c, 26, 15);
+    retF(g, x - 1, y - 2, 4, 6, c[1]); retF(g, x - 1, y - 2, 1, 6, claro(c[1], 0.3)); retF(g, x + 2, y - 2, 1, 6, escuro(c[1], 0.3));
+  });
+  humano("pj_morador_barqueiro", {
+    molde: "curta",
+    cores: { H: "#2a1a10", S: "#a8683e", s: "#82502e", B: "#2a1a10", R: "#3f7f9a", r: "#2f6680", d: "#1f4a5e", A: "#c8b48a", F: "#6a4a2e" },
+    barba: true,
+    acessorios: [["bandana", ["#c8402f", "#f0e0c0"]], ["corda", ["#c9b48a", "#8a7450"]], ["remo", ["#6b4a2e", "#a8784a"]]],
+  });
   humano("pj_morador_vizinha", {
     molde: "veu", barba: false,
     cores: { V: "#b98ad0", W: "#8a4a6e", S: "#cf9466", s: "#b07548", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", A: "#5a2d4a", F: "#5a3a24" },
@@ -3625,6 +3636,7 @@
       if (!mapa || x < 1 || y < 1 || x >= COLSm - 1 || y >= ROWSm - 1 || mapa[y][x]) return -1;
       if (area === "mar") return hash2(x, y, 7) < 0.015 ? ID.DECO : -1;
       if (ehCaminho(x, y) || (proibido && proibido(x, y))) return -1;
+      if (piso && piso[y][x] >= (PISOm.ESTRUTURA ?? 3)) return -1; // chão de prédio (cenario.js pinta o piso)
       // Galileia: a mancha é um campo de flores; cada casa sorteia a sua flor
       // (variante com posição própria), sem padrão de papel de parede.
       if (area === "galileia" && variantesFlor.length && ehMancha(x, y)) {

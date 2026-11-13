@@ -13,10 +13,29 @@ const DADOS_TAMANHO_MAPA = { colunas: 160, linhas: 120 };
 // o quadro (cores e materiais).
 //   casa:  0 adobe claro · 1 pedra de Canaã · 2 basalto da Galileia · 3 tijolo de barro do Egito
 //   tenda: 0 pano cru · 1 listras vermelhas · 2 listras índigo · 3 pelo de cabra escuro
+//   loja:  0 adobe claro · 1 pedra de Canaã · 2 basalto da Galileia · 3 tijolo de barro do Egito · 4 tenda grande
 //   banca: 0 com mercadorias · 1 vazia (espaço reservado para uma loja futura)
 //   poco:  0 pedra
+// Estruturas com entrar: true (casa e loja) são prédios de verdade: a borda da pegada é parede (bloqueia), a
+// porta fica na parede de baixo (coluna porta, contada da esquerda) e o resto é o chão de dentro, onde se anda.
+// Ao entrar, o telhado some e aparece o interior. moveis: o que fica dentro (x, y contados do canto da pegada;
+// cada móvel bloqueia a sua casa). atendente: onde o comerciante fica, atrás do balcão; quem atende atrás do
+// balcão conversa de até alcanceBalcao casas (do outro lado do balcão). O balcão tem uma passagem na ponta.
 const DADOS_ESTRUTURAS = {
-  casa: { nome: "Casa", largura: 3, altura: 2 },
+  casa: {
+    nome: "Casa", largura: 6, altura: 5, entrar: true, porta: 2,
+    moveis: [{ tipo: "cama", x: 1, y: 1 }, { tipo: "jarros", x: 4, y: 1 }, { tipo: "mesa", x: 4, y: 3 }],
+    tapete: { x: 2, y: 2 },
+  },
+  loja: {
+    nome: "Loja", largura: 7, altura: 6, entrar: true, porta: 3, atendente: { x: 3, y: 1 }, alcanceBalcao: 2,
+    moveis: [
+      { tipo: "barris", x: 1, y: 1 },
+      { tipo: "balcao", x: 1, y: 2 }, { tipo: "balcao", x: 2, y: 2 }, { tipo: "balcao", x: 3, y: 2 }, { tipo: "balcao", x: 4, y: 2 },
+      { tipo: "caixotes", x: 1, y: 4 }, { tipo: "sacos", x: 5, y: 4 },
+    ],
+    tapete: { x: 3, y: 3 },
+  },
   tenda: { nome: "Tenda", largura: 3, altura: 2 },
   banca: { nome: "Banca", largura: 3, altura: 2 },
   poco: { nome: "Poço", largura: 1, altura: 1 },
@@ -61,19 +80,18 @@ const DADOS_MAPAS = {
       { largura: 1, pontos: [[120, 3], [120, 40]] },
     ],
     estruturas: [
-      { tipo: "casa", x: 12, y: 9, variante: 1 },
-      { tipo: "casa", x: 17, y: 9, variante: 1 },
-      { tipo: "casa", x: 30, y: 9, variante: 1 },
+      { tipo: "casa", x: 11, y: 9, variante: 1 },
+      { tipo: "casa", x: 18, y: 9, variante: 1 },
+      { tipo: "loja", x: 27, y: 9, variante: 1, npc: "mercador_canaa", placa: "mercador" },
       { tipo: "casa", x: 35, y: 9, variante: 1 },
       { tipo: "tenda", x: 12, y: 15, variante: 1, npc: "guia_canaa" },
       { tipo: "banca", x: 17, y: 15, variante: 1, reservada: "ferreiro" },
-      { tipo: "banca", x: 29, y: 15, variante: 0, npc: "mercador_canaa" },
       { tipo: "tenda", x: 34, y: 15, variante: 2, npc: "atalaia_canaa" },
       { tipo: "poco", x: 21, y: 24 },
-      { tipo: "casa", x: 11, y: 27, variante: 1 },
-      { tipo: "casa", x: 16, y: 27, variante: 1 },
-      { tipo: "casa", x: 30, y: 27, variante: 1 },
-      { tipo: "casa", x: 35, y: 27, variante: 1 },
+      { tipo: "casa", x: 10, y: 24, variante: 1 },
+      { tipo: "casa", x: 17, y: 27, variante: 1 },
+      { tipo: "casa", x: 28, y: 26, variante: 1 },
+      { tipo: "casa", x: 35, y: 26, variante: 1 },
     ],
     marcos: [],
     decoracoes: [{ chave: "dc_fogo_apagado", x: 31, y: 23 }],
@@ -108,7 +126,7 @@ const DADOS_MAPAS = {
       { tipo: "tenda", x: 120, y: 10, variante: 3 },
       { tipo: "tenda", x: 125, y: 10, variante: 0 },
       { tipo: "tenda", x: 135, y: 12, variante: 1, npc: "noemi1" },
-      { tipo: "banca", x: 141, y: 17, variante: 0, npc: "mercador1" },
+      { tipo: "loja", x: 140, y: 16, variante: 4, npc: "mercador1", placa: "mercador" },
       { tipo: "tenda", x: 127, y: 18, variante: 0, npc: "guia_deserto" },
       { tipo: "tenda", x: 138, y: 22, variante: 2, npc: "atalaia_deserto" },
       { tipo: "banca", x: 146, y: 22, variante: 1, reservada: "ferreiro" },
@@ -116,7 +134,7 @@ const DADOS_MAPAS = {
       { tipo: "tenda", x: 125, y: 27, variante: 0 },
     ],
     marcos: [{ tipo: "fogueira", x: 135, y: 19 }],
-    decoracoes: [{ chave: "dc_tapete", x: 144, y: 20 }],
+    decoracoes: [{ chave: "dc_tapete", x: 136, y: 17 }],
     zonasColeta: [
       { x: 56, y: 76, raio: 12 },
       { x: 110, y: 48, raio: 12 },
@@ -165,20 +183,20 @@ const DADOS_MAPAS = {
       { largura: 2, pontos: [[24, 7], [24, 60]] },
     ],
     estruturas: [
-      { tipo: "banca", x: 14, y: 92, variante: 0, npc: "mercador_egito" },
+      { tipo: "loja", x: 10, y: 93, variante: 3, npc: "mercador_egito", placa: "mercador" },
       { tipo: "tenda", x: 30, y: 92, variante: 1, npc: "guia_egito" },
-      { tipo: "casa", x: 11, y: 88, variante: 3 },
-      { tipo: "casa", x: 16, y: 88, variante: 3 },
-      { tipo: "casa", x: 29, y: 88, variante: 3 },
-      { tipo: "casa", x: 34, y: 88, variante: 3 },
+      { tipo: "casa", x: 9, y: 87, variante: 3 },
+      { tipo: "casa", x: 16, y: 87, variante: 3 },
+      { tipo: "casa", x: 26, y: 87, variante: 3 },
+      { tipo: "casa", x: 32, y: 87, variante: 3 },
       { tipo: "tenda", x: 31, y: 97, variante: 0, npc: "atalaia_egito" },
       { tipo: "poco", x: 20, y: 101 },
-      { tipo: "casa", x: 11, y: 103, variante: 3 },
-      { tipo: "casa", x: 30, y: 103, variante: 3 },
+      { tipo: "casa", x: 9, y: 101, variante: 3 },
+      { tipo: "casa", x: 31, y: 101, variante: 3 },
     ],
     marcos: [
-      { tipo: "jarros", x: 12, y: 96 },
-      { tipo: "jarros", x: 13, y: 97 },
+      { tipo: "jarros", x: 18, y: 94 },
+      { tipo: "jarros", x: 17, y: 95 },
     ],
     decoracoes: [{ chave: "dc_esteira", x: 22, y: 98 }],
     zonasColeta: [],
@@ -202,7 +220,7 @@ const DADOS_MAPAS = {
       { largura: 2, pontos: [[22, 3], [22, 112]] },
     ],
     estruturas: [
-      { tipo: "banca", x: 12, y: 93, variante: 0, npc: "mercador_mar" },
+      { tipo: "loja", x: 9, y: 92, variante: 4, npc: "mercador_mar", placa: "mercador" },
       { tipo: "tenda", x: 33, y: 92, variante: 1, npc: "guia_mar" },
       { tipo: "tenda", x: 10, y: 88, variante: 3 },
       { tipo: "tenda", x: 15, y: 88, variante: 0 },
@@ -234,7 +252,7 @@ const DADOS_MAPAS = {
       { largura: 2, pontos: [[22, 3], [22, 112]] },
     ],
     estruturas: [
-      { tipo: "banca", x: 11, y: 93, variante: 0, npc: "mercador_sinai" },
+      { tipo: "loja", x: 9, y: 92, variante: 4, npc: "mercador_sinai", placa: "mercador" },
       { tipo: "tenda", x: 33, y: 92, variante: 3, npc: "guia_sinai" },
       { tipo: "tenda", x: 10, y: 88, variante: 3 },
       { tipo: "tenda", x: 15, y: 88, variante: 3 },
@@ -267,22 +285,22 @@ const DADOS_MAPAS = {
       { largura: 1, pontos: [[44, 18], [44, 24]] },
     ],
     estruturas: [
-      { tipo: "banca", x: 36, y: 20, variante: 0, npc: "mercador_galileia" },
+      { tipo: "loja", x: 34, y: 18, variante: 2, npc: "mercador_galileia", placa: "mercador" },
       { tipo: "tenda", x: 8, y: 25, variante: 0, npc: "guia_galileia" },
-      { tipo: "casa", x: 9, y: 21, variante: 2 },
-      { tipo: "casa", x: 14, y: 21, variante: 2 },
-      { tipo: "casa", x: 27, y: 20, variante: 2 },
+      { tipo: "casa", x: 8, y: 18, variante: 2 },
+      { tipo: "casa", x: 15, y: 18, variante: 2 },
+      { tipo: "casa", x: 25, y: 18, variante: 2 },
       { tipo: "banca", x: 31, y: 26, variante: 0, npc: "joel_galileia" },
-      { tipo: "casa", x: 9, y: 31, variante: 2 },
-      { tipo: "casa", x: 14, y: 31, variante: 2 },
-      { tipo: "casa", x: 32, y: 31, variante: 2 },
+      { tipo: "casa", x: 8, y: 30, variante: 2 },
+      { tipo: "casa", x: 15, y: 30, variante: 2 },
+      { tipo: "casa", x: 30, y: 30, variante: 2 },
       { tipo: "tenda", x: 36, y: 38, variante: 0 },
       { tipo: "tenda", x: 13, y: 38, variante: 2, npc: "atalaia_galileia" },
       { tipo: "poco", x: 27, y: 36 },
-      { tipo: "casa", x: 9, y: 44, variante: 2 },
-      { tipo: "casa", x: 14, y: 44, variante: 2 },
-      { tipo: "casa", x: 28, y: 44, variante: 2 },
-      { tipo: "casa", x: 33, y: 44, variante: 2 },
+      { tipo: "casa", x: 7, y: 42, variante: 2 },
+      { tipo: "casa", x: 15, y: 42, variante: 2 },
+      { tipo: "casa", x: 26, y: 42, variante: 2 },
+      { tipo: "casa", x: 33, y: 42, variante: 2 },
     ],
     marcos: [
       { tipo: "barco", x: 46, y: 18 },
@@ -290,7 +308,7 @@ const DADOS_MAPAS = {
       { tipo: "barco", x: 54, y: 21 },
     ],
     decoracoes: [
-      { chave: "dc_rede", x: 39, y: 19 },
+      { chave: "dc_rede", x: 42, y: 22 },
       { chave: "dc_rede", x: 48, y: 22 },
       { chave: "dc_esteira", x: 34, y: 29 },
     ],

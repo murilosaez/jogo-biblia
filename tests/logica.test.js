@@ -2860,27 +2860,47 @@ teste("44. mapas: tendas e bancas dos comerciantes, estruturas com colisão, vil
       const modelo = ESTRUTURAS[e.tipo];
       assert.ok(modelo, `${area}: estrutura de tipo desconhecido "${e.tipo}"`);
       igual([e.largura, e.altura], [modelo.largura, modelo.altura], `${area}: pegada de ${e.tipo}`);
+      const moveis = new Set((e.moveis || []).map((m) => `${m.x},${m.y}`));
       for (let y = e.y; y < e.y + e.altura; y++)
         for (let x = e.x; x < e.x + e.largura; x++) {
           const k = `${x},${y}`;
           assert.ok(x > 0 && y > 0 && x < j.g("COLS") - 1 && y < j.g("ROWS") - 1, `${area}: ${e.tipo} fora do mapa`);
           assert.ok(!ocupadas.has(k), `${area}: estruturas sobrepostas em ${k}`);
           ocupadas.add(k);
-          assert.strictEqual(mapas[area][y][x], 1, `${area}: ${e.tipo} sem colisão em ${k}`);
-          assert.strictEqual(pisos[area][y][x], PISO.ESTRUTURA, `${area}: piso de ${e.tipo} em ${k}`);
-          assert.ok(!pontos.some((pt) => pt.x === x && pt.y === y), `${area}: ${e.tipo} sobre um NPC ou ponto da área em ${k}`);
+          if (!modelo.entrar) {
+            assert.strictEqual(mapas[area][y][x], 1, `${area}: ${e.tipo} sem colisão em ${k}`);
+            assert.strictEqual(pisos[area][y][x], PISO.ESTRUTURA, `${area}: piso de ${e.tipo} em ${k}`);
+            assert.ok(!pontos.some((pt) => pt.x === x && pt.y === y), `${area}: ${e.tipo} sobre um NPC ou ponto da área em ${k}`);
+            continue;
+          }
+          // Prédio onde se entra: parede na borda (com colisão), porta livre embaixo, chão livre por dentro
+          // e cada móvel bloqueia a sua casa.
+          const beira = x === e.x || y === e.y || x === e.x + e.largura - 1 || y === e.y + e.altura - 1;
+          const porta = x === e.porta.x && y === e.porta.y;
+          if (porta) igual([mapas[area][y][x], pisos[area][y][x]], [0, PISO.PORTA], `${area}: porta de ${e.tipo} em ${k}`);
+          else if (beira) igual([mapas[area][y][x], pisos[area][y][x]], [1, PISO.PAREDE], `${area}: parede de ${e.tipo} em ${k}`);
+          else igual([mapas[area][y][x], pisos[area][y][x]], [moveis.has(k) ? 1 : 0, PISO.INTERIOR], `${area}: chão de ${e.tipo} em ${k}`);
+          if (beira || moveis.has(k)) assert.ok(!pontos.some((pt) => pt.x === x && pt.y === y), `${area}: ${e.tipo} sobre um NPC ou ponto em ${k}`);
         }
+      if (modelo.entrar) {
+        igual([e.porta.x, e.porta.y], [e.x + modelo.porta, e.y + e.altura - 1], `${area}: porta embaixo`);
+        assert.strictEqual(mapas[area][e.porta.y + 1][e.porta.x], 0, `${area}: a frente da porta de ${e.tipo} fica livre`);
+      }
       if (e.npc) {
         const n = npcs[e.npc];
         assert.ok(n && n.area === area, `${area}: ${e.tipo} atendida por "${e.npc}", que não está na área`);
-        igual([n.x, n.y], [e.x + (e.largura >> 1), e.y + e.altura], `${e.npc} atende logo à frente da ${e.tipo}`);
+        if (modelo.atendente) {
+          igual([n.x, n.y], [e.x + modelo.atendente.x, e.y + modelo.atendente.y], `${e.npc} atende atrás do balcão da ${e.tipo}`);
+          assert.strictEqual(n.alcance, modelo.alcanceBalcao, `${e.npc} conversa por cima do balcão`);
+        } else igual([n.x, n.y], [e.x + (e.largura >> 1), e.y + e.altura], `${e.npc} atende logo à frente da ${e.tipo}`);
       }
       if (e.reservada) assert.ok(e.tipo === "banca" && e.variante === 1 && !e.npc, `${area}: banca reservada fica vazia`);
     }
-    // Comerciantes, guias e atalaias atendem numa tenda ou banca própria.
+    // Comerciantes atendem numa loja onde se entra; guias e atalaias, numa tenda ou banca própria.
     for (const n of Object.values(npcs).filter((n) => n.area === area && ["loja", "guia", "mural"].includes(n.papel))) {
       const e = estruturasPorArea[area].find((x) => x.npc === n.id);
-      assert.ok(e && ["tenda", "banca"].includes(e.tipo), `${n.id} (${n.papel}) sem tenda ou banca`);
+      const tipos = n.papel === "loja" ? ["loja"] : ["tenda", "banca"];
+      assert.ok(e && tipos.includes(e.tipo), `${n.id} (${n.papel}) sem ${tipos.join(" ou ")}`);
     }
     // Toda vila tem moradores; todo NPC mora numa vila; zonas de caça não invadem vilas.
     const vilas = MAPAS[area].vilas;
@@ -2888,8 +2908,11 @@ teste("44. mapas: tendas e bancas dos comerciantes, estruturas com colisão, vil
       const moradores = Object.values(npcs).filter((n) => n.area === area && n.papel === "ambiente" && dentro(v, n));
       assert.ok(moradores.length >= 2, `${v.nome}: só ${moradores.length} morador(es)`);
     }
-    for (const n of Object.values(npcs).filter((n) => n.area === area))
+    for (const n of Object.values(npcs).filter((n) => n.area === area && n.papel !== "barqueiro"))
       assert.ok(vilas.some((v) => dentro(v, n)), `${n.id} fora das vilas de ${area}`);
+    // O barqueiro fica ao lado do cais (o barco sai dali).
+    for (const n of Object.values(npcs).filter((n) => n.area === area && n.papel === "barqueiro"))
+      assert.ok(areas[area].cais && Math.max(Math.abs(n.x - areas[area].cais.x), Math.abs(n.y - areas[area].cais.y)) <= 1, `${n.id} ao lado do cais`);
     for (const e of Object.values(inimigos).filter((e) => e.area === area && !e.base)) {
       const r = e.grupo.raio + e.raioPercepcao;
       for (const v of vilas) {
@@ -2901,6 +2924,7 @@ teste("44. mapas: tendas e bancas dos comerciantes, estruturas com colisão, vil
   // Os tipos de obstáculo citados nos mapas existem na arte (sprites.js).
   vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
   const Arte = j.ctx.Arte;
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "cenario.js"), "utf8"), j.ctx, { filename: "cenario.js" });
   for (const [area, d] of Object.entries(MAPAS)) {
     const tipos = [...d.regioes.map((r) => r.tipo), ...d.vilas.map((v) => v.muro), ...d.marcos.map((m) => m.tipo)].filter(Boolean);
     for (const tipo of tipos) {
@@ -2910,6 +2934,11 @@ teste("44. mapas: tendas e bancas dos comerciantes, estruturas com colisão, vil
     // A casa de um marco usa o desenho do tipo fixo, não o sorteio do bioma.
     for (const m of d.marcos) assert.ok(Arte.tipoObstaculo(area, m.x, m.y).chave.endsWith(m.tipo), `${area}: marco ${m.tipo}`);
     for (const e of d.estruturas) {
+      if (ESTRUTURAS[e.tipo].entrar) {
+        // prédio onde se entra: o material (variante) existe em cenario.js
+        assert.ok((e.variante || 0) < j.ctx.Cenario.MATERIAIS_PREDIO.length, `${area}: material ${e.variante} de ${e.tipo}`);
+        continue;
+      }
       const def = Arte.PIXEL_PATTERNS[`es_${e.tipo}`];
       assert.ok(def && (e.variante || 0) < def.quadros, `${area}: es_${e.tipo} variante ${e.variante}`);
     }
@@ -5878,6 +5907,62 @@ teste("68. arte em 32 px por casa (JGB-48): humanos em 3 vistas com equipamento 
 // Execução
 // ---------------------------------------------------------------------
 // Filtro opcional: node tests/logica.test.js 2.  (roda só testes cujo nome começa com "2.")
+teste("69. casas e lojas onde se entra: porta, balcão com o mercador atrás, telhado e barqueiro que cobra a passagem", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const [npcs, areas, estruturasPorArea, RB, PISO, mapas] = ["npcs", "areas", "estruturasPorArea", "REGRAS_BARCO", "PISO", "mapas"].map(j.g);
+  // 1. Cada loja tem porta livre, o mercador atrás do balcão e uma passagem na ponta do balcão (tudo alcançável).
+  for (const area of j.g("REGRAS_VIAGEM").ordem) {
+    const lojas = estruturasPorArea[area].filter((e) => e.tipo === "loja");
+    assert.strictEqual(lojas.length, 1, `${area}: uma loja`);
+    const loja = lojas[0];
+    const n = npcs[loja.npc];
+    igual([n.x, n.y], [loja.atendente.x, loja.atendente.y], `${area}: mercador no lugar de quem atende`);
+    assert.ok(loja.moveis.filter((m) => m.tipo === "balcao").every((m) => m.y === n.y + 1), `${area}: balcão logo à frente do mercador`);
+    assert.strictEqual(mapas[area][n.y + 2][n.x], 0, `${area}: o freguês fica do outro lado do balcão`);
+    // 2. Do outro lado do balcão (2 casas) se conversa e se compra; de 3 casas, não.
+    Object.assign(p, { area, x: n.x, y: n.y + 2, moedas: 500 });
+    const r = j.exec({ tipo: "interagir", alvoId: n.id });
+    assert.ok(r.ok && r.abrirLoja === n.id, `${area}: conversa por cima do balcão (${r.mensagem})`);
+    assert.ok(j.exec({ tipo: "comprar", item: "pocao" }).ok, `${area}: compra por cima do balcão`);
+    Object.assign(p, { x: n.x, y: n.y + 3 });
+    assert.strictEqual(j.exec({ tipo: "interagir", alvoId: n.id }).ok, false, `${area}: de 3 casas não conversa`);
+    // 3. Entrar e sair andando pela porta.
+    Object.assign(p, { x: loja.porta.x, y: loja.porta.y + 1 });
+    assert.ok(j.exec({ tipo: "mover", dx: 0, dy: -1 }).ok, `${area}: passa pela porta`);
+    assert.ok(j.exec({ tipo: "mover", dx: 0, dy: -1 }).ok, `${area}: entra na loja`);
+    igual(j.g("predioEm")(area, p.x, p.y) === loja, true, `${area}: está dentro da loja`);
+    // A parede não deixa passar.
+    Object.assign(p, { x: loja.x + 1, y: loja.y + loja.altura - 2 });
+    assert.ok(!j.exec({ tipo: "mover", dx: -1, dy: 0 }).ok || p.x === loja.x + 1, `${area}: parede bloqueia`);
+  }
+  // 4. Toda casa onde se entra tem a porta embaixo, chão por dentro e os móveis bloqueando.
+  for (const area of Object.keys(areas)) for (const e of estruturasPorArea[area].filter((x) => x.entrar)) {
+    igual(j.g("pisos")[area][e.porta.y][e.porta.x], PISO.PORTA, `${area}: porta`);
+    for (const m of e.moveis) assert.strictEqual(mapas[area][m.y][m.x], 1, `${area}: móvel ${m.tipo} bloqueia`);
+  }
+  // 5. Barqueiro: diz o preço e o saldo; embarcar cobra só ao lado dele (ou do cais); sem moedas, recusa sem cobrar.
+  for (const area of j.g("REGRAS_VIAGEM").ordem) {
+    const b = Object.values(npcs).find((n) => n.area === area && n.papel === "barqueiro");
+    assert.ok(b, `${area}: barqueiro`);
+    Object.assign(p, { area, x: areas[area].cais.x, y: areas[area].cais.y + 1, moedas: RB.passagem + 5 });
+    const fala = j.exec({ tipo: "interagir", alvoId: b.id });
+    assert.ok(fala.ok && fala.abrirBarco === b.id, `${area}: falar abre a janela do barco`);
+    assert.match(fala.mensagem, new RegExp(`custa ${RB.passagem} moedas\\. Você tem ${RB.passagem + 5}`));
+    p.moedas = RB.passagem - 1;
+    let r = j.exec({ tipo: "embarcar" });
+    assert.ok(!r.ok && /custa/.test(r.mensagem), `${area}: sem moedas não embarca`);
+    igual([p.area, p.moedas], [area, RB.passagem - 1]);
+    p.moedas = RB.passagem;
+    r = j.exec({ tipo: "embarcar" });
+    assert.ok(r.ok && r.areaAlterada && r.passagemPaga === RB.passagem, `${area}: embarca (${r.mensagem})`);
+    igual([p.area, p.moedas], ["mar", 0]);
+  }
+  Object.assign(p, { area: "canaan", x: areas.canaan.inicio.x, y: areas.canaan.inicio.y, moedas: 50 });
+  assert.strictEqual(j.exec({ tipo: "embarcar" }).ok, false, "longe do cais não embarca");
+});
+
 const filtro = process.argv[2];
 const selecionados = filtro ? testes.filter((t) => t.nome.startsWith(filtro)) : testes;
 let falhas = 0;

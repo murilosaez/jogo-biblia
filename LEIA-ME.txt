@@ -6,7 +6,8 @@ Conteúdo do jogo (pasta dados/)
   preços da loja, o que cada mercador vende (LOJAS) e valores de venda.
 - dados/mapas.js: tamanho dos mapas (160×120 casas) e o desenho de cada região: terreno de fundo,
   regiões (bosques, pedregais, clareiras, com o tipo de obstáculo), águas (lagos e rios), vilas (com
-  muro opcional), caminhos (estradas e ruas), estruturas (casas, tendas, bancas e poços, com colisão),
+  muro opcional), caminhos (estradas e ruas; dentro das vilas viram ruas de pedra), estruturas (casas e
+  lojas onde se entra, tendas, bancas e poços; ver DADOS_ESTRUTURAS: tamanho, porta, móveis e balcão),
   marcos (fogueira, estandarte, barcos, jarros), decoração do chão e zonas de coleta. Nenhuma
   coordenada fica no código: o gerador (gerarMapa, em logica.js) monta o mapa a partir daqui, e as
   casas livres que não se alcançam a partir do início da área viram obstáculo.
@@ -15,9 +16,11 @@ Conteúdo do jogo (pasta dados/)
   ervas, odres, pontos de pesca e portais; o maná diário (REGRAS_MANA: amanhecer, porções, sexta e sábado,
   cura) e o descanso do Sábado (REGRAS_DESCANSO: janela, ausência mínima, XP por Sábado, limite e
   multiplicador).
-- dados/npcs.js: personagens, posições, papéis e falas próprias. Comerciantes, guias e atalaias
-  atendem à frente de uma tenda ou banca (estruturas com npc em dados/mapas.js); os moradores
-  (papel "ambiente") só conversam, dizendo as suas falas em rodízio.
+- dados/npcs.js: personagens, posições, papéis e falas próprias. O mercador atende atrás do balcão da
+  loja (conversa-se e compra-se do outro lado do balcão, a 2 casas); guias e atalaias atendem à frente
+  de uma tenda ou banca (estruturas com npc em dados/mapas.js); o barqueiro fica ao lado do cais, diz o
+  preço da passagem e embarca quem pagar; os moradores (papel "ambiente") só conversam, dizendo as suas
+  falas em rodízio.
 - dados/criaturas.js: inimigos (tier, comportamento, status, atributos e tabela de saque), as regras de
   tiers, comportamentos, status e campeões, e os raros nomeados com a janela de aparição; especie e familia de cada criatura (as
   caçadas contam por elas) e os nomes das famílias; as regras do bestiário (REGRAS_BESTIARIO: abates de cada
@@ -57,13 +60,14 @@ extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
-(sem bolsões fechados, tendas e bancas dos comerciantes, moradores em toda vila, zonas de caça longe
-das vilas, coleta nas zonas e migração das posições antigas).
+(sem bolsões fechados, lojas, tendas e bancas, moradores em toda vila, zonas de caça longe
+das vilas, coleta nas zonas e migração das posições antigas); o teste 69 confere as casas e lojas onde
+se entra (porta, balcão, mercador atrás dele) e o barqueiro.
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
 2. Mantenha juntos na mesma pasta: index.html, storage.js, a pasta dados/, logica.js, sprites.js,
-   game.js e interface.js (carregados nesta ordem pelo index.html). Não há build nem dependências:
+   cenario.js, game.js e interface.js (carregados nesta ordem pelo index.html). Não há build nem dependências:
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente

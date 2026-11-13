@@ -7,7 +7,8 @@
 // região, ver dados/tarefas.js; requer: { missao } = missão que abre o mural), "ambiente" (morador da vila: só
 // conversa; falas.linhas são ditas uma de cada vez, em rodízio; aparencia: o visual em sprites.js) e, nos
 // capítulos, "lider" (dá a missão), "apoio" (só conversa) e "mestre" (ensina a Oração). falas: textos próprios.
-// Quem atende numa tenda ou banca fica logo à frente dela (dados/mapas.js, estruturas com npc).
+// Quem atende numa tenda ou banca fica logo à frente dela; o mercador fica atrás do balcão da loja (dados/mapas.js,
+// estruturas com npc). "barqueiro": fica ao lado do cais da cidade, diz o preço da passagem e embarca quem pagar.
 const DADOS_NPCS = [
   { id: "viajante1", nome: "Eliabe", area: "canaan", x: 22, y: 18, papel: "missao" },
   { id: "guia_canaa", nome: "Micael, guia de caravanas", area: "canaan", x: 13, y: 17, papel: "guia" },
@@ -24,7 +25,7 @@ const DADOS_NPCS = [
     falas: { saudacao: "Não é bom que um só carregue tudo: cada um tem a sua parte no caminho." },
   },
   { id: "noemi1", nome: "Noemi", area: "deserto", x: 136, y: 14, papel: "missao" },
-  { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 142, y: 19, papel: "loja" },
+  { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 143, y: 17, papel: "loja" },
   { id: "guia_deserto", nome: "Tamar, guia de caravanas", area: "deserto", x: 128, y: 20, papel: "guia" },
   // Mercadores e guias de caravanas das outras cidades (um de cada em toda cidade).
   {
@@ -32,7 +33,7 @@ const DADOS_NPCS = [
     nome: "Hadassa, mercadora",
     area: "canaan",
     x: 30,
-    y: 17,
+    y: 10,
     papel: "loja",
     aparencia: "tecela",
     falas: { saudacao: "Pão, poções e flechas para quem vai às colinas. Também compro peles e presas." },
@@ -41,7 +42,7 @@ const DADOS_NPCS = [
     id: "mercador_egito",
     nome: "Senefer, mercador",
     area: "egito",
-    x: 15,
+    x: 13,
     y: 94,
     papel: "loja",
     aparencia: "oleiro",
@@ -52,8 +53,8 @@ const DADOS_NPCS = [
     id: "mercador_mar",
     nome: "Quenaz, mercador",
     area: "marVermelho",
-    x: 13,
-    y: 95,
+    x: 12,
+    y: 93,
     papel: "loja",
     aparencia: "pescador",
     falas: { saudacao: "O que o mar traz eu compro; o que o caminho pede eu vendo." },
@@ -64,7 +65,7 @@ const DADOS_NPCS = [
     nome: "Mesulão, mercador",
     area: "sinai",
     x: 12,
-    y: 95,
+    y: 93,
     papel: "loja",
     aparencia: "pastor",
     falas: { saudacao: "Na montanha o frio corta. Leve poções e uma boa armadura." },
@@ -75,7 +76,7 @@ const DADOS_NPCS = [
     nome: "Eliaquim, mercador",
     area: "galileia",
     x: 37,
-    y: 22,
+    y: 19,
     papel: "loja",
     aparencia: "anciao",
     falas: { saudacao: "Peixe seco, poções e flechas. E compro o que você trouxer da estrada." },
@@ -240,8 +241,8 @@ const DADOS_NPCS = [
     id: "uziel_egito",
     nome: "Uziel, oleiro",
     area: "egito",
-    x: 14,
-    y: 99,
+    x: 15,
+    y: 100,
     papel: "ambiente",
     aparencia: "oleiro",
     falas: {
@@ -356,4 +357,12 @@ const DADOS_NPCS = [
       ],
     },
   },
+  // Barqueiros: um ao lado do cais de cada cidade (dados/mundo.js). Dizem o preço da passagem (REGRAS_BARCO) e
+  // embarcam quem pagar.
+  { id: "barqueiro_canaa", nome: "Zebulom, barqueiro", area: "canaan", x: 81, y: 3, papel: "barqueiro", aparencia: "barqueiro" },
+  { id: "barqueiro_deserto", nome: "Elom, barqueiro", area: "deserto", x: 81, y: 3, papel: "barqueiro", aparencia: "barqueiro" },
+  { id: "barqueiro_egito", nome: "Hurão, barqueiro do Nilo", area: "egito", x: 25, y: 7, papel: "barqueiro", aparencia: "barqueiro" },
+  { id: "barqueiro_mar", nome: "Gade, barqueiro", area: "marVermelho", x: 23, y: 3, papel: "barqueiro", aparencia: "barqueiro" },
+  { id: "barqueiro_sinai", nome: "Jetur, barqueiro", area: "sinai", x: 23, y: 3, papel: "barqueiro", aparencia: "barqueiro" },
+  { id: "barqueiro_galileia", nome: "Zebedeu, barqueiro", area: "galileia", x: 45, y: 18, papel: "barqueiro", aparencia: "barqueiro" },
 ];

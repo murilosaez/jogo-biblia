@@ -1761,7 +1761,7 @@
       const itens = v.saque.itens.map((l) => {
         const cor = corRaridade(l.raridade);
         const rar = l.raridade !== "comum" && typeof RARIDADES !== "undefined" ? ` (${RARIDADES[l.raridade].nome}${l.minima ? " ou melhor" : ""})` : "";
-        return `<li>${htmlItem(l.item, 16)}<span${cor && l.raridade !== "comum" ? ` style="color:${cor};text-shadow:1px 1px 0 #2a1a14"` : ""}>${esc(l.nome)}</span><span>${esc(rar)}</span>${l.textoChance ? `<span class="chance">${esc(l.textoChance)}</span>` : ""}</li>`;
+        return `<li>${htmlItem(l.item, 16)}<span${cor && l.raridade !== "comum" ? ` class="rar-nome" style="--rar:${cor}"` : ""}>${esc(l.nome)}</span><span>${esc(rar)}</span>${l.textoChance ? `<span class="chance">${esc(l.textoChance)}</span>` : ""}</li>`;
       }).join("");
       html += `<ul class="saque-best">${itens}</ul>`;
       if (v.saque.moedas !== null) html += `<p>${imgGlifo("ui_moeda")} Moedas: ${fmt(v.saque.moedas)} por abate.</p>`;
@@ -1873,6 +1873,38 @@
       <ul class="lista-loja">${linhas}</ul>
       <p class="nota">O preço cresce com a distância. Também dá para ir a pé pelas rotas e trilhas, de graça, ou de barco
         (${barco} moedas de passagem no cais de qualquer cidade).</p>`;
+  }
+
+  // ----- Barqueiro -----
+  // Janela do cais: diz com todas as letras quanto custa a passagem, quanto o jogador tem e quanto sobra, e
+  // só embarca quando ele confirma (o barqueiro cobra; pisar no cais sem falar com ele abre esta janela).
+  function abrirBarco(barqueiroId) {
+    const p = jogador();
+    if (!p || typeof REGRAS_BARCO === "undefined") return;
+    const b = typeof npcs !== "undefined" ? npcs[barqueiroId] : null;
+    const url = retratoURL(visualDe(b?.id || "barqueiro_canaa"), { escala: 3, recorte: "busto" });
+    if (url) $("#barcoRetrato").src = url;
+    $("#barcoTitulo").textContent = b ? nomeCurto(b.nome) : "Barqueiro";
+    const fala = b && dlg.id === b.id ? dlg.texto : "";
+    if (fala) fecharDialogo();
+    const preco = REGRAS_BARCO.passagem, moedas = p.moedas, falta = Math.max(0, preco - moedas);
+    const mar = (typeof areas !== "undefined" && areas.mar?.nome) || "Mar das Rotas";
+    const moeda = imgGlifo("ui_moeda", "px g16");
+    $("#barcoCorpo").innerHTML = `
+      <p class="fala-modal">${esc(fala || `${b ? nomeCurto(b.nome) : "Barqueiro"}: Meu barco leva você ao ${mar}. De lá, desembarque no cais de qualquer cidade aberta.`)}</p>
+      <div class="bilhete" role="group" aria-label="Passagem de barco">
+        <div class="bilhete-linha"><span>Destino</span><strong>${esc(mar)}</strong></div>
+        <div class="bilhete-linha preco"><span>Passagem</span><strong>${preco} ${moeda}</strong></div>
+        <div class="bilhete-linha"><span>Você tem</span><strong>${moedas} ${moeda}</strong></div>
+        <div class="bilhete-linha ${falta ? "falta" : "sobra"}"><span>${falta ? "Faltam" : "Depois de pagar"}</span><strong>${falta ? falta : moedas - preco} ${moeda}</strong></div>
+      </div>
+      <div class="acoes-barco">
+        <button type="button" class="btn secundario" data-fechar>Agora não</button>
+        <button type="button" class="btn primario" data-embarcar ${falta ? "disabled" : ""} aria-label="${falta ? `Faltam ${falta} moedas para a passagem` : `Pagar ${preco} moedas e embarcar`}">${falta ? `Faltam ${falta} moedas` : `Pagar ${preco} ${moeda} e embarcar`}</button>
+      </div>
+      <p class="nota">A pesca no mar é de graça. Para voltar, navegue até o cais de uma cidade aberta.</p>`;
+    abrirModal("modalBarco");
+    $("#barcoCorpo [data-embarcar]:not([disabled])")?.focus();
   }
 
   // ----- Oração -----
@@ -2609,6 +2641,12 @@
           $(`#bestiarioCorpo [data-ver-especie="${k}"]`)?.focus({ preventScroll: true });
           return;
         }
+        const embarcar = e.target.closest("[data-embarcar]");
+        if (embarcar && !embarcar.disabled) {
+          fecharModal(false);
+          executar({ tipo: "embarcar" });
+          return;
+        }
         const viajar = e.target.closest("[data-viajar]");
         if (viajar && !viajar.disabled) {
           fecharModal(false);
@@ -2739,6 +2777,7 @@
     avancarDialogo,
     abrirLoja,
     abrirViagem,
+    abrirBarco,
     orar,
     abrirMural,
     abrirBestiario,

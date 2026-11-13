@@ -32,7 +32,8 @@ function ajusteZoomSalvo() {
 }
 const BLOCO = 16; // lado (em casas) dos blocos de cenário ligados e desligados conforme a câmera
 const MINIMAPA_JANELA = { colunas: 80, linhas: 60 }; // casas mostradas no minimapa, em volta do jogador
-const FONTE_PIXEL = '"Pixelify Sans", ui-monospace, monospace';
+// Texto do mundo (nomes, rótulos, números): condensada em negrito com contorno escuro, legível sobre qualquer chão.
+const FONTE_PIXEL = '"Barlow Semi Condensed", "Arial Narrow", "Alegreya Sans", sans-serif';
 const FONTE_TITULO = '"Cinzel", Georgia, serif';
 const FONTE_TEXTO = '"Alegreya Sans", system-ui, sans-serif';
 
@@ -166,6 +167,8 @@ class Cena extends Phaser.Scene {
     this.copas = new Map(); // "x,y" → copa ou telhado que fica translúcido com o jogador logo atrás
     this.copasTranslucidas = [];
     this.blocos = new Map(); // "bx,by" → imagens do cenário daquele bloco (culling)
+    this.pedacosChao = new Map(); // "bx,by" → pedaço do chão contínuo (cenario.js)
+    this.predios = [];
     this.blocosVisiveis = "";
     this.animados = [];
     this.marcadores = [];
@@ -178,7 +181,17 @@ class Cena extends Phaser.Scene {
 
     // Textos do mundo (nomes, dano, avisos) na resolução do zoom: nítidos de perto.
     const fabrica = this.add, textoOriginal = fabrica.text.bind(fabrica);
-    fabrica.text = (x, y, texto, estilo = {}) => textoOriginal(x, y, texto, { ...estilo, resolution: Math.max(estilo.resolution || 1, this.resolucaoTexto()) });
+    // A fonte do mundo vai sempre em negrito, nunca abaixo de 13 px, e com contorno de pelo menos 4 px.
+    fabrica.text = (x, y, texto, estilo = {}) => {
+      const e = { ...estilo, resolution: Math.max(estilo.resolution || 1, this.resolucaoTexto()) };
+      if (e.fontFamily === FONTE_PIXEL) {
+        e.fontStyle = "700";
+        const fs = parseInt(e.fontSize, 10) || 13;
+        e.fontSize = Math.max(13, fs + 2) + "px";
+        if (e.stroke) e.strokeThickness = Math.max(4, e.strokeThickness || 0);
+      }
+      return textoOriginal(x, y, texto, e);
+    };
 
     Arte.registrarTexturas(this);
     this.criarTecladoEPonteiro();
@@ -323,11 +336,23 @@ class Cena extends Phaser.Scene {
   // ===== obstáculos: um Image por casa bloqueada do interior (y-sort)
   criarObstaculos() {
     const mapa = mapas[this.areaAtual], piso = pisos[this.areaAtual];
+    const cais = areas[this.areaAtual]?.cais;
     for (let y = 1; y < ROWS - 1; y++)
       for (let x = 1; x < COLS - 1; x++) {
-        if (!mapa[y][x] || piso[y][x] === PISO.AGUA || piso[y][x] === PISO.ESTRUTURA) continue;
+        if (!mapa[y][x] || piso[y][x] === PISO.AGUA || piso[y][x] >= PISO.ESTRUTURA) continue;
+        if (cais && x === cais.x && y < cais.y) continue; // sob o píer do cais
         const tipo = Arte.tipoObstaculo(this.areaAtual, x, y);
         if (!tipo || !this.textures.exists(tipo.chave)) continue;
+        // muro de vila e mureta de pedra: emendam com os vizinhos do mesmo tipo (cenario.js)
+        const muro = this.tipoMuro(x, y);
+        if (muro) {
+          const m = (this.tipoMuro(x, y - 1) === muro ? 1 : 0) | (this.tipoMuro(x + 1, y) === muro ? 2 : 0) | (this.tipoMuro(x, y + 1) === muro ? 4 : 0) | (this.tipoMuro(x - 1, y) === muro ? 8 : 0);
+          if (m) {
+            const chave = Cenario.texturaMuro(this, muro, m, Math.floor(Arte.hash2(x, y, 6) * 3));
+            this.noBloco(this.add.image(x * TAM, y * TAM - Cenario.ALTURA_MURO, chave).setOrigin(0, 0).setDepth(PROF.entidade + y * TAM + TAM - 2), x, y);
+            continue;
+          }
+        }
         const def = PIXEL_PATTERNS[tipo.chave];
         const variante = tipo.animado ? 0 : Math.floor(Arte.hash2(x, y, 4) * def.quadros);
         const desloc = tipo.animado ? 0 : (Math.floor(Arte.hash2(x, y, 5) * 3) - 1) * 2;
@@ -341,9 +366,19 @@ class Cena extends Phaser.Scene {
       }
   }
 
+  // Tipo de muro contínuo da casa (muro, tijolos) ou null.
+  tipoMuro(x, y) {
+    if (!window.Cenario || mapas[this.areaAtual][y]?.[x] !== 1 || pisos[this.areaAtual][y][x] !== PISO.CHAO) return null;
+    const t = Arte.tipoObstaculo(this.areaAtual, x, y);
+    const nome = t?.chave?.replace(`ob_${this.areaAtual}_`, "");
+    return nome && Cenario.MUROS[nome] ? nome : null;
+  }
+
   // ===== estruturas: casas, tendas, bancas e poços (dados/mapas.js), uma imagem por estrutura
   criarEstruturas() {
+    this.predios = [];
     for (const e of estruturasPorArea[this.areaAtual] || []) {
+      if (e.entrar) { this.criarPredio(e); continue; }
       const chave = `es_${e.tipo}`;
       if (!this.textures.exists(chave)) continue;
       const base = (e.y + e.altura) * TAM;
@@ -353,6 +388,84 @@ class Cena extends Phaser.Scene {
       this.noBloco(img, e.x + (e.largura >> 1), e.y + e.altura - 1);
       // como as copas: o telhado fica translúcido com o jogador logo atrás (ao norte) da estrutura
       for (let x = e.x; x < e.x + e.largura; x++) this.copas.set(`${x},${e.y}`, img);
+    }
+  }
+
+  // Prédio onde se entra (cenario.js): chão, parede de dentro, móveis e, por cima, o telhado com a fachada.
+  // O telhado some quando o jogador entra (atualizarPredios) e fica translúcido com ele logo atrás.
+  criarPredio(e) {
+    const k = Cenario.texturasPredio(this, e);
+    const X0 = e.x * TAM, Y0 = e.y * TAM, W = e.largura * TAM, H = e.altura * TAM;
+    const meio = e.x + (e.largura >> 1), fim = e.y + e.altura - 1;
+    const chao = this.add.image(X0, Y0, k.chao).setOrigin(0, 0).setDepth(PROF.deco + 0.5);
+    const sombra = this.add.image(X0, Y0, k.sombra).setOrigin(0, 0).setDepth(PROF.sombraContato + 0.5);
+    const dentro = this.add.image(X0, Y0 - TAM, k.dentro).setOrigin(0, 0).setDepth(PROF.entidade + Y0 + 30);
+    const fora = this.add.image(X0, Y0 - TAM, k.fora).setOrigin(0, 0).setDepth(PROF.entidade + Y0 + H - 1.5);
+    const imgs = [chao, sombra, dentro, fora];
+    const bloqueado = new Set(e.moveis.map((m) => `${m.x},${m.y}`));
+    e.moveis.forEach((m, i) => {
+      const viz = m.tipo === "balcao"
+        ? { esq: e.moveis.some((o) => o.tipo === "balcao" && o.x === m.x - 1 && o.y === m.y), dir: e.moveis.some((o) => o.tipo === "balcao" && o.x === m.x + 1 && o.y === m.y) }
+        : {};
+      const chave = Cenario.texturaMovel(this, m.tipo, e.variante, viz, m.x * 7 + m.y * 3 + i);
+      imgs.push(this.add.image(centroX(m.x), m.y * TAM + TAM, chave).setOrigin(0.5, 1).setDepth(PROF.entidade + m.y * TAM + TAM - 2));
+    });
+    for (const img of imgs) this.noBloco(img, meio, fim);
+    this.predios.push({ e, fora, alvo: 1, bloqueado });
+  }
+
+  // Telhado: some com o jogador dentro (chão de dentro ou porta), fica translúcido com ele logo atrás
+  // (ao norte, na faixa coberta pelo telhado) e volta inteiro do lado de fora.
+  atualizarPredios(delta) {
+    if (!this.predios?.length) return;
+    const p = this.p;
+    for (const pr of this.predios) {
+      const e = pr.e;
+      const dentro = p.x > e.x && p.x < e.x + e.largura - 1 && p.y > e.y && (p.y < e.y + e.altura - 1 || (p.x === e.porta.x && p.y === e.porta.y));
+      const atras = !dentro && p.y === e.y - 1 && p.x >= e.x - 1 && p.x <= e.x + e.largura;
+      const alvo = dentro ? 0 : atras ? 0.5 : 1;
+      const a = pr.fora.alpha;
+      if (a !== alvo) {
+        const passo = Math.min(1, (delta || 16) / 140);
+        const novo = Math.abs(alvo - a) < 0.02 ? alvo : a + (alvo - a) * passo * 1.6;
+        pr.fora.setAlpha(Math.max(0, Math.min(1, novo)));
+      }
+      if (dentro !== pr.dentro) {
+        pr.dentro = dentro;
+        if (dentro) window.UI?.entrouNoPredio?.(e);
+      }
+    }
+  }
+
+  // ===== chão contínuo (cenario.js): pedaços de 16 × 16 casas pintados pixel a pixel, criados perto da câmera
+  atualizarChaoContinuo() {
+    if (this.areaAtual === "mar" || !window.Cenario) return;
+    const v = this.cameras.main.worldView, lado = Cenario.LADO_PEDACO * TAM;
+    const bx0 = Math.max(0, Math.floor((v.x - lado / 2) / lado)), by0 = Math.max(0, Math.floor((v.y - lado / 2) / lado));
+    const bx1 = Math.min(Math.ceil(COLS / Cenario.LADO_PEDACO) - 1, Math.floor((v.x + v.width + lado / 2) / lado));
+    const by1 = Math.min(Math.ceil(ROWS / Cenario.LADO_PEDACO) - 1, Math.floor((v.y + v.height + lado / 2) / lado));
+    this.pedacosChao = this.pedacosChao || new Map();
+    let feitos = 0;
+    // o pedaço mais perto do centro primeiro; no máximo 2 por quadro (sem engasgar ao andar)
+    const cx = (v.x + v.width / 2) / lado, cy = (v.y + v.height / 2) / lado, falta = [];
+    for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) if (!this.pedacosChao.has(`${bx},${by}`)) falta.push([bx, by]);
+    falta.sort((a, b) => Math.hypot(a[0] + 0.5 - cx, a[1] + 0.5 - cy) - Math.hypot(b[0] + 0.5 - cx, b[1] + 0.5 - cy));
+    for (const [bx, by] of falta) {
+      if (feitos >= (this.pedacosChao.size ? 2 : 99)) break;
+      const chave = Cenario.texturaPedacoChao(this, this.areaAtual, bx, by);
+      const img = this.add.image(bx * lado, by * lado, chave).setOrigin(0, 0).setDepth(PROF.chao + 0.5);
+      this.pedacosChao.set(`${bx},${by}`, { img, chave });
+      feitos++;
+    }
+    // libera os pedaços longe da câmera (memória)
+    if (this.pedacosChao.size > 30) {
+      for (const [k, pd] of this.pedacosChao) {
+        const [bx, by] = k.split(",").map(Number);
+        if (bx >= bx0 - 1 && bx <= bx1 + 1 && by >= by0 - 1 && by <= by1 + 1) continue;
+        pd.img.destroy();
+        this.textures.remove(pd.chave);
+        this.pedacosChao.delete(k);
+      }
     }
   }
 
@@ -415,7 +528,7 @@ class Cena extends Phaser.Scene {
       const barco = this.add.sprite(centroX(c.x) + 30, c.y * TAM - 74, "mk_barco", 0).setOrigin(0.5, 1).setDepth(PROF.marcadorChao + 1);
       this.animados.push({ img: barco, quadros: 2, fps: 1.5 });
       const passagem = typeof REGRAS_BARCO !== "undefined" ? ` · ${REGRAS_BARCO.passagem} moedas` : "";
-      rotulo(`Cais · Mar das Rotas${passagem}`, c.x, c.y, COR.agua);
+      rotulo(`Barco para o Mar das Rotas${passagem}`, c.x, c.y, COR.agua);
     }
     // Mar: um cais em cada cidade, na margem mais perto (o píer sai da margem para o mar).
     if (a === "mar") {
@@ -984,6 +1097,7 @@ class Cena extends Phaser.Scene {
     }
     if (r.abrirLoja) (window.UI?.abrirLoja || window.abrirLoja)?.(r.abrirLoja);
     if (r.abrirViagem) (window.UI?.abrirViagem || window.abrirViagem)?.(r.abrirViagem);
+    if (r.abrirBarco) window.UI?.abrirBarco?.(r.abrirBarco);
     if (r.abrirMural) window.UI?.abrirMural?.(r.abrirMural);
     if (r.abrirVocacao) window.UI?.abrirVocacao?.(r.abrirVocacao);
     if (r.tarefasEntregues?.length) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 12, { subir: true, dur: 800 });
@@ -1004,7 +1118,7 @@ class Cena extends Phaser.Scene {
     if (!p) return null;
     let melhor = null;
     for (const n of Object.values(npcs)) {
-      if (n.area !== this.areaAtual || cheb(p, n) > 1) continue;
+      if (n.area !== this.areaAtual || cheb(p, n) > (n.alcance || 1) || (n.alcance > 1 && cheb(p, n) > 1 && !this.linhaLivre(p.x, p.y, n))) continue;
       return { tipo: "npc", id: n.id, rotulo: n.papel === "mural" ? "Caçadas" : "Falar", x: n.x, y: n.y, tecla: "F" };
     }
     const a = areas[this.areaAtual];
@@ -1247,6 +1361,18 @@ class Cena extends Phaser.Scene {
   // Devolve true se o passo aconteceu (o joystick analógico tenta outro passo quando não acontece).
   mover(dx, dy, duracao = 130) {
     if (this.trocando) return false;
+    // Cais com barqueiro: antes de embarcar, a janela dele mostra o preço da passagem e pede confirmação.
+    const a = areas[this.areaAtual];
+    if (a?.cais && this.p.x + dx === a.cais.x && this.p.y + dy === a.cais.y) {
+      const barqueiro = Object.values(npcs).find((n) => n.area === this.areaAtual && n.papel === "barqueiro");
+      if (barqueiro && window.UI?.abrirBarco) {
+        this.pararRota();
+        const ent = this.entidades[barqueiro.id];
+        if (ent) { ent.acaoAte = this.time.now + 400; virar(ent.sprite, this.p.x - barqueiro.x, this.p.y - barqueiro.y); }
+        window.UI.abrirBarco(barqueiro.id);
+        return false;
+      }
+    }
     const r = Mundo.executar(MEU_ID, { tipo: "mover", dx, dy });
     if (!r.ok) return false;
     if (r.areaAlterada) { this.trocarArea(r.mensagem); return true; }
@@ -1503,8 +1629,15 @@ class Cena extends Phaser.Scene {
   irAteNpc(id) {
     const n = npcs[id];
     if (!n) return;
-    if (cheb(this.p, n) <= 1) { this.pararRota(); this.interagir(id); return; }
-    this.iniciarRota((x, y) => cheb({ x, y }, n) <= 1, () => this.interagir(id), n);
+    const alcance = n.alcance || 1; // atrás do balcão, conversa-se por cima dele
+    if (cheb(this.p, n) <= alcance) { this.pararRota(); this.interagir(id); return; }
+    this.iniciarRota((x, y) => cheb({ x, y }, n) <= alcance && (alcance === 1 || this.linhaLivre(x, y, n)), () => this.interagir(id), n);
+  }
+  // Do outro lado do balcão: entre a casa e o NPC só há o balcão (nenhuma parede).
+  linhaLivre(x, y, n) {
+    const piso = pisos[this.areaAtual];
+    const mx = Math.round((x + n.x) / 2), my = Math.round((y + n.y) / 2);
+    return piso[my]?.[mx] !== PISO.PAREDE && piso[y]?.[x] !== PISO.PAREDE;
   }
   irAteSaque(id) {
     const s = this.p.saqueNoChao.find((x) => x.id === id);
@@ -1882,6 +2015,9 @@ class Cena extends Phaser.Scene {
     }
 
     this.atualizarBlocos();
+    this.atualizarChaoContinuo();
+    this.atualizarPredios(time - (this.ultimoQuadro || time));
+    this.ultimoQuadro = time;
     this.desenharAlvoEBarras(time);
     if (time >= this.proximosRotulos) {
       this.proximosRotulos = time + 100;
@@ -2103,7 +2239,8 @@ class Cena extends Phaser.Scene {
           let cor = cores.chao;
           if (agua) cor = cores.agua;
           else if (borda) cor = cores.borda;
-          else if (piso[y][x] === PISO.ESTRUTURA) cor = cores.estrutura;
+          else if (piso[y][x] === PISO.ESTRUTURA || piso[y][x] === PISO.PAREDE) cor = cores.estrutura;
+          else if (piso[y][x] === PISO.PORTA || piso[y][x] === PISO.INTERIOR) cor = m[y][x] ? cores.estrutura : cores.interior || "#c8a878";
           else if (m[y][x]) cor = cores.obstaculo;
           else if (ts.ehCaminho(x, y)) cor = cores.caminho;
           g.fillStyle = cor;
@@ -2197,7 +2334,7 @@ function iniciarJogo() {
     raiz.style.overflow = "hidden";
   }
   const fontes = document.fonts
-    ? Promise.all(['14px "Pixelify Sans"', '700 28px "Cinzel"', '14px "Alegreya Sans"'].map((f) => document.fonts.load(f).catch(() => null)))
+    ? Promise.all(['700 15px "Barlow Semi Condensed"', '700 28px "Cinzel"', '14px "Alegreya Sans"'].map((f) => document.fonts.load(f).catch(() => null)))
     : Promise.resolve();
   Promise.race([fontes, new Promise((r) => setTimeout(r, 1500))])
     .catch(() => {})
