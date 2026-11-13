@@ -1153,6 +1153,58 @@
     const px = P.vista === "costas" ? 40 - pos[0] : pos[0];
     linF(g, hx - 1, hy - 1, px, pos[1] + 2, c[0]); elipF(g, px, pos[1], 1.6, 1.6, c[1] || "#8a8478");
   });
+  // Funda na mão do jogador: as duas cordas caem do punho até a bolsa com a pedra; no golpe, gira no alto.
+  acessorio("funda_mao", "frente", (g, c, P) => {
+    const [hx, hy] = P.maoArma;
+    if (P.q === 4) { linF(g, hx - 1, hy - 1, hx + (P.vista === "costas" ? -5 : 5), hy - 9, c[0]); elipF(g, hx + (P.vista === "costas" ? -5 : 5), hy - 10, 1.6, 1.4, c[1]); return; }
+    linF(g, hx - 2, hy + 1, hx - 2, hy + 5, c[0]); linF(g, hx, hy + 1, hx, hy + 5, escuro(c[0], 0.25));
+    retF(g, hx - 3, hy + 6, 4, 2, (X, Y) => (Y === hy + 6 ? c[0] : escuro(c[0], 0.3))); g.fino(hx - 2, hy + 6, c[1]);
+  });
+
+  // Peças do corpo do jogador (boneco): capacete de couro (calota com costura e aba, sem nasal) e as que
+  // pintam por cima do corpo já desenhado — grevas (canela), botas (tornozelo e pé) e saiote (tiras de couro
+  // sobre a saia). Elas trocam as cores da pele (ou da saia) só nas linhas da perna, então seguem o passo e as
+  // 3 vistas sem desenho próprio por quadro. Poucas cores novas (o sprite tem no máximo 24 e funde as raras):
+  // as grevas usam 2 tons de bronze; botas e saiote usam o couro das sandálias, que o boneco já tem.
+  acessorio("capacete", "frente", (g, c, P) => {
+    const T = P.T, v = P.vista, cx = v === "lado" ? 19.5 : 20, R = [claro(c[0], 0.24), c[0], escuro(c[0], 0.3)];
+    elipF(g, cx, T + 5.5, 8.6, 6.8, (nx, ny, X, Y) => (Y > T + 5 ? null : nx + ny < -0.75 ? R[0] : nx > 0.5 ? R[2] : R[1]));
+    // costura do meio e a aba clara
+    if (v === "lado") linF(g, 19, T - 1, 24, T + 4, R[2]); else for (let Y = T - 1; Y <= T + 4; Y++) g.fino(20, Y, R[2]);
+    retF(g, Math.round(cx) - 9, T + 5, 18, 1, (X) => (X < cx + 4 ? R[0] : R[2]));
+    if (v === "lado") retF(g, 14, T + 6, 3, 4, (X) => (X === 14 ? R[1] : R[2])); // a orelheira
+  });
+  function recolorir(g, y0, y1, de, para) {
+    for (let Y = y0; Y <= y1; Y++) for (let X = 0; X < 40; X++) {
+      const i = de.indexOf(g.gf(X, Y));
+      if (i >= 0) g.fino(X, Y, para[i]);
+    }
+  }
+  const linhaComPele = (g, k, ys) => ys.find((Y) => { for (let X = 0; X < 40; X++) if (k.pele.includes(g.gf(X, Y))) return true; return false; });
+  acessorio("grevas", "meio", (g, c, P, cfg) => {
+    // placa de bronze da canela, do joelho ao tornozelo, num tom só: o acabamento do contorno já dá o
+    // realce à esquerda e a sombra à direita (2 tons a mais seriam raros demais e se fundiriam na pele)
+    recolorir(g, 38, 42, coresHumano(cfg).pele, [c[0], c[0], c[0], c[0]]);
+  });
+  acessorio("botas", "meio", (g, c, P, cfg) => {
+    const k = coresHumano(cfg), S = k.sand;
+    // o cano sobe até o meio da canela; com grevas, só o que sobrou da perna (do tornozelo para baixo)
+    const topo = linhaComPele(g, k, [39, 40, 41, 42]) ?? 43;
+    recolorir(g, topo, 45, k.pele, [S[0], S[1], S[1], S[2]]);
+    if (topo === 39) recolorir(g, 39, 39, [S[1]], [S[0]]); // o cano dobrado
+  });
+  acessorio("saiote", "meio", (g, c, P, cfg) => {
+    const k = coresHumano(cfg), S = k.sand;
+    // tiras de couro de 2 px com o vão escuro entre elas, do quadril até 1 px abaixo da barra (a barra da
+    // veste usa a cor do cinto)
+    for (let Y = P.yR; Y <= 38; Y++) for (let X = 8; X < 32; X++) {
+      const cor = g.gf(X, Y);
+      const saia = k.pernas.includes(cor) || (Y === 37 && k.cinto.includes(cor));
+      const perna = Y === 38 && k.pele.includes(cor);
+      if ((!saia && !perna) || (perna && X % 3 === 2)) continue;
+      g.fino(X, Y, X % 3 === 2 ? S[2] : X % 3 === 0 && Y < 38 ? S[0] : S[1]);
+    }
+  });
 
   // Armaduras do jogador (por cima da veste): couro (colete com ombreiras e rebites) e escamas.
   // f desenha o colete (antes dos braços); ombros, as ombreiras (por cima dos braços).
@@ -1241,14 +1293,26 @@
     escudo_ferro: ["#8a949c", "#4a5258", "#d4dce2"],
   };
   const ARCOS = { arco_madeira: ["#9a6a3c", "#eadcb6"], arco_composto: ["#6e3a24", "#f0e4c4"] };
+  // Peças do corpo vistas no boneco: [acessório, cores]. Colar e anel são pequenos demais para o mundo.
+  const PECAS_CORPO = {
+    turbante_linho: ["turbante", ["#ddd0b0", "#a8916a"]],
+    capacete_couro: ["capacete", ["#7a4a2c", "#a8703a"]],
+    elmo_bronze: ["elmo", ["#a87234", "#e8b94a"]],
+    saiote_couro: ["saiote", ["#8a5a32", "#e8b94a"]],
+    grevas_bronze: ["grevas", ["#b07a38", "#f2d27a"]],
+    botas_viagem: ["botas", ["#6a4228", "#9a6a3c"]],
+  };
   const base = (id) => String(id || "").split("@")[0];
+  const ehDistancia = (id) => typeof ITENS !== "undefined" && ITENS[base(id)]?.tipo === "arma_distancia";
   // Cores do visual (JGB-49): cabeça, tronco, pernas e detalhe, ids da paleta CORES_VISUAL
   // (dados/cosmeticos.js); null ou ausente = a cor do traje (ou a do boneco sem traje).
   const PARTES_COR = ["cabeca", "tronco", "pernas", "detalhe"];
   const corDaPaleta = (id) => (id && typeof CORES_VISUAL !== "undefined" && CORES_VISUAL.find((x) => x.id === id)?.cor) || null;
   function chaveJogador(eq = {}, visual = {}) {
     const cores = PARTES_COR.map((k) => (corDaPaleta(visual.cores?.[k]) ? visual.cores[k] : ""));
-    const partes = [base(eq.arma), eq.arco ? base(eq.arco) : "", base(eq.escudo), base(eq.armadura), visual.traje || "", visual.montaria || ""];
+    const partes = [base(eq.arma), "", base(eq.escudo), base(eq.armadura), visual.traje || "", visual.montaria || ""];
+    const corpo = ["cabeca", "pernas", "pes"].map((s) => (PECAS_CORPO[base(eq[s])] ? base(eq[s]) : ""));
+    if (corpo.some(Boolean)) partes.push("e:" + corpo.join("."));
     if (cores.some(Boolean)) partes.push("c:" + cores.join("."));
     return "pj_jogador" + (partes.some(Boolean) ? "|" + partes.join("|") : "");
   }
@@ -1263,10 +1327,17 @@
     const per = corDaPaleta(visual.cores?.pernas), det = corDaPaleta(visual.cores?.detalhe);
     const acessorios = [["bolsa", ["#7a4a30", "#a8703a"]]].concat((traje?.acessorios || []).map(([nome, cores]) =>
       cab && PANOS_CABECA.has(nome) ? [nome, [cab].concat(cores.slice(1))] : [nome, cores]));
-    const arco = base(eq.arco);
-    if (arco === "funda") acessorios.push(["shofar", ["#8a6a42", "#5a3a24", "#a8916a"]]);
-    else if (arco) acessorios.push(["arco_costas", ARCOS[arco] || ARCOS.arco_madeira]);
-    if (eq.arma) acessorios.push(["espada", LAMINAS[base(eq.arma)] || LAMINAS.espada_ferro]);
+    // Peças do corpo (com traje não aparecem: o traje decide a roupa, como com a armadura). As grevas pintam a
+    // canela antes das botas; o turbante toma a cor da cabeça escolhida, como os panos dos trajes.
+    if (!traje) for (const s of ["pernas", "pes", "cabeca"]) {
+      const pc = PECAS_CORPO[base(eq[s])];
+      if (pc) acessorios.push(cab && PANOS_CABECA.has(pc[0]) ? [pc[0], [cab].concat(pc[1].slice(1))] : pc);
+    }
+    // Uma mão para a arma (o arco usa as duas): arco ou funda na mão, ou a espada.
+    const arma = base(eq.arma);
+    if (arma === "funda") acessorios.push(["funda_mao", ["#8a6a42", "#a8a090"]]);
+    else if (ehDistancia(arma)) acessorios.push(["arco_mao", ARCOS[arma] || ARCOS.arco_madeira]);
+    else if (arma) acessorios.push(["espada", LAMINAS[arma] || LAMINAS.espada_ferro]);
     if (eq.escudo) acessorios.push(["escudo_redondo", CORES_ESCUDO[base(eq.escudo)] || CORES_ESCUDO.escudo_madeira]);
     const cores = Object.assign({ H: "#4a2f20", S: "#e0a878", s: "#c68a5c", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", P: "#d4bf8f", p: "#b8a07a", q: "#8a7656", A: "#3b5a9a", F: "#5a3a24" }, traje?.cores);
     if (traje?.cores && !traje.cores.P) { delete cores.P; delete cores.p; delete cores.q; }
@@ -2510,6 +2581,92 @@
     g.lin(4, 3, 8, 7, "#c8b48a"); g.lin(12, 3, 8, 7, "#c8b48a");
     g.elip(8, 10, 3.2, 3.4, esfera(["#1e6a7a", "#2fa0a8", "#8ad8d0"]));
     g.p(8, 10, "#1c3a4a"); g.p(7, 10, "#f6efdc"); g.p(9, 10, "#f6efdc"); g.p(8, 12, "#1c3a4a");
+  });
+  // Peças do corpo (boneco). Luz de cima e da esquerda, 3–4 tons por material.
+  item("turbante_linho", (g) => {
+    const L = ["#8a7656", "#b8a47e", "#dccba4", "#f4ecd4"];
+    g.elip(8, 9, 5.8, 4.4, (nx, ny) => (ny > 0.62 ? L[0] : tom([L[1], L[2], L[3]], -(0.55 * nx + 0.85 * ny))));
+    // as voltas do pano (diagonais) e a ponta caindo à direita
+    for (const k of [0, 3, 6]) g.linf(3.5 + k, 12, 6 + k, 6.5, L[1]);
+    g.retf(2.5, 11.5, 11, 1.5, (X) => (X < 12 ? L[2] : L[1]));
+    g.lin(13, 10, 13, 13, L[1]); g.pf(13, 13.5, L[0]);
+  });
+  item("capacete_couro", (g) => {
+    const C = ["#4a2c1a", "#7a4a2c", "#a8703a", "#c89058"];
+    g.elip(8, 10, 5.5, 5.6, (nx, ny) => (ny > 0.05 ? null : tom([C[1], C[2], C[3]], -(0.6 * nx + 0.8 * ny) * 1.3)));
+    g.retf(2.5, 9.5, 11, 1.5, (X) => (X < 14 ? C[2] : C[1])); // aba
+    g.retf(3, 11, 2, 3, C[1]); g.retf(11, 11, 2, 3, C[0]); // orelheiras
+    for (let y = 4.5; y < 9.5; y += 1) g.pf(8, y, y % 2 ? C[0] : C[1]); // costura
+    g.pf(5, 6.5, C[3]); g.pf(4.5, 7.5, C[3]);
+  });
+  item("elmo_bronze", (g) => {
+    const B = ["#5e3c1c", "#8a5a2a", "#b07a38", "#d29e52", "#f2d27a"];
+    g.elip(8, 9, 5.4, 5.2, (nx, ny) => (ny > 0.08 ? null : tom([B[2], B[3], B[4]], -(0.6 * nx + 0.8 * ny) * 1.3)));
+    g.retf(2.5, 8.5, 11, 1.5, (X) => (X < 10 ? B[3] : B[2])); // testeira
+    g.retf(3, 10, 2.5, 4, (X) => (X < 7 ? B[3] : B[2])); g.retf(10.5, 10, 2.5, 4, B[1]); // abas do rosto
+    g.retf(5.5, 10, 5, 3.5, "#2a1a14"); g.retf(7.5, 10, 1, 3, B[2]); // abertura e nasal
+    g.retf(7, 2.5, 2, 1.5, B[4]); g.retf(7.5, 4, 1, 1, B[3]); // botão no alto
+  });
+  item("colar_contas", (g) => {
+    // fio em arco com contas de cornalina e a conta maior no meio
+    const contas = [[3, 5], [3.6, 7.4], [4.8, 9.4], [6.4, 10.8], [9.6, 10.8], [11.2, 9.4], [12.4, 7.4], [13, 5]];
+    g.linf(3, 4.5, 3, 5, "#8a7656"); g.linf(13, 4.5, 13, 5, "#8a7656");
+    for (const [x, y] of contas) g.elip(x, y, 1.05, 1.05, (nx, ny) => (nx + ny < -0.4 ? "#f0905a" : nx + ny > 0.5 ? "#8a2a1a" : "#c2452d"));
+    g.elip(8, 12, 1.7, 1.7, (nx, ny) => (nx + ny < -0.5 ? "#f6b07a" : nx + ny > 0.5 ? "#8a2a1a" : "#d2582d"));
+    g.pf(7.5, 11.5, "#fff0d8");
+  });
+  item("saiote_couro", (g) => {
+    const C = ["#4a2c1a", "#6e4228", "#8a5a32", "#b07a44"];
+    g.retf(3, 3.5, 10, 2, (X, Y, i, j) => (j === 0 ? C[3] : C[2])); // cinto
+    g.retf(7, 3.5, 2, 2, "#e8b94a"); g.pf(7.5, 4, "#f2d27a"); // fivela
+    for (let i = 0; i < 5; i++) {
+      const x = 3 + i * 2, comp = 8 - Math.abs(i - 2) * 0.5;
+      g.retf(x, 5.5, 1.5, comp, (X, Y, a) => (a === 0 ? C[3 - (i % 2)] : C[1]));
+      g.retf(x, 5.5 + comp, 1.5, 0.5, "#d29e52"); // a ponta de bronze
+    }
+  });
+  item("grevas_bronze", (g) => {
+    const B = ["#5e3c1c", "#8a5a2a", "#b07a38", "#d29e52", "#f2d27a"];
+    for (const x0 of [3.5, 8.5]) {
+      // placa da canela: joelho largo em cima, afina no tornozelo
+      for (let y = 3; y < 14; y += 0.5) {
+        const w = y < 5 ? 3.5 : y < 10 ? 3 : 2.5;
+        g.retf(x0 + (3.5 - w) / 2, y, w, 0.5, (X, Y, i) => (i === 0 ? B[4] : i < 2 ? B[3] : i < 4 ? B[2] : B[1]));
+      }
+      g.retf(x0, 6.5, 3.5, 0.5, B[0]); g.retf(x0 + 0.25, 11, 3, 0.5, B[0]); // as correias
+    }
+  });
+  item("sandalias_couro", (g) => {
+    const C = ["#4a2c1a", "#7a4a2c", "#a8703a", "#c89058"];
+    for (const [x, d] of [[3.5, 0], [9, 1]]) {
+      g.elip(x + 2, 9 + d, 2.2, 4.4, (nx, ny) => (nx + ny < -0.5 ? C[3] : nx > 0.5 ? C[1] : C[2])); // sola
+      g.retf(x + 0.5, 7 + d, 3.5, 1, C[0]); g.retf(x + 0.5, 10 + d, 3.5, 1, C[0]); // tiras
+      g.linf(x + 2, 6 + d, x + 2, 7 + d, C[0]);
+    }
+  });
+  item("botas_viagem", (g) => {
+    const C = ["#3a2216", "#5e3a24", "#7a4e30", "#a0703e"];
+    // cano e pé de perfil (bico à direita), sola escura e o cano dobrado
+    g.retf(4, 3.5, 5, 7.5, (X, Y, i) => (i < 2 ? C[3] : i < 6 ? C[2] : C[1]));
+    g.elip(9, 11.6, 4.6, 2.4, (nx, ny) => (ny < -0.2 && nx < 0 ? C[2] : nx + ny < -0.4 ? C[3] : C[1]));
+    g.retf(4, 13, 10, 1, C[0]);
+    g.retf(3.5, 3, 6, 1.5, (X, Y, i) => (i < 3 ? "#b08458" : "#8a6440"));
+    for (const y of [6, 7.5, 9]) g.retf(8, y, 1.5, 0.5, "#d8c8a0"); // atilhos
+  });
+  item("anel_selo_bronze", (g) => {
+    g.elip(8, 10, 4, 3.4, (nx, ny) => (nx * nx + ny * ny < 0.38 ? null : nx + ny < -0.4 ? "#f2d27a" : nx + ny > 0.6 ? "#7a4a24" : "#b07a38"));
+    // o selo: chapa oval por cima, com a marca gravada
+    g.elip(8, 5.5, 2.8, 2.2, (nx, ny) => (nx + ny < -0.5 ? "#f2d27a" : nx + ny > 0.5 ? "#8a5a2a" : "#d29e52"));
+    g.retf(7, 5, 2, 0.5, "#5e3c1c"); g.retf(7.5, 4.5, 1, 1.5, "#5e3c1c");
+  });
+  // A mochila do boneco (o espaço que abre o painel Mochila): couro com aba, fivela e alças.
+  item("mochila", (g) => {
+    const C = ["#4a2c1a", "#7a4a2c", "#a8703a", "#c89058"];
+    g.retf(3, 4, 10, 10, (X, Y, i, j) => (j === 19 ? C[0] : i < 2 ? C[3] : i > 16 ? C[1] : C[2]));
+    g.retf(3, 4, 10, 4.5, (X, Y, i, j) => (j === 8 ? C[0] : j === 0 ? C[3] : C[1])); // aba
+    g.retf(7, 7.5, 2, 2, "#e8b94a"); g.pf(7.5, 8, "#f2d27a"); // fivela
+    g.retf(4, 2.5, 2, 1.5, C[1]); g.retf(10, 2.5, 2, 1.5, C[1]); // alças
+    g.retf(4, 11, 8, 0.5, C[1]);
   });
   // Pedras do peitoral: a mesma lapidação, na cor de cada pedra (campo "pedra" em dados/itens.js).
   for (const [chave, d] of Object.entries(typeof ITENS !== "undefined" ? ITENS : {})) {

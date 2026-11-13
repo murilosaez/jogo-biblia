@@ -150,6 +150,8 @@ const COR = {
 
 const reduzMovimento = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const cheb = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+// Uma mão para a arma: dá para atirar agora (arco com flechas, ou a funda, na mão)? Pergunta à lógica.
+const atiraDaqui = (p) => typeof podeAtirar === "function" && podeAtirar(p);
 const centroX = (x) => x * TAM + TAM / 2;
 const baseY = (y) => y * TAM + TAM - 1;
 const hexNum = (h) => parseInt(h.replace("#", "").slice(0, 6), 16);
@@ -1286,7 +1288,7 @@ class Cena extends Phaser.Scene {
       return r;
     }
     this.mensagem(r.mensagem, "combate");
-    this.efeitoAtaque(r, r.inimigoId || id, r.tipoAtaque === "distancia" || distancia);
+    this.efeitoAtaque(r, r.inimigoId || id, r.tipoAtaque === "distancia");
     this.aposAtaque(r);
     return r;
   }
@@ -1330,11 +1332,9 @@ class Cena extends Phaser.Scene {
       return;
     }
     const alinhado = Mundo.linhaDeTiroLivre(this.p, e); // qualquer direção, caminho livre
-    // Também a 1 casa: espada e arco são exclusivos, então com o arco nas
-    // mãos o golpe corpo a corpo sairia sem arma (a lógica aceita o tiro
-    // a partir de 1 casa).
-    const semMunicao = this.p.equipamento.arco && typeof infoItem === "function" && infoItem(this.p.equipamento.arco)?.semMunicao;
-    const podeAtirar = this.p.equipamento.arco && (semMunicao || Mundo.contarItem(MEU_ID, "flecha") > 0) && alinhado;
+    // Uma mão para a arma: com o arco (com flechas) ou a funda na mão, o autoataque atira, também a 1 casa
+    // (a lógica aceita o tiro a partir de 1 casa); sem flechas, golpeia ao lado.
+    const podeAtirar = atiraDaqui(this.p) && alinhado;
     // Ainda a caminho do alvo: espera chegar (sem a mensagem "chegue ao lado" a cada 2 s).
     if (this.perseguir && !this.alcancaAlvo(e)) return;
     this.ultimoAutoAtaque = this.time.now;
@@ -1785,10 +1785,10 @@ class Cena extends Phaser.Scene {
     if (cheb(this.p, ponto) <= 1) { this.pararRota(); this.pescar(); return; }
     this.iniciarRota((x, y) => cheb({ x, y }, ponto) <= 1, () => this.pescar(), ponto);
   }
-  // O alvo está ao alcance do ataque que o autoataque usaria (arco com flechas e caminho livre, ou ao lado)?
+  // O alvo está ao alcance do ataque que o autoataque usaria (arco com flechas ou funda e caminho livre, ou
+  // ao lado)?
   alcancaAlvo(e) {
-    const arco = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0;
-    return arco ? Mundo.linhaDeTiroLivre(this.p, e) : cheb(this.p, e) <= 1;
+    return atiraDaqui(this.p) ? Mundo.linhaDeTiroLivre(this.p, e) : cheb(this.p, e) <= 1;
   }
   // Persegue o alvo um passo por vez (a criatura anda: a rota é refeita a cada passo). Ao chegar,
   // o autoataque sai na hora.
@@ -1801,8 +1801,7 @@ class Cena extends Phaser.Scene {
       return;
     }
     this.chegouAoAlvo = false;
-    const arco = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0;
-    const objetivo = arco
+    const objetivo = atiraDaqui(this.p)
       ? (x, y) => Mundo.linhaDeTiroLivre({ x, y, area: this.areaAtual }, e)
       : (x, y) => cheb({ x, y }, e) <= 1;
     const passos = this.calcularRota(objetivo, 2500);
