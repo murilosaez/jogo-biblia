@@ -2785,6 +2785,7 @@
     document.body.classList.remove("movendo-janela");
     $("#fantasmaJanela").hidden = true;
     $("#marcaSoltar").hidden = true;
+    $("#marcaSoltar").className = "";
     // O clique que vem logo depois do arraste não conta (no título da Caçada, ele minimizaria a janela).
     const engolir = (e) => { e.stopPropagation(); e.preventDefault(); };
     addEventListener("click", engolir, { capture: true, once: true });
@@ -2873,7 +2874,7 @@
   function htmlMenuJanelas() {
     const lay = layout();
     let html = "<h3>Janelas</h3>";
-    html += [...lay.esq, ...lay.dir].map((id) => opMenu("alternar", JANELAS[id].nome, { papel: "menuitemcheckbox", marcado: !lay.fechadas.includes(id), id, dica: JANELAS[id].tecla || "" })).join("");
+    html += Object.keys(JANELAS).map((id) => opMenu("alternar", JANELAS[id].nome, { papel: "menuitemcheckbox", marcado: !lay.fechadas.includes(id), id, dica: JANELAS[id].tecla || "" })).join("");
     html += "<hr><h3>Conversa</h3>";
     html += opMenu("chat-dock", "Na faixa de baixo", { papel: "menuitemradio", marcado: !chatSobMundo() });
     html += opMenu("chat-mundo", "Sob o mundo, entre as colunas", { papel: "menuitemradio", marcado: chatSobMundo() });
