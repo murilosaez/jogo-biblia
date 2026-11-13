@@ -5963,6 +5963,58 @@ teste("69. casas e lojas onde se entra: porta, balcão com o mercador atrás, te
   assert.strictEqual(j.exec({ tipo: "embarcar" }).ok, false, "longe do cais não embarca");
 });
 
+teste("70. conversa por palavras-chave: as palavras de cada papel, sinônimos sem acento e a fala do barqueiro", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const [palavras, doTexto, npcs, RB] = ["palavrasChaveDoNpc", "palavraChaveDoTexto", "npcs", "REGRAS_BARCO"].map(j.g);
+  const lista = (id) => palavras(p, id).map((k) => k.palavra);
+  // 1. Cada papel com as suas palavras; [oi] primeiro e [tchau] por último, em todos.
+  igual(lista("mercador_canaa"), ["oi", "comprar", "vender", "tchau"], "mercadora");
+  igual(lista("guia_canaa"), ["oi", "viajar", "tchau"], "guia");
+  igual(lista("atalaia_canaa"), ["oi", "caçadas", "tchau"], "atalaia");
+  igual(lista("barqueiro_canaa"), ["oi", "embarcar", "preço", "tchau"], "barqueiro");
+  igual(lista("mestre_vocacoes"), ["oi", "vocação", "tchau"], "mestre de vocações");
+  igual(lista("zila_canaa"), ["oi", "conversar", "tchau"], "moradora");
+  igual(lista("viajante1"), ["oi", "missão", "tchau"], "quem dá missões");
+  for (const n of Object.values(npcs)) {
+    const l = lista(n.id);
+    assert.ok(l[0] === "oi" && l[l.length - 1] === "tchau" && new Set(l).size === l.length, `${n.id}: ${l}`);
+  }
+  igual(palavras(p, "ninguem"), [], "NPC que não existe");
+  // 2. Cada palavra leva a uma ação que já existe (loja na aba certa, janelas, conversa).
+  const merc = Object.fromEntries(palavras(p, "mercador_canaa").map((k) => [k.palavra, k]));
+  igual([merc.oi.acao, merc.comprar.acao, merc.comprar.aba, merc.vender.aba, merc.tchau.acao], ["interagir", "loja", "comprar", "vender", "despedir"]);
+  assert.match(merc.tchau.fala, /^Hadassa: /, "a resposta vem com o nome de quem fala");
+  igual(palavras(p, "guia_canaa")[1].acao, "viagem");
+  igual(palavras(p, "barqueiro_canaa")[1].acao, "barco");
+  // 3. [preço] diz a mesma fala da conversa com o barqueiro (preço da passagem e o saldo).
+  Object.assign(p, { area: "canaan", x: npcs.barqueiro_canaa.x, y: npcs.barqueiro_canaa.y + 1, moedas: RB.passagem + 3 });
+  const preco = palavras(p, "barqueiro_canaa").find((k) => k.palavra === "preço");
+  igual([preco.acao, preco.fala], ["fala", j.exec({ tipo: "interagir", alvoId: "barqueiro_canaa" }).mensagem]);
+  assert.match(preco.fala, new RegExp(`custa ${RB.passagem} moedas\\. Você tem ${RB.passagem + 3}`));
+  // 4. O que o jogador digita: palavra, sinônimo, sem acento, maiúsculas, no meio da frase.
+  const l = palavras(p, "mercador_canaa");
+  const dito = (t, lst = l) => doTexto(lst, t)?.palavra ?? null;
+  igual(["Comprar", "  TRADE!", "quero comprar pão", "vender", "Olá", "ola", "Bom dia, Hadassa", "Tchau", "adeus"].map((t) => dito(t)),
+    ["comprar", "comprar", "comprar", "vender", "oi", "oi", "oi", "tchau", "tchau"]);
+  igual(["", "   ", "xyz", "comprarei", "viajar"].map((t) => dito(t)), [null, null, null, null, null], "só palavras inteiras e da lista do NPC");
+  const barco = palavras(p, "barqueiro_canaa");
+  igual(["Preço?", "preco", "quanto custa a passagem?", "embarcar", "barco"].map((t) => dito(t, barco)), ["preço", "preço", "preço", "embarcar", "embarcar"]);
+  igual(dito("caçadas", palavras(p, "atalaia_canaa")), "caçadas");
+  igual(dito("cacada", palavras(p, "atalaia_canaa")), "caçadas");
+  igual(dito("Missão?", palavras(p, "viajante1")), "missão");
+  // 5. [missão] aparece na mercadora só enquanto um objetivo "falar" pede a conversa com ela
+  //    (objetivo de teste somado à 1ª etapa da 1ª missão; a conversa o cumpre).
+  const missao = j.g("MISSOES")[j.g("ORDEM_MISSOES")[0]];
+  missao.etapas[0].objetivos.push({ tipo: "falar", npc: "mercador_canaa", quantidade: 1 });
+  p.missoes[missao.id] = { status: "em_andamento", etapa: 0, progresso: missao.etapas[0].objetivos.map(() => 0) };
+  assert.ok(lista("mercador_canaa").includes("missão"), "[missão] com o objetivo aberto");
+  Object.assign(p, { area: "canaan", x: npcs.mercador_canaa.x, y: npcs.mercador_canaa.y + 2 });
+  assert.ok(j.exec({ tipo: "interagir", alvoId: "mercador_canaa" }).ok);
+  igual(lista("mercador_canaa"), ["oi", "comprar", "vender", "tchau"], "sem [missão] depois da conversa");
+});
+
 const filtro = process.argv[2];
 const selecionados = filtro ? testes.filter((t) => t.nome.startsWith(filtro)) : testes;
 let falhas = 0;
