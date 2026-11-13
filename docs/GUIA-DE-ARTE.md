@@ -64,10 +64,18 @@ Capturas: `docs/capturas/humanos-antes-depois.jpg` e `docs/capturas/passos-3vist
   `frente`): cajados, lanças, espadas (de frente e de costas a lâmina sai do punho para fora do corpo; de
   lado vai baixa, apontando para a frente), porrete, escudos (redondo, alto, oval), arco nas costas e na mão,
   capas, turbante, elmo, faixa, bandana, nemes, colar, peitoral, alforje com a alça cruzando o peito, odre,
-  saco, jarro, fardo, corda, rede, shofar, pele de leopardo, estola, brilho de feitiço, funda e remo.
-- Equipamento visível no jogador: espada (madeira, ferro, temperada), escudo (madeira, bronze, ferro),
-  arco ou funda e armadura (túnica de pano, armadura de couro com ombreiras, couraça de escamas com
-  ombreiras — as ombreiras ficam por cima dos braços).
+  saco, jarro, fardo, corda, rede, shofar, pele de leopardo, estola, brilho de feitiço, funda (no cinto e na
+  mão), remo e as peças do boneco: capacete de couro, grevas, botas e saiote.
+- Equipamento visível no jogador (boneco, com uma mão para a arma): na mão da arma, espada (madeira, ferro,
+  temperada), arco na mão (o arco usa as duas mãos, então nunca aparece com escudo) ou funda na mão (as duas
+  cordas caem do punho até a bolsa com a pedra; no golpe, gira no alto); escudo (madeira, bronze, ferro);
+  armadura (túnica de pano, armadura de couro com ombreiras, couraça de escamas com ombreiras — as ombreiras
+  ficam por cima dos braços); cabeça (turbante de linho, capacete de couro com costura e aba, elmo de bronze);
+  pernas (saiote de tiras de couro com ponta de bronze; grevas de bronze na canela) e pés (botas de viagem,
+  de cano até o meio da canela). Grevas, botas e saiote não têm desenho próprio por quadro: recolorem a pele
+  (ou a saia) só nas linhas da perna, então seguem o passo e as 3 vistas; usam poucas cores novas (2 tons de
+  bronze; o couro das sandálias que o boneco já tem). Colar, anel e sandálias são pequenos demais para o
+  mundo: aparecem só no painel. Com traje, as peças do corpo não aparecem (como a armadura).
 
 ## 4. Cosméticos (JGB-27) e cores do visual (JGB-49)
 
@@ -106,7 +114,15 @@ Capturas: `docs/capturas/humanos-antes-depois.jpg` e `docs/capturas/passos-3vist
   dentro rosado e pelagem em traços. Aves têm rêmiges uma a uma e bico curvo; serpentes, corpo em tubo com
   o desenho do dorso.
 - Itens: célula de 16 × 16 unidades (32 × 32 px), arte de até 24 × 24 px apoiada na linha 28, contorno
-  sépia de 1 px e sombra de apoio suave.
+  sépia de 1 px e sombra de apoio suave. Peças do boneco: turbante (voltas do pano em diagonal e a ponta
+  caindo), capacete de couro (calota com costura, aba e orelheiras), elmo de bronze (testeira, abas do rosto
+  e nasal), colar de contas de cornalina (a conta maior no meio), saiote (cinto com fivela e tiras com ponta
+  de bronze), grevas (placa da canela, larga no joelho, com 2 correias), sandálias, botas de viagem (de
+  perfil, cano dobrado e atilhos), anel de selo (chapa oval com a marca) e a mochila do boneco (aba, fivela
+  e alças), com luz de cima e da esquerda e 3 a 4 tons por material.
+- Painel Equipamento (boneco): o espaço vazio mostra o contorno do item que vai nele (`silhueta` em
+  ESPACOS_BONECO, dados/itens.js), apagado; a mão do escudo presa pelo arco mostra o arco apagado sobre um
+  fundo riscado. A figura ao lado é o corpo inteiro do jogador em escala 4 (2 px por pixel de arte).
 - Item que o jogador jogou fora (`game.js` desenharPilha): fica parado no chão (só o saque novo flutua) e, em
   pilha, o mesmo desenho do item se repete atrás dele, deslocado em pixels inteiros (−5, +2) a partir de 2
   unidades e (+5, +3) a partir de 5, como um montinho; sem número escrito no mundo (a quantidade aparece no

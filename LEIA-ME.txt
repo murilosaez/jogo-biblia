@@ -3,7 +3,10 @@ JORNADA — RPG BÍBLICO
 Conteúdo do jogo (pasta dados/)
 - dados/itens.js: itens, raridades (cor, brilho, som, melhoria e quantos atributos aleatórios), atributos
   aleatórios com as faixas de cada raridade, sorteio de raridade, chances nomeadas das tabelas de saque,
-  preços da loja, o que cada mercador vende (LOJAS) e valores de venda.
+  preços da loja, o que cada mercador vende (LOJAS) e valores de venda; as peças do boneco (cabeça, colar,
+  pernas, pés e anel), com maos (2 = usa as duas mãos, como os arcos) e atributosFixos ({ critico, vida,
+  carga } somados aos da raridade), e os espaços do boneco no painel Equipamento (ESPACOS_BONECO: nome,
+  lugar no corpo e silhueta do espaço vazio).
 - dados/mapas.js: tamanho dos mapas (160×120 casas) e o desenho de cada região: terreno de fundo,
   regiões (bosques, pedregais, clareiras, com o tipo de obstáculo), águas (lagos e rios), vilas (com
   muro opcional), caminhos (estradas e ruas; dentro das vilas viram ruas de pedra), estruturas (casas e
@@ -57,7 +60,14 @@ mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte 
 { ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
 vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica pronta) e talentos[id] = graus
 (só os da vocação atual; os pontos saem do nível), oficios[id] = { xp } (o nível sai do XP) e
-extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje).
+equipamento = { cabeca, colar, arma, armadura, escudo, pernas, pes, anel, municao } (o boneco; null = vazio) e
+quantidadeMunicao (quantas unidades há na pilha do espaço de munição). Saves antigos são convertidos sozinhos,
+sem perder o que já foi feito. O boneco não pediu versão nova: a carga de todo save (normalizarEquipamento, em
+logica.js) cria os espaços que faltam e, nos saves com a mão dividida em "arma" e "arco", deixa na mão a arma de
+corpo a corpo (a de distância só se a mão estava vazia ou se a vocação luta à distância, o Fundibulário) e
+guarda a outra na mochila; arco com escudo: o arco fica e o escudo volta para a mochila; peça no espaço errado
+volta para a mochila; na 1ª carga, as flechas da mochila vão para o espaço de munição.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -65,7 +75,8 @@ o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 
 das vilas, coleta nas zonas e migração das posições antigas); o teste 69 confere as casas e lojas onde
 se entra (porta, balcão, mercador atrás dele) e o barqueiro; o teste 70 confere as palavras-chave de
 cada papel (palavrasChaveDoNpc e palavraChaveDoTexto, em logica.js: um NPC de papel novo ganha [oi],
-[tchau] e as palavras de PALAVRAS_DO_PAPEL).
+[tchau] e as palavras de PALAVRAS_DO_PAPEL); o teste 73 confere o boneco (toda peça nova precisa de espaço,
+peso de verdade, ícone em sprites.js e estar à venda ou num saque).
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
@@ -101,11 +112,13 @@ Controles — teclado e mouse
   passa por cais, trilha ou portal no meio do caminho). Clique num personagem, num saque ou num ponto de
   pesca: vai até ele e conversa, recolhe ou pesca. Qualquer tecla de movimento cancela a caminhada.
 - Clique num inimigo (no mundo ou na lista Batalha): seleciona, vai até ele (até ficar ao lado, ou ao
-  alcance do arco com o caminho livre) e ativa o autoataque a cada 2 segundos (usa o arco se ele estiver
-  equipado, houver flechas e o alvo estiver no alcance com o caminho livre). Andar com as teclas para a
-  perseguição; o alvo continua escolhido.
-- Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s. O anel em
-  volta do alvo mostra o tempo até o próximo autoataque (2 s).
+  alcance do arco com o caminho livre) e ativa o autoataque a cada 2 segundos com o que está na mão da arma
+  (arco com flechas ou funda: atira, se o alvo estiver no alcance com o caminho livre; espada ou mão vazia:
+  golpeia ao lado). Andar com as teclas para a perseguição; o alvo continua escolhido.
+- Espaço: ataque com o que está na mão da arma — golpe (espada ou sem arma) ou tiro (arco ou funda). Com o
+  arco sem flechas, o golpe ao lado sai sem arma. R: ataque à distância (com a espada na mão, golpeia se o
+  alvo estiver ao lado). Os dois compartilham uma recarga de 0,8 s. O anel em volta do alvo mostra o tempo
+  até o próximo autoataque (2 s).
 - H: poção de vida. 1–6: atalhos (com vocação, Shift + 1–6). Botão direito num atalho o esvazia.
 - 1–8 (com vocação): habilidades da barra, usadas no alvo escolhido (ou na criatura mais perto ao
   alcance). V: janela Vocação (escolher no nível 8, especialização no 50, habilidades de cada vocação e,
@@ -132,9 +145,16 @@ Controles — teclado e mouse
   Shift + F1: Milagre (Oração nível 100). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
   bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
 - Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
-  de volta para a mochila para guardar. Duplo clique equipa armas e bebe poções (pela bolsa, mesmo com a
-  vida ou a fé cheia, para liberar espaço). Também funciona clicar/tocar no item e depois no destino.
-  Espada e arco ocupam as mãos: equipar um guarda o outro.
+  de volta para a mochila (ou para a mochila do boneco) para guardar. Duplo clique equipa e bebe poções
+  (pela bolsa, mesmo com a vida ou a fé cheia, para liberar espaço); duplo clique numa peça vestida a guarda.
+  Também funciona clicar/tocar no item e depois no destino. Botão direito (ou toque longo) numa peça vestida:
+  o que ela dá e Guardar na mochila.
+- Equipamento (boneco, como nos MMORPGs clássicos): cabeça, colar, mochila (abre o painel Mochila), mão da
+  arma, armadura, mão do escudo, pernas, pés, anel e munição. Uma mão só para a arma: espada, arco ou funda.
+  O arco usa as duas mãos: equipá-lo guarda o escudo, e com ele na mão o escudo não entra ("O arco usa as
+  duas mãos."); a funda usa uma. A munição é uma pilha (as flechas compradas, recolhidas, recebidas ou
+  feitas vão para ela quando está vazia ou já tem flechas; elas pesam); o arco gasta primeiro as do espaço de
+  munição e depois as da mochila. Colar e anel dão vida ou crítico; as botas de viagem, carga.
 - Jogar no chão: arraste um item da mochila ou da bolsa para o mundo (cai na casa solta, se for ao lado do
   personagem; senão, ao lado dele), ou abra o menu do item com o botão direito (Shift + F10 no teclado; toque
   longo no celular): Beber/Equipar e Jogar 1, Jogar X (− número +) ou Jogar tudo. Uma pilha solta no mundo
@@ -152,19 +172,21 @@ Controles — toque (celular e tablet)
   retos e diagonais para seguir a linha do dedo (a 20°, por exemplo, reto-diagonal-reto…), com a mesma
   velocidade em qualquer ângulo, e contorna sozinho a quina de um obstáculo. Solto, ele volta ao canto,
   apagado, só como lembrete. Mexer o joystick cancela a caminhada e a perseguição.
-- À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
+- À direita: atacar (com o que está na mão da arma), flecha (ataque à distância), poção, oração e o botão de
+  ação, que muda conforme o que está ao lado
   (falar, caçadas, cais, pesca, rota). Os vãos entre os botões deixam o toque chegar ao mundo, e os
   avisos no topo são menores e não seguram o dedo.
 - Barra inferior: Mochila, Equipamento, Batalha, Missão e Conversa abrem em folhas recolhíveis (o
   analisador de caçada fica na folha Batalha; a folha Conversa é o console, com as abas e a entrada).
   Toque num item e depois no espaço de equipamento ou no atalho; toque longo num item da mochila ou da
-  bolsa abre o menu dele (descrição, beber ou equipar, jogar no chão); nos outros, mostra a descrição.
+  bolsa abre o menu dele (descrição, beber ou equipar, jogar no chão), e numa peça vestida, o menu Guardar;
+  nos outros, mostra a descrição.
 
 Interface e visual
 - Toda a arte (personagens, itens, ícones, cenário) é pixel art original gerada em código por
   sprites.js; não há imagens externas nem emojis. Desde a versão 16 a arte é desenhada em 32 px por casa
   (1 px de arte por px de mundo); personagens têm 3 vistas (de lado, de frente e de costas) e mostram a
-  arma, o escudo, o arco e a armadura vestidos. As regras de desenho e as paletas de cada região estão
+  arma (espada, arco ou funda na mão), o escudo, a armadura e as peças da cabeça, das pernas e dos pés. As regras de desenho e as paletas de cada região estão
   em docs/GUIA-DE-ARTE.md. Os ícones da mochila, bolsa, equipamento, atalhos,
   loja e lista de batalha usam os mesmos desenhos do mundo.
 - Estilo "iluminura viva": couro, pergaminho e bronze; fontes Cinzel (títulos), Alegreya Sans
@@ -173,9 +195,10 @@ Interface e visual
   5 como S); as teclas usam Alegreya Sans negrito.
 - Painéis: Missão (texto de textoMissaoAtual e as caçadas em andamento, com "27/40"), Personagem
   (barras de vida, fé e XP com números, habilidades, estatísticas de estatisticasCombate e pontos de
-  tarefa), Equipamento (boneco: a figura no meio, com o arco nas costas, a arma na mão direita, o
-  escudo na esquerda, a armadura sobre o peito e, ao lado, a munição com as flechas da mochila; arrastar,
-  duplo clique e tocar-e-escolher funcionam como antes), Mochila, Bolsa, Batalha (inimigos da área, alvo
+  tarefa), Equipamento (boneco clássico: colar, cabeça e mochila em cima; mão da arma, armadura e mão do
+  escudo; anel, pernas e munição; pés embaixo; o espaço vazio mostra o contorno do que vai nele e a dica dá os
+  efeitos; ao lado, a figura com o que está vestido, o jeito de atacar da mão e o ataque e a defesa),
+  Mochila, Bolsa, Batalha (inimigos da área, alvo
   destacado; o glifo de contagem marca quem conta para uma caçada ativa), Caçada (analisador, recolhível)
   e minimapa. No médio, o analisador fica na aba Batalha.
 - Console (o histórico, embaixo do mundo): abas Geral (tudo), NPCs (falas, o que você disse e as
