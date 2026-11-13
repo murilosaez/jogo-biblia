@@ -14,7 +14,7 @@
 const TILE = 32;
 const COLS = DADOS_TAMANHO_MAPA.colunas; // dados/mapas.js
 const ROWS = DADOS_TAMANHO_MAPA.linhas;
-const VERSAO_SAVE = 15;
+const VERSAO_SAVE = 16;
 const ESCALA_MAPAS_V8 = 2; // os mapas passaram de 80×60 (save v8) para 160×120 (save v9)
 
 const VIDA_BASE = 100;
@@ -1507,6 +1507,66 @@ function normalizarOficios(p, agora) {
 }
 
 // ---------------------------------------------------------------------
+// Cosméticos (JGB-27, save v16): trajes e montarias só mudam a aparência (dados/cosmeticos.js).
+// p.cosmeticos = { possui: [ids comprados], traje: id | null, montaria: id | null }. Os gratuitos
+// não entram em possui (todos têm). Nenhuma regra de combate, carga ou movimento lê p.cosmeticos.
+// ---------------------------------------------------------------------
+function cosmeticoDe(id) {
+  const traje = registroDe(TRAJES, id);
+  if (traje) return { tipo: "traje", def: traje };
+  const montaria = registroDe(MONTARIAS, id);
+  return montaria ? { tipo: "montaria", def: montaria } : null;
+}
+
+function possuiCosmetico(p, id) {
+  const c = cosmeticoDe(id);
+  return !!c && (!!c.def.gratuito || (Array.isArray(p?.cosmeticos?.possui) && p.cosmeticos.possui.includes(id)));
+}
+
+// Motivo para não vestir (ou null): sem o cosmético ou traje de outra vocação.
+function motivoSemCosmetico(p, id) {
+  const c = cosmeticoDe(id);
+  if (!c) return "Esse cosmético não existe.";
+  if (!possuiCosmetico(p, id)) return "Você ainda não tem esse cosmético.";
+  if (c.tipo === "traje" && c.def.vocacao && p?.vocacao?.id !== c.def.vocacao) return `Só para a vocação ${VOCACOES[c.def.vocacao]?.nome || c.def.vocacao}.`;
+  return null;
+}
+
+function normalizarCosmeticos(p) {
+  const salvo = objetoValido(p.cosmeticos) ? p.cosmeticos : {};
+  const possui = Array.isArray(salvo.possui) ? salvo.possui : [];
+  p.cosmeticos = { possui: [...new Set(possui.filter((id) => cosmeticoDe(id) && !cosmeticoDe(id).def.gratuito))], traje: null, montaria: null };
+  if (registroDe(TRAJES, salvo.traje) && !motivoSemCosmetico(p, salvo.traje)) p.cosmeticos.traje = salvo.traje;
+  if (registroDe(MONTARIAS, salvo.montaria) && !motivoSemCosmetico(p, salvo.montaria)) p.cosmeticos.montaria = salvo.montaria;
+}
+
+// Aparência atual para a arte: { traje, montaria } (o traje de outra vocação fica guardado mas não aparece).
+function visualDoJogador(p) {
+  const c = p?.cosmeticos || {};
+  const traje = c.traje && !motivoSemCosmetico(p, c.traje) ? c.traje : null;
+  const montaria = c.montaria && !motivoSemCosmetico(p, c.montaria) ? c.montaria : null;
+  return { traje, montaria };
+}
+
+// Lista da loja e do guarda-roupa (função pura): um registro por cosmético visível.
+function cosmeticosDoJogador(p) {
+  const visual = visualDoJogador(p);
+  const linha = (tipo, id, def) => {
+    const motivo = motivoSemCosmetico(p, id);
+    return {
+      id, tipo, nome: def.nome, descricao: def.descricao, vocacao: def.vocacao || null,
+      gratuito: !!def.gratuito, preco: def.preco ?? null, possui: possuiCosmetico(p, id),
+      emUso: visual[tipo] === id, podeUsar: !motivo, motivo,
+      aVenda: !def.gratuito && !possuiCosmetico(p, id) && !!REGRAS_COSMETICOS.pagamento,
+    };
+  };
+  return [
+    ...Object.entries(TRAJES).filter(([, d]) => !d.oculto).map(([id, d]) => linha("traje", id, d)),
+    ...Object.entries(MONTARIAS).filter(([, d]) => !d.oculto).map(([id, d]) => linha("montaria", id, d)),
+  ];
+}
+
+// ---------------------------------------------------------------------
 // Campeões e raros nomeados
 // ---------------------------------------------------------------------
 function podeSerCampeao(e) {
@@ -2877,6 +2937,8 @@ const Mundo = {
     // Talentos (save v14): saves anteriores começam com a árvore vazia e os pontos do nível livres.
     // Ofícios (save v15): XP de cada ofício e pontos de extração.
     normalizarOficios(p, agora);
+    // Cosméticos (save v16): trajes e montarias, só visuais.
+    normalizarCosmeticos(p);
     if (normalizarTalentos(p)) {
       this.adicionarAviso(p, "talentos_devolvidos", "Os seus talentos mudaram nesta versão: os pontos voltaram, de graça. Distribua de novo na janela Vocação (tecla V), aba Talentos.");
     }
@@ -2945,6 +3007,14 @@ const Mundo = {
         "atualizacao_15",
         "Novidade: os ofícios! Pescador, Ferreiro, Carpinteiro, Oleiro, Tecelão e Perfumista sobem de nível " +
           "colhendo e fabricando. A pesca já conta para o Pescador. Tecla O ou botão Ofícios.",
+      );
+    }
+    if (!novo && versaoAnterior < 16) {
+      this.adicionarAviso(
+        p,
+        "atualizacao_16",
+        "Novidade: arte nova em 32 px por casa, com personagens de frente, de costas e de lado. E a janela Visual (tecla U): " +
+          "trajes e montarias só de aparência. O traje Peregrino já é seu.",
       );
     }
     if (!novo && versaoAnterior < 14 && vocacaoDe(p)) {
@@ -3519,9 +3589,52 @@ const Mundo = {
         return this.colherMana(id);
       case "comerMana":
         return this.comerMana(id);
+      case "vestirTraje":
+        return this.usarCosmetico(id, "traje", comando.traje ?? null);
+      case "usarMontaria":
+        return this.usarCosmetico(id, "montaria", comando.montaria ?? null);
+      case "comprarCosmetico":
+        return this.comprarCosmetico(id, comando.cosmetico);
       default:
         return { ok: false };
     }
+  },
+
+  // ----- Cosméticos (JGB-27) -----
+  // Veste um traje ou monta (id null = tirar). Só muda a aparência.
+  usarCosmetico(id, tipo, cosmeticoId) {
+    const p = this.jogadores[id];
+    if (cosmeticoId === null) {
+      p.cosmeticos[tipo] = null;
+      this.salvar(p);
+      return { ok: true, visual: true, mensagem: tipo === "traje" ? "Você voltou à roupa do equipamento." : "Você desceu da montaria." };
+    }
+    const c = cosmeticoDe(cosmeticoId);
+    if (!c || c.tipo !== tipo) return { ok: false, mensagem: "Esse cosmético não existe." };
+    const motivo = motivoSemCosmetico(p, cosmeticoId);
+    if (motivo) return { ok: false, mensagem: motivo };
+    p.cosmeticos[tipo] = cosmeticoId;
+    this.salvar(p);
+    return { ok: true, visual: true, mensagem: tipo === "traje" ? `Você vestiu: ${c.def.nome}.` : `Você montou: ${c.def.nome}.` };
+  },
+  // Compra única. Sem meio de pagamento definido (REGRAS_COSMETICOS.pagamento), não vende.
+  comprarCosmetico(id, cosmeticoId) {
+    const p = this.jogadores[id];
+    const c = cosmeticoDe(cosmeticoId);
+    if (!c || c.def.oculto) return { ok: false, mensagem: "Esse cosmético não existe." };
+    if (possuiCosmetico(p, cosmeticoId)) return { ok: false, mensagem: "Você já tem esse cosmético." };
+    if (!REGRAS_COSMETICOS.pagamento) return { ok: false, semPagamento: true, mensagem: REGRAS_COSMETICOS.textoSemPagamento };
+    return { ok: false, pagamento: REGRAS_COSMETICOS.pagamento, cosmetico: cosmeticoId, mensagem: "Abrindo o pagamento…" };
+  },
+  // Entrega um cosmético (chamado pela confirmação do pagamento, quando houver). Compra única: uma vez só.
+  liberarCosmetico(id, cosmeticoId) {
+    const p = this.jogadores[id];
+    const c = cosmeticoDe(cosmeticoId);
+    if (!p || !c) return { ok: false };
+    if (possuiCosmetico(p, cosmeticoId)) return { ok: true, jaTinha: true };
+    p.cosmeticos.possui.push(cosmeticoId);
+    this.salvar(p);
+    return { ok: true, mensagem: `Novo cosmético: ${c.def.nome}.` };
   },
 
   // ----- Movimento -----

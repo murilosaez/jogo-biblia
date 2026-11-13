@@ -22,6 +22,7 @@ const ARQUIVOS_DADOS = [
   "dados/tarefas.js",
   "dados/vocacoes.js",
   "dados/oficios.js",
+  "dados/cosmeticos.js",
 ];
 const ARQUIVOS = ["storage.js", ...ARQUIVOS_DADOS, "logica.js"];
 const FONTES = ARQUIVOS.map((f) => fs.readFileSync(path.join(RAIZ, f), "utf8"));
@@ -5748,6 +5749,129 @@ teste("66. Oração rápida: F1 cura na hora, do nível 25 tira veneno e sangram
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
   assert.match(ui, /e\.key === "F1"\) \{ e\.preventDefault\(\); if \(!e\.repeat\) orar\(e\.shiftKey \? "milagre" : "oracao"\)/);
   assert.doesNotMatch(ui + fs.readFileSync(path.join(RAIZ, "index.html"), "utf8"), /modalOracao|data-orar/, "a janela de cartões da Oração saiu");
+});
+
+teste("67. cosméticos (JGB-27): trajes por vocação e montarias só visuais, compra única sem pagamento definido e save v16", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p;
+  const g = (n) => j.g(n);
+  const TRAJES = g("TRAJES"), MONTARIAS = g("MONTARIAS"), REGRAS = g("REGRAS_COSMETICOS");
+  // Dados: um traje por vocação (mais o gratuito), as 4 montarias do plano, nenhum campo de poder.
+  for (const v of Object.keys(g("VOCACOES"))) assert.ok(Object.values(TRAJES).some((t) => t.vocacao === v), `traje da vocação ${v}`);
+  igual(Object.keys(MONTARIAS), ["jumento", "camelo", "cavalo", "carro"]);
+  const PODER = /dano|defesa|vida|velocidade|carga|critico|xp|saque|bonus/i;
+  for (const [id, c] of [...Object.entries(TRAJES), ...Object.entries(MONTARIAS)]) {
+    for (const k of Object.keys(c)) assert.doesNotMatch(k, PODER, `${id}: campo de poder ${k}`);
+    assert.ok(c.preco === null || Number.isFinite(c.preco), `${id}: preço`);
+  }
+  assert.strictEqual(REGRAS.pagamento, null, "pagamento ainda a definir");
+  // Gratuito: veste já; pagos: a loja não vende sem pagamento.
+  const exec = (c) => j.exec(c);
+  assert.ok(exec({ tipo: "vestirTraje", traje: "peregrino" }).ok);
+  igual(g("visualDoJogador")(p), { traje: "peregrino", montaria: null });
+  let r = exec({ tipo: "comprarCosmetico", cosmetico: "cavalo" });
+  assert.ok(!r.ok && r.semPagamento && r.mensagem === REGRAS.textoSemPagamento);
+  assert.ok(!exec({ tipo: "usarMontaria", montaria: "cavalo" }).ok, "sem o cavalo não monta");
+  assert.ok(!exec({ tipo: "comprarCosmetico", cosmetico: "inventado" }).ok);
+  // Liberar (gancho da confirmação de pagamento): compra única.
+  assert.ok(j.M.liberarCosmetico(ID, "cavalo").ok);
+  assert.ok(j.M.liberarCosmetico(ID, "cavalo").jaTinha);
+  igual(p.cosmeticos.possui, ["cavalo"]);
+  // Nenhuma vantagem: combate, vida, carga e movimento iguais com e sem cosmético.
+  const est = () => JSON.stringify([g("estatisticasCombate")(p), g("vidaMaxima")(p), g("capacidadeCarga")(p)]);
+  exec({ tipo: "usarMontaria", montaria: null });
+  exec({ tipo: "vestirTraje", traje: null });
+  const sem = est();
+  assert.ok(exec({ tipo: "usarMontaria", montaria: "cavalo" }).ok);
+  assert.ok(exec({ tipo: "vestirTraje", traje: "peregrino" }).ok);
+  assert.strictEqual(est(), sem, "cosmético não muda estatística");
+  const x0 = p.x;
+  assert.ok(exec({ tipo: "mover", dx: 1, dy: 0 }).ok || p.x === x0, "montado anda como a pé");
+  // Traje de vocação: só com a vocação (fica guardado, mas não aparece em outra).
+  j.M.liberarCosmetico(ID, "armadura_de_davi");
+  assert.match(exec({ tipo: "vestirTraje", traje: "armadura_de_davi" }).mensagem, /Guerreiro/);
+  p.vocacao.id = "guerreiro";
+  assert.ok(exec({ tipo: "vestirTraje", traje: "armadura_de_davi" }).ok);
+  p.vocacao.id = "levita";
+  igual(g("visualDoJogador")(p).traje, null, "traje de outra vocação não aparece");
+  // Lista da janela: pura e com o estado certo.
+  const antes = JSON.stringify(p);
+  const lista = g("cosmeticosDoJogador")(p);
+  assert.strictEqual(JSON.stringify(p), antes, "cosmeticosDoJogador não muda p");
+  const cav = lista.find((x) => x.id === "cavalo");
+  assert.ok(cav.possui && cav.emUso && !cav.aVenda && lista.find((x) => x.id === "camelo").possui === false);
+  // Save: recarrega igual; corrompido é limpo; v15 ganha o aviso.
+  p.vocacao.id = "guerreiro";
+  j.g("Storage").flush();
+  const q = carregarJogo({ store: j.store, inicio: j.agora }).entrar();
+  igual(q.cosmeticos, { possui: ["cavalo", "armadura_de_davi"], traje: "armadura_de_davi", montaria: "cavalo" });
+  const k = carregarJogo();
+  k.entrar();
+  k.p.cosmeticos = { possui: ["cavalo", "dragao", 7, "peregrino", "cavalo"], traje: "dragao", montaria: "camelo" };
+  k.g("Storage").flush();
+  igual(carregarJogo({ store: k.store, inicio: k.agora }).entrar().cosmeticos, { possui: ["cavalo"], traje: null, montaria: null });
+  const m = carregarJogo();
+  m.entrar();
+  m.g("Storage").flush();
+  const chave = Object.keys(m.store).find((c) => c.startsWith("save_"));
+  const dados = JSON.parse(m.store[chave]);
+  dados.versao = 15;
+  delete dados.cosmeticos;
+  m.store[chave] = JSON.stringify(dados);
+  const q3 = carregarJogo({ store: m.store }).entrar();
+  assert.ok(q3.avisosPendentes.some((a) => a.id === "atualizacao_16") && q3.versao === 16 && q3.cosmeticos.traje === null);
+  // Interface: janela Visual na tecla U só pelos comandos.
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  assert.match(ui, /function abrirVisual\(/);
+  assert.doesNotMatch(ui, /\.cosmeticos\.(possui|traje|montaria)\s*=/, "a interface não escreve em p.cosmeticos");
+});
+
+teste("68. arte em 32 px por casa (JGB-48): humanos em 3 vistas com equipamento visível, criaturas e itens na nova resolução", () => {
+  const j = carregarJogo();
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  const Arte = j.ctx.Arte, PP = j.ctx.PIXEL_PATTERNS;
+  assert.strictEqual(Arte.RES, 2, "2 px de arte por unidade (32 por casa)");
+  assert.match(FONTE_GAME, /const PIXELS_ARTE_POR_CASA = 32;/);
+  // Humanos: 15 quadros (lado, frente, costas), célula 40 × 48 e corpo de ~32 × 44.
+  const humanos = Object.keys(PP).filter((k) => PP[k].humano && !PP[k].montado);
+  assert.ok(humanos.length >= 38, `${humanos.length} humanos`);
+  for (const k of humanos) {
+    const def = PP[k];
+    igual([def.quadros, def.direcoes], [15, 3], k);
+    const px = Arte.pixels(k, { quadro: 5 });
+    igual([px.w, px.h], [40, 48], k);
+    // altura do corpo (do topo ao pé) entre 36 e 46 px de arte
+    let topo = px.h, base = 0;
+    for (let y = 0; y < px.h; y++) for (let x = 0; x < px.w; x++) if (px.data[y * px.w + x] && !String(px.data[y * px.w + x]).match(/^#1c1210[0-9a-f]{2}$/)) { topo = Math.min(topo, y); base = Math.max(base, y); }
+    assert.ok(base - topo >= 36 && base - topo <= 47, `${k}: altura ${base - topo}`);
+    // as 3 vistas são desenhos diferentes
+    const q = (n) => Arte.pixels(k, { quadro: n }).data.join();
+    assert.ok(q(0) !== q(5) && q(5) !== q(10) && q(0) !== q(10), `${k}: vistas diferentes`);
+    assert.ok(q(5) !== q(7) && q(5) !== q(9), `${k}: passo e ação mudam o quadro`);
+  }
+  // Equipamento visível: arma, escudo e armadura mudam o desenho do jogador.
+  const jog = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
+  const nu = jog({});
+  for (const eq of [{ arma: "espada_ferro" }, { escudo: "escudo_bronze" }, { armadura: "armadura_couro" }, { armadura: "couraca_escamas" }, { arco: "arco_madeira" }, { arma: "espada_ferro@raro.dano2" }])
+    assert.notStrictEqual(jog(eq), nu, JSON.stringify(eq));
+  // Montarias e trajes geram sprite; montado tem as 3 vistas.
+  for (const m of ["jumento", "camelo", "cavalo", "carro"]) {
+    const chave = Arte.garantirJogador({}, { montaria: m });
+    igual([PP[chave].quadros, PP[chave].direcoes, Arte.pixels(chave).w], [15, 3, 48], m);
+    assert.ok(PP["mt_" + m], `prévia mt_${m}`);
+  }
+  for (const t of Object.keys(j.g("TRAJES"))) assert.notStrictEqual(Arte.pixels(Arte.garantirJogador({}, { traje: t }), { quadro: 5 }).data.join(), nu, t);
+  // Criaturas e itens: 32 px por casa (2 px de arte por unidade) e contorno de 1 px.
+  for (const k of ["in_lobo", "in_leao", "in_naja", "in_aguia", "espada_ferro", "pocao", "escudo_bronze"]) {
+    const def = PP[k], px = Arte.pixels(k);
+    igual([px.w, px.h], [def.w * 2, def.h * 2], k);
+  }
+  // Glifos da interface ficam em 1 px por unidade.
+  assert.strictEqual(Arte.pixels("ui_moeda").w, 8);
+  // game.js vira o boneco para a direção do passo (lado, frente ou costas).
+  assert.match(FONTE_GAME, /function virar\(sprite, dx, dy\)/);
+  assert.match(FONTE_GAME, /quadroComVista\(j, 2 \+/);
 });
 
 // ---------------------------------------------------------------------

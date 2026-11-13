@@ -397,6 +397,12 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja strong{display:block;font:700 var(--fs-14)/1.15 var(--f-texto)}
 .item-loja span{font:400 var(--fs-13)/1.2 var(--f-texto);color:var(--tinta-suave)}
 .item-loja .btn{min-width:84px}
+.item-loja.cosmetico{grid-template-columns:56px minmax(0,1fr) auto}
+.item-loja.cosmetico .icone{width:56px;height:60px}
+.item-loja.cosmetico .icone img{width:auto;height:auto;max-width:52px;max-height:56px}
+.item-loja.cosmetico .preco{font-style:italic}
+.item-loja.cosmetico > span:nth-child(2) > span{display:block}
+.item-loja.cosmetico.em-uso{border-color:var(--ouro-500,#e8b94a);box-shadow:inset 0 0 0 1px #e8b94a}
 .saldo{display:flex;align-items:center;gap:6px;margin-bottom:10px;font:600 var(--fs-14)/1 var(--f-pixel)}
 .aba-modal{display:inline-flex;align-items:center;gap:6px}
 .modal .vazio-txt,.modal .nota{color:var(--tinta-suave)}
@@ -762,6 +768,7 @@ body.toque-forcado #dpad{display:block}
     <button class="moedas pontos" id="pontos" type="button" title="Pontos de tarefa · T: suas caçadas" hidden>
       <img class="px g16" data-glifo="ui_selo" alt=""><b id="pontosValor">0</b><span class="sr"> pontos de tarefa (abre suas caçadas)</span></button>
     <button class="btn-icone voc-btn" id="btnVocacao" type="button" aria-label="Vocação, habilidades e talentos (V)" title="Vocação, habilidades e talentos (V)"><img class="px g16" data-glifo="hb_escudo" alt=""><span class="rotulo">Vocação</span></button>
+    <button class="btn-icone" id="btnVisual" type="button" aria-label="Visual: trajes e montarias (U)" title="Visual: trajes e montarias (U)"><img class="px g16" data-glifo="ui_personagem" alt=""><span class="rotulo">Visual</span></button>
     <button class="btn-icone" id="btnOficios" type="button" aria-label="Ofícios (O)" title="Ofícios (O)"><img class="px g16" data-glifo="of_ferreiro" alt=""><span class="rotulo">Ofícios</span></button>
     <button class="btn-icone mana-btn" id="btnMana" type="button" aria-label="Maná e descanso (N)" title="Maná e descanso (N)"><img class="px g16" data-glifo="ui_mana" alt=""><span class="rotulo">Maná</span><b class="mana-qtd" id="manaQtd" hidden></b></button>
     <button class="btn-icone" id="btnBestiario" type="button" aria-label="Bestiário (B)" title="Bestiário (B)"><img class="px g16" data-glifo="ui_bestiario" alt=""><span class="rotulo">Bestiário</span></button>
@@ -936,6 +943,13 @@ body.toque-forcado #dpad{display:block}
     <div class="modal-corpo" id="oficiosCorpo"></div>
   </div>
 </div>
+<div class="modal" id="modalVisual" aria-hidden="true">
+  <div class="modal-caixa perg larga" role="dialog" aria-modal="true" aria-labelledby="visualTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_personagem" data-escala="4" alt=""></span><div><h2 id="visualTitulo">Visual</h2>
+      <p class="sub">Trajes e montarias: só aparência, nenhuma vantagem em combate</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="visualCorpo"></div>
+  </div>
+</div>
 <div class="modal" id="modalVocacao" aria-hidden="true">
   <div class="modal-caixa perg larga" role="dialog" aria-modal="true" aria-labelledby="vocacaoTitulo">
     <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="hb_escudo" data-escala="4" alt=""></span><div><h2 id="vocacaoTitulo">Vocação</h2>
@@ -970,6 +984,7 @@ body.toque-forcado #dpad{display:block}
 <script src="dados/tarefas.js"></script>
 <script src="dados/vocacoes.js"></script>
 <script src="dados/oficios.js"></script>
+<script src="dados/cosmeticos.js"></script>
 <script src="logica.js"></script>
 <script src="sprites.js"></script>
 <script src="game.js"></script>

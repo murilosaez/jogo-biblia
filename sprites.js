@@ -42,13 +42,20 @@
     const c = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
     return "#" + c(r) + c(g) + c(b);
   }
+  const cacheMistura = new Map();
   function misturar(a, b, t) {
+    const id = a + b + t;
+    let r = cacheMistura.get(id);
+    if (r) return r;
     const A = hexRgb(a), B = hexRgb(b);
-    return rgbHex(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t);
+    r = rgbHex(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t);
+    if (cacheMistura.size < 50000) cacheMistura.set(id, r);
+    return r;
   }
   function comAlfa(hex, a) {
     return hex.slice(0, 7) + Math.round(a * 255).toString(16).padStart(2, "0");
   }
+  const escuroT = (c, t) => misturar(c, "#1c1210", t), claroT = (c, t) => misturar(c, "#fff6e0", t);
   function sementeDe(texto) {
     let s = 0;
     for (const ch of String(texto)) s += ch.charCodeAt(0);
@@ -111,49 +118,124 @@
   // -------------------------------------------------------------------
   // Grade: superfície de desenho em px-a (cores "#rrggbb" ou "#rrggbbaa")
   // -------------------------------------------------------------------
+  // Resolução: a arte é desenhada em 32 px por casa (RES px de arte por unidade). As coordenadas
+  // continuam em unidades de 1/16 de casa (as do desenho antigo), mas elipses, linhas e sombras são
+  // calculadas em cada px de arte, e g.pf / g.linf / g.retf põem detalhe de 1 px de arte (meia unidade).
+  // Os glifos da interface (ui_, hb_, of_) ficam em RES 1.
+  const RES = 2;
   class Grade {
-    constructor(w, h) {
-      this.w = w;
-      this.h = h;
-      this.d = new Array(w * h).fill(null); // camada principal
-      this.s = new Array(w * h).fill(null); // sombra projetada (sem contorno)
+    constructor(w, h, r = RES) {
+      this.r = r;
+      this.lw = w;
+      this.lh = h;
+      this.w = w * r;
+      this.h = h * r;
+      this.d = new Array(this.w * this.h).fill(null); // camada principal
+      this.s = new Array(this.w * this.h).fill(null); // sombra projetada (sem contorno)
+    }
+    dentroF(X, Y) {
+      return X >= 0 && Y >= 0 && X < this.w && Y < this.h;
     }
     dentro(x, y) {
-      return x >= 0 && y >= 0 && x < this.w && y < this.h;
+      return x >= 0 && y >= 0 && x < this.lw && y < this.lh;
+    }
+    // px de arte (inteiros, na resolução final)
+    fino(X, Y, c) {
+      if (X % 1 || Y % 1) { X = Math.round(X); Y = Math.round(Y); }
+      if (!c || !this.dentroF(X, Y)) return;
+      this.d[Y * this.w + X] = c;
     }
     p(x, y, c) {
       x = Math.round(x);
       y = Math.round(y);
       if (!c || !this.dentro(x, y)) return;
-      this.d[y * this.w + x] = typeof c === "function" ? c(x, y) : c;
+      const cor = typeof c === "function" ? c(x, y) : c;
+      if (!cor) return;
+      const r = this.r;
+      for (let j = 0; j < r; j++) for (let i = 0; i < r; i++) this.d[(y * r + j) * this.w + x * r + i] = cor;
+    }
+    // 1 px de arte na posição (x, y) em unidades (aceita meia unidade).
+    pf(x, y, c) {
+      this.fino(Math.floor(x * this.r + 1e-6), Math.floor(y * this.r + 1e-6), typeof c === "function" ? c(x, y) : c);
     }
     g(x, y) {
-      return this.dentro(x, y) ? this.d[y * this.w + x] : null;
+      x = Math.round(x); y = Math.round(y);
+      return this.dentro(x, y) ? this.d[y * this.r * this.w + x * this.r] : null;
+    }
+    gf(X, Y) {
+      return this.dentroF(X, Y) ? this.d[Y * this.w + X] : null;
     }
     apagar(x, y) {
-      if (this.dentro(x, y)) this.d[y * this.w + x] = null;
+      if (!this.dentro(x, y)) return;
+      const r = this.r;
+      for (let j = 0; j < r; j++) for (let i = 0; i < r; i++) this.d[(y * r + j) * this.w + x * r + i] = null;
     }
     ret(x, y, w, h, c) {
       for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.p(x + i, y + j, typeof c === "function" ? c(x + i, y + j, i, j) : c);
     }
+    // Retângulo em px de arte: (x, y, w, h) em unidades, com meia unidade de precisão.
+    retf(x, y, w, h, c) {
+      const X0 = Math.round(x * this.r), Y0 = Math.round(y * this.r), W = Math.round(w * this.r), H = Math.round(h * this.r);
+      for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) this.fino(X0 + i, Y0 + j, typeof c === "function" ? c(X0 + i, Y0 + j, i, j) : c);
+    }
+    // Linha: os pontos da linha em unidades decidem a cor (c pode ser função (x, y, i)); o traço é
+    // feito em px de arte, com a espessura de uma unidade, para a diagonal não virar escada.
     lin(x0, y0, x1, y1, c) {
       x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
-      const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
-      let e = dx + dy, i = 0;
+      const pts = [];
+      {
+        let a = x0, b = y0;
+        const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+        let e = dx + dy, i = 0;
+        for (;;) {
+          pts.push([a, b, typeof c === "function" ? c(a, b, i++) : c]);
+          if (a === x1 && b === y1) break;
+          const e2 = 2 * e;
+          if (e2 >= dy) { e += dy; a += sx; }
+          if (e2 <= dx) { e += dx; b += sy; }
+        }
+      }
+      if (x0 === x1 || y0 === y1 || pts.length < 3) { for (const [a, b, cor] of pts) this.p(a, b, cor); return; }
+      const r = this.r;
+      let X = x0 * r, Y = y0 * r;
+      const X1 = x1 * r, Y1 = y1 * r;
+      const dX = Math.abs(X1 - X), dY = -Math.abs(Y1 - Y), sX = X < X1 ? 1 : -1, sY = Y < Y1 ? 1 : -1;
+      let e = dX + dY, n = 0;
+      const total = Math.max(dX, -dY) || 1;
       for (;;) {
-        this.p(x0, y0, typeof c === "function" ? c(x0, y0, i++) : c);
-        if (x0 === x1 && y0 === y1) break;
+        const cor = pts[Math.min(pts.length - 1, Math.round((n / total) * (pts.length - 1)))][2];
+        for (let j = 0; j < r; j++) for (let i = 0; i < r; i++) this.fino(X + i, Y + j, cor);
+        if (X === X1 && Y === Y1) break;
         const e2 = 2 * e;
-        if (e2 >= dy) { e += dy; x0 += sx; }
-        if (e2 <= dx) { e += dx; y0 += sy; }
+        if (e2 >= dY) { e += dY; X += sX; }
+        if (e2 <= dX) { e += dX; Y += sY; }
+        n++;
       }
     }
-    // Elipse cheia; c pode ser cor ou função (nx, ny, x, y) com nx/ny em [-1, 1].
+    // Linha fina (1 px de arte) entre pontos em unidades.
+    linf(x0, y0, x1, y1, c) {
+      const r = this.r;
+      let X = Math.floor(x0 * r + 1e-6), Y = Math.floor(y0 * r + 1e-6);
+      const X1 = Math.floor(x1 * r + 1e-6), Y1 = Math.floor(y1 * r + 1e-6);
+      const dX = Math.abs(X1 - X), dY = -Math.abs(Y1 - Y), sX = X < X1 ? 1 : -1, sY = Y < Y1 ? 1 : -1;
+      let e = dX + dY, i = 0;
+      for (;;) {
+        this.fino(X, Y, typeof c === "function" ? c(X, Y, i++) : c);
+        if (X === X1 && Y === Y1) break;
+        const e2 = 2 * e;
+        if (e2 >= dY) { e += dY; X += sX; }
+        if (e2 <= dX) { e += dX; Y += sY; }
+      }
+    }
+    // Elipse cheia, calculada em cada px de arte; c pode ser cor ou função (nx, ny, x, y) com nx/ny
+    // em [-1, 1] e x/y na casa da unidade.
     elip(cx, cy, rx, ry, c) {
-      for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
-        for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-          const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
-          if (nx * nx + ny * ny <= 1) this.p(x, y, typeof c === "function" ? c(nx, ny, x, y) : c);
+      const r = this.r;
+      for (let Y = Math.floor((cy - ry) * r) - 1; Y <= Math.ceil((cy + ry) * r); Y++) {
+        for (let X = Math.floor((cx - rx) * r) - 1; X <= Math.ceil((cx + rx) * r); X++) {
+          const lx = (X + 0.5) / r, ly = (Y + 0.5) / r;
+          const nx = (lx - cx) / rx, ny = (ly - cy) / ry;
+          if (nx * nx + ny * ny <= 1) this.fino(X, Y, typeof c === "function" ? c(nx, ny, Math.floor(lx), Math.floor(ly)) : c);
         }
       }
     }
@@ -167,11 +249,11 @@
       });
     }
     sombra(cx, cy, rx, ry, cor = "#1c1210", alfa = 0.3) {
-      const c = comAlfa(cor, alfa);
-      for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
-        for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-          const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
-          if (nx * nx + ny * ny <= 1 && this.dentro(x, y)) this.s[y * this.w + x] = c;
+      const c = comAlfa(cor, alfa), r = this.r;
+      for (let Y = Math.floor((cy - ry) * r); Y <= Math.ceil((cy + ry) * r); Y++)
+        for (let X = Math.floor((cx - rx) * r); X <= Math.ceil((cx + rx) * r); X++) {
+          const nx = ((X + 0.5) / r - cx) / rx, ny = ((Y + 0.5) / r - cy) / ry;
+          if (nx * nx + ny * ny <= 1 && this.dentroF(X, Y)) this.s[Y * this.w + X] = c;
         }
     }
     contorno(cor) {
@@ -184,6 +266,35 @@
             marcar.push(y * w + x);
         }
       for (const i of marcar) d[i] = cor;
+    }
+    // Acabamento em px de arte (só na RES 2): realce de 1 px nas bordas viradas para a luz (cima e
+    // esquerda) e meia-sombra nas viradas para baixo/direita, por dentro do contorno.
+    acabamento(cor) {
+      if (this.r < 2) return;
+      const w = this.w, h = this.h, d = this.d, nova = d.slice();
+      const fora = (x, y) => x < 0 || y < 0 || x >= w || y >= h || !d[y * w + x] || d[y * w + x] === cor;
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const c = d[y * w + x];
+          if (!c || c === cor || c.length > 7) continue;
+          if (fora(x, y - 1) || fora(x - 1, y)) nova[y * w + x] = misturar(c, "#fff6e0", 0.16);
+          else if (fora(x, y + 1) || fora(x + 1, y)) nova[y * w + x] = misturar(c, "#1c1210", 0.18);
+        }
+      this.d = nova;
+    }
+    // Textura fina (pelo, escama, couro): traços de 2 px de arte um pouco mais escuros ou claros,
+    // espalhados por hash (sem "ruído de TV": nunca 2 traços colados).
+    textura(semente = 0, protegida = null) {
+      if (this.r < 2) return;
+      const w = this.w, d = this.d;
+      for (let y = 1; y < this.h - 1; y++)
+        for (let x = 1; x < w - 2; x++) {
+          const c = d[y * w + x];
+          if (!c || c === protegida || c.length > 7 || d[y * w + x + 1] !== c) continue;
+          const h = hash2(x >> 1, y, semente + 911);
+          if (h < 0.09 && (x + y) % 3 === 0) { d[y * w + x] = escuroT(c, 0.13); d[y * w + x + 1] = escuroT(c, 0.13); x += 2; }
+          else if (h > 0.95 && (x + y) % 3 === 1) { d[y * w + x] = claroT(c, 0.1); x += 2; }
+        }
     }
     espelhar() {
       for (let y = 0; y < this.h; y++)
@@ -217,6 +328,7 @@
     def.quadros = def.quadros || (def.quadrosLinhas ? def.quadrosLinhas.length : 1);
     def.origem = def.origem || [0.5, 1];
     if (def.contorno === undefined) def.contorno = "amigo";
+    if (def.res === undefined) def.res = /^(ui_|hb_|of_)/.test(chave) ? 1 : RES;
     PIXEL_PATTERNS[chave] = def;
     return def;
   }
@@ -227,21 +339,25 @@
     if (cachePixels.has(id)) return cachePixels.get(id);
     const def = PIXEL_PATTERNS[chave];
     if (!def) return null;
-    const g = new Grade(def.w, def.h);
+    const g = new Grade(def.w, def.h, def.res);
     const q = Math.min(quadro, def.quadros - 1);
     if (def.desenhar) def.desenhar(g, q);
     else {
       const linhas = def.quadrosLinhas ? def.quadrosLinhas[q] : def.linhas;
       g.carimbar(0, 0, linhas, def.cores);
     }
-    g.contorno(CONTORNO[def.contorno] || def.contorno || null);
+    const corContorno = CONTORNO[def.contorno] || def.contorno || null;
+    if (def.textura ?? (def.res > 1 && /^(in_|al_|mt_)/.test(chave) && !def.humano)) g.textura(sementeDe(chave), corContorno);
+    g.contorno(corContorno);
+    if (corContorno && def.acabamento !== false) g.acabamento(corContorno);
     if (def.depois) def.depois(g, q);
-    const limite = def.limiteCores || (chave.startsWith("ui_") ? 6 : chave.startsWith("fx_") ? 0 : 12);
-    const r = { w: def.w, h: def.h, data: reduzirCores(g.final(), limite, CONTORNO[def.contorno]) };
+    const limite = def.limiteCores || (def.res === 1 ? (chave.startsWith("ui_") ? 6 : 12) : chave.startsWith("fx_") ? 0 : LIMITE_CORES);
+    const r = { w: g.w, h: g.h, res: def.res, data: reduzirCores(g.final(), limite, corContorno) };
     cachePixels.set(id, r);
     return r;
   }
 
+  const LIMITE_CORES = 24; // cores por sprite em 32 px por casa (o contorno não conta para a fusão)
   // Limita o número de cores: funde a cor mais rara na vizinha mais próxima
   // (o contorno nunca é fundido). Garante a regra de no máximo 12 cores.
   function reduzirCores(data, limite, protegida) {
@@ -250,7 +366,9 @@
     for (const c of data) if (c) conta.set(c, (conta.get(c) || 0) + 1);
     if (conta.size <= limite) return data;
     const troca = new Map();
-    const dist = (a, b) => { const A = hexRgb(a), B = hexRgb(b); return (A[0] - B[0]) ** 2 * 0.3 + (A[1] - B[1]) ** 2 * 0.59 + (A[2] - B[2]) ** 2 * 0.11 + (A[3] - B[3]) ** 2; };
+    const rgb = new Map();
+    for (const c of conta.keys()) rgb.set(c, hexRgb(c));
+    const dist = (a, b) => { const A = rgb.get(a), B = rgb.get(b); return (A[0] - B[0]) ** 2 * 0.3 + (A[1] - B[1]) ** 2 * 0.59 + (A[2] - B[2]) ** 2 * 0.11 + (A[3] - B[3]) ** 2; };
     while (conta.size > limite) {
       let rara = null;
       for (const [c, n] of conta) if (c !== protegida && (!rara || n < conta.get(rara))) rara = c;
@@ -264,6 +382,8 @@
     return data.map((c) => (c && troca.has(c) ? troca.get(c) : c));
   }
 
+  // px de tela por px de arte para uma escala dada em px de tela por unidade (inteiro, no mínimo 1).
+  const escalaArte = (px, escala) => Math.max(1, Math.round(escala / (px.res || 1)));
   // Desenha um quadro num contexto 2D na posição (ox, oy) em px de tela.
   function pintarPixels(ctx, px, ox, oy, escala) {
     let atual = null;
@@ -279,237 +399,830 @@
       }
   }
 
-  // Canvas de um quadro (ou de todos, em tira horizontal, com tira:true).
+  // Canvas de um quadro (ou de todos, em tira horizontal, com tira:true). escala = px de tela por
+  // unidade (PX = tamanho no mundo); cada px de arte ocupa escala / res px, arredondado.
   function canvas(chave, { quadro = 0, escala = PX, tira = false } = {}) {
     const def = PIXEL_PATTERNS[chave];
     if (!def) return null;
     const n = tira ? def.quadros : 1;
-    const c = novoCanvas(def.w * escala * n, def.h * escala);
+    const p0 = pixels(chave, { quadro: 0 }), e = escalaArte(p0, escala);
+    const c = novoCanvas(p0.w * e * n, p0.h * e);
     const ctx = c.getContext("2d");
-    for (let i = 0; i < n; i++) pintarPixels(ctx, pixels(chave, { quadro: tira ? i : quadro }), i * def.w * escala, 0, escala);
+    for (let i = 0; i < n; i++) pintarPixels(ctx, pixels(chave, { quadro: tira ? i : quadro }), i * p0.w * e, 0, e);
     return c;
   }
 
   // -------------------------------------------------------------------
-  // Humanos (§6.2): moldes 14×18 na célula 16×22, em x=1, y=3
+  // Humanos (§6.2) em 32 px por casa: célula 40 × 48 px de arte (20 × 24 unidades), pés na linha 45.
+  // 3 vistas × 5 quadros (0 parado, 1 respirar, 2 passo A, 3 passo B, 4 ação/fala):
+  //   quadros 0–4 de lado (virado para a direita; a esquerda é o espelho), 5–9 de frente, 10–14 de costas.
+  // Moldes: "manto" (veste longa), "curta" (túnica curta, pernas à mostra) e "veu" (veste longa com véu).
+  // Cores (letras de sempre): H cabelo, S/s pele e sombra, B barba, R/r/d veste (clara, média, escura),
+  // A cinto, F sandálias, V/W véu. Acessórios desenham em cada vista (ACESSORIOS, abaixo).
+  // Luz de cima e da esquerda; contorno sépia (amigos) ou carmim (hostis) de 1 px.
   // -------------------------------------------------------------------
-  const MOLDES = {
-    manto: [
-      ".....HHHH.....",
-      "....HHHHHH....",
-      "....HSSSSs....",
-      "....SoSSos....",
-      "....sBBBBs....",
-      "...RRrBBrdd...",
-      "..RRRrrrrrddd.",
-      "..SRRrrrrrdS..",
-      "..SRAAAAAAdS..",
-      "...RRrrrrrdd..",
-      "...RRrrrrddd..",
-      "...Rrrrrrddd..",
-      "..RRrrrrrrddd.",
-      "..Rrrrrrrrddd.",
-      "..rrrrrrrdddd.",
-      "...dddddddd...",
-      "....FF..FF....",
-      "...FFF..FFF...",
-    ],
-    curta: [
-      ".....HHHH.....",
-      "....HHHHHH....",
-      "....HSSSSs....",
-      "....SoSSos....",
-      "....sBBBBs....",
-      "...RRrBBrdd...",
-      "..RRRrrrrrdd..",
-      "..SRRrrrrrdS..",
-      "..SRAAAAAAdS..",
-      "...RRrrrrdd...",
-      "...Rrrrrrdd...",
-      "...rrrrrrdd...",
-      "....SS..sS....",
-      "....SS..ss....",
-      "....Ss..ss....",
-      "....ss..ss....",
-      "....FF..FF....",
-      "...FFF..FFF...",
-    ],
-    veu: [
-      ".....VVVV.....",
-      "....VVVVVV....",
-      "...VVSSSSsV...",
-      "...VSoSSosV...",
-      "...VsSSSSsW...",
-      "..VVRrrrrrWW..",
-      "..VRRrrrrrdW..",
-      "..SRRrrrrrdS..",
-      "..SRAAAAAAdS..",
-      "...RRrrrrrdd..",
-      "...RRrrrrddd..",
-      "..RRrrrrrddd..",
-      "..RRrrrrrrddd.",
-      "..Rrrrrrrrddd.",
-      "..rrrrrrrdddd.",
-      "..dddddddddd..",
-      "....FF..FF....",
-      "...FFF..FFF...",
-    ],
-  };
-
-  const trocar = (l, x, ch) => (x < 0 || x >= l.length ? l : l.slice(0, x) + ch + l.slice(x + 1));
-
-  // 5 quadros: 0 parado, 1 respirar, 2 passo A, 3 passo B, 4 ação/fala.
-  function quadrosDoMolde(molde, { duasMaos = false } = {}) {
-    const W = molde[0].length;
-    const vazio = ".".repeat(W);
-    const f0 = molde.slice();
-    const f1 = [vazio].concat(molde.slice(0, 9), molde.slice(10));
-    const f2 = f1.slice();
-    f2[16] = "...FF....FF...";
-    f2[17] = "..FFF.....FF..";
-    const f3 = f1.slice();
-    f3[16] = "...FF....FF...";
-    f3[17] = "..FF.....FFF..";
-    const f4 = molde.slice();
-    f4[7] = trocar(f4[7], 11, "d");
-    f4[8] = trocar(f4[8], 11, "d");
-    f4[6] = trocar(f4[6], 12, "S");
-    f4[5] = trocar(f4[5], 12, "S");
-    if (duasMaos) {
-      f4[7] = trocar(f4[7], 2, "R");
-      f4[8] = trocar(f4[8], 2, "R");
-      f4[6] = trocar(f4[6], 1, "S");
-      f4[5] = trocar(f4[5], 1, "S");
+  const VISTAS = ["lado", "frente", "costas"];
+  const QUADROS_POR_VISTA = 5;
+  const escuro = (c, t = 0.28) => misturar(c, "#1c1210", t);
+  const claro = (c, t = 0.2) => misturar(c, "#fff6e0", t);
+  // primitivas em px de arte
+  function retF(g, X, Y, W, H, c) {
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) g.fino(X + i, Y + j, typeof c === "function" ? c(X + i, Y + j, i, j) : c);
+  }
+  function elipF(g, cx, cy, rx, ry, c) {
+    for (let Y = Math.floor(cy - ry) - 1; Y <= Math.ceil(cy + ry); Y++)
+      for (let X = Math.floor(cx - rx) - 1; X <= Math.ceil(cx + rx); X++) {
+        const nx = (X + 0.5 - cx) / rx, ny = (Y + 0.5 - cy) / ry;
+        if (nx * nx + ny * ny <= 1) g.fino(X, Y, typeof c === "function" ? c(nx, ny, X, Y) : c);
+      }
+  }
+  function linF(g, X0, Y0, X1, Y1, c, larg = 1) {
+    X0 = Math.round(X0); Y0 = Math.round(Y0); X1 = Math.round(X1); Y1 = Math.round(Y1);
+    const dX = Math.abs(X1 - X0), dY = -Math.abs(Y1 - Y0), sX = X0 < X1 ? 1 : -1, sY = Y0 < Y1 ? 1 : -1;
+    let e = dX + dY, i = 0;
+    for (;;) {
+      const cor = typeof c === "function" ? c(X0, Y0, i++) : c;
+      for (let j = 0; j < larg; j++) for (let k = 0; k < larg; k++) g.fino(X0 + k, Y0 + j, cor);
+      if (X0 === X1 && Y0 === Y1) break;
+      const e2 = 2 * e;
+      if (e2 >= dY) { e += dY; X0 += sX; }
+      if (e2 <= dX) { e += dX; Y0 += sY; }
     }
-    return [f0, f1, f2, f3, f4];
   }
-
-  // alargar: duplica colunas e linhas (molde 14×18 → 16×20, para o chefe).
-  function alargar(linhas, colunas = [2, 11], filas = [10, 13]) {
-    const cols = colunas.slice().sort((a, b) => b - a);
-    let r = linhas.map((l) => {
-      let s = l;
-      for (const c of cols) s = s.slice(0, c + 1) + s[c] + s.slice(c + 1);
-      return s;
-    });
-    for (const f of filas.slice().sort((a, b) => b - a)) r.splice(f + 1, 0, r[f]);
-    return r;
-  }
-  // curvar: linhas 0–5 descem 1 px e avançam 1 px (postura encurvada).
-  function curvar(linhas) {
-    const W = linhas[0].length;
-    const r = linhas.slice();
-    const topo = linhas.slice(0, 6).map((l) => "." + l.slice(0, W - 1));
-    r[0] = ".".repeat(W);
-    for (let i = 0; i < 6; i++) {
-      let base = i + 1 === 6 ? r[6] : ".".repeat(W);
-      let s = "";
-      for (let x = 0; x < W; x++) s += topo[i][x] !== "." ? topo[i][x] : base[x];
-      r[i + 1] = s;
+  // Membro grosso (manga, perna): segmento de largura w com luz no lado esquerdo.
+  function membro(g, X0, Y0, X1, Y1, w, cores) {
+    const [cl, md, es] = cores;
+    const n = Math.max(Math.abs(X1 - X0), Math.abs(Y1 - Y0)) || 1;
+    for (let t = 0; t <= n; t++) {
+      const x = Math.round(X0 + ((X1 - X0) * t) / n), y = Math.round(Y0 + ((Y1 - Y0) * t) / n);
+      for (let k = 0; k < w; k++) g.fino(x + k - Math.floor(w / 2), y, k === 0 ? cl : k === w - 1 ? es : md);
     }
-    return r;
   }
 
-  // Sem barba: B vira S e as pontas de cada fila viram s.
-  function semBarba(linhas) {
-    return linhas.map((l) => {
-      const a = l.indexOf("B"), b = l.lastIndexOf("B");
-      if (a < 0) return l;
-      let s = "";
-      for (let x = 0; x < l.length; x++) s += l[x] !== "B" ? l[x] : x === a || x === b ? "s" : "S";
-      return s;
+  // Pose de cada vista/quadro: deslocamento do tronco (respirar), mãos (arma e escudo), pés.
+  function pose(vista, q) {
+    const dy = q === 1 ? 1 : 0;
+    if (vista === "lado") {
+      const maoArma = q === 4 ? [28, 24] : q === 2 ? [18, 30] : q === 3 ? [24, 30] : [21, 31 + dy];
+      const maoLonge = q === 2 ? [25, 29] : q === 3 ? [17, 29] : null;
+      return { vista, q, dy, maoArma, maoEscudo: [26, 27 + dy], maoLonge, braco: [21, 22 + dy] };
+    }
+    if (vista === "frente") {
+      const balanco = q === 2 ? 1 : q === 3 ? -1 : 0;
+      const maoArma = q === 4 ? [8, 16] : [11, 31 + dy + balanco];
+      return { vista, q, dy, maoArma, maoEscudo: [28, 31 + dy - balanco], braco: [11, 22 + dy] };
+    }
+    const balanco = q === 2 ? -1 : q === 3 ? 1 : 0;
+    const maoArma = q === 4 ? [31, 16] : [28, 31 + dy + balanco];
+    return { vista, q, dy, maoArma, maoEscudo: [11, 31 + dy - balanco], braco: [28, 22 + dy] };
+  }
+
+  function coresHumano(cfg) {
+    const c = Object.assign({ o: "#2a1a14", F: "#5a3a24", A: "#7a4a30" }, cfg.cores);
+    c.H = c.H || "#4a2f20";
+    c.B = c.B || c.H;
+    c.R = c.R || "#d4bf8f"; c.r = c.r || escuro(c.R, 0.15); c.d = c.d || escuro(c.R, 0.32);
+    c.S = c.S || "#cf9466"; c.s = c.s || escuro(c.S, 0.18);
+    return c;
+  }
+
+  // ----- cabeça -----
+  function cabeca(g, cfg, c, P) {
+    const v = P.vista, dy = P.dy;
+    const veu = cfg.molde === "veu" || cfg.capuz;
+    const V = cfg.capuz ? cfg.capuz[0] : c.V, W = cfg.capuz ? cfg.capuz[1] : c.W || escuro(c.V || "#888888");
+    const Hc = [escuro(c.H, 0.3), c.H, claro(c.H, 0.18)];
+    const cabeloLongo = cfg.cabelo === "longo";
+    const careca = cfg.cabelo === "careca";
+    const tomCabelo = (nx, ny, X, Y) => {
+      const l = -(0.55 * nx + 0.8 * ny) + (hash2(X, Y, 77) - 0.5) * 0.5;
+      return l > 0.55 ? Hc[2] : l < -0.35 ? Hc[0] : Hc[1];
+    };
+    const pele = (nx, ny) => (nx > 0.55 || ny > 0.72 ? c.s : nx < -0.55 && ny < 0.3 && ny > -0.4 ? claro(c.S, 0.1) : c.S);
+    if (v === "frente") {
+      const cy = 13 + dy;
+      if (cabeloLongo && !veu) { retF(g, 13, 12 + dy, 3, 11, (X, Y) => (Y % 3 ? Hc[1] : Hc[0])); retF(g, 24, 12 + dy, 3, 11, (X, Y) => (Y % 3 ? Hc[0] : escuro(c.H, 0.4))); }
+      if (veu) elipF(g, 20, 13 + dy, 7.6, 8, (nx, ny) => (nx > 0.45 ? W : nx < -0.5 && ny < 0 ? claro(V, 0.12) : V));
+      elipF(g, 20, cy, 6, 6.5, (nx, ny, X, Y) => {
+        if (veu) return pele(nx, ny);
+        const cabelo = !careca && (ny < -0.3 + 0.12 * nx * nx || (Math.abs(nx) > 0.82 && ny < 0.25));
+        return cabelo ? tomCabelo(nx, ny, X, Y) : pele(nx, ny);
+      });
+      if (veu) {
+        // véu cai sobre os ombros; franja do cabelo na testa
+        retF(g, 12, 17 + dy, 4, 7, (X) => (X < 14 ? claro(V, 0.1) : V)); retF(g, 24, 17 + dy, 4, 7, W);
+        retF(g, 16, 19 + dy, 2, 2, V); retF(g, 22, 19 + dy, 2, 2, W);
+        elipF(g, 20, 9 + dy, 6.5, 2.4, (nx) => (nx > 0.5 ? W : V));
+        retF(g, 17, 9 + dy, 6, 1, Hc[1]);
+      } else if (!careca) {
+        // orelhas
+        g.fino(13, 13 + dy, c.s); g.fino(13, 14 + dy, c.s); g.fino(26, 13 + dy, c.s); g.fino(26, 14 + dy, escuro(c.s, 0.15));
+      }
+      // sobrancelhas, olhos (com brilho), nariz e boca
+      const sob = cfg.barba === false && veu ? escuro(c.S, 0.35) : Hc[0];
+      retF(g, 16, 11 + dy, 2, 1, sob); retF(g, 22, 11 + dy, 2, 1, sob);
+      retF(g, 17, 12 + dy, 1, 2, c.o); retF(g, 22, 12 + dy, 1, 2, c.o);
+      g.fino(16, 13 + dy, "#f6efdc"); g.fino(23, 13 + dy, "#f6efdc");
+      g.fino(20, 15 + dy, c.s); g.fino(19, 15 + dy, claro(c.S, 0.08));
+      if (cfg.barba !== false) {
+        elipF(g, 20, 17.5 + dy, 5.2, 3.6, (nx, ny, X, Y) => (Y < 15 + dy ? null : nx > 0.5 ? escuro(c.B, 0.25) : (X + Y) % 3 === 0 ? claro(c.B, 0.12) : c.B));
+        retF(g, 14, 14 + dy, 1, 3, c.B); retF(g, 25, 14 + dy, 1, 3, escuro(c.B, 0.25));
+        retF(g, 19, 16 + dy, 2, 1, escuro(c.B, 0.45));
+      } else {
+        retF(g, 19, 17 + dy, 2, 1, misturar(c.s, "#5a2a20", 0.45));
+      }
+    } else if (v === "costas") {
+      if (veu) {
+        elipF(g, 20, 13 + dy, 7.6, 8, (nx, ny) => (nx > 0.45 ? W : nx < -0.5 && ny < 0 ? claro(V, 0.12) : V));
+        retF(g, 12, 18 + dy, 16, 6, (X, Y) => (X > 24 ? W : X < 15 ? claro(V, 0.1) : (Y - X) % 5 === 0 ? escuro(V, 0.1) : V));
+      } else {
+        if (cabeloLongo) retF(g, 15, 15 + dy, 10, 8, (X, Y) => (X % 3 === 0 ? Hc[0] : Hc[1]));
+        elipF(g, 20, 13 + dy, 6, 6.5, (nx, ny, X, Y) => (careca ? pele(nx, ny) : tomCabelo(nx, ny, X, Y)));
+        if (!careca) { g.fino(13, 13 + dy, c.s); g.fino(13, 14 + dy, c.s); g.fino(26, 13 + dy, escuro(c.s, 0.15)); g.fino(26, 14 + dy, escuro(c.s, 0.15)); }
+        if (cfg.barba !== false) { g.fino(14, 17 + dy, c.B); g.fino(25, 17 + dy, escuro(c.B, 0.2)); }
+      }
+    } else {
+      // de lado, virado para a direita
+      if (veu) {
+        elipF(g, 19.5, 13 + dy, 7, 8, (nx, ny) => (ny > 0.3 && nx > 0.2 ? W : nx < -0.5 && ny < 0 ? claro(V, 0.12) : V));
+        retF(g, 13, 18 + dy, 9, 6, (X) => (X < 15 ? claro(V, 0.1) : X > 19 ? W : V));
+      }
+      if (cabeloLongo && !veu) retF(g, 14, 14 + dy, 4, 9, (X, Y) => (Y % 3 ? Hc[1] : Hc[0]));
+      elipF(g, 20.5, 13 + dy, 5.5, 6.5, (nx, ny, X, Y) => {
+        const rosto = veu ? nx > -0.35 && ny > -0.45 : nx > -0.12 && ny > -0.32;
+        if (veu && !rosto) return null;
+        if (!rosto && !careca) return tomCabelo(nx, ny, X, Y);
+        return nx > 0.7 || ny > 0.72 ? c.s : c.S;
+      });
+      if (veu) elipF(g, 19, 9.5 + dy, 6, 3, (nx) => (nx > 0.6 ? W : V));
+      // nariz, olho, sobrancelha, orelha e boca
+      g.fino(26, 14 + dy, c.S); g.fino(26, 15 + dy, c.s);
+      retF(g, 23, 12 + dy, 1, 2, c.o); g.fino(24, 12 + dy, "#f6efdc");
+      retF(g, 23, 11 + dy, 2, 1, veu ? escuro(c.S, 0.35) : Hc[0]);
+      if (!veu && !careca) { g.fino(19, 13 + dy, c.s); g.fino(19, 14 + dy, escuro(c.s, 0.2)); g.fino(20, 14 + dy, c.s); }
+      if (cfg.barba !== false) {
+        elipF(g, 22.5, 17 + dy, 4, 3.4, (nx, ny, X, Y) => (Y < 15 + dy || X < 19 ? null : ny > 0.4 ? escuro(c.B, 0.22) : (X + Y) % 3 === 0 ? claro(c.B, 0.12) : c.B));
+        retF(g, 19, 14 + dy, 2, 3, c.B);
+        g.fino(25, 16 + dy, escuro(c.B, 0.45));
+      } else g.fino(25, 17 + dy, misturar(c.s, "#5a2a20", 0.45));
+    }
+  }
+
+  // ----- tronco, braços e pernas -----
+  function corpo(g, cfg, c, P) {
+    const v = P.vista, dy = P.dy, q = P.q;
+    const largo = cfg.porte === "grande" ? 1 : 0;
+    const veste = (X, x0, x1) => (X <= x0 + 2 ? c.R : X >= x1 - 2 ? c.d : c.r);
+    const longo = cfg.molde !== "curta";
+    const pele = [claro(c.S, 0.06), c.S, c.s];
+    const sandalia = [claro(c.F, 0.15), c.F, escuro(c.F, 0.3)];
+    if (v === "lado") {
+      const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
+      // braço de longe (atrás do corpo) aparece no balanço
+      if (P.maoLonge) { membro(g, 21, 22 + dy, P.maoLonge[0], P.maoLonge[1] - 2, 3, [c.d, escuro(c.d, 0.15), escuro(c.d, 0.25)]); retF(g, P.maoLonge[0] - 1, P.maoLonge[1] - 1, 3, 3, c.s); }
+      if (cfg.montado) inferiorMontado(g, cfg, c, P);
+      else {
+      // pernas e pés
+      const pes = passo === 1 ? [[24, 13], [26, 15]] : passo === -1 ? [[19, 18], [21, 20]] : [[21, 17], [22, 18]];
+      const [[fx, bx]] = [pes[0]];
+      if (!longo) {
+        membro(g, 19, 37, bx + 1, 43, 3, [c.s, c.s, escuro(c.s, 0.2)]);
+        membro(g, 21, 37, fx, 43, 3, pele);
+      }
+      retF(g, bx - 1, 43, 5, 3, (X, Y) => (Y === 43 ? escuro(c.F, 0.15) : escuro(c.F, 0.3)));
+      retF(g, fx - 1, 43, 6, 3, (X, Y) => (Y === 43 ? (X < fx + 2 ? c.S : sandalia[0]) : X === fx + 4 && Y === 43 ? null : sandalia[1]));
+      // veste inferior
+      if (longo) {
+        for (let Y = 32; Y <= 42; Y++) {
+          const k = Math.floor((Y - 32) / 4), aberto = Math.max(0, passo) * Math.floor((Y - 34) / 3);
+          const x0 = 15 - k - (passo === 1 ? Math.max(0, Math.floor((Y - 35) / 3)) : 0), x1 = 25 + k + aberto;
+          for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 42 ? c.d : (X - x0) % 5 === 3 && Y > 34 ? escuro(c.r, 0.12) : veste(X, x0, x1));
+        }
+      } else {
+        for (let Y = 32; Y <= 36; Y++) for (let X = 14 - (Y > 34 ? 1 : 0); X <= 26 + (Y > 33 ? 1 : 0); X++) g.fino(X, Y, Y === 36 ? c.d : veste(X, 14, 26));
+      }
+      }
+      // tronco
+      for (let Y = 20 + dy; Y <= 31; Y++) {
+        const x0 = Y === 20 + dy ? 16 : 15 - largo, x1 = Y === 20 + dy ? 24 : 25 + largo;
+        for (let X = x0; X <= x1; X++) g.fino(X, Y, veste(X, x0, x1));
+      }
+      retF(g, 19, 18 + dy, 4, 2, c.s);
+      retF(g, 15 - largo, 30, 11 + 2 * largo, 2, (X, Y) => (Y === 30 ? claro(c.A, 0.12) : c.A));
+      return;
+    }
+    // frente e costas
+    const frente = v === "frente";
+    const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
+    const pE = frente ? passo : -passo; // pé da esquerda (da tela) sobe no passo
+    if (cfg.montado) inferiorMontado(g, cfg, c, P);
+    else {
+    // pés
+    const pe = (x, sobe, cores) => retF(g, x, 43 - sobe, 5, 3 - (sobe ? 1 : 0), (X, Y) => (Y === 43 - sobe && frente ? (X === x || X === x + 4 ? cores[1] : c.S) : cores[X === x ? 0 : X === x + 4 ? 2 : 1]));
+    pe(14, pE === 1 ? 1 : 0, sandalia);
+    pe(21, pE === -1 ? 1 : 0, sandalia);
+    if (longo) {
+      for (let Y = 32; Y <= 42; Y++) {
+        const k = Math.floor((Y - 32) / 4) + largo, bal = Y > 37 ? passo : 0;
+        const x0 = 13 - k + bal, x1 = 26 + k + bal;
+        for (let X = x0; X <= x1; X++) {
+          let cor = veste(X, x0, x1);
+          if (Y > 33 && (X === 17 + bal || X === 22 + bal)) cor = escuro(cor, 0.14);
+          if (Y === 42) cor = c.d;
+          g.fino(X, Y, cor);
+        }
+      }
+    } else {
+      retF(g, 15, 37, 4, 6 - (pE === 1 ? 1 : 0), (X) => (X === 15 ? pele[0] : X === 18 ? pele[2] : pele[1]));
+      retF(g, 21, 37, 4, 6 - (pE === -1 ? 1 : 0), (X) => (X === 21 ? pele[1] : pele[2]));
+      g.fino(16, 40, c.F); g.fino(17, 40, c.F); g.fino(22, 40, c.F); g.fino(23, 40, c.F);
+      for (let Y = 32; Y <= 36; Y++) {
+        const k = Y > 34 ? 1 : 0, x0 = 13 - k - largo, x1 = 26 + k + largo;
+        for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 36 ? c.d : (X === 19 || X === 20) && Y > 33 ? escuro(c.r, 0.15) : veste(X, x0, x1));
+      }
+    }
+    }
+    // tronco (ombros caídos) e cinto
+    for (let Y = 20 + dy; Y <= 31; Y++) {
+      const ombro = Y === 20 + dy;
+      const x0 = (ombro ? 14 : 13) - largo, x1 = (ombro ? 25 : 26) + largo;
+      for (let X = x0; X <= x1; X++) g.fino(X, Y, veste(X, x0, x1));
+    }
+    if (frente) {
+      // decote em V e pescoço
+      retF(g, 18, 18 + dy, 4, 2, c.s);
+      retF(g, 18, 20 + dy, 4, 1, c.S); retF(g, 19, 21 + dy, 2, 1, c.s);
+      if (cfg.gola) { retF(g, 17, 20 + dy, 6, 1, cfg.gola); g.fino(18, 21 + dy, cfg.gola); g.fino(21, 21 + dy, cfg.gola); }
+    } else retF(g, 18, 18 + dy, 4, 2, c.s);
+    retF(g, 13 - largo, 30, 14 + 2 * largo, 2, (X, Y) => (Y === 30 ? claro(c.A, 0.12) : X > 23 ? escuro(c.A, 0.15) : c.A));
+    if (frente) { g.fino(19, 30, claro(c.A, 0.45)); g.fino(20, 30, claro(c.A, 0.3)); }
+  }
+
+  // Montado: veste curta sobre a sela e pernas abertas (de frente/costas) ou dobrada para a frente (de lado).
+  function inferiorMontado(g, cfg, c, P) {
+    const longo = cfg.molde !== "curta";
+    const perna = longo ? [c.R, c.r, c.d] : [claro(c.S, 0.06), c.S, c.s];
+    const sand = [claro(c.F, 0.15), c.F, escuro(c.F, 0.3)];
+    if (P.vista === "lado") {
+      for (let Y = 32; Y <= 36; Y++) for (let X = 14; X <= 25; X++) g.fino(X, Y, Y === 36 ? c.d : X < 17 ? c.R : X > 22 ? c.d : c.r);
+      membro(g, 20, 34, 25, 36, 4, perna);
+      membro(g, 25, 36, 25, 42, 3, perna);
+      retF(g, 24, 42, 5, 2, (X, Y) => (Y === 42 ? sand[0] : sand[1]));
+      return;
+    }
+    for (let Y = 32; Y <= 36; Y++) for (let X = 12; X <= 27; X++) g.fino(X, Y, Y === 36 ? c.d : X < 15 ? c.R : X > 24 ? c.d : c.r);
+    membro(g, 14, 35, 11, 38, 3, perna); membro(g, 11, 38, 11, 42, 3, perna);
+    membro(g, 26, 35, 29, 38, 3, [perna[1], perna[2], perna[2]]); membro(g, 29, 38, 29, 42, 3, [perna[1], perna[2], perna[2]]);
+    retF(g, 9, 42, 4, 2, sand[1]); retF(g, 28, 42, 4, 2, sand[2]);
+  }
+
+  // Braços na frente/costas (os dois) ou o braço de perto (de lado), com as mãos por cima da arma.
+  function bracos(g, cfg, c, P, soMaos) {
+    const v = P.vista, dy = P.dy, largo = cfg.porte === "grande" ? 1 : 0;
+    const manga = cfg.mangaCor ? [claro(cfg.mangaCor, 0.12), cfg.mangaCor, escuro(cfg.mangaCor, 0.2)] : [c.R, c.r, c.d];
+    const mao = (X, Y, sombra) => retF(g, X - 1, Y - 1, 3, 3, (x, y) => (sombra || x === X + 1 || y === Y + 1 ? c.s : c.S));
+    if (v === "lado") {
+      const [hx, hy] = P.maoArma;
+      if (!soMaos) membro(g, 21, 21 + dy, hx, hy - 2, 4, manga);
+      mao(hx, hy, false);
+      return;
+    }
+    const frente = v === "frente";
+    const [ax, ay] = P.maoArma, [ex, ey] = P.maoEscudo;
+    const xa = frente ? 11 - largo : 28 + largo, xe = frente ? 28 + largo : 11 - largo;
+    if (!soMaos) {
+      membro(g, xa, 21 + dy, ax, ay - 2, 3, frente ? manga : [manga[1], manga[1], manga[2]]);
+      membro(g, xe, 21 + dy, ex, ey - 2, 3, frente ? [manga[1], manga[2], escuro(manga[2], 0.15)] : [manga[0], manga[1], manga[1]]);
+    }
+    mao(ax, ay, !frente);
+    if (!cfg.duasMaosOcupadas) mao(ex, ey, frente);
+  }
+
+  // ----- acessórios: f(g, c, P, cfg) por vista; camada "fundo" (antes do corpo), "meio" (depois do
+  // corpo, antes dos braços) ou "frente" (por cima de tudo). camada pode ser função da vista.
+  const ACESSORIOS = {};
+  function acessorio(nome, camada, f) { ACESSORIOS[nome] = { camada, f }; }
+  const camadaPorVista = (lado, frente, costas) => (v) => (v === "lado" ? lado : v === "frente" ? frente : costas);
+
+  // cajados e lanças: haste vertical na mão da arma
+  function haste(g, P, cores, topo, chao, larg = 2) {
+    const [hx, hy] = P.maoArma;
+    const inclina = P.q === 4 ? (P.vista === "frente" ? -1 : 1) : 0;
+    const y0 = Math.max(P.q === 4 ? 3 : 0, hy - topo), y1 = Math.min(45, hy + chao + (P.q === 4 ? 6 : 0));
+    linF(g, hx + inclina * 3, y0, hx, y1, (X, Y) => (X <= hx - 1 + inclina ? cores[0] : escuro(cores[0], 0.25)), 1);
+    linF(g, hx + inclina * 3 + 1, y0, hx + 1, y1, escuro(cores[0], 0.25), 1);
+    if (larg < 2) return [hx + inclina * 3, y0];
+    return [hx + inclina * 3, y0];
+  }
+  acessorio("cajado_alto", "frente", (g, c, P) => { const [x, y] = haste(g, P, c, 25, 15); retF(g, x, y - 1, 2, 2, c[1] || claro(c[0], 0.2)); });
+  acessorio("cajado_curvo", "frente", (g, c, P) => {
+    const [x, y] = haste(g, P, c, 25, 15);
+    const lado = P.vista === "costas" ? 1 : -1;
+    linF(g, x, y, x + lado * 1, y - 3, c[0], 2); linF(g, x + lado, y - 3, x + lado * 4, y - 4, c[1] || c[0], 2); linF(g, x + lado * 5, y - 3, x + lado * 5, y - 1, c[0], 2);
+  });
+  acessorio("cajado_curto", "frente", (g, c, P) => { const [x, y] = haste(g, P, c, 15, 14); elipF(g, x + 1, y - 1, 2, 2, (nx, ny) => (nx + ny < -0.3 ? "#ffe08a" : "#e8b94a")); });
+  acessorio("lanca", "frente", (g, c, P) => {
+    const [x, y] = haste(g, P, c, 24, 14);
+    for (let i = 0; i < 6; i++) { const w = i < 2 ? 1 : i < 4 ? 2 : 1; retF(g, x + 1 - w + (w > 1 ? 1 : 0), y - 6 + i, w * 2 - (w > 1 ? 0 : 0) || 1, 1, i < 3 ? claro(c[1], 0.2) : c[1]); }
+    retF(g, x, y - 1, 2, 2, escuro(c[1], 0.2));
+  });
+  acessorio("lanca_longa", "frente", (g, c, P) => {
+    const [x, y] = haste(g, P, c, 28, 14);
+    for (let i = 0; i < 7; i++) { const w = i === 0 ? 1 : i < 5 ? 2 : 1; retF(g, x + 1 - Math.floor(w / 2), y - 7 + i, w, 1, i < 3 ? claro(c[1], 0.25) : c[1]); }
+    retF(g, x - 1, y, 4, 1, escuro(c[1], 0.3));
+  });
+  acessorio("ankh", "frente", (g, c, P) => {
+    const [hx, hy] = P.maoArma, x = hx + (P.q === 4 ? (P.vista === "frente" ? -3 : 3) : 0), y = hy - 17;
+    elipF(g, x + 1, y - 3, 2, 2.5, (nx, ny) => (nx * nx + ny * ny < 0.3 ? null : c[0]));
+    retF(g, x - 2, y, 6, 1, c[0]); retF(g, x, y, 2, 4, c[0]);
+  });
+  // espadas: em pé ao lado do corpo; no golpe vão à frente (de lado) ou ao alto (frente/costas)
+  function lamina(g, P, c, curva) {
+    const [hx, hy] = P.maoArma;
+    const [esc, cla, guarda, cabo] = [c[0], c[1], c[2] || "#b07a38", c[3] || "#5a3624"];
+    const golpe = P.q === 4;
+    if (P.vista === "lado" && golpe) {
+      // horizontal, à frente
+      retF(g, hx - 3, hy, 3, 1, cabo); retF(g, hx, hy - 2, 1, 5, guarda);
+      for (let i = 1; i <= 9; i++) { const yy = hy - (curva && i > 5 ? i - 5 : 0); g.fino(hx + i, yy - 1, cla); g.fino(hx + i, yy, esc); }
+      g.fino(hx + 10, hy - (curva ? 5 : 0) - 1, cla);
+      return;
+    }
+    const sobe = golpe ? -6 : 0;
+    const x = hx, gy = hy - 2 + sobe;
+    retF(g, x - 2, gy, 5, 1, guarda); g.fino(x - 2, gy, claro(guarda, 0.3));
+    retF(g, x, gy + 1, 1, 3, cabo); g.fino(x, gy + 4, guarda);
+    for (let i = 1; i <= 10; i++) {
+      const dx = curva && i > 6 ? Math.floor((i - 6) / 2) * (P.vista === "frente" ? -1 : 1) : 0;
+      g.fino(x - 1 + dx, gy - i, cla); g.fino(x + dx, gy - i, esc);
+    }
+    g.fino(x - 1 + (curva ? (P.vista === "frente" ? -2 : 2) : 0), gy - 11, cla);
+  }
+  acessorio("espada", "frente", (g, c, P) => lamina(g, P, c, false));
+  acessorio("espada_curva", "frente", (g, c, P) => lamina(g, P, c, true));
+  acessorio("porrete", "frente", (g, c, P) => {
+    const [hx, hy] = P.maoArma, sobe = P.q === 4 ? -5 : 0, ld = P.vista === "lado" && P.q === 4;
+    if (ld) { retF(g, hx, hy - 1, 8, 2, c[1] || c[0]); elipF(g, hx + 9, hy, 2.6, 2.6, (nx, ny) => (nx + ny < -0.4 ? claro(c[0], 0.2) : c[0])); return; }
+    retF(g, hx, hy - 9 + sobe, 2, 9, c[1] || c[0]);
+    elipF(g, hx + 1, hy - 11 + sobe, 2.6, 3, (nx, ny) => (nx + ny < -0.4 ? claro(c[0], 0.2) : nx + ny > 0.6 ? escuro(c[0], 0.2) : c[0]));
+  });
+  // escudos: de frente no braço do escudo; de costas mostram o verso; de lado, à frente do peito
+  function escudo(g, P, cores, forma) {
+    const [fr, aro, cen] = [cores[0], cores[1], cores[2] || cores[0]];
+    const v = P.vista;
+    if (v === "lado") {
+      const [x, y] = P.maoEscudo;
+      const ry = forma === "alto" ? 8 : 6, rx = forma === "alto" ? 2.2 : 2.6;
+      elipF(g, x + 0.5, y - 1, rx, ry, (nx, ny) => (nx > 0.55 ? aro : nx < -0.6 ? escuro(fr, 0.2) : ny < -0.6 ? claro(fr, 0.2) : fr));
+      return;
+    }
+    const [x, y] = P.maoEscudo;
+    const cx = v === "frente" ? x + 1 : x - 1, cy = y - 3;
+    if (v === "costas") {
+      elipF(g, cx, cy, forma === "alto" ? 5 : 5.5, forma === "alto" ? 8 : 5.5, (nx, ny) => (nx * nx + ny * ny > 0.7 ? escuro(aro, 0.1) : escuro(fr, 0.3)));
+      retF(g, cx - 3, cy - 1, 7, 2, "#5a3a24");
+      return;
+    }
+    if (forma === "alto") {
+      retF(g, cx - 5, cy - 8, 11, 16, (X, Y, i, j) => (i === 0 || j === 0 ? claro(fr, 0.2) : i === 10 || j === 15 ? escuro(fr, 0.3) : (i + j) % 4 === 0 ? aro : fr));
+      retF(g, cx - 1, cy - 8, 2, 16, cen);
+      return;
+    }
+    if (forma === "oval") {
+      elipF(g, cx, cy, 4.2, 6.5, (nx, ny, X, Y) => (nx * nx + ny * ny > 0.72 ? escuro(fr, 0.2) : Y % 3 === 0 ? aro : nx + ny < -0.5 ? claro(fr, 0.15) : fr));
+      return;
+    }
+    elipF(g, cx, cy, 5.6, 5.6, (nx, ny) => {
+      const r = Math.sqrt(nx * nx + ny * ny);
+      if (r > 0.8) return nx + ny < -0.3 ? claro(aro, 0.2) : aro;
+      if (r < 0.28) return nx + ny < 0 ? claro(cen, 0.35) : cen;
+      return tom([escuro(fr, 0.15), fr, claro(fr, 0.18)], -(nx + ny) * 0.9);
     });
   }
+  acessorio("escudo_redondo", "frente", (g, c, P) => escudo(g, P, c, "redondo"));
+  acessorio("escudo_alto", "frente", (g, c, P) => escudo(g, P, c, "alto"));
+  acessorio("escudo_oval", "frente", (g, c, P) => escudo(g, P, c, "oval"));
+  // arco nas costas e arco na mão
+  acessorio("arco_costas", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => {
+    const corda = c[1];
+    if (P.vista === "lado") { for (let Y = 17; Y <= 37; Y++) { const t = (Y - 27) / 10; g.fino(Math.round(13 + 3 * t * t), Y + P.dy, c[0]); g.fino(Math.round(14 + 3 * t * t), Y + P.dy, escuro(c[0], 0.2)); } linF(g, 16, 17 + P.dy, 16, 37 + P.dy, corda); return; }
+    if (P.vista === "frente") { for (let Y = 16; Y <= 34; Y++) { const t = (Y - 25) / 9; g.fino(Math.round(29 - 2 * t * t), Y, c[0]); } return; }
+    linF(g, 13, 17 + P.dy, 27, 36 + P.dy, (X, Y, i) => (i % 2 ? c[0] : escuro(c[0], 0.2)), 2);
+    linF(g, 16, 15 + P.dy, 29, 33 + P.dy, corda);
+  });
+  acessorio("arco_mao", "frente", (g, c, P) => {
+    const [hx, hy] = P.maoArma, v = P.vista, puxa = P.q === 4;
+    if (v === "lado") {
+      const x0 = puxa ? hx + 2 : hx;
+      for (let Y = -10; Y <= 10; Y++) { const t = Y / 10; g.fino(Math.round(x0 + 3 - 3 * t * t), hy - 2 + Y, Y % 4 ? c[0] : escuro(c[0], 0.25)); }
+      linF(g, x0 - (puxa ? 4 : 0), hy - 2, x0 + 0, hy - 12, c[1]); linF(g, x0 - (puxa ? 4 : 0), hy - 2, x0, hy + 8, c[1]);
+      if (puxa) linF(g, x0 - 5, hy - 2, x0 + 7, hy - 2, "#c8b48a");
+      return;
+    }
+    const sx = v === "frente" ? -1 : 1;
+    for (let Y = -10; Y <= 10; Y++) { const t = Y / 10; g.fino(Math.round(hx + sx * (3 - 3 * t * t)), hy - 3 + Y, Y % 4 ? c[0] : escuro(c[0], 0.25)); }
+    linF(g, hx, hy - 13, hx, hy + 7, c[1]);
+  });
+  // capas
+  function capa(g, c, P, larga) {
+    const v = P.vista, dy = P.dy, sw = P.q === 2 ? 1 : P.q === 3 ? -1 : 0;
+    const [a, b] = [c[0], c[1]];
+    if (v === "lado") {
+      for (let Y = 20 + dy; Y <= 42; Y++) { const k = Math.floor((Y - 20) / 5); for (let X = 13 - k + sw * (Y > 34 ? 1 : 0); X <= 17; X++) g.fino(X, Y, X === 17 ? escuro(a, 0.25) : (X + Y) % 6 === 0 ? b : a); }
+      return;
+    }
+    if (v === "frente") {
+      const x0 = larga ? 7 : 9, x1 = larga ? 32 : 30;
+      for (let Y = 21 + dy; Y <= 42; Y++) for (let X = x0; X <= x1; X++) g.fino(X, Y, X < 12 ? claro(a, 0.08) : X > 27 ? escuro(a, 0.25) : b);
+      return;
+    }
+    for (let Y = 19 + dy; Y <= 42; Y++) {
+      const k = Math.floor((Y - 19) / 6) + (larga ? 1 : 0), x0 = 12 - k + (Y > 36 ? sw : 0), x1 = 27 + k + (Y > 36 ? sw : 0);
+      for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 42 ? b : X < x0 + 2 ? claro(a, 0.12) : X > x1 - 2 ? escuro(a, 0.25) : (X - x0) % 5 === 2 && Y > 24 ? escuro(a, 0.12) : a);
+    }
+    retF(g, 13, 19 + dy, 14, 1, b);
+  }
+  acessorio("capa", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => capa(g, c, P, false));
+  acessorio("capa_larga", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => capa(g, c, P, true));
+  // cabeça
+  acessorio("turbante", "frente", (g, c, P) => {
+    const dy = P.dy, cx = P.vista === "lado" ? 20 : 20;
+    elipF(g, cx, 9 + dy, 7, 4.2, (nx, ny, X, Y) => ((Y + Math.round(nx * 3)) % 3 === 0 ? escuro(c[0], 0.18) : nx < -0.4 ? claro(c[0], 0.15) : nx > 0.5 ? escuro(c[0], 0.1) : c[0]));
+    if (c[1]) for (let X = cx - 7; X <= cx + 6; X++) g.fino(X, 11 + dy, c[1]);
+    if (c[2]) g.fino(cx - 3, 6 + dy, c[2]);
+    if (P.vista === "lado") retF(g, 13, 9 + dy, 2, 6, escuro(c[0], 0.15));
+  });
+  acessorio("elmo", "frente", (g, c, P) => {
+    const dy = P.dy, v = P.vista, cx = v === "lado" ? 20.5 : 20;
+    elipF(g, cx, 11 + dy, 6.6, 5.5, (nx, ny, X, Y) => (Y > 10 + dy ? null : nx + ny < -0.6 ? claro(c[1], 0.2) : nx > 0.4 ? escuro(c[0], 0.2) : c[0]));
+    retF(g, Math.round(cx) - 7, 10 + dy, 14, 1, c[1]);
+    if (v === "frente") retF(g, 19, 11 + dy, 2, 4, c[0]);
+    if (v === "lado") { retF(g, 15, 10 + dy, 3, 6, c[0]); g.fino(25, 11 + dy, c[0]); }
+    retF(g, Math.round(cx) - 1, 4 + dy, 2, 2, c[1]);
+  });
+  acessorio("faixa", "frente", (g, c, P) => {
+    const dy = P.dy;
+    if (P.vista === "lado") { retF(g, 15, 9 + dy, 11, 1, c[0]); retF(g, 13, 10 + dy, 2, 3, c[0]); return; }
+    retF(g, 14, 9 + dy, 12, 1, c[0]); if (P.vista === "costas") retF(g, 19, 10 + dy, 2, 4, c[0]);
+  });
+  acessorio("bandana", "frente", (g, c, P) => {
+    const dy = P.dy;
+    elipF(g, P.vista === "lado" ? 20.5 : 20, 10 + dy, 6.6, 4.2, (nx, ny, X, Y) => (Y > 10 + dy ? null : nx > 0.4 ? escuro(c[0], 0.2) : (X + Y) % 4 === 0 ? claro(c[0], 0.15) : c[0]));
+    if (P.vista === "lado") { retF(g, 13, 10 + dy, 2, 2, c[0]); retF(g, 12, 12 + dy, 2, 3, escuro(c[0], 0.2)); }
+    if (P.vista === "costas") { retF(g, 18, 11 + dy, 4, 2, c[0]); retF(g, 17, 13 + dy, 2, 3, escuro(c[0], 0.2)); retF(g, 21, 13 + dy, 2, 3, c[0]); }
+    if (P.vista === "frente" && c[1]) g.fino(16, 13 + dy, c[1]);
+  });
+  // nemes (toucado listrado do Egito): topo e abas sobre os ombros
+  acessorio("nemes", "frente", (g, c, P) => {
+    const dy = P.dy, v = P.vista, faixa = (Y) => ((Y >> 1) % 2 ? c[1] : c[0]);
+    elipF(g, v === "lado" ? 20 : 20, 10 + dy, 7, 4.6, (nx, ny, X, Y) => (Y > 10 + dy ? null : faixa(Y)));
+    retF(g, 13, 9 + dy, 14, 2, faixa(9));
+    if (v === "frente") { retF(g, 12, 11 + dy, 3, 11, (X, Y) => faixa(Y)); retF(g, 25, 11 + dy, 3, 11, (X, Y) => escuro(faixa(Y), 0.15)); retF(g, 14, 10 + dy, 12, 1, c[2] || c[1]); }
+    else if (v === "lado") retF(g, 14, 11 + dy, 5, 10, (X, Y) => faixa(Y));
+    else retF(g, 13, 10 + dy, 14, 11, (X, Y) => (X > 24 ? escuro(faixa(Y), 0.15) : faixa(Y)));
+  });
+  // colar largo (Egito) e peitoral do sumo sacerdote
+  acessorio("colar", "meio", (g, c, P) => {
+    const dy = P.dy;
+    if (P.vista === "costas") return;
+    if (P.vista === "lado") { retF(g, 19, 20 + dy, 6, 2, (X) => (X % 2 ? c[0] : c[1])); return; }
+    for (let Y = 20; Y <= 22; Y++) { const k = Y - 20; for (let X = 15 - k + 2; X <= 24 + k - 2; X++) g.fino(X, Y + dy, (X + Y) % 2 ? c[0] : c[1]); }
+  });
+  acessorio("peitoral", "meio", (g, c, P) => {
+    const dy = P.dy, pedras = ["#c2452d", "#4fa3a5", "#e8b94a", "#55642c", "#6d8fc4", "#b98ad0"];
+    if (P.vista === "costas") return;
+    const x0 = P.vista === "lado" ? 22 : 17, w = P.vista === "lado" ? 3 : 6;
+    retF(g, x0, 22 + dy, w, 7, c[0]);
+    for (let j = 0; j < 3; j++) for (let i = 0; i < (P.vista === "lado" ? 1 : 3); i++) { g.fino(x0 + 1 + i * 2 - (P.vista === "lado" ? 0 : 0), 23 + j * 2 + dy, pedras[(i + j * 3) % 6]); }
+  });
+  // carga e utensílios
+  acessorio("bolsa", "meio", (g, c, P) => {
+    const v = P.vista;
+    const x = v === "lado" ? 21 : v === "frente" ? 15 : 23;
+    if (v === "costas" && false) return;
+    retF(g, x, 32, 4, 4, (X, Y) => (Y === 32 ? c[1] || c[0] : X === x + 3 ? escuro(c[0], 0.2) : c[0])); g.fino(x + 1, 33, c[1] || claro(c[0], 0.2));
+  });
+  acessorio("odre", camadaPorVista("meio", "meio", "fundo"), (g, c, P) => {
+    const x = P.vista === "lado" ? 16 : P.vista === "frente" ? 25 : 12;
+    elipF(g, x + 2, 35, 2.6, 3.4, (nx, ny) => (nx + ny < -0.4 ? c[1] || claro(c[0], 0.2) : nx + ny > 0.5 ? escuro(c[0], 0.2) : c[0]));
+    retF(g, x + 1, 30, 2, 2, c[1] || c[0]);
+  });
+  acessorio("saco", camadaPorVista("fundo", "meio", "meio"), (g, c, P) => {
+    const [x, y] = P.maoEscudo, cx = P.vista === "lado" ? 15 : x + (P.vista === "frente" ? 2 : -2);
+    elipF(g, cx, y + 3, 3.2, 3.6, (nx, ny) => (nx + ny < -0.4 ? c[1] || claro(c[0], 0.2) : nx + ny > 0.5 ? escuro(c[0], 0.2) : c[0]));
+    retF(g, cx - 1, y - 1, 2, 2, escuro(c[0], 0.2));
+  });
+  acessorio("jarro", camadaPorVista("frente", "frente", "meio"), (g, c, P) => {
+    const [x, y] = P.maoEscudo, cx = P.vista === "lado" ? 27 : x + (P.vista === "frente" ? 2 : -2);
+    elipF(g, cx, y + 1, 3.6, 4, (nx, ny) => tom([c[1], c[0], c[2] || claro(c[0], 0.2)], -(0.6 * nx + 0.8 * ny)));
+    retF(g, cx - 1.5, y - 4, 3, 2, c[1]); retF(g, cx - 2.5, y - 5, 5, 1, c[0]);
+    g.fino(Math.round(cx) - 2, y, c[2] || claro(c[0], 0.3));
+  });
+  acessorio("fardo", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => {
+    const dy = P.dy;
+    if (P.vista === "lado") { retF(g, 11, 19 + dy, 6, 12, (X, Y) => (Y % 4 === 0 ? c[1] || escuro(c[0], 0.2) : X === 11 ? claro(c[0], 0.15) : c[0])); return; }
+    if (P.vista === "frente") { retF(g, 12, 15 + dy, 16, 6, (X, Y) => (Y === 15 + dy ? claro(c[0], 0.15) : c[0])); return; }
+    retF(g, 12, 17 + dy, 16, 13, (X, Y) => (Y % 4 === 0 ? c[1] || escuro(c[0], 0.2) : X < 14 ? claro(c[0], 0.15) : X > 25 ? escuro(c[0], 0.2) : c[0]));
+    linF(g, 15, 17 + dy, 15, 29 + dy, "#5a3a24"); linF(g, 24, 17 + dy, 24, 29 + dy, "#5a3a24");
+  });
+  acessorio("corda", "meio", (g, c, P) => {
+    const dy = P.dy, x = P.vista === "frente" ? 25 : P.vista === "costas" ? 15 : 18;
+    elipF(g, x, 25 + dy, 3.6, 3.6, (nx, ny) => { const r = nx * nx + ny * ny; return r < 0.25 ? null : (Math.round(r * 6) % 2 ? c[0] : c[1]); });
+  });
+  acessorio("rede", camadaPorVista("fundo", "meio", "meio"), (g, c, P) => {
+    const dy = P.dy, x0 = P.vista === "frente" ? 24 : P.vista === "costas" ? 10 : 12;
+    for (let j = 0; j < 12; j++) for (let i = 0; i < 7; i++) if ((i + j) % 3 === 0 || (i - j + 30) % 3 === 0) g.fino(x0 + i, 21 + j + dy, (i + j) % 2 ? c[0] : escuro(c[0], 0.2));
+  });
+  acessorio("shofar", "meio", (g, c, P) => {
+    if (P.vista === "costas") return;
+    const x = P.vista === "frente" ? 22 : 16;
+    linF(g, x, 32, x + 4, 34, c[0], 2); g.fino(x - 1, 31, c[1]); g.fino(x, 31, c[1]); g.fino(x + 5, 34, c[2]);
+  });
+  acessorio("pele_leopardo", "meio", (g, c, P) => {
+    if (P.vista === "costas") { retF(g, 22, 20 + P.dy, 5, 9, (X, Y) => ((X * 3 + Y * 5) % 7 === 0 ? "#3a2414" : "#d8a040")); return; }
+    const x0 = P.vista === "frente" ? 13 : 16;
+    retF(g, x0, 20 + P.dy, 6, 10, (X, Y) => ((X * 3 + Y * 5) % 7 === 0 ? "#3a2414" : X === x0 ? "#f0c868" : "#d8a040"));
+  });
+  acessorio("estola", "meio", (g, c, P) => {
+    // manto sobre um ombro, caindo pelo lado direito do corpo
+    const dy = P.dy, [M, m, n] = c;
+    if (P.vista === "frente") {
+      for (let Y = 20; Y <= 40; Y++) {
+        const x0 = Y < 30 ? Math.round(16 + (Y - 20) * 0.7) : 23, x1 = Y < 22 ? x0 + 4 : 27;
+        for (let X = x0; X <= x1; X++) g.fino(X, Y + (Y < 32 ? dy : 0), X === x0 ? M : X === x1 ? n : m);
+      }
+    } else if (P.vista === "costas") {
+      for (let Y = 20; Y <= 40; Y++) { const x0 = 13, x1 = Y < 30 ? Math.round(22 - (Y - 20) * 0.4) : 18; for (let X = x0; X <= x1; X++) g.fino(X, Y + (Y < 32 ? dy : 0), X === x0 ? M : X === x1 ? n : m); }
+    } else for (let Y = 20; Y <= 40; Y++) for (let X = 16; X <= 21; X++) g.fino(X, Y + (Y < 32 ? dy : 0), X === 16 ? M : X === 21 ? n : m);
+  });
+  // efeitos de mão
+  acessorio("brilho", "frente", (g, c, P) => {
+    if (P.q !== 1 && P.q !== 4) return;
+    const [hx, hy] = P.maoArma, y = hy - (c[1] || 0);
+    g.fino(hx, y - 4, c[0]); g.fino(hx - 2, y - 2, c[0]); g.fino(hx + 2, y - 3, c[0]); g.fino(hx, y - 6, claro(c[0], 0.5));
+  });
+  acessorio("funda", "frente", (g, c, P) => {
+    const [hx, hy] = P.maoArma;
+    const pos = [[30, 4], [24, 2], [14, 4], [22, 6], [33, 6]][P.q];
+    const px = P.vista === "costas" ? 40 - pos[0] : pos[0];
+    linF(g, hx, hy - 1, px, pos[1] + 2, c[0]); elipF(g, px, pos[1], 1.5, 1.5, c[1] || "#8a8478");
+  });
 
-  // Acessórios (coordenadas na célula 16×22). "mao" = segue a mão no quadro 4.
-  const ACESSORIOS = {
-    cajado_curvo: { mao: true, f: (g, c, ox, oy) => { g.lin(13 + ox, 2 + oy, 13 + ox, 20 + oy, c[0]); g.p(12 + ox, 1 + oy, c[0]); g.p(11 + ox, 1 + oy, c[0]); g.p(11 + ox, 2 + oy, c[0]); g.p(13 + ox, 2 + oy, c[1] || c[0]); } },
-    cajado_alto: { mao: true, f: (g, c, ox, oy) => { g.lin(13 + ox, 0 + oy, 13 + ox, 20 + oy, c[0]); g.p(13 + ox, 0 + oy, c[1] || c[0]); } },
-    cajado_curto: { mao: true, f: (g, c, ox, oy) => { g.lin(13 + ox, 6 + oy, 13 + ox, 20 + oy, c[0]); g.p(13 + ox, 5 + oy, "#e9d36a"); } },
-    lanca: { mao: true, f: (g, c, ox, oy) => { g.lin(13 + ox, 3 + oy, 13 + ox, 19 + oy, c[0]); g.lin(13 + ox, 0 + oy, 13 + ox, 2 + oy, c[1]); g.p(12 + ox, 2 + oy, c[1]); g.p(14 + ox, 2 + oy, c[1]); } },
-    lanca_longa: { mao: true, f: (g, c, ox, oy) => { g.lin(13 + ox, 2 + oy, 13 + ox, 19 + oy, c[0]); g.lin(13 + ox, 0 + oy, 13 + ox, 1 + oy, c[1]); g.p(12 + ox, 1 + oy, c[1]); g.p(14 + ox, 1 + oy, c[1]); } },
-    espada: { mao: true, f: (g, c, ox, oy) => { g.ret(12 + ox, 12 + oy, 3, 1, c[2] || "#b07a38"); g.lin(13 + ox, 13 + oy, 13 + ox, 17 + oy, c[0]); g.p(13 + ox, 11 + oy, c[3] || "#5a3624"); g.p(13 + ox, 13 + oy, c[1]); } },
-    espada_curva: { mao: true, f: (g, c, ox, oy) => { g.ret(12 + ox, 12 + oy, 3, 1, c[2]); g.lin(13 + ox, 13 + oy, 13 + ox, 16 + oy, c[0]); g.p(14 + ox, 17 + oy, c[0]); g.p(13 + ox, 13 + oy, c[1]); g.p(13 + ox, 11 + oy, "#2a1a14"); } },
-    porrete: { mao: true, f: (g, c, ox, oy) => { g.ret(13 + ox, 11 + oy, 2, 3, c[0]); g.lin(13 + ox, 14 + oy, 13 + ox, 16 + oy, c[1] || c[0]); g.p(13 + ox, 11 + oy, c[1] || c[0]); } },
-    escudo_redondo: { f: (g, c) => { g.elip(3, 13, 3, 3, (nx, ny) => (nx * nx + ny * ny > 0.5 ? c[1] : tom([c[0], c[2] || c[0]], -(nx + ny)))); g.p(3, 13, c[1]); } },
-    escudo_alto: { f: (g, c) => { g.ret(0, 9, 5, 8, (x, y) => ((x + y) % 3 === 0 ? c[1] : c[0])); g.ret(1, 8, 3, 1, c[0]); g.lin(4, 9, 4, 16, c[2] || c[0]); } },
-    escudo_oval: { f: (g, c) => { g.elip(2.5, 13, 2.6, 4, (nx, ny, x, y) => ((y % 2) ? c[0] : c[1])); } },
-    arco_costas: { fundo: true, f: (g, c) => { g.lin(11, 5, 12, 6, c[0]); g.lin(12, 7, 12, 12, c[0]); g.lin(12, 13, 11, 14, c[0]); g.lin(10, 5, 10, 14, c[1]); } },
-    capa: { fundo: true, f: (g, c, ox, oy, q) => { const o = q === 2 || q === 4 ? 1 : 0; g.ret(2, 8, 3, 9 - o, c[0]); g.p(1, 12 + o, c[0]); g.p(1, 13 + o, c[1]); g.p(1, 14, c[1]); g.lin(2, 16 - o, 4, 16 - o, c[1]); } },
-    capa_larga: { fundo: true, f: (g, c, ox, oy, q) => { const o = q % 2; g.ret(2, 8, 14, 12 + o, c[0]); g.lin(2, 19 + o, 15, 19 + o, c[1]); } },
-    rede: { f: (g, c) => { for (let y = 0; y < 5; y++) for (let x = 0; x < 6; x++) if ((x + y) % 2 === 0) g.p(1 + x, 8 + y, c[0]); g.p(2, 7, c[0]); } },
-    jarro: { f: (g, c) => { g.ret(0, 11, 4, 4, c[0]); g.ret(1, 10, 2, 1, c[1]); g.p(0, 11, c[2] || c[0]); g.p(1, 12, c[2] || c[0]); g.lin(0, 15, 3, 15, c[1]); } },
-    bolsa: { f: (g, c) => { g.ret(3, 13, 3, 3, c[0]); g.p(3, 13, c[1] || c[0]); } },
-    odre: { f: (g, c) => { g.ret(11, 13, 3, 4, c[0]); g.p(11, 13, c[1] || c[0]); g.p(12, 12, c[1] || c[0]); } },
-    fardo: { fundo: true, f: (g, c) => { g.ret(9, 6, 6, 3, c[0]); g.lin(9, 6, 14, 6, c[1] || c[0]); } },
-    corda: { f: (g, c) => { g.ret(2, 8, 4, 4, c[0]); g.p(3, 9, c[1]); g.p(4, 10, c[1]); g.p(3, 10, c[0]); } },
-    // shofar (chifre de carneiro) na cintura: c = [marfim, ponta, bocal]; a boca larga sobe à esquerda.
-    shofar: { f: (g, c) => { g.p(2, 11, c[1]); g.p(2, 12, c[0]); g.p(3, 12, c[0]); g.ret(3, 13, 3, 1, c[0]); g.p(6, 13, c[2]); g.p(4, 12, c[1]); } },
-    saco: { f: (g, c) => { g.ret(1, 12, 3, 3, c[0]); g.p(2, 11, c[1] || c[0]); } },
-    turbante: { f: (g, c) => { g.ret(3, 3, 10, 2, c[0]); g.ret(4, 2, 8, 1, c[0]); if (c[1]) { g.lin(3, 4, 12, 4, c[1]); } g.p(4, 2, c[2] || c[0]); } },
-    elmo: { f: (g, c) => { g.ret(5, 2, 6, 1, c[1]); g.ret(4, 3, 8, 2, c[0]); g.lin(5, 3, 10, 3, c[1]); g.p(5, 5, c[0]); g.p(10, 5, c[0]); g.p(8, 1, c[1]); } },
-    peitoral: { f: (g, c) => { g.ret(6, 9, 4, 3, c[0]); g.p(6, 10, "#c2452d"); g.p(8, 10, "#4fa3a5"); g.p(7, 11, "#e8b94a"); g.p(9, 9, c[1] || c[0]); } },
-  };
-
-  // Monta um personagem: molde + paleta + ajustes + acessórios.
-  function humano(chave, cfg) {
-    let base = cfg.barba === false ? semBarba(MOLDES[cfg.molde]) : MOLDES[cfg.molde].slice();
-    let quadros = quadrosDoMolde(base, { duasMaos: !!cfg.duasMaos });
-    if (cfg.ajustar) quadros = quadros.map((q, i) => cfg.ajustar(q.slice(), i));
-    if (cfg.curvar) quadros = quadros.map(curvar);
-    if (cfg.alargar) quadros = quadros.map((q) => alargar(q));
-    const W = cfg.alargar ? 18 : 16, H = cfg.alargar ? 24 : 22;
-    const cores = Object.assign({ o: "#2a1a14", F: "#5a3a24" }, cfg.cores);
-    return registrar(chave, {
-      w: W, h: H, quadros: 5, contorno: cfg.hostil ? "hostil" : "amigo", origem: [0.5, 1],
-      humano: true,
-      desenhar(g, q) {
-        const acs = (cfg.acessorios || []).map((a) => [ACESSORIOS[a[0]], a[1]]);
-        const desloc = (a) => (a.mao && q === 4 ? [1, -1] : [0, 0]);
-        for (const [a, c] of acs) if (a.fundo) a.f(g, c, ...desloc(a), q);
-        g.carimbar(1, 3, quadros[q], cores);
-        for (const [a, c] of acs) if (!a.fundo) a.f(g, c, ...desloc(a), q);
-        if (cfg.extra) cfg.extra(g, q);
+  // Armaduras do jogador (por cima da veste): couro (colete com ombreiras e rebites) e escamas.
+  const ARMADURAS = {
+    tunica_pano: { veste: { R: "#c9d4e0", r: "#a8b8c8", d: "#7f90a4" }, gola: "#3b5a9a" },
+    armadura_couro: {
+      f: (g, P) => {
+        const dy = P.dy, v = P.vista, L = ["#a8703a", "#7a4a30", "#4f3220"];
+        const x0 = v === "lado" ? 15 : 13, x1 = v === "lado" ? 25 : 26;
+        for (let Y = 21 + dy; Y <= 33; Y++) for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 33 ? L[2] : X <= x0 + 1 ? L[0] : X >= x1 - 1 ? L[2] : (Y - dy) % 4 === 0 ? escuro(L[1], 0.15) : L[1]);
+        if (v !== "lado") { retF(g, 10, 20 + dy, 4, 3, L[0]); retF(g, 26, 20 + dy, 4, 3, L[2]); }
+        else retF(g, 19, 20 + dy, 5, 3, L[0]);
+        if (v === "frente") { for (const [x, y] of [[15, 23], [24, 23], [15, 29], [24, 29]]) g.fino(x, y + dy, "#e8b94a"); retF(g, 19, 21 + dy, 2, 2, "#f0d0a0"); }
       },
+    },
+    couraca_escamas: {
+      f: (g, P) => {
+        const dy = P.dy, v = P.vista, E = ["#d29e52", "#b07a38", "#7a4a24"];
+        const x0 = v === "lado" ? 15 : 13, x1 = v === "lado" ? 25 : 26;
+        for (let Y = 21 + dy; Y <= 31; Y++) for (let X = x0; X <= x1; X++) { const fila = (Y - dy) >> 1, off = fila % 2; g.fino(X, Y, (X + off) % 3 === 0 && (Y - dy) % 2 ? E[2] : (Y - dy) % 2 ? E[1] : E[0]); }
+        for (let X = x0 - 1; X <= x1 + 1; X += 2) retF(g, X, 32, 1, 4, X % 4 === 1 ? E[1] : E[2]);
+        if (v !== "lado") { elipF(g, 11.5, 22 + dy, 2.5, 2, E[0]); elipF(g, 28.5, 22 + dy, 2.5, 2, E[2]); }
+      },
+    },
+  };
+
+  // Desenha um humano numa vista e quadro.
+  function desenharHumano(g, cfg, quadro) {
+    const vista = VISTAS[Math.floor(quadro / QUADROS_POR_VISTA)] || "lado";
+    const q = quadro % QUADROS_POR_VISTA;
+    const P = pose(vista, q);
+    const c = coresHumano(cfg);
+    const acs = (cfg.acessorios || []).map(([nome, cores]) => [ACESSORIOS[nome], cores, nome]).filter((a) => a[0]);
+    const camada = (a) => (typeof a.camada === "function" ? a.camada(vista) : a.camada);
+    for (const [a, cores] of acs) if (camada(a) === "fundo") a.f(g, cores, P, cfg);
+    corpo(g, cfg, c, P);
+    const arm = cfg.armadura && ARMADURAS[cfg.armadura];
+    if (arm && arm.f) arm.f(g, P);
+    if (cfg.extraCorpo) cfg.extraCorpo(g, P, c);
+    for (const [a, cores] of acs) if (camada(a) === "meio") a.f(g, cores, P, cfg);
+    cabeca(g, cfg, c, P);
+    bracos(g, cfg, c, P, false);
+    for (const [a, cores] of acs) if (camada(a) === "frente") a.f(g, cores, P, cfg);
+    // a mão da arma por cima do cabo
+    if (acs.some(([a]) => camada(a) === "frente")) bracos(g, cfg, c, P, true);
+    if (cfg.extra) cfg.extra(g, P, c);
+  }
+
+  // Registra um humano: cfg = { molde, cores, barba, cabelo, porte, gola, capuz, armadura, acessorios,
+  // hostil, duasMaosOcupadas, extra(g, P, c) }.
+  function humano(chave, cfg) {
+    if (cfg.armadura && ARMADURAS[cfg.armadura]?.veste) {
+      cfg = Object.assign({}, cfg, { cores: Object.assign({}, cfg.cores, ARMADURAS[cfg.armadura].veste), gola: cfg.gola || ARMADURAS[cfg.armadura].gola });
+    }
+    return registrar(chave, {
+      w: 20, h: 24, quadros: QUADROS_POR_VISTA * VISTAS.length, direcoes: VISTAS.length, contorno: cfg.hostil ? "hostil" : "amigo", origem: [0.5, 1],
+      humano: true, retratoQuadro: QUADROS_POR_VISTA + 4, busto: [4, 2, 12, 10],
+      desenhar(g, quadro) { desenharHumano(g, cfg, quadro); },
     });
   }
 
-  // Jogador: o equipamento escolhe acessórios (arma visível, P2).
+  // Jogador: o equipamento escolhe acessórios (arma, arco/funda, escudo) e a armadura (P2).
   const LAMINAS = {
-    espada_madeira: ["#b48452", "#d9a35c", "#4f3220"],
-    espada_ferro: ["#a8b4bc", "#e4ecf0", "#b07a38"],
-    espada_temperada: ["#8fb0cc", "#e8f0f8", "#e8b94a"],
+    espada_madeira: ["#8a6038", "#d9a35c", "#4f3220", "#4f3220"],
+    espada_ferro: ["#6e7a84", "#e4ecf0", "#b07a38", "#5a3624"],
+    espada_temperada: ["#5a7896", "#e8f0f8", "#e8b94a", "#5a3624"],
   };
   const CORES_ESCUDO = {
-    escudo_madeira: ["#7d522b", "#4f3220", "#b07a3e"],
+    escudo_madeira: ["#8a5a32", "#4f3220", "#b07a3e"],
     escudo_bronze: ["#b07a38", "#7a4a24", "#f2d27a"],
     escudo_ferro: ["#8a949c", "#4a5258", "#d4dce2"],
   };
-  function chaveJogador(eq = {}) {
-    return "pj_jogador" + (eq.arma ? "|" + eq.arma : "") + (eq.arco ? "|arco" : "") + (eq.escudo ? "|" + eq.escudo : "");
+  const ARCOS = { arco_madeira: ["#9a6a3c", "#eadcb6"], arco_composto: ["#6e3a24", "#f0e4c4"] };
+  const base = (id) => String(id || "").split("@")[0];
+  function chaveJogador(eq = {}, visual = {}) {
+    const partes = [base(eq.arma), eq.arco ? base(eq.arco) : "", base(eq.escudo), base(eq.armadura), visual.traje || "", visual.montaria || ""];
+    return "pj_jogador" + (partes.some(Boolean) ? "|" + partes.join("|") : "");
   }
-  function garantirJogador(eq = {}) {
-    const chave = chaveJogador(eq);
+  // visual: cosméticos (JGB-27) — traje (outfit) e montaria; só mudam a aparência.
+  function garantirJogador(eq = {}, visual = {}) {
+    const chave = chaveJogador(eq, visual);
     if (PIXEL_PATTERNS[chave]) return chave;
-    const acessorios = [["bolsa", ["#7a4a30", "#a8703a"]]];
-    if (eq.arco) acessorios.push(["arco_costas", ["#9a6a3c", "#eadcb6"]]);
-    if (eq.arma && LAMINAS[eq.arma]) acessorios.push(["espada", LAMINAS[eq.arma]]);
-    if (eq.escudo && CORES_ESCUDO[eq.escudo]) acessorios.push(["escudo_redondo", CORES_ESCUDO[eq.escudo]]);
-    humano(chave, {
-      molde: "curta", barba: false,
-      cores: { H: "#4a2f20", S: "#e0a878", s: "#c68a5c", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", A: "#3b5a9a", F: "#5a3a24" },
+    const traje = (visual.traje && typeof TRAJES !== "undefined" && TRAJES[visual.traje]?.visual) || null;
+    const acessorios = [["bolsa", ["#7a4a30", "#a8703a"]]].concat(traje?.acessorios || []);
+    const arco = base(eq.arco);
+    if (arco === "funda") acessorios.push(["shofar", ["#8a6a42", "#5a3a24", "#a8916a"]]);
+    else if (arco) acessorios.push(["arco_costas", ARCOS[arco] || ARCOS.arco_madeira]);
+    if (eq.arma) acessorios.push(["espada", LAMINAS[base(eq.arma)] || LAMINAS.espada_ferro]);
+    if (eq.escudo) acessorios.push(["escudo_redondo", CORES_ESCUDO[base(eq.escudo)] || CORES_ESCUDO.escudo_madeira]);
+    const cfg = {
+      molde: traje?.molde || "curta", barba: false,
+      cores: Object.assign({ H: "#4a2f20", S: "#e0a878", s: "#c68a5c", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", A: "#3b5a9a", F: "#5a3a24" }, traje?.cores),
+      armadura: traje ? null : base(eq.armadura) || null,
+      gola: traje?.gola, cabelo: traje?.cabelo,
       acessorios,
-    });
+    };
+    if (visual.montaria) registrarMontado(chave, cfg, visual.montaria);
+    else humano(chave, cfg);
     return chave;
   }
   garantirJogador({});
 
+  // -------------------------------------------------------------------
+  // Montarias (JGB-27): jumento, camelo, cavalo e carro, só visuais. Célula 48 × 56 px de arte
+  // (24 × 28 unidades), chão na linha 53; 3 vistas × 5 quadros como os humanos. O cavaleiro é o boneco
+  // do jogador com cfg.montado, desenhado entre as partes de trás e da frente da montaria.
+  // -------------------------------------------------------------------
+  const MONTARIAS_ARTE = {
+    jumento: { pelo: ["#5e554a", "#857a6c", "#a89e8e"], ventre: "#d8d0c0", focinho: "#ded6c6", crina: "#3e3830", corpo: [22, 39, 10, 5.2], perna: 46, pescoco: [[30, 36], [36, 31]], cabeca: [38.5, 30, 3.6, 2.8], orelhas: "longas", cauda: "tufo", sela: ["#8e2a1f", "#c2452d"] },
+    cavalo: { pelo: ["#5a3418", "#7e4a24", "#a86a38"], ventre: "#a86a38", focinho: "#4a2a14", crina: "#241610", corpo: [21, 36, 11.5, 6], perna: 43, pescoco: [[30, 33], [35, 26]], cabeca: [38.5, 25.5, 4.2, 2.6], orelhas: "curtas", cauda: "longa", sela: ["#3b5a9a", "#6d8fc4"] },
+    camelo: { pelo: ["#9a7444", "#c49a62", "#dcb882"], ventre: "#e8d0a0", focinho: "#b08a58", crina: "#8a6a3e", corpo: [20, 34, 10.5, 5.5], perna: 41, pescoco: [[30, 33], [35, 26], [38, 20]], cabeca: [40.5, 19.5, 3.4, 2.2], orelhas: "curtas", cauda: "tufo", corcova: true, sela: ["#8e2a1f", "#e8b94a"] },
+  };
+  const CHAO_MT = 53;
+  function animalLado(g, a, q) {
+    const [A, B, C] = a.pelo, [cx, cy, rx, ry] = a.corpo;
+    const passo = q === 2 ? 1 : q === 3 ? -1 : 0, resp = q === 1 ? 1 : 0;
+    const tomP = (nx, ny) => (ny > 0.55 ? a.ventre : tom([A, B, C], -(0.4 * nx + 0.9 * ny)));
+    const perna = (x, d, longe) => {
+      const cor = longe ? [escuro(A, 0.15), A] : [B, A];
+      elipF(g, x, cy + ry * 0.4, 2.4, ry * 0.75, (nx) => (nx < -0.2 ? cor[0] : cor[1]));
+      linF(g, x - 1, cy + ry, x - 1 + d * 2, CHAO_MT - 1, cor[0], 2);
+      linF(g, x + 1, cy + ry, x + 1 + d * 2, CHAO_MT - 1, escuro(cor[0], 0.2));
+      retF(g, x - 2 + d * 2, CHAO_MT - 1, 4, 2, escuro(A, 0.45));
+    };
+    perna(cx - rx + 4, -passo, true); perna(cx + rx - 4, passo, true);
+    // cauda
+    if (a.cauda === "longa") for (let k = 0; k < 14; k++) retF(g, cx - rx - 1 - Math.round(k * 0.35) + (k > 9 ? passo : 0), cy - 3 + k, 3 - (k > 10 ? 1 : 0), 1, k % 3 ? a.crina : escuro(a.crina, 0.2));
+    else { linF(g, cx - rx, cy - 2, cx - rx - 2, cy + 6, B); elipF(g, cx - rx - 2, cy + 8, 1.6, 2.2, a.crina); }
+    // corpo
+    elipF(g, cx, cy + resp * 0.5, rx, ry, tomP);
+    elipF(g, cx - rx * 0.55, cy - 0.5, rx * 0.45, ry * 1.02, tomP);
+    elipF(g, cx + rx * 0.55, cy, rx * 0.45, ry * 1.08, tomP);
+    if (a.corcova) elipF(g, cx - 1, cy - ry - 1, 5.5, 4.2, (nx, ny) => tom([A, B, C], -(0.5 * nx + 0.9 * ny)));
+    perna(cx - rx + 3, passo, false); perna(cx + rx - 5, -passo, false);
+    // pescoço, crina e cabeça
+    const pts = a.pescoco;
+    for (let i = 0; i < pts.length - 1; i++) for (let t = 0; t <= 1; t += 0.2) {
+      const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t;
+      elipF(g, x, y, 2.6, 2.8, tomP);
+      if (a !== MONTARIAS_ARTE.camelo) { g.fino(Math.round(x - 2), Math.round(y - 2), a.crina); g.fino(Math.round(x - 1), Math.round(y - 3), a.crina); }
+    }
+    const [hx, hy, hrx, hry] = a.cabeca;
+    elipF(g, hx, hy, hrx, hry, (nx, ny) => (nx > 0.45 ? a.focinho : tom([A, B, C], -(0.5 * nx + 0.8 * ny))));
+    retF(g, Math.round(hx - 1), Math.round(hy - 1), 2, 1, "#1c1210"); g.fino(Math.round(hx - 1), Math.round(hy - 1), "#fff6e0");
+    g.fino(Math.round(hx + hrx - 1), Math.round(hy), escuro(a.focinho, 0.45));
+    if (a.orelhas === "longas") { linF(g, hx - 2, hy - 2, hx - 4, hy - 8, B, 2); linF(g, hx - 1, hy - 2, hx - 1, hy - 8, C, 2); g.fino(Math.round(hx - 1), Math.round(hy - 6), "#c88a7a"); }
+    else { linF(g, hx - 2, hy - 2, hx - 3, hy - 5, B, 2); }
+    // sela
+    const sx = cx + 1, sy = cy - ry - (a.corcova ? 3 : 0);
+    retF(g, sx - 6, sy - 1, 12, 5, (X, Y) => (Y === sy - 1 ? claro(a.sela[0], 0.15) : (X + Y) % 4 === 0 ? a.sela[1] : a.sela[0]));
+    retF(g, sx - 6, sy + 4, 12, 1, a.sela[1]);
+    return [sx, sy + 1];
+  }
+  function animalFrente(g, a, q, parte) {
+    const [A, B, C] = a.pelo, passo = q === 2 ? 1 : q === 3 ? -1 : 0;
+    const tomP = (nx, ny) => (ny > 0.6 ? a.ventre : tom([A, B, C], -(0.5 * nx + 0.8 * ny)));
+    if (parte === "fundo") {
+      // lombo atrás do cavaleiro (corcova do camelo) e as pernas
+      for (const [x, d] of [[18, passo], [30, -passo]]) { retF(g, x - 1, 42 - d, 4, CHAO_MT - 42 + d, (X) => (X === x - 1 ? B : A)); retF(g, x - 1, CHAO_MT - 1, 4, 2, escuro(A, 0.45)); }
+      elipF(g, 24, 38, 9, 6, tomP);
+      if (a.corcova) elipF(g, 24, 31, 6, 4.5, tomP);
+      retF(g, 15, 32, 18, 4, (X, Y) => ((X + Y) % 4 === 0 ? a.sela[1] : a.sela[0]));
+      return [24, 33];
+    }
+    // cabeça e pescoço à frente do cavaleiro
+    const hy = a === MONTARIAS_ARTE.camelo ? 38 : 39;
+    elipF(g, 24, hy - 2, 3.4, 5, tomP);
+    elipF(g, 24, hy + 3, 3.2, 3.6, (nx, ny) => (ny > 0.2 ? a.focinho : tom([A, B, C], -(0.5 * nx + 0.8 * ny))));
+    g.fino(22, hy, "#1c1210"); g.fino(26, hy, "#1c1210"); g.fino(22, hy - 1, "#fff6e0"); g.fino(23, hy + 5, escuro(a.focinho, 0.5)); g.fino(25, hy + 5, escuro(a.focinho, 0.5));
+    if (a.orelhas === "longas") { linF(g, 21, hy - 5, 18, hy - 11, B, 2); linF(g, 27, hy - 5, 30, hy - 11, A, 2); }
+    else { linF(g, 21, hy - 6, 20, hy - 9, B, 2); linF(g, 27, hy - 6, 28, hy - 9, A, 2); }
+    if (a.crina && a !== MONTARIAS_ARTE.camelo) retF(g, 23, hy - 8, 2, 3, a.crina);
+  }
+  function animalCostas(g, a, q, parte) {
+    const [A, B, C] = a.pelo, passo = q === 2 ? -1 : q === 3 ? 1 : 0;
+    const tomP = (nx, ny) => tom([A, B, C], -(0.5 * nx + 0.8 * ny));
+    if (parte === "fundo") {
+      if (a.orelhas === "longas") { linF(g, 21, 26, 18, 20, B, 2); linF(g, 27, 26, 30, 20, A, 2); }
+      elipF(g, 24, 29, 3, 3, tomP);
+      return [24, 33];
+    }
+    for (const [x, d] of [[18, passo], [30, -passo]]) { retF(g, x - 1, 44 - d, 4, CHAO_MT - 44 + d, (X) => (X === x - 1 ? B : A)); retF(g, x - 1, CHAO_MT - 1, 4, 2, escuro(A, 0.45)); }
+    elipF(g, 24, 41, 9.5, 6.5, tomP);
+    linF(g, 24, 37, 24, 47, escuro(A, 0.25));
+    if (a.cauda === "longa") retF(g, 23, 40, 3, 11, (X, Y) => (Y % 3 ? a.crina : escuro(a.crina, 0.2)));
+    else { retF(g, 23, 40, 2, 6, B); elipF(g, 24, 47, 1.6, 2, a.crina); }
+  }
+  // Carro: cavalo à frente, caixa de vime e roda de raios atrás; o cavaleiro vai de pé dentro.
+  function carroVista(g, vista, q, parte) {
+    const cav = MONTARIAS_ARTE.cavalo, [A, B] = cav.pelo;
+    const roda = (cx, cy, r) => {
+      elipF(g, cx, cy, r, r, (nx, ny) => { const d = Math.sqrt(nx * nx + ny * ny); return d > 0.78 ? (d > 0.92 ? "#3e2a1a" : "#7a5530") : d < 0.25 ? "#b07a38" : null; });
+      for (let k = 0; k < 6; k++) { const ang = (k / 6) * Math.PI + q * 0.5; linF(g, cx - Math.cos(ang) * (r - 1), cy - Math.sin(ang) * (r - 1), cx + Math.cos(ang) * (r - 1), cy + Math.sin(ang) * (r - 1), "#6b4a2e"); }
+    };
+    if (vista === "lado") {
+      if (parte === "fundo") {
+        // cavalo menor à frente (direita), puxando pelo varal
+        const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
+        const tomP = (nx, ny) => tom([A, B, cav.pelo[2]], -(0.4 * nx + 0.9 * ny));
+        for (const [x, d] of [[31, -passo], [41, passo]]) { linF(g, x, 42, x + d * 2, CHAO_MT - 1, A, 2); retF(g, x - 1 + d * 2, CHAO_MT - 1, 3, 2, "#2a1a14"); }
+        elipF(g, 36, 40, 7.5, 4.4, tomP);
+        for (let t = 0; t <= 1; t += 0.2) elipF(g, 41 + 3 * t, 37 - 7 * t, 2.2, 2.4, tomP);
+        elipF(g, 45.5, 29.5, 2.6, 1.8, (nx) => (nx > 0.4 ? cav.focinho : B)); g.fino(45, 29, "#1c1210");
+        linF(g, 43, 28, 42, 25, B, 2); retF(g, 41, 30, 2, 6, cav.crina);
+        for (const [x, d] of [[33, passo], [39, -passo]]) { linF(g, x, 42, x + d * 2, CHAO_MT - 1, B, 2); retF(g, x - 1 + d * 2, CHAO_MT - 1, 3, 2, "#2a1a14"); }
+        linF(g, 18, 40, 31, 38, "#6b4a2e", 2);
+        return [14, 33];
+      }
+      retF(g, 4, 34, 20, 10, (X, Y) => (Y === 34 ? "#d29e52" : (X + Y) % 3 === 0 ? "#7a5530" : X < 7 ? "#b07a38" : "#8a5a32"));
+      retF(g, 4, 34, 20, 1, "#e8b94a");
+      roda(13, 46, 7);
+      return;
+    }
+    if (parte === "fundo") {
+      roda(7, 45, 5.5); roda(41, 45, 5.5);
+      if (vista === "frente") return [24, 33];
+      return [24, 33];
+    }
+    retF(g, 10, 38, 28, 8, (X, Y) => (Y === 38 ? "#d29e52" : (X + Y) % 3 === 0 ? "#7a5530" : "#8a5a32"));
+    if (vista === "frente") animalFrente(g, cav, q, "frente");
+  }
+  function desenharMontaria(g, tipo, vista, q, parte) {
+    if (tipo === "carro") return carroVista(g, vista, q, parte);
+    const a = MONTARIAS_ARTE[tipo] || MONTARIAS_ARTE.jumento;
+    if (vista === "lado") return parte === "fundo" ? animalLado(g, a, q) : null;
+    if (vista === "frente") return animalFrente(g, a, q, parte);
+    return animalCostas(g, a, q, parte);
+  }
+  // Montaria sozinha (para a loja): de lado, parada.
+  for (const tipo of ["jumento", "cavalo", "camelo", "carro"])
+    registrar("mt_" + tipo, { w: 24, h: 28, quadros: 1, contorno: "amigo", origem: [0.5, 1], desenhar(g) { desenharMontaria(g, tipo, "lado", 0, "fundo"); desenharMontaria(g, tipo, "lado", 0, "frente"); } });
+
+  // Jogador montado: montaria (fundo) + boneco sentado (ou de pé no carro) + montaria (frente).
+  function registrarMontado(chave, cfg, tipo) {
+    const cav = Object.assign({}, cfg, { montado: tipo !== "carro" });
+    return registrar(chave, {
+      w: 24, h: 28, quadros: QUADROS_POR_VISTA * VISTAS.length, direcoes: VISTAS.length, contorno: "amigo", origem: [0.5, 1],
+      humano: true, montado: tipo, retratoQuadro: QUADROS_POR_VISTA, busto: [4, 0, 16, 13],
+      desenhar(g, quadro) {
+        const vista = VISTAS[Math.floor(quadro / QUADROS_POR_VISTA)], q = quadro % QUADROS_POR_VISTA;
+        const [sx, sy] = desenharMontaria(g, tipo, vista, q, "fundo");
+        const r = new Grade(20, 24);
+        desenharHumano(r, cav, quadro - (q >= 2 && q <= 3 ? q : 0)); // montado não dá passos
+        const ox = Math.round(sx) - 20, oy = Math.round(sy) - (tipo === "carro" ? 40 : 33);
+        for (let Y = 0; Y < r.h; Y++) for (let X = 0; X < r.w; X++) { const c = r.d[Y * r.w + X]; if (c) g.fino(X + ox, Y + oy, c); }
+        desenharMontaria(g, tipo, vista, q, "frente");
+      },
+    });
+  }
+
   // ----- NPCs (§6.4) -----
   humano("pj_eliabe", {
-    molde: "manto",
-    cores: { H: "#e8dcc0", S: "#cf9466", s: "#b07548", B: "#5a3a26", R: "#b08a5a", r: "#8a6a42", d: "#5e4630", A: "#8e2a1f", L: "#e8dcc0", F: "#5e4630" },
-    ajustar: (l) => l.map((s, y) => (y >= 5 && y <= 15 && s[6] !== "." && s[6] !== "A" ? trocar(s, 6, "L") : s)).map((s, y) => (y === 1 ? s.replace("HHHHHH", "HHAAHH") : s)),
-    acessorios: [["cajado_curvo", ["#7a5530", "#9a7048"]]],
+    molde: "manto", cabelo: "curto",
+    cores: { H: "#e8dcc0", S: "#cf9466", s: "#b07548", B: "#e8dcc0", R: "#b08a5a", r: "#8a6a42", d: "#5e4630", A: "#8e2a1f", F: "#5e4630" },
+    // faixa de linho claro descendo pela veste e tira vermelha na testa
+    extraCorpo: (g, P) => { if (P.vista === "frente") retF(g, 16, 22 + P.dy, 2, 20 - P.dy, "#e8dcc0"); },
+    acessorios: [["faixa", ["#8e2a1f"]], ["cajado_curvo", ["#7a5530", "#9a7048"]]],
   });
   humano("pj_micael", {
     molde: "manto",
@@ -533,9 +1246,9 @@
   });
   humano("pj_moises", {
     molde: "manto",
-    cores: { H: "#e8e2d4", S: "#cf9466", s: "#b07548", B: "#bfb7a6", R: "#a8603a", r: "#8e4a2e", d: "#6e3422", A: "#eadcb6", F: "#4f3220" },
+    cores: { H: "#e8e2d4", S: "#cf9466", s: "#b07548", B: "#d8d2c4", R: "#a8603a", r: "#8e4a2e", d: "#6e3422", A: "#eadcb6", F: "#4f3220" },
+    cabelo: "longo",
     acessorios: [["cajado_alto", ["#6b4a2e", "#8a6a42"]]],
-    extra: (g, q) => { if (q !== 4) { g.lin(13, 0, 13, 1, "#6b4a2e"); } },
   });
   humano("pj_arao", {
     molde: "manto",
@@ -553,14 +1266,10 @@
     acessorios: [["rede", ["#c9b48a"]]],
   });
   humano("pj_jesus", {
-    molde: "manto", duasMaos: true,
-    cores: { H: "#4a2f20", S: "#cf9466", s: "#b07548", B: "#4a2f20", R: "#f2ead8", r: "#dcd0b4", d: "#b8a888", A: "#b8a888", M: "#c0523a", m: "#a8402e", n: "#7a2a1f", F: "#5a3a24" },
-    // manto terracota sobre um ombro (cols 9–12, linhas 5–14) e cabelo até os ombros.
-    ajustar: (l) => l.map((s, y) => {
-      if (y >= 3 && y <= 5) { s = trocar(s, 4, "H"); s = trocar(s, 9, "H"); }
-      if (y >= 5 && y <= 14) for (let x = 9; x <= 12; x++) if ("Rrd".includes(s[x])) s = trocar(s, x, x === 9 ? "M" : x === 12 ? "n" : "m");
-      return s;
-    }),
+    molde: "manto", cabelo: "longo",
+    cores: { H: "#4a2f20", S: "#cf9466", s: "#b07548", B: "#4a2f20", R: "#f2ead8", r: "#dcd0b4", d: "#b8a888", A: "#b8a888", F: "#5a3a24" },
+    // manto terracota sobre um ombro e cabelo até os ombros
+    acessorios: [["estola", ["#c0523a", "#a8402e", "#7a2a1f"]]],
   });
   humano("pj_viajante", {
     molde: "manto",
@@ -621,13 +1330,32 @@
       g.p(px + 6, b - 7, "#e8b94a");
       // janela com treliça
       g.ret(x1 - 13, topo + 7, 6, 5, "#2a1a14");
-      g.p(x1 - 11, topo + 9, "#5a3a24"); g.p(x1 - 9, topo + 9, "#5a3a24");
+      for (let k = 0; k < 6; k += 1.5) { g.linf(x1 - 13 + k, topo + 7, x1 - 13 + k + 2.5, topo + 11.5, "#6b4a2e"); g.linf(x1 - 10.5 + k, topo + 7, x1 - 13 + k, topo + 11.5, "#5a3a24"); }
       g.lin(x1 - 14, topo + 12, x1 - 6, topo + 12, c.teto[2]);
       // escada externa até o terraço (adobe e pedra)
       if (v < 2) for (let i = 0; i < 6; i++) g.ret(x1 - 4 + Math.floor(i / 2), b - 4 - i * 5, 4, 2, c.teto[i % 2 ? 1 : 2]);
       // jarro e degrau na soleira
       g.ret(px - 1, b, 11, 1, c.parede[0]);
       g.elip(px - 5, b - 2, 2, 2.5, (nx, ny) => tom(["#8e4a2a", "#b5663a", "#d88a58"], -(nx + ny)));
+      // detalhe em 32 px: tábuas e cravos da porta, verga de madeira, persianas da janela, reboco gasto
+      for (let x = px + 1.5; x < px + 8.5; x += 1.5) g.linf(x, b - 10, x, b - 0.5, "#4a3020");
+      for (const y of [b - 9, b - 3]) for (let x = px + 1; x < px + 8.5; x += 2) g.pf(x, y, "#c9a46a");
+      g.retf(px - 1, b - 17, 11, 1, "#5a3a24"); g.linf(px - 1, b - 17, px + 9.5, b - 17, "#7a5530");
+      for (const sx of [x1 - 15, x1 - 7]) { g.ret(sx, topo + 6, 2, 7, "#6b4a2e"); for (let y = topo + 6.5; y < topo + 13; y += 1) g.linf(sx, y, sx + 1.5, y, "#8a6a42"); g.linf(sx, topo + 6, sx, topo + 12.5, "#4a3020"); }
+      for (let k = 0; k < 12; k++) {
+        const x = x0 + 2 + hash2(k, v, 321) * (x1 - x0 - 4), y = topo + 2 + hash2(v, k, 322) * (b - topo - 6);
+        if (Math.abs(x - (px + 4)) < 7 && y > b - 18) continue;
+        g.linf(x, y, x + 1, y + 0.5, misturar(c.parede[0], c.junta, 0.5));
+      }
+      // no terraço: forno de barro (tabun) com fumaça e um vaso de planta
+      g.elip(x0 + 9, topo - 5, 3, 2.4, (nx, ny) => tom(["#7a4a2a", "#a8683f", "#c8865a"], -(nx + ny)));
+      g.retf(x0 + 8.5, topo - 7.5, 1, 0.5, "#2a1a14");
+      g.elip(x1 - 6, topo - 4, 1.6, 1.4, "#b5663a"); g.elip(x1 - 6, topo - 6, 2.2, 1.6, (nx, ny) => (nx + ny < 0 ? "#7a8a3f" : "#55642c"));
+    },
+    depois(g, v) {
+      // fumaça do forno (sem contorno), em fiapos de 1 px
+      const x0 = 3 + 9, topo = 20 - 8;
+      for (let k = 0; k < 6; k++) g.pf(x0 - 0.5 + Math.sin(k * 1.3 + v) * 0.8, topo - k * 1.2, comAlfa("#e8e2d4", 0.5 - k * 0.07));
     },
   });
 
@@ -803,75 +1531,40 @@
 
   // ----- Inimigos humanos (§6.5) -----
   humano("in_chefe", {
-    molde: "manto", alargar: true, hostil: true,
-    cores: { H: "#2a2a3a", S: "#b97a4c", s: "#93603a", B: "#2a2a3a", R: "#8a3a4a", r: "#6a2a3a", d: "#4a1a2a", A: "#e8b94a", F: "#2a1a14", I: "#b07a38" },
-    ajustar: (l) => l.map((s, y) => (y === 6 ? trocar(trocar(s, 6, "I"), 7, "I") : s)),
-    acessorios: [["capa", ["#3a1420", "#4a1a2a"]], ["espada_curva", ["#a8b4bc", "#e4ecf0", "#e8b94a"]]],
+    molde: "manto", porte: "grande", hostil: true,
+    cores: { H: "#2a2a3a", S: "#b97a4c", s: "#93603a", B: "#2a2a3a", R: "#8a3a4a", r: "#6a2a3a", d: "#4a1a2a", A: "#e8b94a", F: "#2a1a14" },
+    gola: "#b07a38",
+    acessorios: [["capa", ["#3a1420", "#4a1a2a"]], ["faixa", ["#e8b94a"]], ["espada_curva", ["#a8b4bc", "#e4ecf0", "#e8b94a"]]],
   });
-  // ajuste de posição da espada do chefe (célula 18 de largura)
   humano("in_salteador", {
-    molde: "curta", curvar: true, hostil: true,
+    molde: "curta", hostil: true,
     cores: { H: "#5a5a4a", S: "#93603a", s: "#6e4428", B: "#3e3e32", R: "#7a6a52", r: "#5e5040", d: "#463c30", A: "#3e3e32", F: "#2a1a14" },
-    ajustar: (l) => l.map((s, y) => (y === 2 ? s.replace("HSSSSs", "HHSSSH") : y === 3 ? s.replace(/^(....)S/, "$1H") : s)),
+    capuz: ["#5a5a4a", "#3e3e32"],
     acessorios: [["porrete", ["#6b4a2e", "#4a3222"]], ["saco", ["#a8916a", "#d4bf8f"]]],
   });
   humano("in_guarda_egipcio", {
     molde: "curta", hostil: true, barba: false,
-    cores: { H: "#f0e8d8", h: "#3b5a9a", S: "#b97a4c", s: "#93603a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#e8b94a", K: "#e8b94a", L: "#3b5a9a", F: "#4f3220" },
-    ajustar: (l) => l.map((s, y) => {
-      if (y <= 2) { let t = ""; for (let x = 0; x < s.length; x++) t += s[x] === "H" ? (x % 2 ? "h" : "H") : s[x]; s = t; }
-      if (y >= 2 && y <= 4) { s = trocar(s, 3, y === 2 ? "." : "h"); s = trocar(s, 10, y === 2 ? "." : "h"); }
-      if (y === 5) { let t = ""; for (let x = 0; x < s.length; x++) t += "RrdBS".includes(s[x]) && s[x] !== "." ? (x % 2 ? "K" : "L") : s[x]; s = t; }
-      if (y >= 6 && y <= 7) s = s.replace(/[Rr]/g, "S").replace(/d/g, "s");
-      return s;
-    }),
-    acessorios: [["escudo_alto", ["#8a5a32", "#e8dcc0", "#5e3c1c"]], ["lanca", ["#6b4a2e", "#b07a38"]]],
+    cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#e8b94a", F: "#4f3220" },
+    // peito nu com colar largo, saiote de linho e nemes listrado
+    extraCorpo: (g, P, c) => { const x0 = P.vista === "lado" ? 15 : 13, x1 = P.vista === "lado" ? 25 : 26; retF(g, x0, 21 + P.dy, x1 - x0 + 1, 9 - P.dy, (X) => (X < x0 + 2 ? c.S : X > x1 - 2 ? c.s : c.S)); },
+    mangaCor: "#b97a4c",
+    acessorios: [["colar", ["#e8b94a", "#3b5a9a"]], ["nemes", ["#f0e8d8", "#3b5a9a", "#e8b94a"]], ["escudo_alto", ["#8a5a32", "#e8dcc0", "#5e3c1c"]], ["lanca", ["#6b4a2e", "#b07a38"]]],
   });
   humano("in_perseguidor", {
     molde: "curta", hostil: true, barba: false,
-    cores: { H: "#5e3c1c", S: "#b97a4c", s: "#93603a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#5e3c1c", K: "#c08a3e", L: "#8a5a2b", F: "#4f3220" },
-    ajustar: (l) => l.map((s, y) => {
-      if (y >= 5 && y <= 8) { let t = ""; for (let x = 0; x < s.length; x++) t += "Rrd".includes(s[x]) ? ((x + y) % 2 ? "K" : "L") : s[x]; s = t; }
-      return s;
-    }),
+    cores: { H: "#5e3c1c", S: "#b97a4c", s: "#93603a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#5e3c1c", F: "#4f3220" },
+    armadura: "couraca_escamas",
     acessorios: [["capa", ["#6a1f1f", "#4a1416"]], ["arco_costas", ["#6e4a28", "#eadcb6"]], ["elmo", ["#8a5a2b", "#c08a3e"]], ["espada", ["#a8b4bc", "#e4ecf0", "#c08a3e"]]],
   });
   humano("in_amalequita", {
     molde: "manto", hostil: true,
-    cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", B: "#1e1a1a", R: "#52526e", r: "#3a3a52", d: "#2a2a3a", A: "#a88a5a", G: "#c8b8a0", F: "#2a1a14" },
-    ajustar: (l) => l.map((s, y) => {
-      if (y === 5) s = s.replace(/[Rrd]/g, "G");
-      if (y === 15) { let t = ""; for (let x = 0; x < s.length; x++) t += s[x] === "d" && x % 2 ? "." : s[x]; s = t; }
-      return s;
-    }),
+    cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", B: "#1e1a1a", R: "#52526e", r: "#3a3a52", d: "#2a2a3a", A: "#a88a5a", F: "#2a1a14" },
+    gola: "#c8b8a0",
     acessorios: [["turbante", ["#1e1a1a"]], ["escudo_oval", ["#a88a5a", "#7d6a4a"]], ["lanca_longa", ["#4a3222", "#a8b4bc"]]],
   });
 
   // ----- Quadrúpede e aracnídeo (20×14) -----
-  registrar("in_lobo", {
-    w: 20, h: 14, quadros: 5, contorno: "hostil",
-    desenhar(g, q) {
-      const A = "#6a5a4c", B = "#8a7a6a", C = "#a89a86", V = "#c8b8a0", E = "#e8b94a", N = "#2a1a14";
-      const resp = q === 1 ? 1 : 0, bote = q === 4 ? 2 : 0;
-      // patas (atrás do corpo): quadros de trote alternam
-      const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
-      const pata = (x, cor, d) => { g.lin(x + d, 9, x + d, 11, cor); g.p(x + d, 12, cor); };
-      pata(6, A, -passo); pata(14, A, passo);
-      // cauda baixa
-      g.lin(4, 6, 2, 7, B); g.lin(2, 8, 1, 9, A); g.p(1, 8, B);
-      // corpo
-      g.elip(9, 7 + resp * 0.3, 5.6, 2.8, (nx, ny) => (ny > 0.55 ? V : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
-      pata(5, B, passo); pata(12, B, -passo);
-      // cabeça
-      const hx = 14.5 + bote;
-      g.elip(hx, 5, 2.4, 2.2, esfera([A, B, C]));
-      g.ret(hx + 1, 5, 2, 2, B); g.p(hx + 2.5, 6, V); g.p(hx + 3, 5, N);
-      // orelhas
-      if (q === 4) { g.p(hx - 2, 3, A); g.p(hx - 1, 3, B); }
-      else { g.p(hx - 1, 2, B); g.p(hx - 1, 1, C); g.p(hx + 1, 2, B); g.p(hx + 1, 1, B); }
-      g.p(hx + 0.5, 4, E);
-    },
-  });
+  // lobo: desenhado pelo quadrúpede (abaixo), com a pelagem cinza e o ventre claro
   registrar("in_escorpiao", {
     w: 20, h: 14, quadros: 5, contorno: "hostil",
     desenhar(g, q) {
@@ -898,49 +1591,84 @@
 
   // ----- Criaturas novas (JGB-7): cada uma com o seu sprite -----
   // Quadrúpede genérico (5 quadros: parado, respiração, passo, passo, bote). o: cores e formas.
+  // Desenhado em 32 px por casa (coordenadas em unidades de meia casa/8, com meia unidade de precisão):
+  // coxa e ombro arredondados, canela fina, pata ou casco, peito e quadril, pescoço, focinho afilado.
   function quadrupede(chave, o) {
     const W = o.w || 20, H = o.h || 14;
     return registrar(chave, {
       w: W, h: H, quadros: 5, contorno: o.contorno || "hostil",
       desenhar(g, q) {
         const [A, B, C] = o.pelo, V = o.ventre || C, N = "#2a1a14";
-        const resp = q === 1 ? 0.3 : 0, bote = q === 4 ? 2 : 0;
+        const resp = q === 1 ? 0.5 : 0, bote = q === 4 ? 2 : 0;
         const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
-        const chao = H - 2, perna = o.perna || 3;
-        const cy = chao - perna - o.ry + 1; // centro do corpo
+        const chao = H - 1.5, perna = o.perna || 3;
+        const cy = chao - perna - o.ry + 0.5; // centro do corpo
         const cx = o.cx || W / 2 - 1;
-        const pata = (x, cor, d) => { g.lin(x + d, cy + o.ry - 1, x + d, chao - 1, cor); g.p(x + d, chao, o.casco || cor); };
-        const tras = cx - o.rx + 1.5, frente = cx + o.rx - 1.5;
-        pata(tras + 1, A, -passo); pata(frente, A, passo);
-        // cauda
-        const tx = cx - o.rx;
-        if (o.cauda === "tufo") { g.lin(tx, cy - 1, tx - 3, cy + 1, B); g.ret(tx - 4, cy + 1, 2, 2, o.tufo || A); }
-        else if (o.cauda === "longa") { g.lin(tx, cy, tx - 3, cy - 1, B); g.lin(tx - 3, cy - 1, tx - 4, cy - 3, B); g.p(tx - 4, cy - 4, A); }
-        else if (o.cauda === "peluda") { g.lin(tx, cy - 1, tx - 2, cy + 1, B); g.ret(tx - 3, cy + 1, 2, 2, B); g.p(tx - 3, cy + 3, C); }
-        else if (o.cauda === "curta") { g.p(tx, cy - 1, B); g.p(tx - 1, cy - 2, A); }
-        // corpo
-        g.elip(cx, cy + resp, o.rx, o.ry, (nx, ny) => (ny > 0.55 ? V : tom([A, B, C], -(0.4 * nx + 0.9 * ny) + (o.corcunda ? nx * 0.3 : 0))));
-        if (o.manchas) for (const [x, y] of o.manchas) g.p(cx + x, cy + y, o.corMancha || N);
-        if (o.listras) for (const x of o.listras) g.lin(cx + x, cy - o.ry + 1, cx + x, cy, o.corMancha || A);
-        pata(tras, B, passo); pata(frente - 1, B, -passo);
-        // cabeça
+        const tomPelo = (nx, ny) => (ny > 0.5 ? V : tom([A, B, C], -(0.4 * nx + 0.9 * ny) + (o.corcunda ? nx * 0.3 : 0)));
+        const casco = o.casco || escuroT(A, 0.3);
+        // perna: coxa (elipse), canela (1,5 un. de largura) que se inclina no passo e pata
+        const perna1 = (x, d, longe) => {
+          const cor = longe ? [escuroT(A, 0.15), A] : [B, C];
+          const topo = cy + o.ry * 0.25, joelho = chao - perna * 0.45;
+          g.elip(x, topo + 0.4, 1.05, Math.max(1.1, o.ry * 0.62), (nx, ny) => (nx < -0.3 ? cor[1] : cor[0]));
+          g.linf(x - 0.5, joelho - 1, x - 0.5 + d * 0.5, chao - 0.5, cor[0]);
+          g.linf(x, joelho - 1, x + d * 0.5, chao - 0.5, longe ? cor[0] : escuroT(cor[0], 0.18));
+          g.retf(x - 0.5 + d * 0.5, chao - 0.5, o.casco ? 1 : 1.5, 1, casco);
+          g.pf(x - 0.5 + d * 0.5, chao - 0.5, claroT(casco, 0.25));
+        };
+        const tras = cx - o.rx + 1.6, frente = cx + o.rx - 1.6;
+        perna1(tras + 1, -passo, true); perna1(frente, passo, true);
+        // cauda (cadeia de bolinhas)
+        const tx = cx - o.rx + 0.3;
+        const cadeia = (pts, r0, r1, cor) => pts.forEach(([x, y], i) => g.elip(x, y, r0 + ((r1 - r0) * i) / Math.max(1, pts.length - 1), r0 + ((r1 - r0) * i) / Math.max(1, pts.length - 1), cor));
+        const bal = q === 1 || q === 3 ? 0.5 : 0;
+        if (o.cauda === "tufo") { cadeia([[tx, cy - 0.5], [tx - 1, cy], [tx - 2, cy + 0.8], [tx - 3, cy + 1.6 - bal]], 0.7, 0.5, B); g.elip(tx - 3.6, cy + 2.2 - bal, 1.1, 1.2, o.tufo || A); }
+        else if (o.cauda === "longa") cadeia([[tx, cy], [tx - 1, cy - 0.3], [tx - 2, cy - 0.8], [tx - 3, cy - 1.6 - bal], [tx - 3.6, cy - 2.6 - bal], [tx - 3.8, cy - 3.6 - bal]], 0.7, 0.5, B);
+        else if (o.cauda === "peluda") { cadeia([[tx, cy - 0.5], [tx - 1, cy + 0.2], [tx - 2, cy + 1 - bal], [tx - 2.6, cy + 2 - bal]], 0.8, 1.1, B); g.pf(tx - 2.8, cy + 3 - bal, C); }
+        else if (o.cauda === "curta") cadeia([[tx, cy - 0.6], [tx - 0.8, cy - 1.2]], 0.7, 0.6, B);
+        // corpo: tronco, quadril e peito
+        g.elip(cx, cy + resp * 0.5, o.rx, o.ry, tomPelo);
+        g.elip(cx - o.rx * 0.5, cy - 0.2, o.rx * 0.48, o.ry * 1.02, tomPelo);
+        g.elip(cx + o.rx * 0.55, cy + 0.1 + resp * 0.5, o.rx * 0.48, o.ry * 1.08, tomPelo);
+        if (o.manchas) for (const [x, y] of o.manchas) { g.elip(cx + x + 0.5, cy + y + 0.5, 0.75, 0.6, o.corMancha || N); g.pf(cx + x + 0.75, cy + y + 0.5, escuroT(B, 0.05)); }
+        if (o.listras) for (const x of o.listras) { g.linf(cx + x, cy - o.ry + 0.5, cx + x - 0.5, cy + 0.5, o.corMancha || A); g.linf(cx + x + 0.5, cy - o.ry + 0.5, cx + x, cy + 0.5, o.corMancha || A); }
+        perna1(tras, passo, false); perna1(frente - 1, -passo, false);
+        // pescoço e cabeça
         const hx = cx + o.rx + (o.pescoco || 0) + bote, hy = cy - (o.alturaCabeca || 2);
-        if (o.juba) g.elip(hx - 1, hy + 0.5, o.cabeca + 1.6, o.cabeca + 1.6, esfera(o.juba));
-        g.elip(hx, hy, o.cabeca, o.cabeca * 0.9, esfera([A, B, C]));
-        const fl = o.focinho || 2;
-        g.ret(hx + 1, hy, fl, 2, o.corFocinho || B);
-        g.p(hx + fl + 0.5, hy, N); // nariz
-        g.p(hx + 0.5, hy - 1, o.olho || "#e8b94a");
-        if (o.presas) { g.p(hx + fl, hy + 2, "#f6efdc"); g.p(hx + fl - 1, hy + 2, "#f6efdc"); }
-        if (o.barbicha) { g.p(hx + 1, hy + 2, o.barbicha); g.p(hx + 1, hy + 3, o.barbicha); }
-        // orelhas
-        if (o.orelhas === "pontudas") { g.p(hx - 1, hy - 3, B); g.p(hx - 1, hy - 4, C); g.p(hx + 0.5, hy - 3, B); g.p(hx + 0.5, hy - 4, B); }
-        else if (o.orelhas === "grandes") { g.ret(hx - 1.5, hy - 5, 1, 3, B); g.ret(hx + 0.5, hy - 5, 1, 3, C); g.p(hx - 1.5, hy - 5, A); }
-        else if (o.orelhas === "redondas") { g.ret(hx - 1.5, hy - 3, 2, 1, A); g.ret(hx + 0.5, hy - 3, 2, 1, A); }
+        for (let t = 0; t <= 1; t += 0.25) g.elip(cx + o.rx * 0.7 + (hx - 0.6 - cx - o.rx * 0.7) * t + bote * 0, cy - 0.4 + (hy + 0.4 - cy) * t, 1.4, 1.4 + (1 - t) * 0.6, tomPelo);
+        if (o.juba) g.elip(hx - 1, hy + 0.5, o.cabeca + 1.6, o.cabeca + 1.6, (nx, ny, x, y) => tom(o.juba, -(0.55 * nx + 0.8 * ny) + (hash2(x, y, 5) - 0.5) * 0.6));
+        g.elip(hx, hy, o.cabeca, o.cabeca * 0.92, esfera([A, B, C]));
+        const fl = o.focinho || 2, cf = o.corFocinho || B;
+        // focinho afilado e mandíbula
+        g.elip(hx + 0.6 + fl * 0.55, hy + 0.65, fl * 0.75 + 0.3, 0.95, (nx, ny) => (ny < -0.4 ? claroT(cf, 0.12) : ny > 0.5 ? escuroT(cf, 0.2) : cf));
+        g.retf(hx + fl + 0.5, hy, 1, 1, N); // nariz
+        g.pf(hx + fl + 0.5, hy, claroT(N, 0.4));
+        g.linf(hx + 1, hy + 1.5, hx + fl + 0.5, hy + 1.5, escuroT(cf, 0.4));
+        // olho com íris, pupila e brilho
+        const ox = hx + 0.5, oy = hy - 1;
+        g.retf(ox - 0.5, oy, 1.5, 1, o.olho || "#e8b94a");
+        g.pf(ox + 0.5, oy, "#1c1210"); g.pf(ox, oy, claroT(o.olho || "#e8b94a", 0.55));
+        g.linf(ox - 0.5, oy - 0.5, ox + 1, oy - 0.5, escuroT(A, 0.2));
+        if (o.presas) { g.retf(hx + fl - 0.5, hy + 1.5, 0.5, 1, "#f6efdc"); g.retf(hx + fl, hy + 1.5, 0.5, 1.5, "#f6efdc"); }
+        if (o.barbicha) { g.linf(hx + 1, hy + 2, hx + 0.5, hy + 3.5, o.barbicha); g.linf(hx + 1.5, hy + 2, hx + 1, hy + 3.5, escuroT(o.barbicha, 0.2)); }
+        // orelhas (triângulos), com o dentro rosado
+        const orelha = (x, y, alt, larg, cor, dentro) => { for (let k = 0; k <= alt * 2; k++) { const w = larg * (1 - k / (alt * 2 + 1)); g.retf(x - w / 2, y - k / 2, Math.max(0.5, w), 0.5, cor); } if (dentro) g.retf(x - 0.25, y - alt / 2, 0.5, alt / 2, dentro); };
+        if (o.orelhas === "pontudas") { orelha(hx - 1.2, hy - 1.6, 2, 1.6, A, null); orelha(hx + 0.3, hy - 1.6, 2.2, 1.6, B, "#c88a7a"); }
+        else if (o.orelhas === "grandes") { orelha(hx - 1.4, hy - 1.6, 3.2, 1.8, A, null); orelha(hx + 0.4, hy - 1.6, 3.4, 1.8, B, "#c88a7a"); }
+        else if (o.orelhas === "redondas") { g.elip(hx - 1.2, hy - 2, 1, 0.9, A); g.elip(hx + 0.6, hy - 2.1, 1, 0.9, B); g.pf(hx + 0.6, hy - 2, "#c88a7a"); }
         if (o.chifres) {
           const ch = o.chifres;
-          g.lin(hx - 1, hy - 2, hx - 3, hy - 5, ch); g.p(hx - 4, hy - 4, ch); g.p(hx - 4, hy - 3, ch);
-          g.lin(hx + 0.5, hy - 2, hx - 1, hy - 5, ch);
+          const arco = (x0, y0, esc) => { for (let k = 0; k <= 8; k++) { const t = k / 8; g.retf(x0 - 2.6 * t * t - 0.5 * t, y0 - 3.4 * t, 0.5 + (1 - t) * 0.6, 0.5, k % 3 === 0 ? escuroT(ch, 0.2) : esc ? escuroT(ch, 0.1) : ch); } };
+          arco(hx - 0.6, hy - 1.4, true); arco(hx + 0.4, hy - 1.4, false);
+          g.pf(hx - 1.5, hy - 3.5, claroT(ch, 0.35));
+        }
+        // pelagem em traços sobre o lombo
+        const sem = sementeDe(chave);
+        for (let i = 0; i < 18; i++) {
+          const t = hash2(i, 3, sem), u = hash2(i, 4, sem);
+          const x = cx - o.rx * 0.8 + t * o.rx * 1.6, y = cy - o.ry * 0.8 + u * o.ry * 1.0;
+          if (((x - cx) / o.rx) ** 2 + ((y - cy) / o.ry) ** 2 > 0.75) continue;
+          g.linf(x, y, x + 0.5, y + 0.5, u < 0.4 ? claroT(C, 0.12) : escuroT(B, 0.18));
         }
       },
     });
@@ -953,6 +1681,10 @@
   quadrupede("al_ovelha", {
     w: 20, h: 14, pelo: ["#cfc6b4", "#e8e2d4", "#f8f4ea"], ventre: "#e8e2d4", rx: 5, ry: 3, cabeca: 1.8, focinho: 1,
     corFocinho: "#3a3028", olho: "#2a1a14", orelhas: "pontudas", cauda: "curta", perna: 2, casco: "#3a3028", contorno: "amigo",
+  });
+  quadrupede("in_lobo", {
+    w: 20, h: 14, pelo: ["#5a4c40", "#857565", "#a89a86"], ventre: "#d0c2a8", rx: 4.8, ry: 2.5, cabeca: 2.2, focinho: 2.4,
+    corFocinho: "#9a8a76", orelhas: "pontudas", cauda: "peluda", perna: 4, olho: "#e8b94a",
   });
   quadrupede("in_chacal", {
     w: 20, h: 14, pelo: ["#9a6a34", "#c08a48", "#dcae6c"], ventre: "#ecd4a4", rx: 4.6, ry: 2.2, cabeca: 2, focinho: 3,
@@ -1012,30 +1744,37 @@
       desenhar(g, q) {
         const [A, B, C] = o.cores, V = o.ventre;
         const fase = q * 1.2, bote = q === 4 ? 2 : 0, resp = q === 1 ? 1 : 0;
-        // corpo ondulado rente ao chão (onda em S), afinando para a cauda
-        const fimCorpo = o.capuz ? 11 : 14;
-        for (let x = 1; x <= fimCorpo; x++) {
-          const y = Math.round(10 + Math.sin((x + fase) * 0.75) * 1.4);
-          const grosso = x < 4 ? 1 : 2;
-          g.p(x, y, B); if (grosso > 1) { g.p(x, y + 1, V); g.p(x, y - 1, x % 3 === 0 && o.padrao ? o.padrao : C); }
-          if (o.padrao && x % 3 === 1) g.p(x, y, o.padrao);
+        const escama = (nx, ny, x, y) => (ny > 0.35 ? V : ny < -0.45 ? C : (x + y) % 2 ? B : escuroT(B, 0.08));
+        // corpo em tubo ondulado (onda em S), afinando para a cauda, com o desenho do dorso
+        const fimCorpo = o.capuz ? 11.5 : 14.5;
+        for (let x = 1; x <= fimCorpo; x += 0.5) {
+          const y = 10.3 + Math.sin((x + fase) * 0.75) * 1.4;
+          const r = x < 4 ? 0.45 + (x - 1) * 0.2 : 1.05;
+          g.elip(x, y, 0.75, r, escama);
+          if (o.padrao && Math.floor(x * 2) % 6 === 0 && x > 2) { g.pf(x, y - 0.5, o.padrao); g.pf(x - 0.5, y, o.padrao); g.pf(x + 0.5, y, o.padrao); g.pf(x, y + 0.5 - 0.5, o.padrao); }
         }
         if (o.capuz) {
           // naja: a frente do corpo se ergue, com o capuz aberto (largo) e a cabeça no alto
-          const bx = 12 + bote / 2, topo = 2 - resp;
-          for (let y = topo + 3; y <= 10; y++) g.ret(bx, y, 2, 1, y % 2 ? B : A);
-          g.elip(bx + 1, topo + 4, 3.2, 3, (nx, ny) => tom([A, B, C], -(0.4 * nx + 0.8 * ny)));
-          g.p(bx, topo + 4, o.capuz); g.p(bx + 2, topo + 4, o.capuz); g.p(bx + 1, topo + 5, o.capuz);
-          g.ret(bx, topo, 3, 2, B); g.p(bx + 3, topo + 1, B); g.p(bx + 2, topo, o.olho);
-          if (q === 4 || q === 1) { g.p(bx + 4, topo + 1, "#c2452d"); g.p(bx + 5, topo, "#c2452d"); }
+          const bx = 12.5 + bote / 2, topo = 2 - resp;
+          for (let y = topo + 3; y <= 10.5; y += 0.5) g.elip(bx + 0.2 * Math.sin(y), y, 1, 0.6, (nx, ny, X, Y) => (nx > 0.3 ? V : Y % 2 ? B : A));
+          g.elip(bx + 0.5, topo + 4.2, 3.2, 3.1, (nx, ny) => tom([A, B, C], -(0.4 * nx + 0.8 * ny)));
+          // as "lentes" do capuz
+          for (let k = 0; k < 4; k++) g.linf(bx - 2 + k * 1.2, topo + 2.5, bx - 1.5 + k * 1.2, topo + 6.5, escuroT(B, 0.18));
+          g.pf(bx - 1, topo + 3.5, o.capuz); g.pf(bx + 2, topo + 3.5, o.capuz); g.retf(bx, topo + 5.5, 1, 1.5, escuroT(o.capuz, 0.1));
+          g.elip(bx + 1.2, topo + 0.9, 1.9, 1.2, (nx, ny) => (ny > 0.4 ? V : nx < -0.3 ? C : B));
+          g.retf(bx + 2, topo + 0.5, 1, 0.5, o.olho); g.pf(bx + 2, topo + 0.5, "#fff6e0");
+          if (q === 4 || q === 1) { g.linf(bx + 3, topo + 1.5, bx + 4.5, topo + 1, "#c2452d"); g.pf(bx + 5, topo + 0.5, "#c2452d"); g.pf(bx + 5, topo + 1.5, "#c2452d"); }
           return;
         }
         // víbora: cabeça triangular baixa, um pouco erguida
         const hx = 15 + bote, hy = 8 - resp;
-        g.ret(hx, hy, 3, 2, B); g.p(hx + 3, hy + 1, B); g.p(hx, hy + 2, A); g.p(hx + 1, hy + 2, A);
-        g.p(hx, hy - 1, C); g.p(hx + 1, hy, C); g.p(hx + 2, hy, o.olho || "#e8b94a");
-        g.p(14, 9, B); g.p(14, 10, B);
-        if (q === 4 || q === 1) { g.p(hx + 4, hy + 1, "#c2452d"); g.p(hx + 5, hy, "#c2452d"); g.p(hx + 5, hy + 2, "#c2452d"); }
+        g.elip(14.5 + bote / 2, 9.5 - resp / 2, 0.9, 1.4, escama);
+        g.elip(hx + 1.6, hy + 1, 2.1, 1.4, (nx, ny) => (ny > 0.45 ? V : ny < -0.3 ? C : B));
+        g.elip(hx + 3.4, hy + 1.2, 1, 0.9, B);
+        g.linf(hx + 0.5, hy + 0.5, hx + 2.5, hy, escuroT(B, 0.25));
+        g.retf(hx + 2, hy + 0.5, 1, 0.5, o.olho || "#e8b94a"); g.pf(hx + 2.5, hy + 0.5, "#1c1210"); g.pf(hx + 2, hy + 0.5, "#fff6e0");
+        g.pf(hx + 4, hy + 1, escuroT(B, 0.4));
+        if (q === 4 || q === 1) { g.linf(hx + 4.5, hy + 1.5, hx + 5.5, hy + 1.5, "#c2452d"); g.pf(hx + 6, hy + 1, "#c2452d"); g.pf(hx + 6, hy + 2, "#c2452d"); }
       },
     });
   }
@@ -1047,23 +1786,32 @@
       desenhar(g, q) {
         const [A, B, C] = o.penas, N = "#2a1a14";
         const asa = q === 1 || q === 3 ? -3 : q === 2 ? 2 : 0, voo = q === 2 || q === 3 ? -1 : 0, bico = q === 4 ? 1 : 0;
-        // sombra do voo fica no chão (o corpo paira)
-        const cy = 8 + voo;
-        // asa de trás
-        g.lin(6, cy, 2, cy + asa - 1, A); g.lin(7, cy, 3, cy + asa, A);
+        const cy = 8 + voo, cv = o.curvado ? 1 : 0;
+        // asa de trás: penas em leque (traços finos)
+        for (let k = 0; k < 5; k++) g.linf(7 - k * 0.3, cy, 2.5 - k * 0.2 + k * 0.4, cy + asa - 1 + k * 0.4, k % 2 ? A : escuroT(A, 0.15));
+        // cauda em penas
+        for (let k = 0; k < 4; k++) g.linf(5.5, cy + 1.5 + k * 0.4, 2.5, cy + 2 + k * 0.7, k % 2 ? A : B);
         // corpo
-        g.elip(9, cy + 1, 4.2, 2.6, (nx, ny) => (ny > 0.5 ? (o.peito || B) : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
-        g.ret(4, cy + 1, 2, 2, A); g.p(3, cy + 2, A); // cauda
-        // asa da frente
-        for (let i = 0; i < 6; i++) g.lin(8 - i, cy + Math.round((asa * i) / 5), 9 - i, cy + 1 + Math.round((asa * i) / 5), i % 2 ? B : C);
+        g.elip(9, cy + 1, 4.2, 2.6, (nx, ny, x, y) => (ny > 0.5 ? (o.peito || B) : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
+        for (let k = 0; k < 6; k++) g.pf(8 + (k % 3) * 1.5, cy + 2.5 + Math.floor(k / 3) * 0.5, escuroT(o.peito || B, 0.15));
+        // asa da frente: rêmiges uma a uma, com a ponta escura
+        for (let i = 0; i < 7; i++) {
+          const x0 = 9.5 - i * 0.9, y0 = cy + (asa * i) / 6;
+          g.linf(x0, y0, x0 + 1.5, y0 + 1.5, i % 2 ? B : C);
+          g.linf(x0 - 0.5, y0 + 0.5, x0 + 1, y0 + 2, i === 6 ? escuroT(A, 0.2) : i % 2 ? A : B);
+        }
         // pescoço e cabeça
-        g.elip(14, cy - 2 + (o.curvado ? 1 : 0), 2, 1.8, esfera(o.cabeca || [A, B, C]));
-        if (o.colar) { g.p(13, cy, o.colar); g.p(12, cy, o.colar); }
-        g.p(14.5, cy - 3 + (o.curvado ? 1 : 0), o.olho || "#e8b94a");
-        g.ret(16, cy - 2 + (o.curvado ? 1 : 0) + bico, 2, 1, o.bico); g.p(17, cy - 1 + (o.curvado ? 1 : 0) + bico, o.bico);
+        g.elip(12.5, cy - 0.5 + cv * 0.5, 1.3, 1.6, esfera(o.cabeca ? [o.cabeca[0], A, B] : [A, B, C]));
+        g.elip(14, cy - 2 + cv, 2, 1.8, esfera(o.cabeca || [A, B, C]));
+        if (o.colar) g.elip(12.3, cy + 0.3, 1.6, 0.8, (nx, ny, x, y) => ((x + y) % 2 ? o.colar : escuroT(o.colar, 0.1)));
+        g.retf(14.5, cy - 3 + cv, 1, 1, o.olho || "#e8b94a"); g.pf(15, cy - 2.5 + cv, "#1c1210"); g.pf(14.5, cy - 3 + cv, "#fff6e0");
+        // bico curvo
+        const by = cy - 2 + cv + bico;
+        g.retf(16, by, 1.5, 1, o.bico); g.retf(17.5, by + 0.5, 0.5, 1, escuroT(o.bico, 0.25)); g.pf(16, by, claroT(o.bico, 0.35));
+        if (bico) g.retf(16, by + 1, 1.5, 0.5, escuroT(o.bico, 0.3));
         // garras
-        g.p(9, cy + 4, o.pes || "#e8b94a"); g.p(11, cy + 4, o.pes || "#e8b94a");
-        g.p(9, 14, comAlfa(N, 0.3)); g.p(10, 14, comAlfa(N, 0.3)); g.p(11, 14, comAlfa(N, 0.3));
+        for (const x of [9, 11]) { g.linf(x + 0.5, cy + 3, x + 0.5, cy + 4, o.pes || "#e8b94a"); g.retf(x, cy + 4, 1.5, 0.5, o.pes || "#e8b94a"); }
+        g.sombra(10, 14.5, 3, 0.7);
       },
     });
   }
@@ -1130,79 +1878,63 @@
   humano("in_arqueiro_bando", {
     molde: "curta", hostil: true,
     cores: { H: "#3e2a1a", S: "#a86e44", s: "#86542e", B: "#3e2a1a", R: "#8a6a3e", r: "#6a5030", d: "#4a3822", A: "#6a2a2a", F: "#2a1a14" },
-    acessorios: [["turbante", ["#6a2a2a"]], ["arco_costas", ["#6e4a28", "#eadcb6"]], ["saco", ["#8a6a3e", "#a88a5a"]]],
-    extra: (g, q) => { g.lin(13, 8, 13, 15, "#6e4a28"); g.p(14, 9, "#eadcb6"); g.p(14, 14, "#eadcb6"); if (q === 4) g.lin(9, 11, 14, 11, "#c8b48a"); },
+    acessorios: [["turbante", ["#6a2a2a"]], ["saco", ["#8a6a3e", "#a88a5a"]], ["arco_mao", ["#6e4a28", "#eadcb6"]]],
   });
   humano("in_feiticeiro", {
     molde: "manto", hostil: true, barba: false,
-    cores: { H: "#1e1a2a", S: "#a86e44", s: "#86542e", B: "#1e1a2a", R: "#2a3a6a", r: "#1e2a4e", d: "#141c36", A: "#e8b94a", F: "#2a1a14" },
-    ajustar: (l) => l.map((s, y) => (y === 5 ? s.replace(/[Rrd]/g, "A") : s)),
-    acessorios: [["cajado_curto", ["#e8b94a"]]],
-    extra: (g, q) => {
-      // toucado listrado e brilho do feitiço na mão
-      g.ret(4, 2, 8, 2, "#3b5a9a"); g.p(5, 2, "#e8b94a"); g.p(7, 2, "#e8b94a"); g.p(9, 2, "#e8b94a"); g.ret(3, 4, 1, 4, "#3b5a9a"); g.ret(12, 4, 1, 4, "#3b5a9a");
-      if (q === 4 || q === 1) { g.p(14, 4, "#9ad0ff"); g.p(15, 3, "#d0f0ff"); g.p(13, 3, "#9ad0ff"); }
-    },
+    cores: { H: "#1e1a2a", S: "#a86e44", s: "#86542e", R: "#2a3a6a", r: "#1e2a4e", d: "#141c36", A: "#e8b94a", F: "#2a1a14" },
+    acessorios: [["colar", ["#e8b94a", "#3b5a9a"]], ["nemes", ["#3b5a9a", "#1e2a4e", "#e8b94a"]], ["cajado_curto", ["#e8b94a"]], ["brilho", ["#9ad0ff", 14]]],
   });
   humano("in_arqueiro_egipcio", {
     molde: "curta", hostil: true, barba: false,
-    cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", B: "#1e1a1a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#3b5a9a", F: "#4f3220" },
-    acessorios: [["arco_costas", ["#8a5a32", "#eadcb6"]], ["peitoral", ["#3b5a9a"]]],
-    extra: (g, q) => { g.ret(4, 2, 8, 1, "#3b5a9a"); g.lin(13, 7, 13, 16, "#8a5a32"); g.p(14, 8, "#eadcb6"); g.p(14, 15, "#eadcb6"); if (q === 4) g.lin(8, 11, 14, 11, "#e8dcc0"); },
+    cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#3b5a9a", F: "#4f3220" },
+    acessorios: [["faixa", ["#3b5a9a"]], ["colar", ["#3b5a9a", "#e8b94a"]], ["arco_mao", ["#8a5a32", "#eadcb6"]]],
   });
   humano("in_pirata", {
     molde: "curta", hostil: true,
     cores: { H: "#1e1a1a", S: "#a86e44", s: "#86542e", B: "#2a2420", R: "#c8b48a", r: "#a8916a", d: "#7d6a4a", A: "#c2452d", F: "#2a1a14" },
-    ajustar: (l) => l.map((s, y) => (y >= 6 && y <= 9 ? s.replace(/r/g, "A") : s)),
-    acessorios: [["espada_curva", ["#a8b4bc", "#e4ecf0", "#5a3a24"]], ["corda", ["#a8916a", "#7d6a4a"]]],
-    extra: (g) => { g.ret(4, 2, 8, 2, "#c2452d"); g.p(12, 3, "#c2452d"); g.p(13, 4, "#c2452d"); g.p(6, 5, "#1e1a1a"); },
+    // tapa-olho e faixa vermelha na cintura
+    extra: (g, P) => { if (P.vista === "frente") { retF(g, 16, 12 + P.dy, 3, 2, "#1e1a1a"); linF(g, 14, 10 + P.dy, 25, 9 + P.dy, "#1e1a1a"); } else if (P.vista === "lado") retF(g, 22, 12 + P.dy, 3, 2, "#1e1a1a"); },
+    acessorios: [["bandana", ["#c2452d", "#e2774f"]], ["corda", ["#a8916a", "#7d6a4a"]], ["espada_curva", ["#a8b4bc", "#e4ecf0", "#5a3a24"]]],
   });
   humano("in_auriga", {
     molde: "curta", hostil: true, barba: false,
     cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", R: "#e8dcc0", r: "#c8b48a", d: "#a8916a", A: "#e8b94a", F: "#4f3220" },
-    acessorios: [["capa_larga", ["#6a1f1f", "#4a1416"]], ["elmo", ["#b07a38", "#e8b94a"]], ["lanca_longa", ["#4a3222", "#e8b94a"]], ["escudo_alto", ["#b07a38", "#f2d27a", "#5e3c1c"]]],
-    extra: (g, q) => { const r = q % 2; g.elip(8, 19, 3, 1.2, "#6b4a2e"); g.p(5 + r, 19, "#e8b94a"); g.p(11 - r, 19, "#e8b94a"); },
+    armadura: "couraca_escamas",
+    acessorios: [["capa_larga", ["#6a1f1f", "#4a1416"]], ["elmo", ["#b07a38", "#e8b94a"]], ["escudo_alto", ["#b07a38", "#f2d27a", "#5e3c1c"]], ["lanca_longa", ["#4a3222", "#e8b94a"]]],
   });
   humano("in_fundibulario", {
     molde: "manto", hostil: true,
     cores: { H: "#1e1a1a", S: "#a86e44", s: "#86542e", B: "#1e1a1a", R: "#6a5a3a", r: "#4e422a", d: "#36301e", A: "#8a3a2a", F: "#2a1a14" },
-    acessorios: [["turbante", ["#8a3a2a"]], ["saco", ["#6a5a3a", "#8a7a5a"]]],
-    extra: (g, q) => {
-      // funda girando sobre a cabeça
-      const pos = [[14, 1], [12, -0], [10, 1], [12, 2], [15, 0]][q];
-      g.lin(12, 7, pos[0], pos[1] + 1, "#a8916a"); g.p(pos[0], pos[1], "#8a8478");
-    },
+    // funda girando sobre a cabeça
+    acessorios: [["turbante", ["#8a3a2a"]], ["saco", ["#6a5a3a", "#8a7a5a"]], ["funda", ["#a8916a", "#8a8478"]]],
   });
   // Curandeiros (JGB-8): manto claro, bolsa de ervas e cajado com brilho verde.
   humano("in_curandeiro_bando", {
     molde: "manto", hostil: true,
     cores: { H: "#6a6458", S: "#a86e44", s: "#86542e", B: "#8a8478", R: "#a8916a", r: "#86704e", d: "#5e4e36", A: "#4a7a3a", F: "#2a1a14" },
-    acessorios: [["cajado_alto", ["#6b4a2e", "#8ad06a"]], ["saco", ["#4a7a3a", "#7ab04a"]]],
-    extra: (g, q) => { if (q === 1 || q === 4) { g.p(13, -0, "#c8f0a0"); g.p(12, 1, "#8ad06a"); g.p(14, 1, "#8ad06a"); } g.p(7, 9, "#7ab04a"); g.p(8, 10, "#7ab04a"); },
+    acessorios: [["saco", ["#4a7a3a", "#7ab04a"]], ["cajado_alto", ["#6b4a2e", "#8ad06a"]], ["brilho", ["#c8f0a0", 24]]],
   });
   humano("in_sacerdote", {
-    molde: "manto", hostil: true, barba: false,
-    cores: { H: "#b97a4c", S: "#b97a4c", s: "#93603a", B: "#b97a4c", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#e8b94a", F: "#4f3220" },
-    ajustar: (l) => l.map((s, y) => (y === 5 || y === 6 ? s.replace(/[Rrd]/g, "A") : s)),
-    acessorios: [["cajado_curto", ["#e8b94a"]]],
-    extra: (g, q) => {
-      // pele de leopardo sobre o ombro e o ankh de ouro no cajado
-      g.ret(4, 8, 3, 4, "#d8a040"); g.p(5, 9, "#3a2414"); g.p(4, 11, "#3a2414");
-      g.p(13, 3, "#e8b94a"); g.p(12, 4, "#e8b94a"); g.p(14, 4, "#e8b94a"); g.p(13, 2, "#e8b94a");
-      if (q === 1 || q === 4) { g.p(13, 1, "#c8f0a0"); g.p(15, 3, "#8ad06a"); }
-    },
+    molde: "manto", hostil: true, barba: false, cabelo: "careca",
+    cores: { H: "#b97a4c", S: "#b97a4c", s: "#93603a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#e8b94a", F: "#4f3220" },
+    // pele de leopardo sobre o ombro e o ankh de ouro no cajado
+    acessorios: [["colar", ["#e8b94a", "#3b5a9a"]], ["pele_leopardo", []], ["cajado_curto", ["#e8b94a"]], ["ankh", ["#e8b94a"]], ["brilho", ["#c8f0a0", 18]]],
   });
   humano("in_mercenario", {
-    molde: "curta", hostil: true, alargar: true,
+    molde: "curta", hostil: true, porte: "grande",
     cores: { H: "#3a2a1e", S: "#b97a4c", s: "#93603a", B: "#3a2a1e", R: "#5a5450", r: "#3e3a36", d: "#2a2624", A: "#8a1f1f", F: "#2a1a14" },
-    acessorios: [["elmo", ["#7a828a", "#c8d0d6"]], ["capa", ["#8a1f1f", "#5a1414"]], ["espada", ["#c8d0d6", "#f0f4f8", "#7a4a24"]], ["escudo_redondo", ["#8a1f1f", "#5a1414", "#c8d0d6"]]],
+    armadura: "armadura_couro",
+    acessorios: [["capa", ["#8a1f1f", "#5a1414"]], ["elmo", ["#7a828a", "#c8d0d6"]], ["escudo_redondo", ["#8a1f1f", "#5a1414", "#c8d0d6"]], ["espada", ["#c8d0d6", "#f0f4f8", "#7a4a24"]]],
   });
 
   // -------------------------------------------------------------------
   // Itens (§6.6): célula 16×16, arte de até 12×12 apoiada na linha 14
   // -------------------------------------------------------------------
+  // Cada ícone ganha uma sombra de apoio suave (camada de sombra: sem contorno).
   function item(chave, desenhar, extra = {}) {
-    return registrar(chave, Object.assign({ w: 16, h: 16, contorno: "amigo", origem: [0.5, 0.75], desenhar }, extra));
+    const comSombra = (g, q) => { g.sombra(8.5, 14.6, 4.6, 0.9, "#1c1210", 0.22); desenhar(g, q); };
+    return registrar(chave, Object.assign({ w: 16, h: 16, contorno: "amigo", origem: [0.5, 0.75], desenhar: comSombra }, extra));
   }
   function laminaDiagonal(g, cores, comprimento) {
     const [esc, med, cla, guarda, cabo] = cores;
@@ -2381,15 +3113,18 @@
   const TS_COLS = 8, TS_LINHAS = 15;
   const ID = { CHAO: 0, MANCHA: 4, RARO: 6, CAMINHO: 8, COSTA: 24, AGUA: 40, ROTA: 44, BORDA: 48, DECO: 64, MOLDURA: 80, SOMBRA: 96, MANCHA4: 104 };
 
+  // Pincel do tileset: buffer em px de arte (RES por unidade); set/encher trabalham em unidades
+  // (cada uma vira um bloco RES × RES) e fino(i, X, Y) põe 1 px de arte (X, Y de 0 a T·RES − 1).
   class Pincel {
     constructor(w, h) {
-      this.w = w; this.h = h;
-      this.buf = new Uint8ClampedArray(w * h * 4);
+      this.r = RES;
+      this.w = w * RES; this.h = h * RES;
+      this.buf = new Uint8ClampedArray(this.w * this.h * 4);
     }
-    // tile i, posição local (x, y) em px-a
-    set(i, x, y, cor, alfa = 1) {
-      if (x < 0 || y < 0 || x >= T || y >= T || !cor) return;
-      const tx = (i % TS_COLS) * T + x, ty = Math.floor(i / TS_COLS) * T + y;
+    fino(i, X, Y, cor, alfa = 1) {
+      const L = T * this.r;
+      if (X < 0 || Y < 0 || X >= L || Y >= L || !cor) return;
+      const tx = (i % TS_COLS) * L + X, ty = Math.floor(i / TS_COLS) * L + Y;
       const o = (ty * this.w + tx) * 4, c = hexRgb(cor);
       const a = (c[3] / 255) * alfa;
       if (a >= 1 || this.buf[o + 3] === 0) {
@@ -2401,16 +3136,33 @@
         this.buf[o + 3] = Math.min(255, this.buf[o + 3] + a * 255);
       }
     }
+    // tile i, posição local (x, y) em unidades
+    set(i, x, y, cor, alfa = 1) {
+      if (x < 0 || y < 0 || x >= T || y >= T || !cor) return;
+      const r = this.r;
+      for (let j = 0; j < r; j++) for (let k = 0; k < r; k++) this.fino(i, x * r + k, y * r + j, cor, alfa);
+    }
+    // cor já pintada (hex) em px de arte, para detalhes que dependem do fundo
+    ler(i, X, Y) {
+      const L = T * this.r;
+      const tx = (i % TS_COLS) * L + X, ty = Math.floor(i / TS_COLS) * L + Y, o = (ty * this.w + tx) * 4;
+      return this.buf[o + 3] ? rgbHex(this.buf[o], this.buf[o + 1], this.buf[o + 2]) : null;
+    }
     limpar(i) {
-      for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-        const tx = (i % TS_COLS) * T + x, ty = Math.floor(i / TS_COLS) * T + y, o = (ty * this.w + tx) * 4;
+      const L = T * this.r;
+      for (let y = 0; y < L; y++) for (let x = 0; x < L; x++) {
+        const tx = (i % TS_COLS) * L + x, ty = Math.floor(i / TS_COLS) * L + y, o = (ty * this.w + tx) * 4;
         this.buf[o] = this.buf[o + 1] = this.buf[o + 2] = this.buf[o + 3] = 0;
       }
     }
     encher(i, cor) { for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) this.set(i, x, y, cor); }
     grade(i, g, ox = 0, oy = 0) {
-      const d = g.final();
-      for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) if (d[y * g.w + x]) this.set(i, x + ox, y + oy, d[y * g.w + x]);
+      const d = g.final(), f = this.r / g.r;
+      for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
+        const c = d[y * g.w + x];
+        if (!c) continue;
+        for (let j = 0; j < f; j++) for (let k = 0; k < f; k++) this.fino(i, (x + ox * g.r) * f + k, (y + oy * g.r) * f + j, c);
+      }
     }
   }
 
@@ -2461,6 +3213,42 @@
     }
     if (area === "canaan") { pin.set(7, 8, 8, "#efe6cf"); pin.set(7, 7, 8, "#efe6cf"); pin.set(7, 8, 9, "#e9d36a"); }
     else { pin.set(7, 6, 9, c.salpico); pin.set(7, 7, 9, c.salpico); pin.set(7, 10, 6, c.claro); }
+  }
+
+  // Detalhe em 32 px por casa (px de arte de verdade, por cima do chão pintado em unidades):
+  // na relva, folhinhas de 1 × 2 px com a ponta clara; na areia e terra, grãos e pedrinhas com
+  // luz em cima/esquerda; nos caminhos, seixos de 2–3 px e marcas de roda.
+  function detalharChao(pin, area, bio, semente) {
+    const c = bio.chao, [r, g] = hexRgb(c.base);
+    const relva = g > r + 8;
+    const L = T * pin.r;
+    const folha = (i, X, Y, k) => {
+      const cor = k % 3 ? c.claro : c.salpico;
+      pin.fino(i, X, Y, cor); pin.fino(i, X, Y + 1, c.escuro);
+      if (k % 4 === 0) { pin.fino(i, X + 1, Y + 1, cor); pin.fino(i, X + 1, Y + 2, c.escuro); }
+    };
+    const grao = (i, X, Y, k) => { pin.fino(i, X, Y, k % 2 ? c.claro : c.salpico); if (k % 3 === 0) pin.fino(i, X + 1, Y + 1, c.escuro); };
+    const chao = [0, 1, 2, 3, 4, 5, 6, 7];
+    for (let m = 0; m < 16; m++) chao.push(ID.MANCHA4 + m);
+    if (area !== "mar")
+      for (const i of chao) {
+        const n = relva ? 22 : 14;
+        for (let k = 0; k < n; k++) {
+          const X = Math.floor(hash2(i, k, semente + 701) * (L - 2)), Y = Math.floor(hash2(k, i, semente + 702) * (L - 3));
+          (relva ? folha : grao)(i, X, Y, k);
+        }
+      }
+    const cm = bio.caminho;
+    for (let m = 0; m < 16; m++) {
+      const i = ID.CAMINHO + m;
+      for (let k = 0; k < 7; k++) {
+        const X = 3 + Math.floor(hash2(i, k, semente + 711) * (L - 7)), Y = 3 + Math.floor(hash2(k, i, semente + 712) * (L - 7));
+        const w = 2 + (k % 2);
+        for (let a = 0; a < w; a++) { pin.fino(i, X + a, Y, a === 0 ? cm.claro : misturar(cm.claro, cm.base, 0.5)); pin.fino(i, X + a, Y + 1, a === w - 1 ? cm.escuro : cm.base); }
+        pin.fino(i, X + w, Y + 1, cm.escuro); pin.fino(i, X + 1, Y + 2, misturar(cm.escuro, cm.base, 0.5));
+      }
+      for (let k = 0; k < 10; k++) pin.fino(i, Math.floor(hash2(i, k, semente + 713) * L), Math.floor(hash2(k, i, semente + 714) * L), k % 2 ? cm.claro : cm.escuro);
+    }
   }
 
   // Mancha macro em autotile: lados sem vizinho de mancha esmaecem em
@@ -2745,6 +3533,7 @@
     pintarChao(pin, area, bio, semente);
     pintarCaminho(pin, bio, semente);
     pintarMancha(pin, area, bio, semente);
+    detalharChao(pin, area, bio, semente);
     pintarBorda(pin, bio, area);
     pintarDeco(pin, bio, area);
     pintarMoldura(pin, bio, area);
@@ -2858,8 +3647,8 @@
       return -1;
     }
 
-    // Canvas final (escala 2), pintado a partir do buffer em px-a.
-    const final = novoCanvas(TS_COLS * T * PX, TS_LINHAS * T * PX);
+    // Canvas final (32 px por casa = 1 px de arte por px de mundo), pintado a partir do buffer.
+    const final = novoCanvas(pin.w, pin.h);
     const ctx = final.getContext("2d");
     ctx.imageSmoothingEnabled = false;
     const mini = novoCanvas(pin.w, pin.h);
@@ -2873,10 +3662,11 @@
         ctx.drawImage(mini, 0, 0, final.width, final.height);
         return;
       }
+      const L = T * RES;
       for (const i of indices) {
-        const sx = (i % TS_COLS) * T, sy = Math.floor(i / TS_COLS) * T;
-        ctx.clearRect(sx * PX, sy * PX, T * PX, T * PX);
-        ctx.drawImage(mini, sx, sy, T, T, sx * PX, sy * PX, T * PX, T * PX);
+        const sx = (i % TS_COLS) * L, sy = Math.floor(i / TS_COLS) * L;
+        ctx.clearRect(sx, sy, L, L);
+        ctx.drawImage(mini, sx, sy, L, L, sx, sy, L, L);
       }
     };
     enviar(null);
@@ -2934,7 +3724,7 @@
         linhas.forEach((l, i) => { if (l.length !== def.w) problemas.push(`${chave}: linha ${i} com ${l.length} != ${def.w}`); });
         for (const l of linhas) for (const ch of l) if (ch !== "." && !def.cores[ch]) problemas.push(`${chave}: '${ch}' sem cor`);
       }
-      const limite = chave.startsWith("ui_") ? 6 : chave.startsWith("fx_") ? 99 : 12;
+      const limite = def.res === 1 ? (chave.startsWith("ui_") ? 6 : 12) : chave.startsWith("fx_") ? 999 : LIMITE_CORES + 1;
       for (let q = 0; q < def.quadros; q++) {
         const px = pixels(chave, { quadro: q });
         const n = new Set(px.data.filter(Boolean)).size;
@@ -2965,8 +3755,9 @@
     if (cacheURL.has(id)) return cacheURL.get(id);
     const px = pixels(chave);
     if (!px) return "";
-    const c = novoCanvas(px.w * escala, px.h * escala);
-    pintarPixels(c.getContext("2d"), { w: px.w, h: px.h, data: px.data.map((v) => (v ? cor : null)) }, 0, 0, escala);
+    const e = escalaArte(px, escala);
+    const c = novoCanvas(px.w * e, px.h * e);
+    pintarPixels(c.getContext("2d"), { w: px.w, h: px.h, data: px.data.map((v) => (v ? cor : null)) }, 0, 0, e);
     const url = paraURL(c);
     cacheURL.set(id, url);
     return url;
@@ -2976,11 +3767,17 @@
     if (cacheURL.has(id)) return cacheURL.get(id);
     const def = PIXEL_PATTERNS[chave];
     if (!def) return "";
-    const px = pixels(chave, { quadro: def.humano ? 4 : 0 });
-    let y0 = 0, h = px.h;
-    if (recorte === "busto" && def.humano) { y0 = 2; h = 13; }
-    const c = novoCanvas(px.w * escala, h * escala);
-    pintarPixels(c.getContext("2d"), { w: px.w, h, data: px.data.slice(y0 * px.w, (y0 + h) * px.w) }, 0, 0, escala);
+    const quadroInteiro = recorte === "inteiro" && def.direcoes ? 5 : null; // de frente, parado
+    const px = pixels(chave, { quadro: quadroInteiro ?? def.retratoQuadro ?? (def.humano ? 4 : 0) });
+    const r = px.res || 1;
+    // busto: retângulo em unidades (def.busto = [x, y, w, h]); sem ele, o quadro inteiro
+    let [bx, by, bw, bh] = recorte === "busto" && def.busto ? def.busto : [0, 0, def.w, def.h];
+    bx *= r; by *= r; bw *= r; bh *= r;
+    const e = escalaArte(px, escala);
+    const dados = [];
+    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) dados.push(px.data[(by + y) * px.w + bx + x] || null);
+    const c = novoCanvas(bw * e, bh * e);
+    pintarPixels(c.getContext("2d"), { w: bw, h: bh, data: dados }, 0, 0, e);
     const url = paraURL(c);
     cacheURL.set(id, url);
     return url;
@@ -3003,7 +3800,7 @@
     const id = "m:" + nome;
     if (cacheURL.has(id)) return cacheURL.get(id);
     const r = nome === "pergaminho" ? ["#a8844f", "#cfae74", "#e6cf9c", "#f3e4c0"] : ["#5e3c1c", "#8a5a2b", "#b07a38", "#d29e52"];
-    const g = new Grade(12, 12);
+    const g = new Grade(12, 12, 1);
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
       const borda = Math.min(x, y, 11 - x, 11 - y);
       if (borda > 3) continue;
@@ -3028,12 +3825,15 @@
     if (!def) return null;
     const c = canvas(chave, { tira: true });
     const tex = scene.textures.addCanvas(chave, c);
-    for (let i = 0; i < def.quadros; i++) tex.add(i, 0, i * def.w * PX, 0, def.w * PX, def.h * PX);
+    const qw = c.width / def.quadros;
+    for (let i = 0; i < def.quadros; i++) tex.add(i, 0, i * qw, 0, qw, c.height);
     return chave;
   }
   function registrarTexturas(scene) {
     for (const chave of Object.keys(PIXEL_PATTERNS)) {
-      if (chave.startsWith("mk_portal_") || chave.startsWith("pj_jogador|")) continue; // sob demanda
+      // sob demanda: portais, variantes do jogador, humanos, criaturas e montarias (criarEntidade gera
+      // só os que aparecem na área)
+      if (/^(mk_portal_|pj_|in_|al_|mt_)/.test(chave)) continue;
       garantirTextura(scene, chave);
     }
   }
@@ -3055,7 +3855,7 @@
   }
 
   global.Arte = {
-    versao: 1, PX,
+    versao: 2, PX, RES,
     PALETA, SEMANTICA, BIOMAS, SUBTITULOS, PIXEL_PATTERNS,
     VISUAL_NPC, VISUAL_INIMIGO, VISUAL_POR_APARENCIA, VISUAL_POR_PAPEL, CHEFES,
     visualDe, nomeCurto, aliasItem,

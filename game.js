@@ -13,10 +13,10 @@ const MEU_ID = "jogador1";
 const TAM = 32; // tile em px de mundo
 const MOLDURA = 4; // tiles de cenário fora do mapa
 // Visão: a câmera mostra cerca de VISAO casas (como no Tibia, 15 × 11 na tela deitada) e cada pixel
-// da arte (16 px por casa, desenhada em dobro) ocupa um número inteiro de pixels da tela. O canvas desenha na
+// da arte (32 px por casa, 1 px de arte por px de mundo) ocupa um número inteiro de pixels da tela. O canvas desenha na
 // resolução real da tela (devicePixelRatio, até DPR_MAXIMO), sem o navegador esticar a imagem.
 const VISAO = { deitada: [15, 11], empe: [9, 13] };
-const PIXELS_ARTE_POR_CASA = 16;
+const PIXELS_ARTE_POR_CASA = 32;
 const DPR_MAXIMO = 3;
 const CHAVE_ZOOM = "jornada_zoom";
 // Cor da vida, como no Tibia: verde cheia, amarela pela metade, vermelha no fim (fração mínima → cor).
@@ -49,6 +49,22 @@ const ESTILO_NUM = {
 
 // Nome do campeão e aura dele.
 const COR_CAMPEAO = "#f2c94c";
+
+// Humanos têm 3 vistas (sprites.js): quadros 0–4 de lado (espelhados para a esquerda), 5–9 de frente
+// e 10–14 de costas. A vista sai do último passo ou do alvo: lado se o passo for mais horizontal.
+const DESLOC_VISTA = { lado: 0, frente: 5, costas: 10 };
+function virar(sprite, dx, dy) {
+  if (!sprite || (!dx && !dy)) return;
+  const def = PIXEL_PATTERNS[sprite.texture?.key];
+  if (!def?.direcoes) { if (dx) sprite.setFlipX(dx < 0); return; }
+  const vista = Math.abs(dx) >= Math.abs(dy) ? "lado" : dy > 0 ? "frente" : "costas";
+  sprite.setData("vista", vista);
+  sprite.setFlipX(vista === "lado" && dx < 0);
+}
+function quadroComVista(sprite, q) {
+  const def = PIXEL_PATTERNS[sprite.texture?.key];
+  return def?.direcoes ? q + DESLOC_VISTA[sprite.getData("vista") || "frente"] : q;
+}
 
 // Vizinhos da grade em ordem de ângulo (0°, 45°… com y para baixo), para o joystick analógico.
 const DIRECOES_8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
@@ -602,6 +618,7 @@ class Cena extends Phaser.Scene {
   }
 
   criarEntidade(tipo, dados, chave) {
+    Arte.garantirTextura(this, chave);
     const def = PIXEL_PATTERNS[chave];
     const quadrupede = !!def && !def.humano;
     const x = centroX(dados.x), y = baseY(dados.y);
@@ -688,7 +705,8 @@ class Cena extends Phaser.Scene {
   // ===== jogador ======================================================
   chaveJogador() {
     if (this.areaAtual === "mar") return "mk_barco";
-    const chave = Arte.garantirJogador(this.p.equipamento || {});
+    const visual = typeof visualDoJogador === "function" ? visualDoJogador(this.p) : {};
+    const chave = Arte.garantirJogador(this.p.equipamento || {}, visual);
     return Arte.garantirTextura(this, chave);
   }
   criarJogador() {
@@ -782,7 +800,8 @@ class Cena extends Phaser.Scene {
   // tira 1 por vez. w e h em pixels do canvas (já multiplicados pelo devicePixelRatio).
   pixelsPorPixelDeArte(w, h, ajuste = ajusteZoomSalvo()) {
     const [cw, ch] = h > w * 1.15 ? VISAO.empe : VISAO.deitada;
-    const base = Math.floor(Math.min(w / (cw * PIXELS_ARTE_POR_CASA), h / (ch * PIXELS_ARTE_POR_CASA)));
+    // arredonda (e não trunca): com 32 px por casa cada passo de zoom é grande, e o mais perto de VISAO vence
+    const base = Math.round(Math.min(w / (cw * PIXELS_ARTE_POR_CASA), h / (ch * PIXELS_ARTE_POR_CASA)));
     const minimo = Math.max(1, Math.ceil(dprAtual()));
     return Math.max(minimo, Math.min(16, Math.max(minimo, base) + ajuste));
   }
@@ -959,7 +978,7 @@ class Cena extends Phaser.Scene {
       const ent = npc && this.entidades[npc.id];
       if (ent) {
         ent.acaoAte = this.time.now + 400;
-        ent.sprite.setFlipX(this.p.x < npc.x);
+        virar(ent.sprite, this.p.x - npc.x, this.p.y - npc.y);
         if (window.UI?.dialogo) window.UI.dialogo({ id: npc.id, nome: npc.nome, papel: npc.papel, texto: r.mensagem });
       }
     }
@@ -1034,7 +1053,7 @@ class Cena extends Phaser.Scene {
     if (!e) return;
     const tx = ent ? ent.sprite.x : centroX(e.x), ty = ent ? ent.sprite.y - ent.alturaCabeca / 2 : baseY(e.y) - 16;
     this.estadoJogador.acaoAte = this.time.now + 120;
-    if (this.areaAtual !== "mar") this.jogador.setFlipX(e.x < this.p.x);
+    if (this.areaAtual !== "mar") virar(this.jogador, e.x - this.p.x, e.y - this.p.y);
     const mostrar = () => {
       if (r.danoAplicado) this.numero(tx, ty - 14, r.critico ? `${r.danoAplicado}!` : `${r.danoAplicado}`, r.critico ? "critico" : "dano");
       else this.numero(tx, ty - 14, "errou", "errou");
@@ -1245,7 +1264,7 @@ class Cena extends Phaser.Scene {
       this.atualizarBaloes();
     } else if (r.mensagem) this.mensagem(r.mensagem);
     this.oficioSubiu(r.oficioSubiu);
-    if (this.areaAtual !== "mar" && dx) this.jogador.setFlipX(dx < 0);
+    if (this.areaAtual !== "mar") virar(this.jogador, dx, dy);
     if (this.areaAtual === "mar" && dx) this.jogador.setFlipX(dx < 0);
     const nx = centroX(this.p.x), ny = baseY(this.p.y) + (this.areaAtual === "mar" ? 6 : 0);
     this.estadoJogador.andandoAte = this.time.now + duracao + 10;
@@ -1566,7 +1585,7 @@ class Cena extends Phaser.Scene {
     const ent = this.entidades[id], e = inimigos[id];
     if (!ent || !e) return;
     const nx = centroX(e.x), ny = baseY(e.y);
-    if (nx !== ent.sprite.x) ent.sprite.setFlipX(nx < ent.sprite.x);
+    virar(ent.sprite, nx - ent.sprite.x, ny - ent.sprite.y);
     ent.andandoAte = this.time.now + 220;
     this.tweens.add({ targets: ent.sprite, x: nx, y: ny, duration: 200 });
   }
@@ -1605,7 +1624,7 @@ class Cena extends Phaser.Scene {
     const ent = this.entidades[x.inimigoId], e = inimigos[x.inimigoId];
     if (ent) {
       ent.acaoAte = this.time.now + 120;
-      ent.sprite.setFlipX(this.p.x < e.x);
+      virar(ent.sprite, this.p.x - e.x, this.p.y - e.y);
     }
     if (e && !reduzMovimento()) {
       const dx = Math.sign(this.p.x - e.x) * 2, dy = Math.sign(this.p.y - e.y) * 2;
@@ -1826,9 +1845,9 @@ class Cena extends Phaser.Scene {
     // jogador
     const ej = this.estadoJogador, j = this.jogador;
     if (this.areaAtual === "mar") j.setFrame(Math.floor(time / 600) % 2);
-    else if (ej.acaoAte > time) j.setFrame(4);
-    else if (ej.andandoAte > time) j.setFrame(2 + (Math.floor(time / 125) % 2));
-    else j.setFrame(reduz ? 0 : Math.floor(time / 600) % 2);
+    else if (ej.acaoAte > time) j.setFrame(quadroComVista(j, 4));
+    else if (ej.andandoAte > time) j.setFrame(quadroComVista(j, 2 + (Math.floor(time / 125) % 2)));
+    else j.setFrame(quadroComVista(j, reduz ? 0 : Math.floor(time / 600) % 2));
     // setDepth sempre reordena a cena inteira (milhares de obstáculos): só quando a profundidade muda
     if (j.depth !== PROF.entidade + j.y + 1) j.setDepth(PROF.entidade + j.y + 1);
     this.sombraJogador.setPosition(j.x + 3, j.y - 1);
@@ -1841,12 +1860,12 @@ class Cena extends Phaser.Scene {
       else if (ent.andandoAte > time) q = 2 + (Math.floor(time / 125) % 2);
       else q = reduz ? 0 : Math.floor((time + ent.fase) / 600) % 2;
       if (ent.dados.id === "jesusGalileia" && q === 4 && ent.acaoAte - time > 400) q = 0;
-      s.setFrame(q);
+      s.setFrame(quadroComVista(s, q));
       if (s.depth !== PROF.entidade + s.y) s.setDepth(PROF.entidade + s.y);
       ent.sombra.setPosition(s.x + 3, s.y - 1);
       if (s.auraCampeao) s.auraCampeao.setPosition(s.x, s.y - 2);
       if (ent.alerta) ent.alerta.setPosition(s.x, s.y - ent.alturaCabeca - 6 - (reduz ? 0 : Math.floor(time / 120) % 2));
-      if (ent.tipo === "npc" && ent.acaoAte < time && this.p.x !== ent.dados.x && cheb(this.p, ent.dados) <= 3) s.setFlipX(this.p.x < ent.dados.x);
+      if (ent.tipo === "npc" && ent.acaoAte < time && (this.p.x !== ent.dados.x || this.p.y !== ent.dados.y) && cheb(this.p, ent.dados) <= 3) virar(s, this.p.x - ent.dados.x, this.p.y - ent.dados.y);
       if (ent.balao && ent.balao.visible) this.posicionarBalao(ent, reduz ? 0 : Math.floor(time / 500) % 2 ? -2 : 0);
     }
 
