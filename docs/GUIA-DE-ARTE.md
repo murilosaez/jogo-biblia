@@ -76,6 +76,28 @@ e documenta a paleta de cada região.
 - Tendas (pano cru, listras vermelhas, listras índigo, pelo de cabra), bancas com toldo listrado e poço.
 - Água animada (4 fases), costa com espuma e a muralha de água do Mar Vermelho.
 
+### 6.1 Casas e lojas onde se entra, chão contínuo e muros (`cenario.js`)
+
+- **Prédios** (`DADOS_ESTRUTURAS` com `entrar: true`): a casa (6 × 5 casas) e a loja (7 × 6) são feitas de
+  cinco imagens por prédio. Por fora: o terraço (placas de barro batido, parapeito de 7 px com a face de
+  dentro mais escura, forno de barro, jarros, esteira de figos e a escada encostada) e a fachada (32 px) com
+  pontas das vigas, janelas de treliça com luz quente, porta aberta em arco e, na loja, o toldo listrado e a
+  placa com a balança. Por dentro: a parede do fundo alta (reboco claro; prateleiras com jarros, tecidos e
+  frutas na loja; nicho com a candeia e réstia de ervas na casa), as paredes dos lados e da frente cortadas
+  e finas (12 px, como numa planta) e o piso: tábuas na loja, lajotas (pedra e basalto), barro batido
+  (adobe e tijolo) ou areia com tapete (tenda grande). Móveis: balcão (emenda com os vizinhos, com
+  mercadoria em cima), barris, caixotes, sacos, esteira de dormir, jarros e mesa baixa.
+- O telhado some quando o jogador passa pela porta e volta quando ele sai; com o jogador logo atrás do
+  prédio, fica translúcido. Materiais (`MATERIAIS_PREDIO`, a variante do prédio): 0 adobe, 1 pedra de Canaã,
+  2 basalto da Galileia, 3 tijolo do Egito, 4 tenda grande (lona listrada em duas águas).
+- **Chão contínuo**: o chão é pintado por pedaços de 16 × 16 casas a partir das coordenadas do mundo (nada
+  de azulejo repetido). Relva e areia variam em duas escalas de ruído com pontilhado ordenado (Bayer 4 × 4);
+  a estrada de terra tem a beira irregular (amostra deslocada por ruído, ±9 px) com um fio escuro e tufos;
+  dentro das vilas o caminho é rua de pedra (fiadas de 8 px, junta escura, luz em cima/esquerda); em volta
+  das portas, poços, tendas e moradores o chão fica pisado; a beira da água é areia molhada.
+- **Muros contínuos**: o muro da vila e as muretas de pedra (`muro`, `tijolos`) emendam com os vizinhos
+  (máscara N/L/S/O): topo de pedras de cobertura e face de 20 px onde o muro não continua para o sul.
+
 ## 7. Paleta por região
 
 Cada região usa só as cores abaixo no chão, nas manchas, nos caminhos, na borda e na decoração (os

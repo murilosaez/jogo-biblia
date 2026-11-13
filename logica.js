@@ -557,7 +557,9 @@ for (const [id, area] of Object.entries(DADOS_AREAS_BASE)) areas[id] = clonarDad
 // mapas[area][y][x]: 0 livre, 1 bloqueado (colisão). pisos[area][y][x]: o que há no chão (PISO).
 // tiposObstaculo[area]["x,y"]: tipo fixo do obstáculo daquela casa (bosque de oliveiras, muro da vila,
 // marco); sem tipo, o bioma sorteia (sprites.js). estruturasPorArea[area]: casas, tendas, bancas e poços.
-const PISO = { CHAO: 0, CAMINHO: 1, AGUA: 2, ESTRUTURA: 3 };
+// PAREDE, PORTA e INTERIOR: prédios onde se entra (casa e loja, entrar: true em DADOS_ESTRUTURAS). A parede
+// bloqueia; porta e interior são livres, menos as casas com móveis (bloqueadas, piso INTERIOR).
+const PISO = { CHAO: 0, CAMINHO: 1, AGUA: 2, ESTRUTURA: 3, PAREDE: 4, PORTA: 5, INTERIOR: 6 };
 const mapas = {};
 const pisos = {};
 const tiposObstaculo = {};
@@ -651,15 +653,16 @@ function gerarMapa(areaId) {
     if (bloqueado && tipo) tipos[`${x},${y}`] = tipo;
     else delete tipos[`${x},${y}`];
   };
+  (d.regioes || []).forEach((r, i) => {
+    casasDaForma(r, (x, y) => definir(x, y, hashCasa(x, y, semente + 10 + i) < (r.densidade || 0), r.tipo));
+  });
+  // A vila vem depois das regiões: dentro dela não nasce mato nem pedra solta (só o muro na beira).
   for (const v of d.vilas || []) {
     casasDaForma(v, (x, y) => {
       const beira = x === v.x || y === v.y || x === v.x + v.largura - 1 || y === v.y + v.altura - 1;
       definir(x, y, beira && !!v.muro, v.muro);
     });
   }
-  (d.regioes || []).forEach((r, i) => {
-    casasDaForma(r, (x, y) => definir(x, y, hashCasa(x, y, semente + 10 + i) < (r.densidade || 0), r.tipo));
-  });
   for (const a of d.aguas || []) casasDaForma(a, (x, y) => definir(x, y, true, null, PISO.AGUA));
   for (const c of d.caminhos || []) casasDoCaminho(c, (x, y) => definir(x, y, false, null, PISO.CAMINHO));
   const estruturas = [];
@@ -667,7 +670,23 @@ function gerarMapa(areaId) {
     const modelo = DADOS_ESTRUTURAS[e.tipo];
     if (!modelo) continue;
     const estrutura = { ...clonarDados(e), largura: modelo.largura, altura: modelo.altura, variante: e.variante || 0 };
-    casasDaForma(estrutura, (x, y) => definir(x, y, true, null, PISO.ESTRUTURA));
+    if (modelo.entrar) {
+      // Prédio: parede na borda, porta na parede de baixo, chão por dentro e os móveis.
+      const porta = { x: e.x + modelo.porta, y: e.y + modelo.altura - 1 };
+      Object.assign(estrutura, { entrar: true, porta });
+      casasDaForma(estrutura, (x, y) => {
+        const beira = x === e.x || y === e.y || x === e.x + modelo.largura - 1 || y === e.y + modelo.altura - 1;
+        if (x === porta.x && y === porta.y) definir(x, y, false, null, PISO.PORTA);
+        else definir(x, y, beira, null, beira ? PISO.PAREDE : PISO.INTERIOR);
+      });
+      estrutura.moveis = (modelo.moveis || []).map((m) => ({ tipo: m.tipo, x: e.x + m.x, y: e.y + m.y }));
+      for (const m of estrutura.moveis) definir(m.x, m.y, true, null, PISO.INTERIOR);
+      if (modelo.tapete) estrutura.tapete = { x: e.x + modelo.tapete.x, y: e.y + modelo.tapete.y };
+      if (modelo.atendente) estrutura.atendente = { x: e.x + modelo.atendente.x, y: e.y + modelo.atendente.y };
+      // A casa logo em frente à porta fica sempre aberta (sem mato nem pedra).
+      const fx = porta.x, fy = porta.y + 1;
+      if (casaInterna(fx, fy) && (piso[fy][fx] === PISO.CHAO || piso[fy][fx] === PISO.CAMINHO)) definir(fx, fy, false, null, piso[fy][fx]);
+    } else casasDaForma(estrutura, (x, y) => definir(x, y, true, null, PISO.ESTRUTURA));
     estruturas.push(estrutura);
   }
   for (const m of d.marcos || []) if (casaInterna(m.x, m.y)) definir(m.x, m.y, true, m.tipo);
@@ -678,6 +697,14 @@ function gerarMapa(areaId) {
   return mapa;
 }
 
+// Prédio (casa ou loja onde se entra) cujo chão de dentro ou porta é a casa x, y, ou null.
+function predioEm(areaId, x, y) {
+  return (estruturasPorArea[areaId] || []).find(
+    (e) => e.entrar && x > e.x && y > e.y && x < e.x + e.largura - 1 && y <= e.y + e.altura - 1 &&
+      (y < e.y + e.altura - 1 || (x === e.porta.x && y === e.porta.y)),
+  ) || null;
+}
+
 // Estrutura (casa, tenda, banca, poço) que ocupa a casa, ou null.
 function estruturaEm(areaId, x, y) {
   return (estruturasPorArea[areaId] || []).find(
@@ -685,10 +712,11 @@ function estruturaEm(areaId, x, y) {
   ) || null;
 }
 
-// Abre uma casa (nunca a borda do mapa nem a pegada de uma estrutura). Água aberta vira chão.
+// Abre uma casa (nunca a borda do mapa, a pegada de uma estrutura nem as paredes, a porta e os móveis de um
+// prédio). Água aberta vira chão.
 function abrirCasa(areaId, x, y) {
   const mapa = mapas[areaId];
-  if (!mapa || !casaInterna(x, y) || pisos[areaId][y][x] === PISO.ESTRUTURA) return;
+  if (!mapa || !casaInterna(x, y) || pisos[areaId][y][x] >= PISO.ESTRUTURA) return;
   mapa[y][x] = 0;
   if (pisos[areaId][y][x] === PISO.AGUA) pisos[areaId][y][x] = PISO.CHAO;
 }
@@ -743,7 +771,15 @@ const npcs = {};
 function registrarNpc(npc) {
   npcs[npc.id] = npc;
   abrirClareira(npc.area, npc.x, npc.y, 1);
+  // Comerciante atrás do balcão de uma loja: conversa por cima do balcão (alcanceBalcao casas).
+  const loja = (estruturasPorArea[npc.area] || []).find((e) => e.atendente && e.atendente.x === npc.x && e.atendente.y === npc.y);
+  if (loja) npc.alcance = DADOS_ESTRUTURAS[loja.tipo].alcanceBalcao || ALCANCE_INTERACAO;
   return npc;
+}
+
+// Distância (Chebyshev) de onde se conversa com o NPC: 1, ou a do balcão para quem atende atrás dele.
+function alcanceDoNpc(npc) {
+  return npc?.alcance || ALCANCE_INTERACAO;
 }
 
 // Todos os NPCs vêm de dados/npcs.js.
@@ -3229,7 +3265,7 @@ const Mundo = {
 
   npcProximo(p, filtro = () => true) {
     return Object.values(npcs).find(
-      (n) => n.area === p.area && distanciaChebyshev(p, n) <= ALCANCE_INTERACAO && filtro(n),
+      (n) => n.area === p.area && distanciaChebyshev(p, n) <= alcanceDoNpc(n) && filtro(n),
     );
   },
 
@@ -3555,6 +3591,8 @@ const Mundo = {
         return this.venderItem(id, comando.item);
       case "viajar":
         return this.viajar(id, comando.areaDestino);
+      case "embarcar":
+        return this.embarcar(id);
       case "pescar":
         return this.pescar(id);
       case "usarPocao":
@@ -3712,30 +3750,7 @@ const Mundo = {
         `Você percorreu a trilha terrestre e chegou ${nomeComPreposicao(destino)}.`,
       );
     }
-    if (area.cais && x === area.cais.x && y === area.cais.y && areas.mar.portos[p.area]) {
-      // Barco pago: sem moedas, o jogador fica no cais.
-      const passagem = REGRAS_BARCO.passagem;
-      if (p.moedas < passagem) {
-        this.salvar(p);
-        return {
-          ok: true,
-          caminhoBloqueado: true,
-          mensagem: `A passagem do barco custa ${passagem} moedas e você tem ${p.moedas}.`,
-        };
-      }
-      p.moedas -= passagem;
-      const embarque = areas.mar.portos[p.area].embarque;
-      return {
-        ...this.mudarDeArea(
-          p,
-          "mar",
-          embarque.x,
-          embarque.y,
-          `Você pagou ${passagem} moedas de passagem e embarcou. Navegue até o cais de qualquer cidade aberta para desembarcar.`,
-        ),
-        passagemPaga: passagem,
-      };
-    }
+    if (area.cais && x === area.cais.x && y === area.cais.y && areas.mar.portos[p.area]) return this.embarcarNoBarco(p);
     const portal = PORTAIS.find((t) => t.area === p.area && t.x === x && t.y === y);
     if (portal) {
       if (portal.capitulo && !capituloAnteriorConcluido(p, portal.capitulo)) {
@@ -4104,12 +4119,58 @@ const Mundo = {
     return !!statusAtivo(p, "atordoamento", agora);
   },
 
+  // Barco pago (REGRAS_BARCO): cobra a passagem e embarca no porto da cidade no Mar das Rotas; sem moedas,
+  // o jogador fica no cais. Vale para quem pisa no cais e para quem paga ao barqueiro (comando embarcar).
+  embarcarNoBarco(p) {
+    // Barco pago: sem moedas, o jogador fica no cais.
+    const passagem = REGRAS_BARCO.passagem;
+    if (p.moedas < passagem) {
+      this.salvar(p);
+      return {
+        ok: true,
+        caminhoBloqueado: true,
+        mensagem: `A passagem do barco custa ${passagem} moedas e você tem ${p.moedas}.`,
+      };
+    }
+    p.moedas -= passagem;
+    const embarque = areas.mar.portos[p.area].embarque;
+    return {
+      ...this.mudarDeArea(
+        p,
+        "mar",
+        embarque.x,
+        embarque.y,
+        `Você pagou ${passagem} moedas de passagem e embarcou. Navegue até o cais de qualquer cidade aberta para desembarcar.`,
+      ),
+      passagemPaga: passagem,
+    };
+  },
+
+  // Conversa com o barqueiro e paga a passagem: precisa estar ao lado dele.
+  embarcar(id) {
+    const p = this.jogadores[id];
+    const barqueiro = this.npcProximo(p, (n) => n.papel === "barqueiro");
+    const cais = areas[p.area]?.cais;
+    if (!barqueiro && !(cais && distanciaChebyshev(p, cais) <= 1)) return { ok: false, mensagem: "Fale com o barqueiro, no cais, para embarcar." };
+    if (!areas[p.area]?.cais || !areas.mar.portos[p.area]) return { ok: false, mensagem: "Não há barco saindo daqui." };
+    const r = this.embarcarNoBarco(p);
+    if (r.caminhoBloqueado) return { ...r, ok: false };
+    return r;
+  },
+
+  // Ficha da passagem para a janela do barqueiro: preço, moedas do jogador e se dá para pagar.
+  fichaBarco(id) {
+    const p = this.jogadores[id];
+    const passagem = REGRAS_BARCO.passagem;
+    return { passagem, moedas: p.moedas, podePagar: p.moedas >= passagem, destino: areas.mar.nome };
+  },
+
   // ----- Conversas -----
   interagir(id, alvoId) {
     const p = this.jogadores[id];
     const npc = alvoId ? registroDe(npcs, alvoId) : this.npcProximo(p);
     if (!npc || npc.area !== p.area) return { ok: false, mensagem: "Não há ninguém por perto para conversar." };
-    if (distanciaChebyshev(p, npc) > ALCANCE_INTERACAO)
+    if (distanciaChebyshev(p, npc) > alcanceDoNpc(npc))
       return { ok: false, mensagem: "Chegue mais perto para conversar." };
     const conversa = this.registrarConversa(p, npc);
     if (conversa) return conversa;
@@ -4129,6 +4190,14 @@ const Mundo = {
         abrirViagem: npc.id,
         mensagem: `${npc.nome.split(",")[0]}: Levo você a ${abertas === 1 ? "1 cidade" : `${abertas} cidades`} daqui. O preço depende da distância; a pé e de barco também se chega.`,
       };
+    }
+    if (npc.papel === "barqueiro") {
+      const passagem = REGRAS_BARCO.passagem;
+      const nome = npc.nome.split(",")[0];
+      const fala = p.moedas >= passagem
+        ? `A passagem para o ${areas.mar.nome} custa ${passagem} moedas. Você tem ${p.moedas}. Quer embarcar?`
+        : `A passagem para o ${areas.mar.nome} custa ${passagem} moedas, e você só tem ${p.moedas}. Volte quando tiver o bastante.`;
+      return { ok: true, abrirBarco: npc.id, mensagem: `${nome}: ${fala}` };
     }
     if (npc.papel === "ambiente") return this.interagirMorador(id, npc);
     if (npc.papel === "vocacao") {
