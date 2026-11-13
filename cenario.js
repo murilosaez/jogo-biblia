@@ -347,11 +347,9 @@
       const ax = (x + 0.5 - (vx + vw / 2)) / (vw / 2), ay = (y - (vt + 6)) / 6;
       if (y < vt + 6 && ax * ax + ay * ay > 1) continue;
       const fundo = y > dy + T - 6 ? "#5a3e28" : "#1c1210";
-      tela.p(x, y, x < vx + 4 ? "#7a5232" : x < vx + 6 ? "#5a3820" : fundo);
+      tela.p(x, y, fundo);
     }
-    // folha da porta aberta (tábuas com cravos), encostada à esquerda
-    tela.ret(vx, vt + 6, 4, dy + T - vt - 7, (x, y, i) => (i === 0 ? "#a87444" : i === 3 ? "#5a3820" : "#8a5a32"));
-    tela.p(vx + 1, vt + 10, "#e8b94a"); tela.p(vx + 1, dy + T - 6, "#e8b94a");
+    // a folha da porta é uma imagem à parte (pintarPorta): abre quando o jogador chega perto
     // verga e batentes
     tela.ret(vx - 3, vt - 2, vw + 6, 3, (x, y, i, j) => (j === 0 ? "#b48452" : j === 2 ? "#4e3018" : "#8a6038"));
     tela.ret(vx - 3, vt + 1, 3, dy + T - vt - 1, (x, y, i) => (i === 0 ? "#8a6038" : "#5a3820"));
@@ -579,6 +577,51 @@
     return tela;
   }
 
+  // Folha da porta (32 × 32, no lugar da casa da porta na fachada): fechada (tábuas com cravos e argola de
+  // ferro; na tenda, a aba de pano baixada) ou aberta (encostada à esquerda; na tenda, a aba amarrada).
+  function pintarPorta(mat, aberta) {
+    const tela = new Tela(T, T);
+    const vx = 7, vw = 18, vt = 5;
+    const dentroDoArco = (x, y) => {
+      const ax = (x + 0.5 - (vx + vw / 2)) / (vw / 2), ay = (y - (vt + 6)) / 6;
+      return x >= vx && x < vx + vw && y >= vt && y < T && !(y < vt + 6 && ax * ax + ay * ay > 1);
+    };
+    if (mat.textura === "pano") {
+      const [c0, c1, c2] = mat.face, l = mat.listra || [c0, c1];
+      if (aberta) {
+        for (let y = vt; y < T; y++) for (let x = vx; x < vx + 6; x++) if (dentroDoArco(x, y)) tela.p(x, y, (y >> 2) % 3 === 0 ? l[1] : x === vx + 5 ? c0 : c1);
+        tela.lin(vx, vt + 12, vx + 6, vt + 12, "#3a2414");
+      } else {
+        for (let y = vt; y < T; y++) for (let x = vx; x < vx + vw; x++) if (dentroDoArco(x, y)) {
+          const dobra = Math.sin(((x - vx) / vw) * Math.PI * 3);
+          tela.p(x, y, (y - vt) % 9 < 2 ? l[(x >> 2) & 1] : dobra > 0.4 ? c2 : dobra < -0.4 ? c0 : c1);
+        }
+      }
+      return tela;
+    }
+    const madeira = ["#3a2414", "#5a3820", "#7a5232", "#8a5a32", "#a87444"];
+    if (aberta) {
+      for (let y = vt + 6; y < T - 1; y++) for (let i = 0; i < 4; i++) tela.p(vx + i, y, i === 0 ? madeira[4] : i === 3 ? madeira[1] : madeira[3]);
+      tela.p(vx + 1, vt + 10, "#e8b94a"); tela.p(vx + 1, T - 6, "#e8b94a");
+      return tela;
+    }
+    for (let y = vt; y < T; y++) for (let x = vx; x < vx + vw; x++) {
+      if (!dentroDoArco(x, y)) continue;
+      const lx = x - vx, tab = lx % 5;
+      let c = tab === 0 ? madeira[1] : tab === 1 ? madeira[4] : madeira[3];
+      if (y === T - 1) c = madeira[0];
+      if (y === vt + 9 || y === T - 7) c = tab === 0 ? "#2a2a2a" : "#4a4a4a"; // ferragens
+      tela.p(x, y, c);
+    }
+    tela.p(vx + vw - 5, vt + 15, "#e8b94a"); tela.p(vx + vw - 4, vt + 16, "#b07a38"); tela.p(vx + vw - 6, vt + 16, "#b07a38"); tela.p(vx + vw - 5, vt + 17, "#b07a38");
+    return tela;
+  }
+  function texturaPorta(scene, variante, aberta) {
+    const chave = `porta_${variante || 0}_${aberta ? 1 : 0}`;
+    if (!scene.textures.exists(chave)) scene.textures.addCanvas(chave, pintarPorta(material(variante), aberta).canvas());
+    return chave;
+  }
+
   // Registra as texturas do prédio na cena; devolve as chaves.
   function texturasPredio(scene, e) {
     const base = `pr_${e.tipo}_${e.x}_${e.y}_${e.variante || 0}`;
@@ -645,6 +688,52 @@
   // dentro de uma vila), 4 chão de prédio (fica sob as imagens do prédio).
   const NADA = 0, CHAO = 1, TERRA = 2, RUA = 3, PREDIO = 4;
   const cacheClasses = {};
+  // Orla: a borda do mapa e as 4 casas de fora viram mata, palmeiral ou pedregal contínuo (com o chão da
+  // região por baixo), em vez de uma faixa chapada. tipos: obstáculos do bioma (sprites.js, ob_<area>_<tipo>);
+  // densidade: chance de cada casa da orla ter um. Fica de fora: água da borda (lago, Nilo, enseada) e muralha.
+  const MOLDURA_CASAS = 4;
+  const ORLAS = {
+    canaan: { tipos: ["oliveira", "oliveira", "oliveira", "rocha"], densidade: 0.78 },
+    deserto: { tipos: ["rocha", "rocha", "acacia", "retama"], densidade: 0.55 },
+    egito: { tipos: ["tamareira", "tamareira", "tamareira", "jarros"], densidade: 0.7 },
+    marVermelho: { tipos: ["granito", "granito", "coral", "destrocos"], densidade: 0.62 },
+    sinai: { tipos: ["penedo", "penedo", "penedo", "arbusto"], densidade: 0.85 },
+    galileia: { tipos: ["figueira", "figueira", "basalto", "figueira"], densidade: 0.75 },
+  };
+  // A casa (x, y), dentro ou fora do mapa, é água ou muralha da borda (fica com o Tilemap animado)?
+  function aguaDaBorda(area, x, y) {
+    const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan;
+    const cais = typeof areas !== "undefined" ? areas[area] && areas[area].cais : null;
+    if (y <= 0 && cais && Math.abs(x - cais.x) <= 3) return true;
+    if (y <= 0 && (bio.borda.norte === "agua" || bio.borda.norte === "muralha")) return true;
+    if (y >= ROWS - 1 && bio.borda.sul === "muralha") return true;
+    return false;
+  }
+  // Casa da orla: no anel da borda ou até MOLDURA_CASAS fora do mapa, sem ser água.
+  function naOrla(area, x, y) {
+    if (!ORLAS[area]) return false;
+    const fora = x < 0 || y < 0 || x >= COLS || y >= ROWS;
+    const anel = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
+    if (!fora && !anel) return false;
+    if (x < -MOLDURA_CASAS || y < -MOLDURA_CASAS || x >= COLS + MOLDURA_CASAS || y >= ROWS + MOLDURA_CASAS) return false;
+    const cx = Math.max(0, Math.min(COLS - 1, x)), cy = Math.max(0, Math.min(ROWS - 1, y));
+    if (aguaDaBorda(area, x, y) || aguaDaBorda(area, cx, cy)) return false;
+    if (!fora && pisos[area][y][x] === PISO.AGUA) return false;
+    return true;
+  }
+  // Obstáculos da orla: [{ x, y, chave, dx, dy, escuro }] — sorteio fixo por casa.
+  function obstaculosDaOrla(area) {
+    const o = ORLAS[area], lista = [];
+    if (!o) return lista;
+    for (let y = -MOLDURA_CASAS; y < ROWS + MOLDURA_CASAS; y++) for (let x = -MOLDURA_CASAS; x < COLS + MOLDURA_CASAS; x++) {
+      if (!naOrla(area, x, y)) continue;
+      const dist = Math.max(-x, -y, x - (COLS - 1), y - (ROWS - 1), 0); // 0 no anel, 1..4 fora
+      if (hash2(x, y, 501) > o.densidade + dist * 0.04) continue;
+      const tipo = o.tipos[Math.floor(hash2(x, y, 502) * o.tipos.length)];
+      lista.push({ x, y, chave: `ob_${area}_${tipo}`, dx: Math.round((hash2(x, y, 503) - 0.5) * 16), dy: Math.round((hash2(x, y, 504) - 0.5) * 8), escuro: Math.min(0.45, dist * 0.1) });
+    }
+    return lista;
+  }
   function classesDaArea(area) {
     if (cacheClasses[area]) return cacheClasses[area];
     const mapa = mapas[area], piso = pisos[area];
@@ -654,7 +743,8 @@
     const naVila = (x, y) => vilas.some((v) => x >= v.x && y >= v.y && x < v.x + v.largura && y < v.y + v.altura);
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const i = y * COLS + x, p = piso[y][x];
-      if (x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1 || p === PISO.AGUA) cls[i] = NADA;
+      if (p === PISO.AGUA) cls[i] = NADA;
+      else if (x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1) cls[i] = naOrla(area, x, y) ? CHAO : NADA;
       else if (p === PISO.CAMINHO) cls[i] = naVila(x, y) ? RUA : TERRA;
       else if (p >= PISO.PAREDE) cls[i] = PREDIO;
       else cls[i] = CHAO;
@@ -696,8 +786,8 @@
     const junta = area === "galileia" ? "#2a2826" : "#5a4e3a";
     const W0 = bx * L, H0 = by * L;
     const classe = (wx, wy) => {
-      const x = wx >> 5, y = wy >> 5;
-      if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return NADA;
+      const x = Math.floor(wx / T), y = Math.floor(wy / T);
+      if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return naOrla(area, x, y) ? CHAO : NADA;
       return cls[y * COLS + x];
     };
     const gastoEm = (wx, wy) => {
@@ -818,7 +908,8 @@
 
   global.Cenario = {
     MATERIAIS_PREDIO, material, LADO_PEDACO: LADO,
-    texturasPredio, texturaMovel, texturaPedacoChao, classesDaArea, texturaMuro, MUROS, ALTURA_MURO,
+    obstaculosDaOrla, naOrla, MOLDURA_CASAS, temOrla: (area) => !!ORLAS[area],
+    texturasPredio, texturaMovel, texturaPorta, texturaPedacoChao, classesDaArea, texturaMuro, MUROS, ALTURA_MURO,
     // para testes e ferramentas
     pintarPredio, pintarMovel, pintarPedacoChao,
   };

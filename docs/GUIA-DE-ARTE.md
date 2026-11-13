@@ -95,6 +95,15 @@ e documenta a paleta de cada região.
   a estrada de terra tem a beira irregular (amostra deslocada por ruído, ±9 px) com um fio escuro e tufos;
   dentro das vilas o caminho é rua de pedra (fiadas de 8 px, junta escura, luz em cima/esquerda); em volta
   das portas, poços, tendas e moradores o chão fica pisado; a beira da água é areia molhada.
+- **Portas**: a folha da porta é uma imagem à parte (`texturaPorta`): fechada (tábuas com ferragens e argola;
+  na tenda, a aba de pano baixada) e aberta (encostada à esquerda). Abre sozinha com o jogador a uma casa dela.
+- **Orla**: a borda do mapa e as 4 casas de fora viram mata, palmeiral ou pedregal do bioma (`ORLAS`), com o
+  chão da região por baixo e as peças mais escuras para fora, no lugar da faixa chapada. Água e muralha da
+  borda continuam no Tilemap. Árvores e pedras de todo o mapa saem da grade (deslocamento e espelho por casa).
+- **Dia e noite** (`CICLO_DIA` em `game.js`): um dia dura 40 min de relógio; a noite escurece até 70% em azul
+  profundo, com buracos de luz suaves no jogador, nas fogueiras, nas candeias das portas, nos interiores
+  (com o telhado aberto) e nos portais, e um brilho quente por cima. Nomes, barras e números ficam acima da
+  noite. Só aparência.
 - **Muros contínuos**: o muro da vila e as muretas de pedra (`muro`, `tijolos`) emendam com os vizinhos
   (máscara N/L/S/O): topo de pedras de cobertura e face de 20 px onde o muro não continua para o sul.
 
