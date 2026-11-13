@@ -4122,6 +4122,9 @@
       const r = area === "egito" ? ruido(x / 10, y / 2, semente) : ruido(x / 6, y / 6, semente);
       return r > 0.62;
     };
+    // Com o chão contínuo (cenario.js), a beira da água (areia, espuma e raso) é pintada por ele, seguindo uma
+    // linha orgânica: a água do Tilemap fica lisa, sem a espuma em degrau nas beiras das casas.
+    const beiraContinua = () => area !== "mar" && typeof global.Cenario !== "undefined";
     function indice(x, y) {
       // moldura externa
       if (x < 0 || y < 0 || x >= COLSm || y >= ROWSm) {
@@ -4137,6 +4140,7 @@
       if (ehBorda(x, y)) {
         if (ehMuralha(x, y)) return y <= 0 ? ID.COSTA + 1 : ID.COSTA + 2;
         if (ehAguaBorda(x, y)) {
+          if (beiraContinua()) return ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
           // costa: espuma nos lados com terra
           let m = 0;
           if (!ehAgua(x, y + 1)) m |= 4;
@@ -4153,7 +4157,7 @@
         // lago ou rio: espuma nos lados com terra (como a costa da borda)
         const terra = (xx, yy) => (xx >= 0 && yy >= 0 && xx < COLSm && yy < ROWSm && !ehAgua(xx, yy) ? 1 : 0);
         const m = terra(x, y - 1) | (terra(x + 1, y) << 1) | (terra(x, y + 1) << 2) | (terra(x - 1, y) << 3);
-        return m ? ID.COSTA + m : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
+        return m && !beiraContinua() ? ID.COSTA + m : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
       }
       if (ehCaminho(x, y)) {
         const m = (ehCaminho(x, y - 1) ? 1 : 0) | (ehCaminho(x + 1, y) ? 2 : 0) | (ehCaminho(x, y + 1) ? 4 : 0) | (ehCaminho(x - 1, y) ? 8 : 0);
