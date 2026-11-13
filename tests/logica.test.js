@@ -1600,6 +1600,7 @@ function carregarComMissaoDeTeste() {
 teste("28. motor: falar, chegar, derrotar, coletar e entregar, com variáveis e recompensa", () => {
   const j = carregarComMissaoDeTeste();
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const balao = (npcId) => j.g("estadoMissaoNpc")(p, npcId);
   const m = () => p.missoes.teste;
   igual(m(), { status: "nao_iniciada", etapa: 0, progresso: [0] }, "missão registrada entra no save");
@@ -2048,6 +2049,7 @@ teste("34. caçadas: cada abate conta para todas as ativas que casam (golpe, fle
   j.entrar();
   concluirMissoes(j);
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   for (const id of ["deserto_ferroes", "deserto_rotas", "deserto_bando"]) assert.ok(aceitarCacada(j, id).ok, id);
   // 1 escorpião: as duas caçadas de escorpião avançam; a do bando, não. Sem "Caçada" na mensagem.
   const r1 = abater(j, "escorpiao1");
@@ -2247,6 +2249,7 @@ teste("36. caçadas: entrega em qualquer atalaia, espera contada da entrega e a 
   j.entrar();
   concluirMissoes(j);
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const limiar = j.g("limiarNivel");
   p.nivel = 20;
   p.xp = limiar(19); // os 420 XP (abate + entrega) não sobem de nível
@@ -3564,6 +3567,7 @@ teste("53. campeões (JGB-6): 5% ao renascer, modificadores no nome, mais fortes
   const j = carregarJogo({ semente: 21 });
   j.entrar();
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const [CAMPEAO, MODS, atributos, nomeDe] = ["CAMPEAO", "MODIFICADORES_CAMPEAO", "atributosInimigo", "nomeInimigo"].map(j.g);
   // Frequência: em muitos renascimentos, perto de 5%, com 1 ou 2 modificadores diferentes.
   const e = j.g("inimigos").hiena1;
@@ -4513,6 +4517,7 @@ teste("61. descanso do Sábado (JGB-11): a ausência no Sábado vira reserva e o
   j.g("Storage").flush();
   const j2 = carregarJogo({ store: j.store, inicio: local(14, 12) });
   const p2 = j2.entrar();
+  vigorNeutro(j2); // o XP do vigor (e o descanso junto) fica no teste 74
   assert.strictEqual(p2.descanso.xp, Math.round(0.75 * custo));
   const aviso = p2.avisosPendentes.find((a) => a.id === "descanso");
   assert.ok(aviso && /\+75 XP de descanso/.test(aviso.texto) && /dobro/.test(aviso.texto), "aviso do descanso");
@@ -6561,6 +6566,314 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   assert.match(FONTE_GAME, /r\.projetil === "pedra"/, "a funda atira uma pedra, o arco uma flecha");
   assert.doesNotMatch(ui + FONTE_GAME, /equipamento\.arco\b|eq\.arco\b/, "ninguém lê o espaço antigo do arco");
   assert.match(FONTE_GAME, /podeAtirar\(/, "o autoataque pergunta à lógica se dá para atirar");
+});
+
+// ---------------------------------------------------------------------
+// Janela de habilidades e vigor (teste 74)
+// ---------------------------------------------------------------------
+// Põe o vigor no meio da faixa de XP normal (×1): os testes de outras regras de XP (missão, caçadas, campeões,
+// descanso) continuam conferindo só a regra deles. O personagem novo começa cheio, na faixa de +10%.
+function vigorNeutro(j, p = j.p) {
+  const faixas = j.g("REGRAS_VIGOR").faixas;
+  const i = faixas.findIndex((f) => f.xp === 1);
+  const topo = i > 0 ? faixas[i - 1].desde : j.g("REGRAS_VIGOR").maximoMinutos;
+  p.vigor.minutos = (faixas[i].desde + topo) / 2;
+}
+
+teste("74. janela de habilidades (a): fichaDeHabilidades traz nível, vida, fé, carga, vigor, habilidades e ofícios", () => {
+  const j = carregarJogo({ inicio: local(10, 9) }); // terça
+  j.entrar();
+  const p = j.p;
+  const ficha = () => j.g("fichaDeHabilidades")(p, j.agora);
+  const kg = j.g("textoKg");
+  let f = ficha();
+  igual(f.nivel, { nivel: 1, xp: 0, noNivel: 0, custo: 100, falta: 100, pct: 0, maximo: false, descanso: 0 });
+  igual([f.vida, f.fe], [{ atual: 100, maximo: 100 }, { atual: 0, maximo: 100, aprendida: false }]);
+  const peso = j.g("pesoCarregado")(p), cap = j.g("capacidadeCarga")(p);
+  igual(f.carga, { atual: peso, maximo: cap, pct: (100 * peso) / cap, texto: `${kg(peso)} / ${kg(cap)} kg` });
+  igual([f.vigor.texto, f.vigor.textoMaximo, f.vigor.pct, f.vigor.faixa.id], ["40:00", "40:00", 100, "descansado"]);
+  igual(f.combate.map((h) => [h.chave, h.nome, h.nivel, h.pct]), [
+    ["corpo", "Corpo a corpo", 0, 0],
+    ["distancia", "Distância", 0, 0],
+    ["defesa", "Defesa (escudo)", 0, 0],
+    ["oracao", "Oração", 0, 0],
+  ]);
+  igual(f.oficios.map((o) => o.id), j.g("ORDEM_OFICIOS"));
+  assert.strictEqual(f.oficios.length, 6);
+
+  // Nível 2 com 50 de 150 XP: 33% (para baixo), faltam 100; a reserva de descanso aparece junto.
+  p.xp = 150;
+  p.nivel = 2;
+  p.descanso.xp = 30;
+  igual(ficha().nivel, { nivel: 2, xp: 150, noNivel: 50, custo: 150, falta: 100, pct: 33, maximo: false, descanso: 30 });
+
+  // Habilidade no meio do nível: o que falta, em XP e em usos, e o que ela dá agora.
+  p.skillXp.corpo = 3;
+  const corpo = ficha().combate[0];
+  igual([corpo.xp, corpo.necessario, corpo.falta, corpo.usos, corpo.pct, corpo.maximo, corpo.bloqueada], [3, 6, 3, 2, 50, false, false]);
+  assert.strictEqual(corpo.dica, "Faltam 3 de 6 XP (cerca de 2 golpes corpo a corpo) para o nível 1.");
+  assert.strictEqual(corpo.efeito, "+0 de dano, crítico 5%");
+  p.habilidades.distancia = 8;
+  p.skillXp.distancia = 17; // do 8 ao 9: 18 XP
+  const dist = ficha().combate[1];
+  igual([dist.nivel, dist.falta, dist.usos, dist.pct], [8, 1, 1, 94]);
+  assert.strictEqual(dist.dica, "Faltam 1 de 18 XP (cerca de 1 disparo) para o nível 9.");
+  assert.strictEqual(dist.efeito, "+2 de dano, crítico 6,6%");
+  p.habilidades.defesa = 100;
+  const def = ficha().combate[2];
+  igual([def.nivel, def.pct, def.maximo, def.falta, def.dica, def.efeito], [100, 100, true, 0, "Nível máximo (100).", "+20 de defesa"]);
+
+  // Oração: sem aprender, a dica diz onde; aprendida, o que falta e a cura (e o que vem no 25).
+  let ora = ficha().combate[3];
+  igual([ora.bloqueada, ora.dica], [true, "Aprenda a Oração com Jesus, na Galileia."]);
+  p.oracaoDesbloqueada = true;
+  p.fe = 80;
+  f = ficha();
+  ora = f.combate[3];
+  igual([ora.bloqueada, ora.dica, ora.efeito], [false, "Faltam 6 de 6 XP (cerca de 2 orações) para o nível 1.", "cura 20 (tira veneno e sangramento no nível 25)"]);
+  igual(f.fe, { atual: 80, maximo: 100, aprendida: true });
+  p.habilidades.oracao = 30;
+  assert.strictEqual(ficha().combate[3].efeito, "cura 35 e tira veneno e sangramento");
+
+  // Ofícios: nível, XP no nível e % (pela curva de REGRAS_OFICIOS).
+  p.oficios.pescador.xp = 5;
+  p.oficios.oleiro.xp = j.g("xpTotalOficio")(30);
+  f = ficha();
+  const pesc = f.oficios.find((o) => o.id === "pescador");
+  igual([pesc.nome, pesc.nivel, pesc.xp, pesc.necessario, pesc.falta, pesc.pct, pesc.dica], ["Pescador", 1, 5, 10, 5, 50, "Faltam 5 de 10 XP para o nível 2."]);
+  const oleiro = f.oficios.find((o) => o.id === "oleiro");
+  igual([oleiro.nivel, oleiro.pct, oleiro.maximo, oleiro.dica], [30, 100, true, "Nível máximo (30)."]);
+
+  // Mochila cheia: 100%; a ficha só lê (nada muda no personagem).
+  while (j.g("pesoCarregado")(p) <= j.g("capacidadeCarga")(p)) p.inventario.push("couro_grosso");
+  const antes = json(p);
+  igual(ficha().carga.pct, 100);
+  igual(p, antes, "a ficha é pura");
+});
+
+teste("74. vigor (b): gasta só caçando, em tempo real, e a aba parada não conta", () => {
+  const j = carregarJogo({ inicio: local(10, 9) });
+  j.entrar();
+  const p = j.p;
+  const est = j.M.estado[ID];
+  const R = j.g("REGRAS_VIGOR");
+  igual(p.vigor, { minutos: R.maximoMinutos, vistoEm: j.agora }, "personagem novo começa cheio");
+  // Parado (sem golpe): nada gasta.
+  for (let i = 0; i < 120; i++) {
+    j.avancar(1000);
+    j.atualizar();
+  }
+  assert.strictEqual(p.vigor.minutos, R.maximoMinutos);
+  // Caçando (golpe a cada segundo): 10 minutos de caçada gastam 10 minutos de vigor; caçar marca presença.
+  for (let i = 0; i < 600; i++) {
+    est.ultimoCombate = j.agora;
+    j.avancar(1000);
+    j.atualizar();
+  }
+  assert.ok(Math.abs(p.vigor.minutos - (R.maximoMinutos - 10)) < 1e-6, String(p.vigor.minutos));
+  assert.strictEqual(p.vigor.vistoEm, j.agora);
+  // Até janelaCombateSegundos depois do último golpe ainda conta (o 1º segundo já contou acima); depois, para.
+  let antes = p.vigor.minutos;
+  for (let i = 0; i < 120; i++) {
+    j.avancar(1000);
+    j.atualizar();
+  }
+  assert.ok(Math.abs(antes - p.vigor.minutos - (R.janelaCombateSegundos - 1) / 60) < 1e-6, "conta só a janela depois do golpe");
+  // Um passo enorme (aba parada) conta no máximo passoMaximoSegundos.
+  antes = p.vigor.minutos;
+  est.ultimoCombate = j.agora;
+  j.avancar(1000);
+  j.atualizar();
+  est.ultimoCombate = j.agora;
+  j.avancar(40_000);
+  j.atualizar();
+  assert.ok(Math.abs(antes - p.vigor.minutos - (1 + R.passoMaximoSegundos) / 60) < 1e-6);
+  // Uma luta de verdade (autoataque e golpes do lobo) gasta o tempo da luta (o 1º tique pega também a caminhada
+  // de 1,5 s que lutar() simula num salto só, sem tiques).
+  j.avancar(120_000);
+  j.atualizar();
+  antes = p.vigor.minutos;
+  const luta = lutar(j, "lobo1");
+  assert.ok(luta.vitoria);
+  const gasto = (antes - p.vigor.minutos) * 60;
+  assert.ok(gasto >= luta.duracao - 0.2 && gasto <= luta.duracao + 1.6, `${gasto} s de vigor numa luta de ${luta.duracao} s`);
+  // Nunca abaixo de zero.
+  p.vigor.minutos = 0.001;
+  est.ultimoCombate = j.agora;
+  j.avancar(1000);
+  j.atualizar();
+  assert.strictEqual(p.vigor.minutos, 0);
+  igual(j.g("estadoVigor")(p, j.agora).faixa.id, "exausto");
+});
+
+teste("74. vigor (c): volta longe do jogo (1 min a cada 3, depois da carência) e o descanso do Sábado enche", () => {
+  const sair = (j) => j.g("Storage").flush();
+  const j = carregarJogo({ inicio: local(10, 9) }); // terça, 9 h
+  j.entrar();
+  j.p.vigor.minutos = 600;
+  j.M.salvar(j.p);
+  sair(j);
+  // 9 minutos fora: abaixo da carência (10), nada.
+  const j2 = carregarJogo({ store: j.store, inicio: local(10, 9, 9) });
+  const p2 = j2.entrar();
+  assert.strictEqual(p2.vigor.minutos, 600);
+  sair(j2);
+  // 70 minutos fora: (70 − 10) ÷ 3 = 20 minutos.
+  const j3 = carregarJogo({ store: j2.store, inicio: local(10, 10, 19) });
+  const p3 = j3.entrar();
+  assert.ok(Math.abs(p3.vigor.minutos - 620) < 1e-6, String(p3.vigor.minutos));
+  assert.ok(!p3.avisosPendentes.some((a) => a.id === "vigor"), "a volta comum não avisa");
+  // Com a página aberta e parada, a visão já mostra o que voltou; o save recebe no próximo salvar.
+  j3.avancar(40 * 60_000);
+  const v = j3.g("estadoVigor")(p3, j3.agora);
+  assert.ok(Math.abs(v.minutos - 630) < 1e-6 && Math.abs(p3.vigor.minutos - 620) < 1e-6);
+  assert.strictEqual(v.texto, "10:30");
+  j3.M.salvar(p3);
+  assert.ok(Math.abs(p3.vigor.minutos - 630) < 1e-6);
+  // Nunca passa do máximo.
+  p3.vigor.minutos = 2399;
+  j3.avancar(60 * 60_000);
+  j3.M.salvar(p3);
+  assert.strictEqual(p3.vigor.minutos, 2400);
+  sair(j3);
+
+  // Sábado: saiu sexta às 17 h e voltou às 19 h 30 (1 h 30 dentro do Sábado): cheio, com aviso.
+  const j4 = carregarJogo({ store: j3.store, inicio: local(13, 17) });
+  const p4 = j4.entrar();
+  p4.vigor.minutos = 600;
+  j4.M.salvar(p4);
+  sair(j4);
+  const j5 = carregarJogo({ store: j4.store, inicio: local(13, 19, 30) });
+  const p5 = j5.entrar();
+  assert.strictEqual(p5.vigor.minutos, 2400, "o Sábado enche");
+  const aviso = p5.avisosPendentes.find((a) => a.id === "vigor");
+  assert.ok(aviso && aviso.texto === "O descanso do Sábado renovou o seu vigor: 40:00.", JSON.stringify(aviso));
+  // Só 30 min dentro do Sábado (abaixo do mínimo de 60): a volta comum, (40 − 10) ÷ 3 = 10.
+  p5.vigor.minutos = 600;
+  p5.avisosPendentes = [];
+  j5.M.salvar(p5);
+  sair(j5);
+  const j6 = carregarJogo({ store: j5.store, inicio: local(13, 20, 10) });
+  const p6 = j6.entrar();
+  assert.ok(Math.abs(p6.vigor.minutos - 610) < 1e-6, String(p6.vigor.minutos));
+  assert.ok(!p6.avisosPendentes.some((a) => a.id === "vigor"));
+
+  // Relógio atrasado: a marca no futuro recomeça de agora, sem tirar nem dar vigor.
+  p6.vigor.minutos = 1000;
+  j6.M.salvar(p6);
+  sair(j6);
+  const j7 = carregarJogo({ store: j6.store, inicio: local(12, 9) });
+  const p7 = j7.entrar();
+  igual(p7.vigor, { minutos: 1000, vistoEm: local(12, 9) });
+});
+
+teste("74. vigor (d): faixas e XP da criatura × campeão × vigor; o descanso dobra depois e a vocação não mexe", () => {
+  const j = carregarJogo({ inicio: local(10, 9) });
+  j.entrar();
+  const p = j.p;
+  const R = j.g("REGRAS_VIGOR");
+  const faixa = (m) => j.g("faixaVigor")(m).id;
+  igual(
+    [faixa(2400), faixa(2280), faixa(2279.99), faixa(720), faixa(719.99), faixa(0)],
+    ["descansado", "descansado", "disposto", "disposto", "exausto", "exausto"],
+  );
+  const texto = j.g("textoVigor");
+  igual([texto(2400), texto(2279.99), texto(65), texto(5), texto(0), texto(-3)], ["40:00", "37:59", "1:05", "0:05", "0:00", "0:00"]);
+  igual(R.faixas.map((x) => x.xp), [1.1, 1, 0.5]);
+  let v = j.g("estadoVigor")(p, j.agora);
+  igual([v.faixa.id, v.ateCair, v.proxima.id], ["descansado", 120, "disposto"]);
+  p.vigor.minutos = 700;
+  v = j.g("estadoVigor")(p, j.agora);
+  igual([v.faixa.id, v.texto, v.ateCair, v.proxima], ["exausto", "11:40", null, null]);
+
+  const lobo = j.g("inimigos").lobo1;
+  assert.strictEqual(j.g("xpDoAbate")(p, lobo), 40);
+  // Descansado (cheio): +10%.
+  p.vigor.minutos = R.maximoMinutos;
+  let r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpVigor, r.xpDescanso], [44, 4, 0]);
+  assert.match(r.mensagem, /\+44 XP \(4 do vigor\)\./);
+  // Disposto: XP normal, sem nota.
+  p.vigor.minutos = 1000;
+  r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpVigor], [40, 0]);
+  assert.doesNotMatch(r.mensagem, /vigor|exausto/);
+  // Exausto: metade.
+  p.vigor.minutos = 100;
+  r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpVigor], [20, -20]);
+  assert.match(r.mensagem, /\+20 XP \(exausto: 50% do XP\)\./);
+  // Campeão × vigor: 40 × 3 × 1,1.
+  p.vigor.minutos = R.maximoMinutos;
+  const CAMPEAO = j.g("CAMPEAO");
+  const comCampeao = Math.round(40 * CAMPEAO.xp * 1.1);
+  igual(j.g("composicaoXpAbate")(p, lobo, true, j.agora), {
+    xp: comCampeao,
+    semVigor: 40 * CAMPEAO.xp,
+    fatorVigor: 1.1,
+    faixa: { id: "descansado", nome: "Descansado", xp: 1.1, texto: "+10% de XP das criaturas" },
+  });
+  j.M.reaparecerInimigo(ID, "lobo1");
+  p.campeoes.lobo1 = ["feroz"];
+  p.vidaInimigos.lobo1 = 1;
+  r = abaterSemLimpar(j, "lobo1");
+  igual([r.campeao, r.xpGanho, r.xpVigor], [true, comCampeao, comCampeao - 40 * CAMPEAO.xp]);
+  p.saqueNoChao = [];
+  // Descanso do Sábado: dobra o XP já com o vigor (o extra sai da reserva).
+  p.descanso.xp = 500;
+  r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpDescanso, r.xpVigor, p.descanso.xp], [88, 44, 4, 456]);
+  p.vigor.minutos = 100;
+  r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpDescanso, r.xpVigor], [40, 20, -20]);
+  // Criatura fraca para o nível: a queda por nível vem antes do vigor.
+  p.descanso.xp = 0;
+  p.nivel = 20;
+  p.vida = 9999;
+  const fraca = j.g("xpDoAbate")(p, lobo);
+  r = abater(j, "lobo1");
+  igual(r.xpGanho, Math.round(fraca * 0.5));
+  // Vocação e talentos não multiplicam XP.
+  p.vigor.minutos = R.maximoMinutos;
+  p.nivel = 12;
+  const escorpiao = j.g("inimigos").escorpiao1;
+  const sem = json(j.g("composicaoXpAbate")(p, escorpiao, false, j.agora));
+  assert.ok(j.exec({ tipo: "escolherVocacao", vocacao: "guerreiro" }).ok);
+  for (const ramo of j.g("visaoTalentos")(p).ramos || []) {
+    for (const t of ramo.talentos || []) if (t.pode) j.exec({ tipo: "aprenderTalento", talento: t.id });
+  }
+  igual(j.g("composicaoXpAbate")(p, escorpiao, false, j.agora), sem);
+});
+
+teste("74. vigor (e): save sem versão nova — quem não tem o campo começa cheio e dados ruins são limpos", () => {
+  const j = carregarJogo({ inicio: local(10, 9) });
+  j.entrar();
+  const R = j.g("REGRAS_VIGOR");
+  const recarregar = (mexer) => {
+    mexer(j.p);
+    j.g("Storage").salvarAgora(j.p);
+    const j2 = carregarJogo({ store: j.store, inicio: local(10, 9) });
+    return j2.entrar();
+  };
+  assert.strictEqual(j.p.versao, j.g("VERSAO_SAVE"));
+  // Save de antes do vigor (sem o campo): cheio, com a ausência contando de agora.
+  let q = recarregar((x) => delete x.vigor);
+  igual(q.vigor, { minutos: R.maximoMinutos, vistoEm: local(10, 9) });
+  assert.strictEqual(q.versao, j.g("VERSAO_SAVE"), "sem versão nova");
+  for (const [ruim, minutos] of [
+    ["abc", R.maximoMinutos],
+    [{ minutos: "x", vistoEm: -5 }, R.maximoMinutos],
+    [{ minutos: -10 }, 0],
+    [{ minutos: 99_999 }, R.maximoMinutos],
+    [{ minutos: 123.456789, vistoEm: local(10, 9) }, 123.457],
+    [{ minutos: null }, R.maximoMinutos],
+  ]) {
+    q = recarregar((x) => (x.vigor = json(ruim)));
+    igual(q.vigor, { minutos, vistoEm: local(10, 9) }, JSON.stringify(ruim));
+  }
+  // O que foi gasto atravessa o save.
+  q = recarregar((x) => (x.vigor = { minutos: 777.5, vistoEm: local(10, 9) }));
+  igual(q.vigor, { minutos: 777.5, vistoEm: local(10, 9) });
 });
 
 const filtro = process.argv[2];

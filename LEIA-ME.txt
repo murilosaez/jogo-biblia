@@ -18,7 +18,8 @@ Conteúdo do jogo (pasta dados/)
   regiões dos capítulos, preços da viagem rápida (REGRAS_VIAGEM) e da passagem do barco (REGRAS_BARCO),
   ervas, odres, pontos de pesca e portais; o maná diário (REGRAS_MANA: amanhecer, porções, sexta e sábado,
   cura) e o descanso do Sábado (REGRAS_DESCANSO: janela, ausência mínima, XP por Sábado, limite e
-  multiplicador).
+  multiplicador); o vigor (REGRAS_VIGOR: máximo, janela de combate, carência, ritmo da volta, Sábado mínimo
+  e as faixas com o multiplicador de XP).
 - dados/npcs.js: personagens, posições, papéis e falas próprias. O mercador atende atrás do balcão da
   loja (conversa-se e compra-se do outro lado do balcão, a 2 casas); guias e atalaias atendem à frente
   de uma tenda ou banca (estruturas com npc em dados/mapas.js); o barqueiro fica ao lado do cais, diz o
@@ -56,7 +57,8 @@ Conteúdo do jogo (pasta dados/)
 O progresso fica no save (save versão 16): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
-mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte } e status[tipo] =
+mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte }, vigor = { minutos, vistoEm }
+(minutos com fração; sem o campo, o personagem começa cheio — não mudou a versão do save) e status[tipo] =
 { ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
 vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica pronta) e talentos[id] = graus
 (só os da vocação atual; os pontos saem do nível), oficios[id] = { xp } (o nível sai do XP) e
@@ -194,8 +196,14 @@ Interface e visual
   substituídos por dígitos em pixel 5×7 gerados pelo interface.js (a Pixelify desenha o 2 como Z e o
   5 como S); as teclas usam Alegreya Sans negrito.
 - Painéis: Missão (texto de textoMissaoAtual e as caçadas em andamento, com "27/40"), Personagem
-  (barras de vida, fé e XP com números, habilidades, estatísticas de estatisticasCombate e pontos de
-  tarefa), Equipamento (boneco clássico: colar, cabeça e mochila em cima; mão da arma, armadura e mão do
+  (a janela de habilidades: barras de vida, fé e XP — o XP em % até o próximo nível, com os números na dica
+  ou num clique na barra —, capacidade e vigor sempre à vista; a seção Habilidades, recolhível, com Corpo a
+  corpo, Distância, Defesa (escudo) e Oração em linhas "nome … nível" com o fio de % até o próximo nível, os
+  números do combate de estatisticasCombate e a seção Ofícios, também recolhível, com os 6 ofícios. Um clique
+  ou toque na linha abre a dica do que falta. Quem sobe pisca em ouro, e a habilidade de combate avisa no
+  console, aba Servidor: "Você avançou em Corpo a corpo: nível 15." As seções lembram a escolha neste
+  navegador; sem escolha, Habilidades começa recolhida no largo com tela de até 1000 px de altura),
+  Equipamento (boneco clássico: colar, cabeça e mochila em cima; mão da arma, armadura e mão do
   escudo; anel, pernas e munição; pés embaixo; o espaço vazio mostra o contorno do que vai nele e a dica dá os
   efeitos; ao lado, a figura com o que está vestido, o jeito de atacar da mão e o ataque e a defesa),
   Mochila, Bolsa, Batalha (inimigos da área, alvo
@@ -373,6 +381,8 @@ Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
 - XP para passar do nível n ao n+1 = 6 + ⌊1,5 × n⌋.
   Exemplos: Oração 25 ≈ 200 orações; Oração 50 ≈ 710 orações; nível 100 ≈ 8.000 XP (meta de longo prazo).
   Corpo a corpo chega ao nível 5 em cerca de 20 golpes.
+- A janela de habilidades (painel Personagem) mostra o nível de cada uma, o fio de % até o próximo e, na
+  dica, o XP que falta, quantos usos isso dá e o que a habilidade soma agora (dano e crítico, defesa ou cura).
 
 Oração e fé
 - Aprendida com Jesus, na Galileia, depois de concluir a missão de Pedro. A fé vai de 0 a 100 e
@@ -539,9 +549,24 @@ Tecla N ou o botão Maná, no topo. Nada aqui exige entrar todo dia: perder um d
   (18 h valem 75%). Enquanto houver reserva, cada abate rende XP em dobro e o extra sai dela; missões e
   caçadas entregues não gastam a reserva. A reserva não expira e para de crescer em 1,5 × o XP do nível.
   Ao voltar, um aviso mostra quanto entrou; a barra de XP ganha contorno azul enquanto houver reserva.
+  O mesmo descanso enche o vigor (ver Vigor, abaixo).
 - O relógio é o do navegador até existir o servidor (v0.5). Para que mexer nele não renda mais: o maná
   guardado nunca dura mais que 2,5 dias, a colheita do dia não volta ao atrasar o relógio e o mesmo trecho
   de Sábado nunca vira reserva duas vezes.
+
+Vigor
+O fôlego para caçar, de 0:00 a 40:00 (horas:minutos; todo personagem começa cheio). Aparece no painel
+Personagem, com a barra na cor da faixa. Números em REGRAS_VIGOR (dados/mundo.js).
+- Gasta só caçando: enquanto houve golpe dado ou recebido no último minuto, o vigor cai em tempo real
+  (1 minuto por minuto de caçada). Andar, conversar, comprar, fabricar ou ficar parado não gastam.
+- Volta longe da caçada: o tempo longe do jogo (página fechada, ou nenhuma ação por 10 min ou mais) devolve
+  1 minuto a cada 3 minutos, sem contar os 10 primeiros (8 h fora devolvem 2:36). Uma ausência com pelo
+  menos 1 h dentro do Sábado (sexta 18 h a sábado 18 h, a janela do descanso) enche o vigor, com um aviso.
+- Faixas: Descansado (de 38:00 a 40:00) dá +10% de XP das criaturas; Disposto (de 12:00 a 37:59), XP normal;
+  Exausto (abaixo de 12:00), metade do XP das criaturas. Missões e caçadas entregues não mudam.
+- Ordem do XP de um abate: XP da criatura (menor se ela for fraca para o seu nível) × campeão (×3) × vigor,
+  arredondado; a reserva do descanso do Sábado dobra esse resultado. Vocação e talentos não mudam o XP. A
+  mensagem do abate mostra a parte do vigor: "+44 XP (4 do vigor)" ou "+20 XP (exausto: 50% do XP)".
 
 Analisador de caçada
 Painel "Caçada" (coluna da esquerda no largo; aba ou folha Batalha no médio e no celular). Tecla X mostra ou
@@ -563,7 +588,10 @@ Para desenvolvedores
   atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
-  estadoDescanso(p, agora), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
+  estadoDescanso(p, agora), estadoVigor(p, agora) (minutos com a volta da ausência em curso, texto "40:00",
+  %, faixa, minutos até cair de faixa), textoVigor(minutos), faixaVigor(minutos), fichaDeHabilidades(p, agora)
+  (a janela de habilidades: nível e XP em %, vida, fé, carga, vigor, as 4 habilidades e os 6 ofícios, cada
+  um com nível, XP, falta, % para baixo e a dica), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
   visaoTalentos(p), pontosTalentoLivres(p), visaoOficios(p), cosmeticosDoJogador(p), visualDoJogador(p), extracoesDaArea(areaId), Mundo.extracaoDisponivel(id, area, pontoId),
   Mundo.aliados(id), textoKg(kg) ("12,35"), Mundo.quantidadeLivre(id, item) (unidades que podem ser vendidas
   ou jogadas no chão), Mundo.reservaDeMissao(p, item) ({ quantidade, missao, npc }), infoItem(id) (item com raridade,
@@ -574,6 +602,11 @@ Para desenvolvedores
   coletarSaque de uma pilha devolve quantidade e, se a mochila encheu no meio, restante. Os campos largado
   e quantidade são limpos na carga do save (sem versão nova). O teste 72 confere pesos, carga, chão, reserva
   de missão, poções e quantidades.
+- Janela de habilidades e vigor: fichaDeHabilidades(p, agora) e estadoVigor(p, agora) são puras (o painel só
+  lê). O vigor gasta no laço de tempo (Mundo.atualizar, passoVigor) e volta em Mundo.salvar (creditarVigor, a
+  mesma presença do descanso); composicaoXpAbate(p, e, campeao, agora) dá { xp, semVigor, fatorVigor, faixa }
+  e os ataques que derrotam devolvem também xpVigor (a parte do vigor, positiva ou negativa). O teste 74
+  confere a janela, o gasto, a volta e o Sábado, as faixas com o XP (campeão, descanso, vocação) e o save.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
   som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
   são puras; o teste 49 simula 60 mil abates por criatura e confere a frequência de cada linha da tabela.

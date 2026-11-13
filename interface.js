@@ -414,6 +414,7 @@
     return { atual: Math.max(0, (p.xp || 0) - base), total: Math.max(1, topo - base) };
   }
 
+  let xpEmNumeros = false; // um clique na barra de XP troca o % pelos números
   function atualizarBarras(p) {
     const max = typeof vidaMaxima === "function" ? vidaMaxima(p) : 100;
     const baixa = p.vida / max < 0.25;
@@ -422,14 +423,21 @@
     const travada = !p.oracaoDesbloqueada;
     const vidaTxt = `${p.vida}/${max}`;
     const feTxt = travada ? "aprenda na Galileia" : `${p.fe || 0}/${feMax}`;
-    const xpTxt = `${xp.atual}/${xp.total} XP`;
+    // XP em % até o próximo nível (para baixo, como na janela de habilidades); os números ficam na dica e,
+    // com um clique na barra, no lugar do %.
+    const maximo = typeof NIVEL_MAXIMO !== "undefined" && p.nivel >= NIVEL_MAXIMO;
+    const pctXp = maximo ? 100 : Math.min(99, Math.floor((100 * xp.atual) / xp.total));
+    const numerosXp = `${fmt(xp.atual)}/${fmt(xp.total)} XP`;
+    const xpTxt = maximo ? "nível máximo" : xpEmNumeros ? numerosXp : `${pctXp}%`;
     definirBarra($("#barraVida"), p.vida, max, vidaTxt, { baixa });
     definirBarra($("#barraFe"), travada ? 0 : p.fe || 0, feMax, feTxt, { travada });
     // Reserva de descanso do Sábado: a barra ganha contorno azul e o título explica o XP em dobro.
     const descanso = Math.floor(p.descanso?.xp || 0);
-    const tituloXp = descanso ? `Reserva de descanso: ${descanso} XP (abates com XP em dobro)` : "";
+    const tituloXp = (maximo ? "Nível máximo." : `${numerosXp}: faltam ${fmt(xp.total - xp.atual)} para o nível ${p.nivel + 1}.`) +
+      (descanso ? ` Reserva de descanso: ${fmt(descanso)} XP (abates com XP em dobro).` : "");
     for (const id of ["#barraXp", "#hudXp"]) if ($(id) && $(id).title !== tituloXp) $(id).title = tituloXp;
     definirBarra($("#barraXp"), xp.atual, xp.total, xpTxt, { descanso });
+    $("#barraXp")?.setAttribute("aria-valuetext", `${pctXp}%, ${numerosXp}`);
     definirBarra($("#hudVida"), p.vida, max, vidaTxt, { baixa });
     definirBarra($("#hudFe"), travada ? 0 : p.fe || 0, feMax, feTxt, { travada });
     definirBarra($("#hudXp"), xp.atual, xp.total, xpTxt, { descanso });
@@ -483,30 +491,162 @@
       const fig = $("#gradeEquip .boneco-figura");
       if (fig && urlBoneco) fig.innerHTML = `<img class="px" src="${urlBoneco}" alt="">`;
     }
+    atualizarFicha(p);
     if (typeof estatisticasCombate !== "function") return;
     const s = estatisticasCombate(p);
-    const h = s.habilidades || {};
-    const nh = (k, rot) => {
-      const x = h[k];
-      return x ? `<span title="${esc(x.nome)}: ${x.maximo ? "máximo" : `${x.xp}/${x.necessario} XP para o próximo nível`}">${rot} ${x.nivel}</span>` : "";
-    };
-    const hab = [nh("corpo", "Corpo"), nh("distancia", "Arco"), nh("defesa", "Defesa"), nh("oracao", "Oração")].filter(Boolean).join(" · ");
-    const el = $("#habilidades");
-    if (el.innerHTML !== hab) el.innerHTML = hab;
-    const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
-    const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
+    // Carga (linha Capacidade), flechas (espaço Munição do Equipamento) e pontos de tarefa (topo) já aparecem em
+    // outro lugar: aqui ficam os números do combate.
     const linhas = [
       ["Dano corpo", s.danoCorpo],
       ["Dano arco", s.temArco ? s.danoDistancia : "—"],
       ["Defesa", `${s.defesa} (−${s.reducaoDano}%)`],
-      ["Crítico", `${s.critico}%`],
-      ["Flechas", s.flechas],
-      ["Carga", `${kg(peso)}/${kg(cap)}`],
-      ["Pontos de tarefa", p.pontosTarefa || 0, "largo"], // nas duas colunas: numa só, quebrava em 2 linhas
+      ["Crítico", `${String(s.critico).replace(".", ",")}%`],
     ];
     const html = linhas.map(([k, v, cls]) => `<div${cls ? ` class="${cls}"` : ""}><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
     const dl = $("#atributos");
     if (dl.innerHTML !== html) dl.innerHTML = html;
+  }
+
+  // ------------------------------------------------------------------
+  // Janela de habilidades (painel Personagem). Só lê fichaDeHabilidades(p, agora) (logica.js). As linhas são
+  // criadas uma vez e depois só mudam texto, largura e classe (a 4 Hz, para o vigor correr): o foco, o hover e
+  // o destaque de quem subiu não se perdem. Habilidades e Ofícios recolhem; a escolha fica neste navegador.
+  // ------------------------------------------------------------------
+  const CHAVE_FICHA = "jornada_ficha";
+  let prefFicha = {};
+  try { prefFicha = JSON.parse(localStorage.getItem(CHAVE_FICHA) || "{}") || {}; } catch (e) { prefFicha = {}; }
+  const salvarFicha = () => { try { localStorage.setItem(CHAVE_FICHA, JSON.stringify(prefFicha)); } catch (e) { /* sem armazenamento */ } };
+  let niveisFicha = null; // último nível visto de cada linha (para o destaque e o aviso de avanço)
+
+  function linhasDa(ul, chaves) {
+    if (ul.dataset.chaves === chaves.join(" ")) return;
+    ul.dataset.chaves = chaves.join(" ");
+    ul.innerHTML = chaves.map((k) => `<li><button type="button" class="hab-linha" data-linha="${esc(k)}" aria-expanded="false"><span class="nome"></span><b class="valor"></b>` +
+      `<span class="fio" aria-hidden="true"><i></i></span><span class="hab-dica"></span></button></li>`).join("");
+  }
+  // l: { nome (HTML), valor, pct, dica, classes: { classe: ligada }, dados: { atributo: valor } }
+  function preencherLinha(ul, chave, l) {
+    const b = ul.querySelector(`[data-linha="${chave}"]`);
+    if (!b) return;
+    const nome = b.querySelector(".nome"), valor = b.querySelector(".valor"), fio = b.querySelector(".fio i"), dica = b.querySelector(".hab-dica");
+    if (nome.innerHTML !== l.nome) nome.innerHTML = l.nome;
+    if (valor.textContent !== l.valor) valor.textContent = l.valor;
+    const w = `${Math.max(0, Math.min(100, l.pct)).toFixed(1)}%`;
+    if (fio.style.width !== w) fio.style.width = w;
+    if (dica.textContent !== l.dica) dica.textContent = l.dica;
+    if (b.title !== l.dica) b.title = l.dica;
+    const rotulo = `${l.rotulo || nome.textContent}: ${l.valor}. ${l.dica}`;
+    if (b.getAttribute("aria-label") !== rotulo) b.setAttribute("aria-label", rotulo);
+    for (const [k, v] of Object.entries(l.classes || {})) b.classList.toggle(k, !!v);
+    for (const [k, v] of Object.entries(l.dados || {})) if (b.dataset[k] !== v) b.dataset[k] = v;
+  }
+  function destacarLinha(ul, chave) {
+    const b = ul?.querySelector(`[data-linha="${chave}"]`);
+    if (!b) return;
+    b.classList.remove("ganhou");
+    void b.offsetWidth; // recomeça a animação
+    b.classList.add("ganhou");
+    clearTimeout(b._ganhou);
+    b._ganhou = setTimeout(() => b.classList.remove("ganhou"), 1500);
+  }
+
+  function atualizarFicha(p) {
+    if (typeof fichaDeHabilidades !== "function") return;
+    const f = fichaDeHabilidades(p, Date.now());
+    // Capacidade e vigor (sempre à vista).
+    const med = $("#listaMedidas");
+    if (med) {
+      linhasDa(med, ["carga", "vigor"]);
+      const c = f.carga, v = f.vigor;
+      const livre = Math.max(0, c.maximo - c.atual);
+      preencherLinha(med, "carga", {
+        nome: "Capacidade", valor: c.texto, pct: c.pct,
+        dica: c.pct >= 100 ? "Mochila cheia: venda, largue ou guarde algo para pegar mais." : `Livre: ${kg(livre)} kg. Sobe ${kg(typeof CARGA_POR_NIVEL !== "undefined" ? CARGA_POR_NIVEL : 3)} kg por nível e com os alforjes.`,
+        classes: { quase: c.pct >= 90 && c.pct < 100, cheia: c.pct >= 100 },
+      });
+      const cair = v.proxima ? ` Cai para ${v.proxima.nome.toLowerCase()} (${v.proxima.texto}) em ${typeof textoVigor === "function" ? textoVigor(v.ateCair) : ""} de caçada.` : "";
+      preencherLinha(med, "vigor", {
+        nome: `Vigor <small>${esc(v.faixa.nome.toLowerCase())}</small>`, rotulo: `Vigor, ${v.faixa.nome.toLowerCase()}`,
+        valor: v.texto, pct: v.pct,
+        dica: `${v.faixa.nome}: ${v.faixa.texto}.${cair} Gasta só caçando; volta longe do jogo (1 minuto a cada ${typeof REGRAS_VIGOR !== "undefined" ? REGRAS_VIGOR.regenCadaMinutos : 3}) e enche no descanso do Sábado.`,
+        dados: { faixa: v.faixa.id },
+      });
+    }
+    // Habilidades de combate.
+    const ul = $("#listaHabilidades");
+    if (ul) {
+      linhasDa(ul, f.combate.map((h) => h.chave));
+      for (const h of f.combate) {
+        preencherLinha(ul, h.chave, {
+          nome: esc(h.nome), valor: String(h.nivel), pct: h.bloqueada ? 0 : h.pct,
+          dica: h.bloqueada ? h.dica : `${h.pct}% · ${h.dica} Agora: ${h.efeito}.`,
+          classes: { bloqueada: h.bloqueada },
+        });
+      }
+    }
+    const curto = { corpo: "Corpo", distancia: "Distância", defesa: "Defesa", oracao: "Oração" };
+    const resumo = f.combate.map((h) => `${curto[h.chave] || h.nome} ${h.nivel}`).join(" · ");
+    const el = $("#habilidades");
+    if (el && el.textContent !== resumo) el.textContent = resumo;
+    // Ofícios.
+    const uo = $("#listaOficiosFicha");
+    if (uo) {
+      linhasDa(uo, f.oficios.map((o) => o.id));
+      for (const o of f.oficios) {
+        preencherLinha(uo, o.id, { nome: esc(o.nome), valor: String(o.nivel), pct: o.pct, dica: `${o.pct}% · ${o.dica} Janela Ofícios: tecla O.` });
+      }
+      const melhor = f.oficios.reduce((a, o) => (o.nivel > a.nivel ? o : a), f.oficios[0]);
+      const r = melhor && melhor.nivel > 1 ? `${melhor.nome} ${melhor.nivel}` : "todos no 1";
+      const ro = $("#resumoOficios");
+      if (ro && ro.textContent !== r) ro.textContent = r;
+    }
+    // Quem subiu pisca; as habilidades de combate avisam no console (aba Servidor).
+    const agoraNiveis = {};
+    for (const h of f.combate) agoraNiveis[h.chave] = h.nivel;
+    for (const o of f.oficios) agoraNiveis[`of:${o.id}`] = o.nivel;
+    if (niveisFicha && niveisFicha._id === p.id) {
+      for (const h of f.combate) {
+        if (h.nivel > (niveisFicha[h.chave] ?? h.nivel)) {
+          destacarLinha(ul, h.chave);
+          registrar(`Você avançou em ${h.nome}: nível ${h.nivel}.`, "avanco");
+        }
+      }
+      for (const o of f.oficios) if (o.nivel > (niveisFicha[`of:${o.id}`] ?? o.nivel)) destacarLinha(uo, o.id);
+    }
+    niveisFicha = { ...agoraNiveis, _id: p.id };
+  }
+
+  function abrirSecaoFicha(qual, aberta) {
+    const botao = qual === "oficios" ? $("#btnOficiosFicha") : $("#btnHabilidades");
+    const corpo = qual === "oficios" ? $("#listaOficiosFicha") : $("#corpoHabilidades");
+    if (!botao || !corpo) return;
+    botao.setAttribute("aria-expanded", String(aberta));
+    corpo.hidden = !aberta;
+  }
+  function ligarFicha() {
+    // Sem escolha guardada, as habilidades começam abertas, menos no largo com a tela baixa (até 1000 px), onde
+    // a coluna direita não teria espaço para a Batalha; no médio e no celular o painel tem aba ou folha própria.
+    const padrao = !(calcModo() === "largo" && innerHeight < 1000);
+    abrirSecaoFicha("habilidades", typeof prefFicha.habilidades === "boolean" ? prefFicha.habilidades : padrao);
+    abrirSecaoFicha("oficios", prefFicha.oficios === true);
+    for (const [id, qual] of [["#btnHabilidades", "habilidades"], ["#btnOficiosFicha", "oficios"]]) {
+      $(id)?.addEventListener("click", () => {
+        const aberta = $(id).getAttribute("aria-expanded") !== "true";
+        abrirSecaoFicha(qual, aberta);
+        prefFicha[qual] = aberta;
+        salvarFicha();
+      });
+    }
+    // Uma linha abre (ou fecha) a dica do que falta: no toque não há o title do mouse.
+    $("#pPersonagem")?.addEventListener("click", (e) => {
+      const b = e.target.closest(".hab-linha");
+      if (!b) return;
+      const aberta = !b.classList.contains("aberta");
+      b.classList.toggle("aberta", aberta);
+      b.setAttribute("aria-expanded", String(aberta));
+    });
+    // XP em % (o costume do gênero); um clique na barra mostra os números, outro volta.
+    $("#barraXp")?.addEventListener("click", () => { xpEmNumeros = !xpEmNumeros; const p = jogador(); if (p) atualizarBarras(p); });
   }
 
   // ------------------------------------------------------------------
@@ -842,6 +982,7 @@
     sistema: { cor: "var(--tinta-suave)", glifo: "ui_losango", nome: "sistema" },
     fala: { cor: "var(--bronze-500)", glifo: "ui_falar", nome: "fala" },
     anuncio: { cor: "#b46be0", glifo: "ui_louro", nome: "saque raro" },
+    avanco: { cor: "var(--xp-2)", glifo: "ui_louro", nome: "avanço" },
   };
   // "Nome: fala" só é fala quando o nome é de um personagem conhecido.
   function ehFala(t) {
@@ -2103,7 +2244,8 @@
         <p>${esc(descanso + agoraSabado)}</p></section>
       <p class="nota">O maná cai todo dia ao amanhecer (dobrado na sexta, nada no sábado); colha uma vez e coma quando
         precisar. O que sobra estraga no amanhecer seguinte, e perder um dia não tira nada. O tempo em que você fica longe do jogo
-        de sexta às 18 h a sábado às 18 h vira reserva de XP (um Sábado inteiro vale o XP de um nível; ela não expira).</p>`;
+        de sexta às 18 h a sábado às 18 h vira reserva de XP (um Sábado inteiro vale o XP de um nível; ela não expira); uma hora
+        dele já enche o vigor.</p>`;
   }
   function acaoMana(botao) {
     const tipo = botao.dataset.acaoMana === "colher" ? "colherMana" : "comerMana";
@@ -2440,9 +2582,17 @@
       <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
     // No toque, a seção de toque vem primeiro.
     const toque = comToque || mm("(pointer: coarse)");
+    // Vigor: as faixas e a volta saem de REGRAS_VIGOR (dados/mundo.js).
+    const textoAjudaVigor = () => {
+      if (typeof REGRAS_VIGOR === "undefined" || typeof textoVigor !== "function") return "";
+      const R = REGRAS_VIGOR, F = R.faixas;
+      const faixas = F.map((f, i) => `${f.nome} (${i < F.length - 1 ? `a partir de ${textoVigor(f.desde)}` : `abaixo de ${textoVigor(F[i - 1].desde)}`}): ${f.texto}`).join("; ");
+      return `<p>${esc(`Vigor (painel Personagem, até ${textoVigor(R.maximoMinutos)}): gasta só caçando e volta longe do jogo (1 minuto a cada ${R.regenCadaMinutos}); o descanso do Sábado o enche. ${faixas}.`)}</p>`;
+    };
     $("#ajudaCorpo").innerHTML = `${toque ? secToque + secItens + secTeclado : secTeclado + secItens + secToque}
       <h3>Regras</h3>
       <p>As habilidades (corpo, arco, defesa e oração) melhoram com o uso. Fora de combate, a vida volta aos poucos. ${esc(regra)}</p>
+      ${textoAjudaVigor()}
       <p>Caçadas: depois da missão principal de cada região, o atalaia oferece rondas (voltam 20 h depois da entrega) e grandes caçadas
         (voltam 6 d 20 h depois). Até 3 ao mesmo tempo; cada abate conta para todas as que pedem aquela criatura. Entregue a qualquer
         atalaia e troque os pontos de tarefa por melhorias.</p>
@@ -3259,6 +3409,7 @@
     const p = jogador();
     if (!p) return;
     atualizarBarras(p);
+    atualizarFicha(p); // o vigor corre caçando e volta parado
     atualizarToque(p);
     atualizarBatalha(p);
     atualizarAnalisador(); // relógio e taxas por hora correm sem precisar de abate
@@ -3520,6 +3671,7 @@
     ligarChao();
     ligarConsole();
     ligarToque();
+    ligarFicha();
     observarMochila();
     observarFolha();
     abrirAnalisador(analisadorAberto());

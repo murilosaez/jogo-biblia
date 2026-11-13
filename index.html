@@ -168,6 +168,46 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .atributos dt{font:500 var(--fs-14)/1.35 var(--f-texto);color:var(--texto-2)}
 .atributos dd{margin:0;color:var(--texto)}
 .atributos div.largo{grid-column:1/-1}
+/* Janela de habilidades: linhas "nome … nível" com o fio de % até o próximo nível embaixo. O clique (ou toque)
+   abre a dica do que falta; ao subir, a linha pisca em ouro. Capacidade e vigor ficam sempre à vista. */
+.hab-lista{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:1px}
+.hab-lista[hidden],.hab-corpo[hidden]{display:none}
+.hab-linha{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;column-gap:8px;width:100%;padding:1px 4px 3px;border-radius:var(--raio);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hab-linha:hover{background:#ffe9a814}
+.hab-linha:focus-visible{outline:2px solid var(--foco);outline-offset:-2px}
+.hab-linha .nome{font:500 var(--fs-14)/1.15 var(--f-texto);color:var(--texto-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hab-linha .nome small{font:700 var(--fs-13)/1 var(--f-ui);color:var(--cor-faixa,var(--texto-mudo))}
+.hab-linha .valor{font:700 var(--fs-14)/1.15 var(--f-ui);color:var(--texto);text-align:right;white-space:nowrap}
+.hab-linha .fio{grid-column:1/-1;display:block;height:4px;margin-top:2px;background:#120a06;box-shadow:0 0 0 1px var(--bronze-700)}
+.hab-linha .fio i{display:block;height:100%;width:0;background:var(--cor-fio,var(--xp-2));box-shadow:inset 0 1px 0 var(--cor-fio-luz,var(--xp-3))}
+.hab-linha .hab-dica{grid-column:1/-1;margin:4px 0 0;font:500 var(--fs-13)/1.35 var(--f-texto);color:var(--texto-mudo);white-space:normal}
+.hab-linha:not(.aberta) .hab-dica{display:none}
+.hab-linha.bloqueada .valor,.hab-linha.bloqueada .nome{color:var(--texto-mudo)}
+/* capacidade: bronze; acima de 90%, âmbar; cheia, vermelha (como o peso da Mochila) */
+.hab-linha[data-linha="carga"]{--cor-fio:var(--perg-400);--cor-fio-luz:var(--perg-200)}
+.hab-linha[data-linha="carga"].quase{--cor-fio:var(--moeda);--cor-fio-luz:var(--ouro-200)}
+.hab-linha[data-linha="carga"].cheia{--cor-fio:var(--vida-2);--cor-fio-luz:var(--vida-3)}
+.hab-linha[data-linha="carga"].cheia .valor{color:#ff8f75}
+/* vigor: verde descansado, âmbar disposto, vermelho exausto (REGRAS_VIGOR.faixas) */
+.hab-linha[data-faixa="descansado"]{--cor-fio:#5fa83a;--cor-fio-luz:var(--cura);--cor-faixa:var(--cura)}
+.hab-linha[data-faixa="disposto"]{--cor-fio:var(--xp-2);--cor-fio-luz:var(--xp-3);--cor-faixa:var(--xp-3)}
+.hab-linha[data-faixa="exausto"]{--cor-fio:var(--vida-2);--cor-fio-luz:var(--vida-3);--cor-faixa:#ff8f75}
+.hab-linha[data-faixa="exausto"] .valor{color:#ff8f75}
+.hab-linha.ganhou{animation:hab-ganhou 1.4s steps(7) 1}
+@keyframes hab-ganhou{0%,45%{background:#f2d27a3d;box-shadow:inset 0 0 0 1px var(--ouro-300)}100%{background:transparent;box-shadow:none}}
+.hab-secao{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;width:100%;margin-top:6px;padding:5px 4px 3px;border-top:1px solid #0006;box-shadow:inset 0 1px 0 #ffe9a815;
+ font:700 var(--fs-13)/1.2 var(--f-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--ouro-300);text-shadow:1px 1px 0 #120a06;cursor:pointer}
+.hab-secao:hover{color:var(--ouro-200)}
+.hab-secao:focus-visible{outline:2px solid var(--foco);outline-offset:-2px}
+.hab-secao .seta{width:0;height:0;border:5px solid transparent;border-top-color:currentColor;margin-top:5px;transition:transform .15s}
+.hab-secao[aria-expanded="false"] .seta{transform:rotate(-90deg);margin-top:0}
+.hab-secao .resumo{margin-left:auto;font:600 var(--fs-13)/1.2 var(--f-ui);letter-spacing:0;text-transform:none;color:var(--texto-mudo);text-shadow:none}
+.hab-secao.sub{margin-top:8px}
+.hab-secao + .habilidades{margin:2px 0 0;padding:0 4px}
+#btnHabilidades[aria-expanded="true"] + .habilidades{display:none}
+.hab-corpo .atributos{margin-top:4px;padding-left:4px;padding-right:4px}
+@media (prefers-reduced-motion:reduce){ .hab-linha.ganhou{animation:none;background:#f2d27a2e} .hab-secao .seta{transition:none} }
+@media (pointer:coarse){ .hab-linha{padding:4px 4px 6px} .hab-secao{min-height:var(--toque)} }
 
 /* ---------- slots ---------- */
 .grade{display:grid;grid-template-columns:repeat(5,var(--slot));gap:4px;justify-content:start}
@@ -294,7 +334,7 @@ body.console-sobre #dpad,body.console-sobre #acoes{bottom:calc(var(--console-sob
 .console[data-canal="npcs"] .console-lista li:not(.c-npcs),.console[data-canal="servidor"] .console-lista li:not(.c-servidor){display:none}
 .t-fala{--cor-linha:#b4cdf5} .t-voce{--cor-linha:var(--texto)} .t-voce .quem{color:var(--texto-2)} .t-dica{--cor-linha:var(--texto-mudo);font-style:italic}
 .t-saque{--cor-linha:var(--moeda)} .t-perigo{--cor-linha:#ff8f75} .t-combate{--cor-linha:var(--texto-mudo)} .t-missao{--cor-linha:var(--cura)}
-.t-sistema{--cor-linha:var(--texto-2)} .t-anuncio{--cor-linha:#d9b8f7;font-weight:700}
+.t-sistema{--cor-linha:var(--texto-2)} .t-anuncio{--cor-linha:#d9b8f7;font-weight:700} .t-avanco{--cor-linha:var(--ouro-200);font-weight:700}
 /* palavras-chave: clicáveis, entre colchetes (também na caixa de diálogo) */
 .palavras{display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:baseline}
 .palavra{display:inline-flex;align-items:center;min-height:24px;padding:1px 7px;border:1px solid var(--bronze-500);border-radius:var(--raio);background:var(--couro-700);
@@ -1067,12 +1107,21 @@ body.toque-forcado #dpad{display:block}
           <div class="ficha-nome"><strong>Viajante</strong><span id="fichaNivel">Nível 1</span></div>
           <div class="linha-barra"><img class="px g16" data-glifo="ui_coracao" alt="Vida"><div class="barra vida" id="barraVida" role="meter" aria-label="Vida"><i></i><b></b></div></div>
           <div class="linha-barra"><img class="px g16" data-glifo="ui_candeia" alt="Fé"><div class="barra fe" id="barraFe" role="meter" aria-label="Fé"><i></i><b></b></div></div>
-          <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="barraXp" role="meter" aria-label="Experiência"><i></i><b></b></div></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="barraXp" role="meter" aria-label="Experiência: % até o próximo nível (clique para ver os números)"><i></i><b></b></div></div>
           <div class="status-chips" id="statusFicha" aria-live="polite"></div>
         </div>
       </div>
+      <!-- Janela de habilidades (fichaDeHabilidades, logica.js): capacidade e vigor sempre à vista; habilidades
+           e ofícios recolhíveis (a escolha fica no navegador). Cada linha abre a dica do que falta. -->
+      <ul class="hab-lista hab-medidas" id="listaMedidas" aria-label="Capacidade e vigor"></ul>
+      <button class="hab-secao" type="button" id="btnHabilidades" aria-expanded="true" aria-controls="corpoHabilidades"><span class="seta"></span>Habilidades</button>
       <p class="habilidades" id="habilidades"></p>
-      <dl class="atributos" id="atributos"></dl>
+      <div class="hab-corpo" id="corpoHabilidades">
+        <ul class="hab-lista" id="listaHabilidades" aria-label="Habilidades de combate"></ul>
+        <dl class="atributos" id="atributos"></dl>
+        <button class="hab-secao sub" type="button" id="btnOficiosFicha" aria-expanded="false" aria-controls="listaOficiosFicha"><span class="seta"></span>Ofícios<span class="resumo" id="resumoOficios"></span></button>
+        <ul class="hab-lista" id="listaOficiosFicha" aria-label="Ofícios" hidden></ul>
+      </div>
     </div>
   </section>
 
