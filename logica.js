@@ -2880,8 +2880,10 @@ function efeitoOferta(oferta) {
 // Unidades de um item que o jogador tem (mochila e equipamento).
 function unidadesDoItem(p, item) {
   // Conta o item em qualquer raridade ("escudo_ferro@raro.vida8" também é um escudo de ferro).
+  // A munição do boneco conta a pilha inteira (quantidadeMunicao).
   const naMochila = (p?.inventario || []).filter((x) => baseItem(x) === item).length;
-  return naMochila + Object.values(p?.equipamento || {}).filter((x) => x && baseItem(x) === item).length;
+  const noCorpo = Object.entries(p?.equipamento || {}).reduce((n, [slot, x]) => n + (x && baseItem(x) === item ? (slot === "municao" ? municaoNoEspaco(p) : 1) : 0), 0);
+  return naMochila + noCorpo;
 }
 
 // Ofertas da troca de pontos, na ordem dos dados. possui: unidades do item da oferta que o jogador
@@ -3868,7 +3870,7 @@ const Mundo = {
     const folga = capacidadeCarga(p) - pesoCarregado(p) + 0.0001;
     const pegos = itemValido(s.item) ? Math.max(0, Math.min(total, Math.floor(folga / pesoItem(s.item)))) : 0;
     if (!pegos) return { ok: false, mensagem: this.mensagemMochilaCheia(p, "Libere espaço para pegar o item.") };
-    for (let i = 0; i < pegos; i++) p.inventario.push(s.item);
+    for (let i = 0; i < pegos; i++) guardarItem(p, s.item); // flechas voltam à pilha do espaço de munição
     const restante = total - pegos;
     if (restante > 1) s.quantidade = restante;
     else if (restante === 1) delete s.quantidade;
@@ -4060,9 +4062,12 @@ const Mundo = {
       return { ok: false, mensagem: q > 1 && cabem ? `A mochila não comporta tudo: cabem mais ${cabem}.` : "A mochila está cheia." };
     }
     p.moedas -= total;
-    for (let i = 0; i < porLote * q; i++) p.inventario.push(unidade);
+    // As flechas entram na pilha do espaço de munição (guardarItem), se ela estiver vazia ou for de flechas.
+    let naMunicao = 0;
+    for (let i = 0; i < porLote * q; i++) if (guardarItem(p, unidade) === "municao") naMunicao++;
     this.salvar(p);
-    return { ok: true, quantidade: q, mensagem: `Compra realizada: ${nome} por ${total} moedas.` };
+    const onde = naMunicao ? " Estão no espaço de munição." : "";
+    return { ok: true, quantidade: q, mensagem: `Compra realizada: ${nome} por ${total} moedas.${onde}` };
   },
 
   // Vende "quantidade" unidades iguais da mochila (padrão 1). O equipamento vestido não está na mochila e não

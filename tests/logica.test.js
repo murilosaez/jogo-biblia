@@ -6207,7 +6207,8 @@ teste("72. inventário (b): jogar no chão 1, X ou tudo; o que foi jogado volta 
   assert.ok(passo.ok && !passo.itensColetados, "o passo não recolhe o largado");
   igual([p.x, p.y, conta("flecha")], [pilha.x, pilha.y, 0]);
   r = j.exec({ tipo: "coletarSaque", saqueId: pilha.id });
-  igual([r.ok, r.itemColetado, r.quantidade, conta("flecha"), r.mensagem], [true, pilha.id, 30, 30, "Você pegou: 30× Flecha."]);
+  // (boneco, teste 73: as flechas recolhidas voltam à pilha do espaço de munição, vazio aqui)
+  igual([r.ok, r.itemColetado, r.quantidade, g("flechasDoJogador")(p), p.quantidadeMunicao, r.mensagem], [true, pilha.id, 30, 30, 30, "Você pegou: 30× Flecha."]);
   igual([a.itens, a.valorItens], [0, 0], "o analisador não conta o que o jogador jogou fora");
   // Pilha maior que a folga: leva o que couber e o resto fica no chão.
   const peles = p.saqueNoChao.find((x) => x.item === "pele_lobo" && x.quantidade === 6);
@@ -6340,7 +6341,8 @@ teste("72. inventário (e): vender 1, X ou tudo e comprar provisões em quantida
   r = j.exec({ tipo: "comprar", item: "pocao", quantidade: 5 });
   igual([r.ok, r.mensagem, p.moedas, M.contarItem(ID, "pocao")], [true, `Compra realizada: 5× Poção de vida por ${5 * preco.pocao} moedas.`, 200 - 5 * preco.pocao, 8]);
   r = j.exec({ tipo: "comprar", item: "flechas", quantidade: 4 });
-  igual([r.mensagem, M.contarItem(ID, "flecha")], [`Compra realizada: 20 flechas por ${4 * preco.flechas} moedas.`, 20]);
+  // (boneco, teste 73: as flechas compradas vão para o espaço de munição)
+  igual([r.mensagem, j.g("flechasDoJogador")(p), p.quantidadeMunicao], [`Compra realizada: 20 flechas por ${4 * preco.flechas} moedas. Estão no espaço de munição.`, 20, 20]);
   r = j.exec({ tipo: "comprar", item: "pocao" });
   assert.strictEqual(r.mensagem, `Compra realizada: Poção de vida por ${preco.pocao} moedas.`, "1 continua como antes");
   const antes2 = json(p);
@@ -6405,7 +6407,7 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   assert.strictEqual(g("defesaEquipamento")(p), def0 + 2 + 1 + 2, "elmo, botas e grevas somam defesa");
   assert.strictEqual(g("vidaMaxima")(p), vida0 + 10, "colar de contas: +10 de vida");
   assert.strictEqual(g("chanceCritico")(p, "corpo"), crit0 + 2, "anel de selo: +2% de crítico");
-  assert.strictEqual(g("capacidadeCarga")(p), carga0 + 3, "botas de viagem: +3 kg de carga");
+  assert.strictEqual(g("capacidadeCarga")(p), carga0 + ITENS.botas_viagem.atributosFixos.carga, "botas de viagem: carga a mais");
   assert.strictEqual(g("pesoCarregado")(p), peso0, "vestir não muda o peso");
   for (const s of ["arco", "mochila", "constructor"]) assert.ok(!j.M.equiparItem(ID, "arco_madeira", s).ok && !j.M.desequiparItem(ID, s).ok, `"${s}" não é espaço`);
 
@@ -6457,7 +6459,7 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   const pesoAntes = g("pesoCarregado")(p), mochilaAntes = p.inventario.length;
   assert.ok(j.exec({ tipo: "comprar", item: "flechas" }).ok && j.exec({ tipo: "comprar", item: "flechas" }).ok);
   igual([p.equipamento.municao, p.quantidadeMunicao, p.inventario.length], ["flecha", 10, mochilaAntes], "as flechas compradas vão para o espaço de munição");
-  assert.strictEqual(g("pesoCarregado")(p), Math.round((pesoAntes + 10 * ITENS.flecha.peso) * 10) / 10, "a pilha pesa");
+  assert.strictEqual(g("pesoCarregado")(p), Math.round((pesoAntes + 10 * ITENS.flecha.peso) * 100) / 100, "a pilha pesa");
   p.inventario.push("flecha", "flecha");
   assert.strictEqual(g("estatisticasCombate")(p).flechas, 12, "flechas: espaço de munição e mochila");
   p.area = e.area;

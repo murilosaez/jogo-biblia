@@ -1316,7 +1316,10 @@ class Cena extends Phaser.Scene {
     };
     if (distancia) {
       const ang = Phaser.Math.Angle.Between(this.jogador.x, this.jogador.y - 20, tx, ty);
-      const f = this.add.image(this.jogador.x, this.jogador.y - 20, "flecha").setDepth(PROF.numero - 1).setRotation(ang + Math.PI / 4);
+      // A funda atira uma pedra (r.projetil, da lógica); o arco, a flecha.
+      const f = r.projetil === "pedra"
+        ? this.add.image(this.jogador.x, this.jogador.y - 20, "fx_pixel").setScale(4).setTint(0x9a9184).setDepth(PROF.numero - 1)
+        : this.add.image(this.jogador.x, this.jogador.y - 20, "flecha").setDepth(PROF.numero - 1).setRotation(ang + Math.PI / 4);
       this.tweens.add({ targets: f, x: tx, y: ty, duration: 150, onComplete: () => { f.destroy(); mostrar(); } });
     } else {
       const ang = Phaser.Math.Angle.Between(this.jogador.x, this.jogador.y - 18, tx, ty);

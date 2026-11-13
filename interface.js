@@ -342,6 +342,9 @@
     if (!d) return "";
     if (d.bonus) return `+${d.bonus} de dano`;
     if (d.defesa) return `+${d.defesa} de defesa`;
+    // Peça do boneco só com atributos (colar de contas, anel de selo): o primeiro deles.
+    const fixo = slotDe(id) && typeof efeitosDoItem === "function" ? efeitosDoItem(id)[0] : "";
+    if (fixo) return fixo;
     if (id === "pocao") return `cura ${p && typeof curaPocao === "function" ? curaPocao(p) : 30} de vida`;
     if (id === "pocao_fe") return `+${typeof CURA_POCAO_FE !== "undefined" ? CURA_POCAO_FE : 40} de fé`;
     if (d.tipo === "municao") return "munição para o arco";
@@ -374,7 +377,8 @@
     const r = raridadeDe(id);
     const nomeR = typeof RARIDADES !== "undefined" ? RARIDADES[r]?.nome : "";
     const linhaRaridade = r !== "comum" && nomeR ? `<p class="raridade" style="--rar:${corRaridade(r)}">${esc(nomeR)}</p>` : "";
-    const atributos = typeof textoAtributos === "function" ? textoAtributos(id) : [];
+    const principal = atributoItem(id);
+    const atributos = (typeof textoAtributos === "function" ? textoAtributos(id) : []).filter((t) => t !== principal);
     const linhaAtributos = atributos.length ? `<ul class="atr-item">${atributos.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "";
     const boneco = linhaBoneco(id, origem);
     let acao = boneco ? `${boneco}. ` : "";
@@ -1390,7 +1394,8 @@
           ? `<div class="linha-qtd">${htmlQtd(chave, x, max, flechas ? "Lotes de 5 flechas a comprar" : `Quantidade a comprar: ${nomeDoItem(id)}`)}${htmlAcaoQtd(chave, x, "", ` data-comprar="${esc(id)}"`)}</div>`
           : "";
         const pesoTxt = pesoLote ? ` · ${kg(pesoLote)} kg${flechas ? " o lote" : ""}` : "";
-        lista += `<li class="item-loja${linhaQtd ? " com-qtd" : ""}"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>${esc(atributoItem(id, p) + pesoTxt)}</span></span>
+        const efeitos = slotDe(id) && typeof efeitosDoItem === "function" ? efeitosDoItem(id).join(", ") : "";
+        lista += `<li class="item-loja${linhaQtd ? " com-qtd" : ""}"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>${esc((efeitos || atributoItem(id, p)) + pesoTxt)}</span></span>
           <button type="button" class="btn primario" data-comprar="${esc(id)}" ${falta > 0 ? `disabled title="Faltam ${falta} moedas"` : ""} aria-label="Comprar ${esc(nomeDoItem(id))} por ${preco} moedas${falta > 0 ? `; faltam ${falta}` : ""}">${falta > 0 ? `faltam ${falta}` : `${preco} ${moeda}`}</button>${linhaQtd}</li>`;
       }
     } else {
@@ -2756,7 +2761,13 @@
       if (!d || e.pointerType === "mouse") return;
       const x0 = e.clientX, y0 = e.clientY;
       // Item da mochila/bolsa: o toque longo abre o menu do item (descrição, usar e jogar no chão).
-      toqueLongo = { t: setTimeout(() => { if (d.matches(".slot[data-item]")) abrirMenuItem(d.dataset.item, d); else mostrarDica(d); suprimirClique = true; }, 450), x0, y0 };
+      // Peça vestida no boneco: o toque longo abre o menu dela (o que dá e Guardar).
+      toqueLongo = { t: setTimeout(() => {
+        if (d.matches(".slot[data-item]")) abrirMenuItem(d.dataset.item, d);
+        else if (d.matches(".equip.cheio")) abrirMenuEquip(d.dataset.equipSlot, d);
+        else mostrarDica(d);
+        suprimirClique = true;
+      }, 450), x0, y0 };
     });
     const cancelar = (e) => {
       if (!toqueLongo) return;
@@ -2891,9 +2902,20 @@
     desenharMenuItem(true);
     teclado(false);
   }
+  // Menu de uma peça vestida (botão direito, toque longo ou Shift+F10 num espaço cheio do boneco): o que ela dá,
+  // o peso e Guardar na mochila (a munição volta inteira).
+  function abrirMenuEquip(slot, ancora) {
+    const id = jogador()?.equipamento?.[slot];
+    if (!id || !info(id)) return;
+    esconderDica();
+    if (selecao) selecionar(null);
+    menuItem = { id, slot, ancora, rect: ancora.getBoundingClientRect() };
+    desenharMenuItem(true);
+    teclado(false);
+  }
   function fecharMenuItem(devolverFoco = false) {
     if (!menuItem) return;
-    const { ancora, id } = menuItem;
+    const { ancora, id, slot } = menuItem;
     menuItem = null;
     const m = $("#menuItem");
     m.classList.remove("aberto");
@@ -2901,10 +2923,34 @@
     if (!modalAberto) teclado(true);
     if (!devolverFoco || !(ancora instanceof Element)) return;
     // O espaço pode ter sido recriado (a mochila mudou): volta ao do mesmo item.
-    const alvo = document.contains(ancora) ? ancora : $$(".slot[data-item]").find((b) => b.dataset.item === id);
+    const alvo = document.contains(ancora) ? ancora
+      : $$(".slot[data-item]").find((b) => b.dataset.item === id) || (slot ? $(`.equip[data-equip-slot="${slot}"]`) : null);
     alvo?.focus?.({ preventScroll: true });
   }
+  function desenharMenuEquip(focar) {
+    const p = jogador();
+    const { slot, id } = menuItem;
+    if (!p || p.equipamento?.[slot] !== id || !info(id)) return fecharMenuItem();
+    const n = slot === "municao" && typeof municaoNoEspaco === "function" ? municaoNoEspaco(p) : 1;
+    const peso = (typeof pesoItem === "function" ? pesoItem(id) : info(id).peso) * n;
+    const efeitos = typeof efeitosDoItem === "function" ? efeitosDoItem(id) : [];
+    const duas = typeof maosDoItem === "function" && maosDoItem(id) === 2 ? "usa as duas mãos" : "";
+    const r = raridadeDe(id);
+    const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
+    const guardar = n > 1 ? `Guardar as ${n} na mochila` : "Guardar na mochila";
+    const m = $("#menuItem");
+    m.innerHTML = `<div class="menu-cab"><span class="slot"${attrRaridade(id)}>${htmlItem(id)}${n > 1 ? `<span class="qtd">${n}</span>` : ""}</span>`
+      + `<div class="menu-nome"><h4${titulo}>${esc(nomeDoItem(id))}</h4><p>${esc(nomeEspaco(slot))}${n > 1 ? ` · ${n} unidades` : ""}</p></div>`
+      + `<button type="button" class="menu-fechar" data-menu-fechar aria-label="Fechar o menu"><img class="px g16" src="${glifoURL("ui_fechar", 2)}" alt=""></button></div>`
+      + `<p class="menu-info">${esc([...efeitos, duas, `${kg(peso)} kg`].filter(Boolean).join(" · "))}</p>`
+      + `<div class="menu-grupo"><button type="button" class="btn primario" data-menu-guardar>${esc(guardar)}</button></div>`;
+    m.setAttribute("aria-label", `Ações: ${nomeDoItem(id)} (${nomeEspaco(slot)})`);
+    m.classList.add("aberto");
+    posicionarMenuItem();
+    if (focar) setTimeout(() => m.querySelector("[data-menu-guardar]")?.focus({ preventScroll: true }), 0);
+  }
   function desenharMenuItem(focar) {
+    if (menuItem?.slot) return desenharMenuEquip(focar);
     const p = jogador();
     const id = menuItem?.id;
     const d = id && info(id);
@@ -2972,6 +3018,13 @@
       if (!menuItem) return;
       const id = menuItem.id;
       if (e.target.closest("[data-menu-fechar]")) return fecharMenuItem(true);
+      if (e.target.closest("[data-menu-guardar]")) {
+        const slot = menuItem.slot;
+        fecharMenuItem();
+        desequipar(slot);
+        $$(".slot[data-item]").find((b) => b.dataset.item === id)?.focus?.({ preventScroll: true });
+        return;
+      }
       if (e.target.closest("[data-menu-usar]")) {
         usarItem(id);
         // Beber deixa o menu aberto (para beber mais de uma); equipar o fecha.
@@ -3001,10 +3054,12 @@
     addEventListener("resize", () => fecharMenuItem());
     document.addEventListener("contextmenu", (e) => {
       const it = e.target.closest?.(".slot[data-item]");
-      if (!it) return;
+      const eq = !it && e.target.closest?.(".equip.cheio[data-equip-slot]");
+      if (!it && !eq) return;
       e.preventDefault();
       // Teclado (Shift+F10, tecla de menu): ancora no espaço; mouse: também.
-      abrirMenuItem(it.dataset.item, it);
+      if (eq) abrirMenuEquip(eq.dataset.equipSlot, eq);
+      else abrirMenuItem(it.dataset.item, it);
     });
   }
 
