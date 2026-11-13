@@ -204,33 +204,43 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 @keyframes entra{0%{filter:brightness(2)}100%{filter:none}}
 
 /* equipamento */
-/* Boneco (como nos MMORPGs clássicos): a figura no meio e cada espaço onde ele fica no corpo —
-   arco nas costas (no alto, à esquerda), arma na mão direita, escudo na esquerda, armadura sobre o
-   peito; a munição (as flechas da mochila) no alto, à direita. Cabe na coluna de 272 px e no celular. */
-#gradeEquip{display:grid;grid-template-columns:60px 104px 60px;grid-template-areas:"arco figura municao" "arma figura escudo";justify-content:center;gap:6px 4px;padding:2px 0}
-.equip.e-arco{grid-area:arco} .equip.e-arma{grid-area:arma} .equip.e-escudo{grid-area:escudo}
-.equip.e-municao{grid-area:municao;cursor:default}
-.equip.e-municao.tem .slot{border-color:var(--bronze-500)}
-.boneco-figura,.equip.e-armadura{grid-area:figura}
-.boneco-figura{position:relative;display:flex;justify-content:center;align-items:flex-start;border:1px solid #0007;box-shadow:inset 0 0 14px #000a;pointer-events:none;
- background:radial-gradient(ellipse 34% 4% at 50% 76%,#000b,transparent 75%),radial-gradient(ellipse 60% 48% at 50% 42%,#7a4a3040,transparent 72%),#0003}
-.boneco-figura img{flex:none;width:120px;height:144px;margin-top:-10px} /* retrato inteiro em escala 6 (3 px por pixel de arte) */
-/* a armadura fica por cima do peito da figura; o rótulo, abaixo dos pés */
-.equip.e-armadura{z-index:1;align-self:stretch;justify-content:flex-start;padding-top:49px;gap:47px;background:none;border:0}
-.equip.e-armadura .slot{box-shadow:inset 2px 2px 0 #0008,0 0 0 2px #120a0699}
-.equip.e-armadura.vazio .slot{background:radial-gradient(circle at 35% 30%,#4a2e1fd9,#24150ed9)}
-.equip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:4px 0 3px;border:solid transparent;border-width:2px 0;background:#0003;cursor:pointer;color:var(--texto);text-align:center}
-.equip .slot{flex:0 0 auto;width:44px;height:44px}
+/* Boneco clássico: os espaços formam o corpo — colar, cabeça e mochila; mão da arma, armadura e mão do
+   escudo; anel, pernas e munição; os pés embaixo. À direita, a figura com o que está vestido e o ataque da
+   mão. Sem rótulo nos espaços: a silhueta diz o que vai em cada um, e a dica (ou o toque longo) dá o resto.
+   Cabe na coluna de 272 px e na folha do celular. */
+#gradeEquip{display:grid;grid-template-columns:repeat(3,44px) minmax(84px,104px);grid-template-rows:repeat(4,44px);gap:4px;justify-content:center;padding:2px 0;
+ grid-template-areas:"colar cabeca mochila lado" "arma armadura escudo lado" "anel pernas municao lado" ". pes . lado"}
+.equip.e-colar{grid-area:colar} .equip.e-cabeca{grid-area:cabeca} .equip.e-mochila{grid-area:mochila}
+.equip.e-arma{grid-area:arma} .equip.e-armadura{grid-area:armadura} .equip.e-escudo{grid-area:escudo}
+.equip.e-anel{grid-area:anel} .equip.e-pernas{grid-area:pernas} .equip.e-municao{grid-area:municao} .equip.e-pes{grid-area:pes}
+.equip{position:relative;display:block;width:44px;height:44px;padding:0;border:0;background:none;cursor:pointer;color:var(--texto)}
+.equip .slot{width:44px;height:44px}
 .equip.cheio .slot{border-color:var(--bronze-500)}
-.equip .slot img.silhueta{opacity:.35}
-.equip-txt{min-width:0;max-width:100%;display:flex;flex-direction:column;gap:2px}
-/* "ARMADURA" é o rótulo mais longo: sem espaçamento extra cabe na célula; a
-   reticência só aparece com a fonte de reserva (sem internet) */
-.equip-txt small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto-2);text-transform:uppercase;letter-spacing:.02em}
-.equip-txt em{font:700 var(--fs-13)/1 var(--f-ui);font-style:normal;color:var(--texto);white-space:nowrap}
-.equip.vazio .equip-txt em{color:var(--texto-mudo)}
-.equip.selecionado{outline:2px solid var(--ouro-200);animation:pisca .8s steps(2) infinite}
-.equip.alvo-soltar{outline:2px dashed var(--ouro-300);outline-offset:-2px}
+.equip:hover .slot{border-color:var(--bronze-400)}
+.equip .slot img.silhueta{opacity:.45}
+/* mão do escudo presa pelo arco (duas mãos): o arco aparece apagado sobre o fundo riscado */
+.equip.bloqueado .slot{background:repeating-linear-gradient(135deg,#24150e 0 5px,#3a2418 5px 7px);border-style:dashed}
+.equip.bloqueado .slot img{opacity:.5}
+/* a mochila do boneco abre o painel Mochila; a barrinha mostra a carga */
+.equip.e-mochila .slot{border-color:var(--bronze-600)}
+.equip .carga{position:absolute;left:5px;right:5px;bottom:4px;height:4px;background:#120a06;box-shadow:0 0 0 1px #0008}
+.equip .carga i{display:block;height:100%;background:var(--bronze-400)}
+.equip .carga.cheia i{background:#e8784a}
+.equip:focus-visible{outline:none}
+.equip:focus-visible .slot{outline:2px solid var(--ouro-200);outline-offset:1px}
+.equip.selecionado .slot{outline:2px solid var(--ouro-200);outline-offset:0;animation:pisca .8s steps(2) infinite}
+.equip.alvo-soltar .slot{outline:2px dashed var(--ouro-300);outline-offset:-2px}
+.boneco-lado{grid-area:lado;display:flex;flex-direction:column;gap:4px;min-width:0}
+.boneco-figura{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;border:1px solid #0007;box-shadow:inset 0 0 14px #000a;pointer-events:none;
+ background:radial-gradient(ellipse 34% 5% at 50% 86%,#000b,transparent 75%),radial-gradient(ellipse 60% 48% at 50% 46%,#7a4a3040,transparent 72%),#0003}
+.boneco-figura img{flex:none;width:80px;height:96px} /* corpo inteiro em escala 4 (2 px por pixel de arte) */
+.boneco-modo{margin:0;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--ouro-300);text-align:center;white-space:nowrap}
+.boneco-dados{margin:0;display:grid;grid-template-columns:1fr auto;gap:1px 6px;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--texto-2)}
+.boneco-dados dt{margin:0}
+.boneco-dados dd{margin:0;color:var(--texto);text-align:right}
+/* o espaço da mochila no boneco destaca o painel Mochila por um instante */
+.painel.destaque-mochila{box-shadow:0 0 0 2px var(--ouro-300),0 0 12px 2px #f2d27a66}
+@media (prefers-reduced-motion:no-preference){.painel.destaque-mochila{transition:box-shadow .3s}}
 
 /* mochila / bolsa */
 #pMochila .painel-corpo,#pBolsa .painel-corpo{padding:8px 8px 6px}

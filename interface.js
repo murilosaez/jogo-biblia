@@ -317,17 +317,14 @@
   // Descrição de itens (dica, loja)
   // ------------------------------------------------------------------
   const NOME_TIPO = {
-    consumivel: "Consumível", recurso: "Recurso", arma: "Arma corpo a corpo", arma_distancia: "Arco",
-    escudo: "Escudo", armadura: "Armadura", municao: "Munição",
+    consumivel: "Consumível", recurso: "Recurso", arma: "Arma corpo a corpo", arma_distancia: "Arma à distância",
+    escudo: "Escudo", armadura: "Armadura", cabeca: "Cabeça", colar: "Colar", pernas: "Pernas", pes: "Pés", anel: "Anel",
+    municao: "Munição",
   };
-  const ROTULO_SLOT = { arma: "Arma", arco: "Arco", escudo: "Escudo", armadura: "Armadura" };
-  const SILHUETA_SLOT = { arma: "espada_ferro", arco: "arco_madeira", escudo: "escudo_madeira", armadura: "armadura_couro" };
-  // Onde cada espaço fica no boneco do painel Equipamento (o arco vai às costas, como uma aljava).
-  const LUGAR_SLOT = { arma: "na mão direita", arco: "nas costas", escudo: "na mão esquerda", armadura: "no peito" };
-  const slotDoTipo = (tipo) => {
-    const mapa = typeof SLOTS_EQUIPAMENTO !== "undefined" ? SLOTS_EQUIPAMENTO : { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
-    return Object.keys(mapa).find((s) => mapa[s] === tipo) || null;
-  };
+  // Espaços do boneco (dados/itens.js: nome, lugar e silhueta) e o espaço de cada item (logica.js).
+  const ESPACOS = typeof ESPACOS_BONECO !== "undefined" ? ESPACOS_BONECO : {};
+  const nomeEspaco = (slot) => ESPACOS[slot]?.nome || slot;
+  const slotDe = (id) => (typeof slotDoItem === "function" ? slotDoItem(id) : null);
 
   // Item com raridade e atributos (logica.js); a loja usa "flechas", que não é item.
   const info = (id) => (typeof infoItem === "function" ? infoItem(id) : typeof ITENS !== "undefined" ? ITENS[id] : null);
@@ -352,12 +349,18 @@
     return NOME_TIPO[d.tipo] || "";
   }
 
-  function atributoCurto(id) {
-    const d = info(id);
-    if (!d) return "";
-    if (d.bonus) return `+${d.bonus} dano`;
-    if (d.defesa) return `+${d.defesa} def`;
-    return "";
+  // Onde a peça vai no boneco (e a regra das duas mãos); no espaço de munição, quantas há na pilha.
+  function linhaBoneco(id, origem) {
+    const slot = slotDe(id);
+    if (!slot) return "";
+    const p = jogador();
+    if (origem === "equip" && slot === "municao" && p) {
+      const n = typeof municaoNoEspaco === "function" ? municaoNoEspaco(p) : 0;
+      const kg = String(Math.round(n * (typeof pesoItem === "function" ? pesoItem(id) : 0) * 10) / 10).replace(".", ",");
+      return `${n} no espaço de munição (${kg} kg)`;
+    }
+    const duas = typeof maosDoItem === "function" && maosDoItem(id) === 2 ? " · usa as duas mãos (sem escudo)" : "";
+    return `Vai ${ESPACOS[slot]?.lugar || "no boneco"}${duas}`;
   }
 
   function htmlDica(id, origem) {
@@ -369,9 +372,10 @@
     const linhaRaridade = r !== "comum" && nomeR ? `<p class="raridade" style="--rar:${corRaridade(r)}">${esc(nomeR)}</p>` : "";
     const atributos = typeof textoAtributos === "function" ? textoAtributos(id) : [];
     const linhaAtributos = atributos.length ? `<ul class="atr-item">${atributos.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "";
-    let acao = "";
-    if (origem === "equip") acao = "Arraste para a mochila, ou dê duplo clique, para guardar.";
-    else if (slotDoTipo(d.tipo)) acao = "Duplo clique equipa. Também pode arrastar ou tocar e escolher o espaço.";
+    const boneco = linhaBoneco(id, origem);
+    let acao = boneco ? `${boneco}. ` : "";
+    if (origem === "equip") acao += "Arraste para a mochila, ou dê duplo clique, para guardar.";
+    else if (slotDe(id)) acao += "Duplo clique equipa. Também pode arrastar ou tocar e escolher o espaço.";
     else if (d.tipo === "consumivel") acao = "Duplo clique usa. Arraste para uma tecla de atalho.";
     else if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) acao = "Venda a qualquer mercador (há um em cada cidade).";
     const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
@@ -466,7 +470,7 @@
       const url = retratoURL(chave, { escala: 3, recorte: "busto" }) || retratoURL("pj_jogador", { escala: 3 });
       if (url) $("#retratoJogador").src = url;
       // Boneco do painel Equipamento: o corpo inteiro, de frente, com o que está vestido.
-      urlBoneco = retratoURL(chave, { escala: 6, recorte: "inteiro" }) || retratoURL("pj_jogador", { escala: 6, recorte: "inteiro" });
+      urlBoneco = retratoURL(chave, { escala: 4, recorte: "inteiro" }) || retratoURL("pj_jogador", { escala: 4, recorte: "inteiro" });
       const fig = $("#gradeEquip .boneco-figura");
       if (fig && urlBoneco) fig.innerHTML = `<img class="px" src="${urlBoneco}" alt="">`;
     }
@@ -566,7 +570,76 @@
   // ------------------------------------------------------------------
   let selecao = null; // {origem:"item", id} | {origem:"equip", slot}
   let assinaturaItens = "";
-  const ehMochila = (tipo) => ["arma", "arma_distancia", "escudo", "armadura", "municao"].includes(tipo);
+  const ehMochila = (tipo) => ["arma", "arma_distancia", "escudo", "armadura", "cabeca", "colar", "pernas", "pes", "anel", "municao"].includes(tipo);
+
+  // ------------------------------------------------------------------
+  // Boneco do painel Equipamento (como nos MMORPGs clássicos): colar, cabeça e mochila; mão da arma,
+  // armadura e mão do escudo; anel, pernas e munição; pés. Cada espaço vazio mostra a silhueta do que vai
+  // nele; o da mochila abre o painel Mochila (e recebe o que for guardado). Ao lado, a figura com o que está
+  // vestido e o ataque da mão. Arrastar, duplo clique e tocar-e-escolher usam data-equip-slot.
+  // ------------------------------------------------------------------
+  const ORDEM_BONECO = ["colar", "cabeca", "mochila", "arma", "armadura", "escudo", "anel", "pernas", "municao", "pes"];
+  const imgSilhueta = (chave) => {
+    const s = silhuetaURL(chave);
+    return s ? `<img class="px silhueta" src="${s}" width="32" height="32" alt="">` : "";
+  };
+  function htmlEspacoBoneco(p, slot) {
+    const eq = p.equipamento || {};
+    const nome = nomeEspaco(slot);
+    const sel = selecao && selecao.origem === "equip" && selecao.slot === slot ? " selecionado" : "";
+    const id = eq[slot];
+    if (id && info(id)) {
+      const n = slot === "municao" && typeof municaoNoEspaco === "function" ? municaoNoEspaco(p) : 0;
+      const efeito = typeof efeitosDoItem === "function" ? efeitosDoItem(id).join(", ") : "";
+      const rotulo = slot === "municao" ? `${nome}: ${n} ${n === 1 ? "unidade" : "unidades"} de ${nomeDoItem(id)}` : `${nome}: ${nomeDoItem(id)}${efeito ? `, ${efeito}` : ""}`;
+      return `<button type="button" class="equip e-${slot} cheio${sel}" draggable="true" data-equip-slot="${slot}" data-dica="${esc(id)}" data-dica-origem="equip" aria-label="${esc(rotulo)}">
+        <span class="slot"${attrRaridade(id)}>${htmlItem(id)}${n ? `<span class="qtd">${n}</span>` : ""}</span></button>`;
+    }
+    // Mão do escudo presa por uma arma de duas mãos: mostra o arco apagado e diz por quê.
+    const naMao = eq.arma;
+    if (slot === "escudo" && naMao && typeof maosDoItem === "function" && maosDoItem(naMao) === 2) {
+      const motivo = typeof textoDuasMaos === "function" ? textoDuasMaos(naMao) : "Arma de duas mãos.";
+      return `<button type="button" class="equip e-escudo vazio bloqueado${sel}" data-equip-slot="escudo" aria-label="${esc(`${nome}: ocupada. ${motivo}`)}" title="${esc(motivo)}">
+        <span class="slot">${htmlItem(naMao)}</span></button>`;
+    }
+    const semMunicao = slot === "municao" && eq.arma && info(eq.arma)?.semMunicao;
+    const dica = semMunicao ? `${nome}: vazio (a ${nomeDoItem(eq.arma).toLowerCase()} não usa munição)` : `${nome}: vazio`;
+    return `<button type="button" class="equip e-${slot} vazio${sel}" data-equip-slot="${slot}" aria-label="${esc(dica)}" title="${esc(dica)}">
+      <span class="slot">${imgSilhueta(ESPACOS[slot]?.silhueta)}</span></button>`;
+  }
+  function htmlMochilaBoneco(peso, cap) {
+    const pct = cap > 0 ? Math.max(0, Math.min(100, (100 * peso) / cap)) : 0;
+    const kg = (v) => String(Math.round(v * 10) / 10).replace(".", ",");
+    const rotulo = `Mochila: ${kg(peso)} de ${kg(cap)} kg. Abre o painel Mochila; solte aqui um equipamento para guardá-lo.`;
+    const url = itemURL("mochila", 2);
+    return `<button type="button" class="equip e-mochila zona-soltar" data-abrir-mochila data-zona="mochila" aria-label="${esc(rotulo)}" title="${esc(rotulo)}">
+      <span class="slot">${url ? `<img class="px" src="${url}" width="32" height="32" alt="">` : ""}<span class="carga${pct >= 90 ? " cheia" : ""}" aria-hidden="true"><i style="width:${pct.toFixed(0)}%"></i></span></span></button>`;
+  }
+  function htmlLadoBoneco(p) {
+    const s = typeof estatisticasCombate === "function" ? estatisticasCombate(p) : null;
+    const dados = s
+      ? `<p class="boneco-modo">${s.modoAtaque === "distancia" ? "À distância" : "Corpo a corpo"}</p>
+          <dl class="boneco-dados"><dt>Ataque</dt><dd>${esc(s.danoAtaque)}</dd><dt>Defesa</dt><dd>${esc(s.defesa)}</dd></dl>`
+      : "";
+    return `<div class="boneco-lado"><div class="boneco-figura" aria-hidden="true">${urlBoneco ? `<img class="px" src="${urlBoneco}" alt="">` : ""}</div>${dados}</div>`;
+  }
+  function atualizarBoneco(p, peso, cap) {
+    $("#gradeEquip").innerHTML = ORDEM_BONECO.map((slot) => (slot === "mochila" ? htmlMochilaBoneco(peso, cap) : htmlEspacoBoneco(p, slot))).join("") + htmlLadoBoneco(p);
+  }
+  // O espaço da mochila no boneco: mostra o painel Mochila (no largo, mesmo escondido pela tecla I; no médio,
+  // na aba dele; no celular, na folha Mochila) e o destaca por um instante.
+  function abrirMochila() {
+    if (modo === "estreito" && folhaAtual !== "mochila") abrirFolha("mochila");
+    else if (modo === "medio" && abaMedia !== "mochila") mostrarAbaMedia("mochila");
+    else if (document.body.classList.contains("hideBags")) document.body.classList.remove("hideBags");
+    const m = $("#pMochila");
+    if (!m) return;
+    m.scrollIntoView?.({ block: "nearest", behavior: reduzMovimento() ? "auto" : "smooth" });
+    m.classList.remove("destaque-mochila");
+    void m.offsetWidth;
+    m.classList.add("destaque-mochila");
+    setTimeout(() => m.classList.remove("destaque-mochila"), 1200);
+  }
 
   function contar(lista) {
     const g = new Map();
@@ -586,7 +659,9 @@
     // os dois cliques impedia o navegador de reconhecer o duplo clique.
     // A capacidade entra: um alforje da troca muda o "x / 170 kg" sem mexer na mochila.
     const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
-    const ass = JSON.stringify([p.inventario, p.equipamento, p.hotkeys, cap]);
+    // O boneco mostra também a pilha de munição e o ataque e a defesa (que sobem com o nível e as habilidades).
+    const s = typeof estatisticasCombate === "function" ? estatisticasCombate(p) : {};
+    const ass = JSON.stringify([p.inventario, p.equipamento, p.hotkeys, cap, p.quantidadeMunicao, s.danoAtaque, s.defesa]);
     if (!forcar && ass === assinaturaItens) return;
     assinaturaItens = ass;
     const g = contar(p.inventario);
@@ -603,29 +678,7 @@
     const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
     $("#pesoTexto").textContent = `${Number(peso).toFixed(1)} / ${cap} kg`;
 
-    // Equipamento: boneco com cada espaço no lugar do corpo (arco nas costas, arma e escudo nas
-    // mãos, armadura no peito) e a munição ao lado, só mostrando as flechas da mochila (não é espaço).
-    const eq = p.equipamento || {};
-    const htmlSlot = (slot) => {
-      const id = eq[slot];
-      const sel = selecao && selecao.origem === "equip" && selecao.slot === slot ? " selecionado" : "";
-      const lugar = `${ROTULO_SLOT[slot]} (${LUGAR_SLOT[slot]})`;
-      if (id && info(id)) {
-        return `<button type="button" class="equip e-${slot} cheio${sel}" draggable="true" data-equip-slot="${slot}" data-dica="${esc(id)}" data-dica-origem="equip" aria-label="${lugar}: ${esc(nomeDoItem(id))}">
-          <span class="slot"${attrRaridade(id)}>${htmlItem(id)}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>${esc(atributoCurto(id))}</em></span></button>`;
-      }
-      const sil = silhuetaURL(SILHUETA_SLOT[slot]);
-      return `<button type="button" class="equip e-${slot} vazio${sel}" data-equip-slot="${slot}" aria-label="${lugar}: vazio" title="${ROTULO_SLOT[slot]} ${LUGAR_SLOT[slot]}">
-        <span class="slot">${sil ? `<img class="px silhueta" src="${sil}" width="32" height="32" alt="">` : ""}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>vazio</em></span></button>`;
-    };
-    const flechas = g.get("flecha") || 0;
-    const semMunicao = !!(eq.arco && info(eq.arco)?.semMunicao);
-    const textoMunicao = semMunicao ? "não usa" : flechas === 1 ? "1 flecha" : `${flechas} flechas`;
-    const municao = `<div class="equip e-municao${flechas ? " tem" : " vazio"}" role="img" data-dica="flecha" aria-label="Munição: ${flechas} flechas na mochila${semMunicao ? " (a arma à distância equipada não usa flechas)" : ""}">
-        <span class="slot">${flechas ? htmlItem("flecha") : (() => { const s = silhuetaURL("flecha"); return s ? `<img class="px silhueta" src="${s}" width="32" height="32" alt="">` : ""; })()}${flechas ? `<span class="qtd">${flechas}</span>` : ""}</span>
-        <span class="equip-txt"><small>Munição</small><em>${esc(textoMunicao)}</em></span></div>`;
-    $("#gradeEquip").innerHTML = `<div class="boneco-figura" aria-hidden="true">${urlBoneco ? `<img class="px" src="${urlBoneco}" alt="">` : ""}</div>
-      ${htmlSlot("arco")}${htmlSlot("arma")}${htmlSlot("armadura")}${htmlSlot("escudo")}${municao}`;
+    atualizarBoneco(p, peso, cap);
 
     // Atalhos (com vocação, as teclas 1 a 8 são das habilidades e os itens ficam em Shift + 1 a 6)
     const hk = p.hotkeys || [];
@@ -2281,8 +2334,8 @@
       [k("Enter"), "Escrever no console: diga oi, comprar, vender, viajar, caçadas, embarcar, preço, missão ou tchau a quem está perto (ou clique nas palavras entre colchetes); Esc volta ao jogo"],
       ["Clique no chão", "Anda até lá (contorna obstáculos); num personagem ou saque, vai até ele"],
       ["Clique no inimigo", "Escolhe o alvo, vai até ele e ataca sozinho a cada 2 s"],
-      [k("Espaço"), "Golpe corpo a corpo no alvo (também na diagonal)"],
-      [k("R"), "Flecha no alvo, se houver arco equipado e flechas"],
+      [k("Espaço"), "Ataque com o que está na mão da arma: golpe (também na diagonal) ou, com arco ou funda, tiro"],
+      [k("R"), "Ataque à distância (arco com flechas ou funda na mão); ao lado do alvo, golpeia"],
       [k("H"), "Usar poção de vida"],
       [k("1", "–", "6"), "Usar o atalho"],
       [k("P"), "Pescar (no mar, ao lado do ponto de pesca)"],
@@ -2308,7 +2361,7 @@
       <table class="teclas"><tbody>${linhas.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")}</tbody></table>`;
     const secItens = `
       <h3>Itens</h3>
-      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele. Botão direito numa tecla de atalho a esvazia. Espada e arco ocupam as mãos: equipar um guarda o outro.</p>`;
+      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele. Botão direito numa tecla de atalho a esvazia. O equipamento é um boneco: cabeça, colar, mão da arma, armadura, mão do escudo, pernas, pés, anel e munição. A mão da arma leva a espada, o arco ou a funda; o arco usa as duas mãos (guarda o escudo). As flechas ficam empilhadas no espaço de munição. Clique na mochila do boneco para abrir o painel Mochila.</p>`;
     const secToque = `
       <h3>Toque</h3>
       <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
@@ -2522,15 +2575,9 @@
   }
 
   function equipar(id, slot) {
-    // A lógica guarda a espada ao equipar o arco (e vice-versa): avisar.
-    const p = jogador();
-    const outro = slot === "arma" ? "arco" : slot === "arco" ? "arma" : null;
-    const guardado = p && outro ? p.equipamento[outro] : null;
+    // A lógica diz o que voltou para a mochila (o arco usa as duas mãos e guarda o escudo).
     const r = Mundo.equiparItem(ID, id, slot);
-    if (r && r.mensagem) {
-      const extra = r.ok && guardado ? ` ${nomeDoItem(guardado)} voltou para a mochila (espada e arco não ficam juntos).` : "";
-      mensagem(r.mensagem + extra, r.ok ? "sistema" : "perigo");
-    }
+    if (r && r.mensagem) mensagem(r.mensagem, r.ok ? "sistema" : "perigo");
     window.gameScene?.atualizarVisualJogador?.();
     selecao = null;
     atualizar();
@@ -2555,7 +2602,7 @@
     if (!d) return;
     if (id === "pocao") return window.Jogo ? Jogo.acao("pocao") : executar({ tipo: "usarPocao" });
     if (id === "pocao_fe") return window.Jogo ? Jogo.acao("pocaoFe") : executar({ tipo: "usarPocaoFe" });
-    const slot = slotDoTipo(d.tipo);
+    const slot = slotDe(id);
     if (slot) return equipar(id, slot);
     mensagem(`${nomeDoItem(id)}: ${atributoItem(id) || "recurso"}.`, "sistema");
   }
@@ -2611,7 +2658,7 @@
         const id = it.dataset.item;
         if (selecao && selecao.origem === "item" && selecao.id === id) return selecionar(null);
         const d = info(id);
-        const dica = mouse ? null : slotDoTipo(d.tipo) ? "Toque num espaço de equipamento para equipar." : d.tipo === "consumivel" ? "Toque numa tecla de atalho para guardar ali." : `${nomeDoItem(id)} selecionado.`;
+        const dica = mouse ? null : slotDe(id) ? "Toque num espaço de equipamento para equipar." : d.tipo === "consumivel" ? "Toque numa tecla de atalho para guardar ali." : `${nomeDoItem(id)} selecionado.`;
         return selecionar({ origem: "item", id }, dica);
       }
       if (eq) {
@@ -2628,6 +2675,7 @@
         return window.Jogo ? Jogo.usarAtalho(i) : null;
       }
       if (zona && selecao && selecao.origem === "equip") return desequipar(selecao.slot);
+      if (t.closest("[data-abrir-mochila]")) return abrirMochila();
       // Trocar de aba/folha mantém a seleção (tocar-para-equipar entre painéis).
       if (selecao && !t.closest(".modal, #dicaItem, [data-folha], [data-aba], #folhaFechar, #folhaAlca, .painel-cab")) selecionar(null);
     });

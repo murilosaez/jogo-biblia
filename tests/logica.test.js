@@ -538,7 +538,7 @@ teste("2b. a fórmula usa nível, arma e habilidade; defesa mitiga sem zerar", (
   const bandido = j.g("inimigos").bandido1;
   assert.ok(mitigarDano(danoBruto(q, "corpo"), bandido.defesa) >= 15, "o golpe precisa tirar um dano relevante");
   // Arco não pode ficar em 1 de dano nos capítulos novos.
-  const arqueiro = { nivel: 6, equipamento: { arco: "arco_madeira" }, habilidades: { distancia: 5 } };
+  const arqueiro = { nivel: 6, equipamento: { arma: "arco_madeira" }, habilidades: { distancia: 5 } };
   for (const id of ["soldadoEgito1", "perseguidorMar1", "guardiaoSinai1", "ameaçaGalileia1"]) {
     const e = j.g("inimigos")[id];
     assert.ok(mitigarDano(danoBruto(arqueiro, "distancia"), e.defesa) >= 10, `arco contra ${id}`);
@@ -601,8 +601,7 @@ teste("4. ataque manual tem recarga compartilhada (corpo e distância)", () => {
   j.avancar(recarga);
   assert.ok(j.exec({ tipo: "atacar", alvoId: "lobo1" }).danoAplicado);
   // Arco compartilha a recarga.
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   p.inventario.push("flecha", "flecha");
   const tiro = j.exec({ tipo: "atacarDistancia", alvoId: "lobo1" });
   assert.strictEqual(tiro.emRecarga, true);
@@ -792,8 +791,7 @@ teste("8. alcance Chebyshev para todos e ALCANCE_ARCO único", () => {
   // Arco: exatamente ALCANCE_ARCO.
   const alcance = j.g("ALCANCE_ARCO");
   assert.ok(Number.isInteger(alcance) && alcance >= 5 && alcance <= 8);
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   p.inventario.push(...Array(5).fill("flecha"));
   p.area = "deserto";
   p.vidaInimigos.escorpiao1 = 999;
@@ -1061,9 +1059,15 @@ teste("17. migração: save v5 carrega sem perder itens, moedas e progresso", ()
   assert.strictEqual(p.mortes, original.mortes);
   const contar = (lista) => lista.reduce((m, i) => ((m[i] = (m[i] || 0) + 1), m), {});
   const antes = contar(original.inventario.concat(Object.values(original.equipamento).filter(Boolean)));
-  const depois = contar(p.inventario.concat(Object.values(p.equipamento).filter(Boolean)));
+  // Boneco: a pilha do espaço de munição conta como as flechas que ela tem.
+  const vestidos = Object.entries(p.equipamento).flatMap(([s, x]) => (!x ? [] : s === "municao" ? Array(p.quantidadeMunicao).fill(x) : [x]));
+  const depois = contar(p.inventario.concat(vestidos));
   for (const [item, n] of Object.entries(antes)) assert.ok((depois[item] || 0) >= n, `perdeu ${item}`);
-  igual(p.equipamento, original.equipamento);
+  // O que estava vestido continua; a mão da arma é uma só (sem o espaço "arco") e as flechas da mochila foram
+  // para o espaço de munição.
+  for (const slot of ["arma", "escudo", "armadura"]) assert.strictEqual(p.equipamento[slot], original.equipamento[slot], slot);
+  assert.ok(!("arco" in p.equipamento), "sem o espaço antigo do arco");
+  igual([p.equipamento.municao, p.quantidadeMunicao], ["flecha", original.inventario.filter((x) => x === "flecha").length]);
   igual(p.missoes.lobo, { status: "concluida", etapa: 0, progresso: [1] });
   igual(p.missoes.ervas.status, "concluida");
   assert.strictEqual(p.missoes.deserto.status, "concluida");
@@ -1248,7 +1252,7 @@ teste("18. API usada por game.js continua disponível", () => {
 teste("19. personagem novo começa com o equipamento inicial vestido e vence o lobo sem ajustes", () => {
   const j = carregarJogo({ semente: 11 });
   const p = j.entrar();
-  igual(p.equipamento, { arma: "espada_madeira", arco: null, escudo: "escudo_madeira", armadura: "tunica_pano" });
+  igual(p.equipamento, { cabeca: null, colar: null, arma: "espada_madeira", armadura: "tunica_pano", escudo: "escudo_madeira", pernas: null, pes: null, anel: null, municao: null });
   assert.strictEqual(j.M.contarItem(ID, "pocao"), 3);
   assert.ok(!p.inventario.includes("espada_madeira"), "não duplica o item na mochila");
   falar(j, "viajante1");
@@ -1389,8 +1393,7 @@ teste("26. com o arco nas mãos, o tiro a 1 casa vale e bate mais que o soco", (
   const p = j.p;
   const e = j.g("inimigos").lobo1;
   p.vidaInimigos.lobo1 = 10_000;
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   p.inventario.push("flecha", "flecha");
   posicionarAoLado(j, "canaan", e);
   assert.ok(j.M.linhaDeTiroLivre(p, e), "alvo ao lado está na linha de tiro");
@@ -2053,8 +2056,7 @@ teste("34. caçadas: cada abate conta para todas as ativas que casam (golpe, fle
   igual(r2.tarefas.map((t) => [t.id, t.progresso]), [["deserto_bando", 1]]);
   assert.strictEqual(progressoCacada(j, "deserto_ferroes"), 1);
   // Flecha também conta.
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   p.inventario.push("flecha", "flecha");
   const r3 = abater(j, "escorpiao1", "atacarDistancia");
   assert.strictEqual(r3.tipoAtaque, "distancia");
@@ -3443,8 +3445,7 @@ teste("52. comportamentos e status: matilha, fuga, distância, investida, fúria
     const { j, p, e } = cenaComportamento("chacal1", { manterVizinhos: true });
     const bando = Object.values(j.g("inimigos")).filter((x) => x.especie === "chacal" && x !== e && Math.max(Math.abs(x.x - e.x), Math.abs(x.y - e.y)) <= 12);
     assert.ok(bando.length, "há chacais por perto");
-    p.equipamento.arma = null;
-    p.equipamento.arco = "arco_madeira";
+    Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
     p.inventario.push("flecha", "flecha");
     aDistancia(j, e, 4);
     const r = j.exec({ tipo: "atacarDistancia", alvoId: e.id });
@@ -4145,8 +4146,7 @@ teste("57. analisador de caçada (JGB-10): XP/h, saque/h, lucro, abates, mortes 
   p.vida = 10;
   p.inventario.push("pocao");
   assert.ok(j.exec({ tipo: "usarPocao" }).ok);
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   for (let i = 0; i < 5; i++) p.inventario.push("flecha");
   const r2 = abater(j, "lobo1", "atacarDistancia");
   a = A();
@@ -4877,8 +4877,7 @@ teste("63c. habilidades: recarga própria e global, alcance, funda sem flechas, 
   const { j, p, e } = cenaComportamento("urso1");
   const g = (n) => j.g(n);
   comVocacao(j, "fundibulario", 25);
-  p.equipamento.arma = null;
-  p.equipamento.arco = "funda";
+  p.equipamento.arma = "funda"; // a funda usa uma mão só
   p.vidaInimigos[e.id] = 10_000;
   aDistancia(j, e, 4);
   j.definirAleatorio(() => 0.99); // sem crítico pela sorte
@@ -4906,7 +4905,7 @@ teste("63c. habilidades: recarga própria e global, alcance, funda sem flechas, 
   r = usar(j, "pedra_afiada", e.id);
   assert.ok(!r.ok && !p.recargas.pedra_afiada, "fora do alcance");
   // Arco gasta flechas.
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null });
   aDistancia(j, e, 4);
   p.inventario.push("flecha", "flecha");
   const antes = p.inventario.filter((i) => i === "flecha").length;
@@ -5047,8 +5046,7 @@ function lutaComVocacao(inimigoId, vocacao, { semente = 7, nivelExtra = 0, ramo 
   if (vocacao) comVocacao(j, vocacao, nivel);
   if (vocacao && ramo !== null) montarBuild(j, vocacao, ramo);
   else Object.assign(p, { nivel, xp: j.g("limiarNivel")(nivel - 1) });
-  p.equipamento = { arma: perfil.arma, arco: vocacao === "fundibulario" ? "funda" : null, escudo: perfil.escudo, armadura: perfil.armadura };
-  if (vocacao === "fundibulario") p.equipamento.arma = null;
+  p.equipamento = { arma: vocacao === "fundibulario" ? "funda" : perfil.arma, escudo: perfil.escudo, armadura: perfil.armadura };
   p.habilidades = { corpo: perfil.corpo, distancia: perfil.corpo, defesa: perfil.defesa, oracao: 0 };
   p.vida = j.g("vidaMaxima")(p);
   p.inventario = Array(6).fill("pocao");
@@ -5653,7 +5651,8 @@ teste("65c. fabricar: nível, materiais, todos, mochila cheia, qualidade dos equ
   darItens(j, "madeira", 2);
   darItens(j, "pena_ave", 2);
   r = fab("flechas", 2);
-  assert.ok(r.ok && r.feitos === 2 && p.inventario.filter((i) => i === "flecha").length === 10, r.mensagem);
+  // (as flechas vão para o espaço de munição do boneco)
+  assert.ok(r.ok && r.feitos === 2 && p.equipamento.municao === "flecha" && p.quantidadeMunicao === 10, r.mensagem);
   // Mochila cheia: a túnica (4 kg) pesa mais que os 2 tecidos (2 kg); sem espaço, nada é gasto.
   p.inventario = [];
   darItens(j, "tecido_linho", 2);
@@ -5883,7 +5882,7 @@ teste("68. arte em 32 px por casa (JGB-48): humanos em 3 vistas com equipamento 
   // Equipamento visível: arma, escudo e armadura mudam o desenho do jogador.
   const jog = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
   const nu = jog({});
-  for (const eq of [{ arma: "espada_ferro" }, { escudo: "escudo_bronze" }, { armadura: "armadura_couro" }, { armadura: "couraca_escamas" }, { arco: "arco_madeira" }, { arma: "espada_ferro@raro.dano2" }])
+  for (const eq of [{ arma: "espada_ferro" }, { escudo: "escudo_bronze" }, { armadura: "armadura_couro" }, { armadura: "couraca_escamas" }, { arma: "arco_madeira" }, { arma: "espada_ferro@raro.dano2" }])
     assert.notStrictEqual(jog(eq), nu, JSON.stringify(eq));
   // Montarias e trajes geram sprite; montado tem as 3 vistas.
   for (const m of ["jumento", "camelo", "cavalo", "carro"]) {
@@ -6081,6 +6080,207 @@ teste("71. cores do visual (JGB-49): paleta fixa, comando definirCores validado,
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
   assert.match(ui, /tipo: "definirCores"/);
   assert.doesNotMatch(ui, /\.cosmeticos\.cores\s*(\[|\.\w+\s*=|=)/, "a interface não escreve em p.cosmeticos.cores");
+});
+
+teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, munição em pilha e save antigo sem perder item", () => {
+  const { j, p, e } = cenaComportamento("urso1");
+  const g = (n) => j.g(n);
+  const [ITENS, SLOTS, ESPACOS, PRECOS, LOJAS, VENDA] = ["ITENS", "SLOTS_EQUIPAMENTO", "ESPACOS_BONECO", "PRECOS_LOJA", "LOJAS", "VALORES_VENDA"].map(g);
+  const info = g("infoItem");
+  const contarTudo = (q) => {
+    const m = {};
+    const lista = q.inventario.concat(Object.entries(q.equipamento).flatMap(([s, x]) => (!x ? [] : s === "municao" ? Array(q.quantidadeMunicao).fill(x) : [x])));
+    for (const x of lista) m[x] = (m[x] || 0) + 1;
+    return m;
+  };
+
+  // 1. Dados: os espaços do boneco (a mochila só abre o painel), uma mão para a arma e as peças novas.
+  igual(Object.keys(SLOTS).sort(), ["anel", "arma", "armadura", "cabeca", "colar", "escudo", "municao", "pernas", "pes"]);
+  for (const s of [...Object.keys(SLOTS), "mochila"]) assert.ok(ESPACOS[s]?.nome && ESPACOS[s].lugar && ESPACOS[s].silhueta, `ESPACOS_BONECO.${s}`);
+  igual(SLOTS.arma, ["arma", "arma_distancia"], "a mão da arma aceita corpo a corpo ou distância");
+  for (const id of ["arco_madeira", "arco_composto"]) assert.strictEqual(g("maosDoItem")(id), 2, `${id}: duas mãos (dado maos: 2)`);
+  for (const id of ["funda", "espada_ferro", "escudo_bronze"]) assert.strictEqual(g("maosDoItem")(id), 1, `${id}: uma mão`);
+  const vendidos = new Set(Object.values(LOJAS).flat());
+  const caem = new Set(Object.values(g("inimigos")).flatMap((x) => x.saque.itens.map((l) => l.item)));
+  for (const tipo of ["cabeca", "colar", "pernas", "pes", "anel"]) {
+    const pecas = Object.keys(ITENS).filter((id) => ITENS[id].tipo === tipo);
+    assert.ok(pecas.length, `${tipo}: há peças`);
+    for (const id of pecas) {
+      const d = ITENS[id];
+      assert.strictEqual(g("slotDoItem")(id), tipo, `${id}: espaço`);
+      assert.ok(d.peso > 0 && d.peso <= 2, `${id}: peso de verdade (${d.peso} kg)`);
+      assert.ok((d.defesa || 0) <= 2 && (d.defesa || d.atributosFixos), `${id}: defesa pequena ou um atributo modesto`);
+      for (const [k, v] of Object.entries(d.atributosFixos || {})) assert.ok(g("ATRIBUTOS_ITEM")[k] && v > 0 && v <= 10, `${id}: atributo ${k}`);
+      assert.ok(vendidos.has(id) || caem.has(id), `${id}: à venda ou no saque`);
+      if (vendidos.has(id)) assert.ok(PRECOS[id] > 0, `${id}: preço`);
+    }
+  }
+  assert.ok(ITENS.amuleto_faianca.tipo === "colar" && VENDA.amuleto_faianca > 0, "o amuleto de faiança vai no colar e os mercadores ainda o compram");
+  assert.strictEqual(g("sortearSaque")({ saque: { itens: [{ item: "amuleto_faianca", chance: 1 }] } }, () => 0.999)[0].item, "amuleto_faianca", "raridade fixa: cai sempre igual");
+
+  // 2. Peças do corpo: cada uma no seu espaço, com defesa e atributos que contam; o peso não muda ao vestir.
+  p.inventario.push("elmo_bronze", "colar_contas", "anel_selo_bronze", "botas_viagem", "grevas_bronze", "arco_madeira", "funda", "escudo_bronze");
+  const peso0 = g("pesoCarregado")(p), def0 = g("defesaEquipamento")(p), vida0 = g("vidaMaxima")(p);
+  const crit0 = g("chanceCritico")(p, "corpo"), carga0 = g("capacidadeCarga")(p);
+  let r = j.M.equiparItem(ID, "elmo_bronze", "pernas");
+  assert.ok(!r.ok && /vai na cabeça/.test(r.mensagem), `peça no espaço errado diz onde vai: ${r.mensagem}`);
+  for (const [item, slot] of [["elmo_bronze", "cabeca"], ["colar_contas", "colar"], ["anel_selo_bronze", "anel"], ["botas_viagem", "pes"], ["grevas_bronze", "pernas"]]) {
+    r = j.M.equiparItem(ID, item, slot);
+    assert.ok(r.ok && p.equipamento[slot] === item && !p.inventario.includes(item), r.mensagem);
+  }
+  assert.strictEqual(g("defesaEquipamento")(p), def0 + 2 + 1 + 2, "elmo, botas e grevas somam defesa");
+  assert.strictEqual(g("vidaMaxima")(p), vida0 + 10, "colar de contas: +10 de vida");
+  assert.strictEqual(g("chanceCritico")(p, "corpo"), crit0 + 2, "anel de selo: +2% de crítico");
+  assert.strictEqual(g("capacidadeCarga")(p), carga0 + 3, "botas de viagem: +3 kg de carga");
+  assert.strictEqual(g("pesoCarregado")(p), peso0, "vestir não muda o peso");
+  for (const s of ["arco", "mochila", "constructor"]) assert.ok(!j.M.equiparItem(ID, "arco_madeira", s).ok && !j.M.desequiparItem(ID, s).ok, `"${s}" não é espaço`);
+
+  // 3. O arco usa as duas mãos: equipá-lo guarda o escudo (e a espada); com ele na mão, o escudo não entra.
+  assert.ok(p.equipamento.escudo && p.equipamento.arma === "espada_madeira");
+  r = j.M.equiparItem(ID, "arco_madeira", "arma");
+  assert.ok(r.ok && p.equipamento.arma === "arco_madeira" && p.equipamento.escudo === null, r.mensagem);
+  assert.match(r.mensagem, /O arco usa as duas mãos\. Espada de madeira e Escudo de madeira voltaram para a mochila\.$/);
+  assert.ok(p.inventario.includes("escudo_madeira") && p.inventario.includes("espada_madeira") && r.guardados.length === 2);
+  const antes = json(p);
+  r = j.M.equiparItem(ID, "escudo_bronze", "escudo");
+  assert.ok(!r.ok && r.mensagem.startsWith("O arco usa as duas mãos."), r.mensagem);
+  igual(p, antes, "a recusa não muda nada");
+  assert.ok(!j.exec({ tipo: "alternarEquipamento", slot: "escudo" }).ok, "nem pelo alternar");
+  // A funda usa uma mão: o escudo volta.
+  assert.ok(j.M.equiparItem(ID, "funda", "arma").ok && p.inventario.includes("arco_madeira"));
+  assert.ok(j.M.equiparItem(ID, "escudo_bronze", "escudo").ok && p.equipamento.escudo === "escudo_bronze");
+
+  // 4. Um ataque só: o da mão. Funda: Espaço e R atiram (pedra, sem gastar nada); espada: R ao lado golpeia.
+  p.vidaInimigos[e.id] = 100_000;
+  aDistancia(j, e, 3);
+  r = j.exec({ tipo: "atacar", alvoId: e.id });
+  assert.ok(r.ok && r.tipoAtaque === "distancia" && r.projetil === "pedra", `Espaço com a funda atira: ${r.mensagem}`);
+  j.avancar(1000);
+  assert.ok(j.exec({ tipo: "atacarDistancia", alvoId: e.id }).tipoAtaque === "distancia");
+  j.avancar(1000);
+  assert.ok(j.M.equiparItem(ID, "espada_madeira", "arma").ok);
+  r = j.exec({ tipo: "atacarDistancia", alvoId: e.id });
+  assert.ok(!r.ok && /Equipe um arco ou a funda na mão da arma/.test(r.mensagem), `R de longe com a espada: ${r.mensagem}`);
+  posicionarAoLado(j, e.area, e);
+  r = j.exec({ tipo: "atacarDistancia", alvoId: e.id });
+  assert.ok(r.ok && r.tipoAtaque === "corpo" && r.projetil === null, `R ao lado com a espada golpeia: ${r.mensagem}`);
+  j.avancar(1000);
+  // Arco sem flechas: de longe, não atira; ao lado, o golpe sai sem arma (e avisa).
+  assert.ok(j.M.equiparItem(ID, "arco_madeira", "arma").ok && !p.equipamento.escudo);
+  igual([p.equipamento.municao, g("flechasDoJogador")(p), g("podeAtirar")(p)], [null, 0, false]);
+  const s0 = g("estatisticasCombate")(p);
+  assert.ok(s0.temArco && s0.modoAtaque === "distancia" && s0.danoCorpo < s0.danoDistancia, "com o arco na mão, o corpo a corpo é sem arma");
+  r = j.exec({ tipo: "atacar", alvoId: e.id });
+  assert.ok(r.ok && r.tipoAtaque === "corpo" && /Sem flechas: golpe sem arma/.test(r.mensagem), r.mensagem);
+  j.avancar(1000);
+  aDistancia(j, e, 3);
+  assert.strictEqual(j.exec({ tipo: "atacar", alvoId: e.id }).mensagem, "Você não tem flechas.");
+
+  // 5. Munição: comprada, cai na pilha do espaço de munição (que pesa); o tiro gasta dela antes da mochila.
+  const m = g("npcs").mercador_canaa;
+  posicionarAoLado(j, m.area, m);
+  p.moedas = 100;
+  const pesoAntes = g("pesoCarregado")(p), mochilaAntes = p.inventario.length;
+  assert.ok(j.exec({ tipo: "comprar", item: "flechas" }).ok && j.exec({ tipo: "comprar", item: "flechas" }).ok);
+  igual([p.equipamento.municao, p.quantidadeMunicao, p.inventario.length], ["flecha", 10, mochilaAntes], "as flechas compradas vão para o espaço de munição");
+  assert.strictEqual(g("pesoCarregado")(p), Math.round((pesoAntes + 10 * ITENS.flecha.peso) * 10) / 10, "a pilha pesa");
+  p.inventario.push("flecha", "flecha");
+  assert.strictEqual(g("estatisticasCombate")(p).flechas, 12, "flechas: espaço de munição e mochila");
+  p.area = e.area;
+  aDistancia(j, e, 3);
+  r = j.exec({ tipo: "atacar", alvoId: e.id });
+  assert.ok(r.ok && r.tipoAtaque === "distancia" && r.projetil === "flecha", r.mensagem);
+  igual([p.quantidadeMunicao, j.M.contarItem(ID, "flecha")], [9, 2], "gasta do espaço de munição primeiro");
+  // Guardar a munição leva a pilha inteira; equipar de novo junta tudo; o peso não muda.
+  const peso1 = g("pesoCarregado")(p);
+  r = j.M.desequiparItem(ID, "municao");
+  assert.ok(r.ok && /^9 flechas voltaram para a mochila/.test(r.mensagem) && p.equipamento.municao === null && p.quantidadeMunicao === 0, r.mensagem);
+  r = j.M.equiparItem(ID, "flecha", "municao");
+  igual([r.ok, p.quantidadeMunicao, j.M.contarItem(ID, "flecha"), g("pesoCarregado")(p)], [true, 11, 0, peso1], r.mensagem);
+  assert.ok(j.exec({ tipo: "alternarEquipamento", slot: "municao" }).ok && j.M.contarItem(ID, "flecha") === 11, "alternar guarda a pilha");
+  assert.ok(j.exec({ tipo: "alternarEquipamento", slot: "municao" }).ok && p.quantidadeMunicao === 11, "e equipa de novo");
+  // Habilidade à distância (Fundibulário) com o arco gasta as flechas do espaço; sem arma à distância, recusa.
+  comVocacao(j, "fundibulario", 25);
+  j.avancar(2000);
+  r = usar(j, "mao_esquerda", e.id);
+  assert.ok(r.ok && p.quantidadeMunicao === 9, `duas pedras = duas flechas do espaço: ${r.mensagem}`);
+  assert.ok(j.M.equiparItem(ID, "espada_madeira", "arma").ok);
+  j.avancar(20_000);
+  assert.match(usar(j, "pedra_certeira", e.id).mensagem, /na mão da arma/);
+
+  // 6. Save: grava e volta igual; saves antigos (mão dividida em arma e arco) carregam sem perder item.
+  g("Storage").flush();
+  const q = carregarJogo({ store: j.store }).entrar();
+  igual([q.equipamento, q.quantidadeMunicao, q.inventario], [p.equipamento, p.quantidadeMunicao, p.inventario], "recarrega igual");
+  const antigo = (mudar) => {
+    const b = carregarJogo();
+    b.entrar();
+    b.g("Storage").flush();
+    const dados = JSON.parse(b.store.save_jogador1);
+    delete dados.quantidadeMunicao;
+    mudar(dados);
+    const original = contarTudo({ ...dados, equipamento: {}, quantidadeMunicao: 0, inventario: dados.inventario.concat(Object.values(dados.equipamento).filter(Boolean)) });
+    const c = carregarJogo({ store: { save_jogador1: JSON.stringify(dados) } }).entrar();
+    const depois = contarTudo(c);
+    for (const [item, n] of Object.entries(original)) if (info(item)) assert.ok((depois[item] || 0) >= n, `perdeu ${item}`);
+    assert.ok(!("arco" in c.equipamento), "sem o espaço antigo");
+    return c;
+  };
+  // espada e arco juntos: fica a espada; as flechas da mochila vão para o espaço de munição
+  let c = antigo((d) => {
+    d.equipamento = { arma: "espada_ferro", arco: "arco_composto", escudo: "escudo_bronze", armadura: "armadura_couro" };
+    d.inventario.push(...Array(7).fill("flecha"));
+  });
+  igual([c.equipamento.arma, c.equipamento.escudo, c.equipamento.municao, c.quantidadeMunicao, c.equipamento.cabeca], ["espada_ferro", "escudo_bronze", "flecha", 7, null]);
+  assert.ok(c.inventario.includes("arco_composto") && !c.inventario.includes("flecha"));
+  // Fundibulário: fica a arma de distância dele
+  c = antigo((d) => {
+    d.equipamento = { arma: "espada_ferro", arco: "funda", escudo: "escudo_madeira", armadura: null };
+    d.nivel = 10;
+    d.vocacao = { id: "fundibulario", especializacao: null, trocas: 0 };
+  });
+  igual([c.equipamento.arma, c.equipamento.escudo, c.inventario.includes("espada_ferro")], ["funda", "escudo_madeira", true]);
+  // só o arco (mão da espada vazia) com escudo: o arco fica na mão e o escudo volta para a mochila
+  c = antigo((d) => {
+    d.equipamento = { arma: null, arco: "arco_madeira@raro.dano2", escudo: "escudo_madeira", armadura: "tunica_pano" };
+  });
+  igual([c.equipamento.arma, c.equipamento.escudo, c.inventario.includes("escudo_madeira")], ["arco_madeira@raro.dano2", null, true]);
+  // dados estranhos: peça no espaço errado volta, item inválido some, chave que não é espaço devolve o item
+  c = antigo((d) => {
+    d.equipamento = { arma: "espada_ferro", cabeca: "escudo_ferro", anel: "anel@@", mochila: "pocao" };
+  });
+  igual([c.equipamento.cabeca, c.equipamento.anel, c.equipamento.municao, c.quantidadeMunicao, "mochila" in c.equipamento], [null, null, null, 0, false]);
+  assert.ok(c.inventario.includes("escudo_ferro") && c.inventario.includes("pocao"));
+  const normalizar = g("normalizarEquipamento");
+  const n1 = { inventario: [], equipamento: { municao: "flecha" }, quantidadeMunicao: -4 };
+  normalizar(n1);
+  igual([n1.equipamento.municao, n1.quantidadeMunicao], [null, 0], "pilha negativa esvazia o espaço");
+  const n2 = { inventario: ["flecha"], equipamento: { municao: "pocao" }, quantidadeMunicao: 5 };
+  normalizar(n2);
+  igual([n2.equipamento.municao, n2.quantidadeMunicao, n2.inventario], [null, 0, ["flecha", "pocao"]], "o que não é munição volta para a mochila");
+  // Depois da 1ª carga, flechas guardadas na mochila ficam lá (a escolha do jogador vale).
+  const b = carregarJogo();
+  b.entrar();
+  b.p.inventario.push("flecha", "flecha");
+  b.g("Storage").flush();
+  const c2 = carregarJogo({ store: b.store }).entrar();
+  igual([c2.equipamento.municao, c2.quantidadeMunicao, c2.inventario.filter((x) => x === "flecha").length], [null, 0, 2]);
+  assert.strictEqual(g("VERSAO_SAVE"), 16, "o boneco não pede versão nova do save");
+
+  // 7. Arte e interface: ícone para cada peça, peças visíveis no boneco do mundo e o painel lendo os espaços.
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  const Arte = j.ctx.Arte, PP = j.ctx.PIXEL_PATTERNS;
+  for (const id of Object.keys(ITENS).filter((x) => g("slotDoItem")(x))) assert.ok(PP[id], `ícone de ${id}`);
+  for (const s of Object.values(ESPACOS)) assert.ok(PP[s.silhueta], `silhueta ${s.silhueta}`);
+  const quadro = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
+  const nu = quadro({});
+  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }])
+    assert.notStrictEqual(quadro(eq), nu, `${JSON.stringify(eq)} aparece no boneco`);
+  assert.notStrictEqual(quadro({ arma: "arco_madeira" }), quadro({ arma: "espada_ferro" }), "o arco vai na mão");
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  assert.match(ui, /data-abrir-mochila/, "o espaço da mochila abre o painel Mochila");
+  assert.doesNotMatch(ui + FONTE_GAME, /equipamento\.arco\b|eq\.arco\b/, "ninguém lê o espaço antigo do arco");
+  assert.match(FONTE_GAME, /podeAtirar\(/, "o autoataque pergunta à lógica se dá para atirar");
 });
 
 const filtro = process.argv[2];
