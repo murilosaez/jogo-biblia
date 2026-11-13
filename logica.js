@@ -546,7 +546,7 @@ function efeitoHabilidade(p, chave) {
 
 // Janela de habilidades (pura): nível e XP, vida, fé, carga, vigor, as 4 habilidades de combate e os ofícios,
 // cada um com nível, XP no nível, XP para o próximo, falta, % (para baixo) e a dica do que falta.
-function fichaDeHabilidades(p, agora = Date.now()) {
+function fichaDeHabilidades(p, agora) {
   const nivel = p.nivel || 1;
   const nivelMaximo = nivel >= NIVEL_MAXIMO;
   const base = nivel > 1 ? limiarNivel(nivel - 1) : 0;
@@ -2282,7 +2282,7 @@ function gastarVigor(p, minutos) {
 }
 
 // Visão do vigor para a interface (pura; inclui o que a ausência em curso já devolveu).
-function estadoVigor(p, agora = Date.now()) {
+function estadoVigor(p, agora) {
   const R = REGRAS_VIGOR;
   const r = objetoValido(p?.vigor) ? vigorRecuperado(p.vigor, agora) : { minutos: R.maximoMinutos };
   const faixa = faixaVigor(r.minutos);
@@ -2304,7 +2304,7 @@ function estadoVigor(p, agora = Date.now()) {
 // XP de um abate antes do descanso (pura). Ordem: XP da criatura (xpDoAbate, com a queda por nível) × campeão
 // × vigor, arredondado; o descanso do Sábado dobra este resultado depois (gastarDescanso). Vocação e talentos
 // não multiplicam XP (só dano, cura, defesa e recarga). Devolve { xp, semVigor, fatorVigor, faixa }.
-function composicaoXpAbate(p, e, campeao, agora = Date.now()) {
+function composicaoXpAbate(p, e, campeao, agora) {
   const criatura = xpDoAbate(p, e) * (campeao ? CAMPEAO.xp : 1);
   const faixa = estadoVigor(p, agora).faixa;
   return { xp: Math.round(criatura * faixa.xp), semVigor: Math.round(criatura), fatorVigor: faixa.xp, faixa };
