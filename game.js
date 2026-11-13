@@ -2561,8 +2561,11 @@ function iniciarJogo() {
         const m = medida(), chave = `${m.w}x${m.h}@${m.dpr}`;
         if (chave === ultima) return;
         ultima = chave;
-        jogo.scale.setZoom(1 / m.dpr);
+        // resize antes de setZoom: com zoom 1 (devicePixelRatio 1) o resize do Phaser não mexe no tamanho CSS
+        // do canvas, e o setZoom o acerta com o tamanho que estiver valendo. Na ordem inversa, o canvas ficava
+        // com o tamanho da medida anterior (uma faixa escura embaixo do mundo ao mudar a altura da conversa).
         jogo.scale.resize(m.w, m.h);
+        jogo.scale.setZoom(1 / m.dpr);
       };
       if (window.ResizeObserver && raiz) new ResizeObserver(redimensionar).observe(raiz);
       window.addEventListener("resize", redimensionar);

@@ -91,15 +91,21 @@ Controles — teclado e mouse
 - F: ação ao lado — conversar com o NPC, embarcar/desembarcar no cais ou seguir a rota do portal
   (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo; ao lado
   de um atalaia ele mostra "F · Caçadas" e abre o mural (o clique no atalaia faz o mesmo).
-- Enter: escrever no console, embaixo do mundo. Com alguém por perto, as palavras-chave conversam
+- Enter: escrever no console, no dock de baixo. Com alguém por perto, as palavras-chave conversam
   como nos MMORPGs clássicos: oi e tchau (todos), comprar e vender (mercador), viajar (guia),
   caçadas (atalaia), embarcar e preço (barqueiro), vocação (Jetro), conversar (moradores) e missão
   (quem dá missões, ou quem uma missão manda procurar). Valem sem acento, no meio de uma frase
   ("quanto custa a passagem?") e com alguns sinônimos (olá, loja, trade, barco…); as palavras de cada
   fala também aparecem entre colchetes, clicáveis. ↑ e ↓ trazem as últimas falas; Esc volta ao jogo.
-- Clique no chão: anda até a casa clicada pelo caminho mais curto, contornando obstáculos (a rota não
-  passa por cais, trilha ou portal no meio do caminho). Clique num personagem, num saque ou num ponto de
-  pesca: vai até ele e conversa, recolhe ou pesca. Qualquer tecla de movimento cancela a caminhada.
+- Clique no chão: anda até a casa clicada pelo caminho mais rápido, contornando obstáculos (a rota não
+  passa por cais, trilha ou portal no meio do caminho). Casa bloqueada ou fora de alcance (uma árvore, a
+  água, uma área cercada): vai até a casa alcançável mais perto dela. Clique num personagem, num saque ou num
+  ponto de pesca: vai até ele e conversa, recolhe ou pesca. Qualquer tecla de movimento cancela a caminhada.
+- Clique (ou toque) no minimapa: anda até aquele ponto, por longe que seja (a rota cobre o mapa inteiro). O
+  destino fica marcado com uma cruz de ouro no minimapa (na borda, se estiver fora do recorte) e com o
+  quadrado de ouro no chão. Um clique novo troca a rota; andar com as teclas ou o joystick cancela. Sobre o
+  mundo (médio, tela baixa e celular), o minimapa fica translúcido quando alguém passa por baixo dele, e
+  então o clique vai para o mundo.
 - Clique num inimigo (no mundo ou na lista Batalha): seleciona, vai até ele (até ficar ao lado, ou ao
   alcance do arco com o caminho livre) e ativa o autoataque a cada 2 segundos (usa o arco se ele estiver
   equipado, houver flechas e o alvo estiver no alcance com o caminho livre). Andar com as teclas para a
@@ -129,8 +135,9 @@ Controles — teclado e mouse
 - N: maná e descanso (colher o maná do dia, comer uma porção e ver a reserva de descanso; também pelo
   botão Maná, no topo, que acende quando o maná do dia caiu e mostra quantas porções há no jarro).
 - F1: Oração na hora (cura; do nível 25 de Oração em diante também tira veneno e sangramento).
-  Shift + F1: Milagre (Oração nível 100). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
-  bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
+  Shift + F1: Milagre (Oração nível 100). M: mostrar/ocultar o minimapa (no largo, a janela Mapa). I:
+  mostrar/ocultar mochila e bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas,
+  menus e conversas (e cancela o arraste de uma janela).
 - Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
   de volta para a mochila para guardar. Duplo clique equipa armas e bebe poções (pela bolsa, mesmo com a
   vida ou a fé cheia, para liberar espaço). Também funciona clicar/tocar no item e depois no destino.
@@ -176,14 +183,32 @@ Interface e visual
   tarefa), Equipamento (boneco: a figura no meio, com o arco nas costas, a arma na mão direita, o
   escudo na esquerda, a armadura sobre o peito e, ao lado, a munição com as flechas da mochila; arrastar,
   duplo clique e tocar-e-escolher funcionam como antes), Mochila, Bolsa, Batalha (inimigos da área, alvo
-  destacado; o glifo de contagem marca quem conta para uma caçada ativa), Caçada (analisador, recolhível)
-  e minimapa. No médio, o analisador fica na aba Batalha.
-- Console (o histórico, embaixo do mundo): abas Geral (tudo), NPCs (falas, o que você disse e as
-  palavras-chave) e Servidor (saque, XP, níveis, avisos e anúncios), até 200 linhas com a hora (HH:MM) e a
-  cor de cada tipo; a aba com novidade ganha um ponto. A alça no topo muda a altura e a seta recolhe o
-  console (fica só a barra); a escolha fica neste navegador. Ele fica preso embaixo do mundo enquanto o
-  mapa ainda cabe com 2 px de tela por pixel de arte; em telas baixas (1366 × 768) só a barra fica presa e
-  as mensagens ficam sobre a borda de baixo do mundo, para o zoom não cair pela metade.
+  destacado; o glifo de contagem marca quem conta para uma caçada ativa), Caçada (analisador) e Mapa
+  (o minimapa). O nome da região fica no topo, ao lado do nome do jogo, e o quadro do alvo (retrato, vida e
+  a recarga do autoataque) no canto de cima do mundo (no médio e no celular, no HUD).
+- Janelas laterais (largo e médio), como nos MMORPGs clássicos: o cabeçalho de cada janela é a alça.
+  Arraste-o para a outra coluna ou outra posição (a metade da tela escolhe o lado; um traço de ouro mostra
+  onde ela entra; numa coluna vazia, a borda do mundo vira o alvo "Soltar à esquerda/direita"; Esc
+  cancela). Os botões do cabeçalho minimizam (fica só o cabeçalho; dois cliques no título fazem o mesmo) e
+  fecham; o menu da janela (os três pontos, que aparecem com o ponteiro ou o foco no cabeçalho) move pelo
+  teclado: para a outra coluna, subir, descer, minimizar e fechar. O menu Janelas, no topo, lista todas as
+  janelas para reabrir ou fechar, escolhe o lugar da conversa e tem "Restaurar layout". Uma coluna sem
+  janelas sai e o mundo fica mais largo. A Caçada recolhe pelo título ou pela tecla X (é o minimizar dela).
+  O layout fica neste navegador (localStorage "jornada_janelas"), um para o largo e outro para o médio; um
+  layout salvo estragado ou de outra versão volta ao padrão sem erro.
+- Console (o histórico): abas Geral (tudo), NPCs (falas, o que você disse e as palavras-chave) e Servidor
+  (saque, XP, níveis, avisos e anúncios), até 200 linhas com a hora (HH:MM) e a cor de cada tipo, em letra
+  de 15 px (a hora em 13 px) com mais espaço entre as linhas; a aba com novidade ganha um ponto. No largo e no
+  médio ele fica no dock de baixo, uma faixa de uma ponta à outra embaixo das colunas e do mundo, com os
+  atalhos (e a barra de habilidades) à direita. Nada flutua sobre o mundo. A alça na borda de cima do dock
+  muda a altura (↑ e ↓ com o foco nela) e a seta recolhe o console (fica só a barra); a escolha fica neste
+  navegador. O zoom do mundo é inteiro (2 px de tela por pixel de arte ou mais), então a altura do dock é
+  escolhida para não derrubá-lo: o padrão é 176 px, encolhido até o mundo caber em 2×, e a alça para na
+  maior altura que ainda mantém o zoom. Em 1366 × 768: dock de ~170 px (6 linhas) e o mundo em 2×, com
+  ~12 × 8 casas à vista. Em 1920 × 1080: dock de 176 px e o mundo em 2×, com ~20 × 13 casas; com o dock em
+  ~130 px ou menos (ou com a tecla +) o mundo vai a 3×, com ~14 × 9 casas. Pelo menu Janelas a conversa
+  também pode ficar sob o mundo, entre as colunas (como antes), com a barra de atalhos embaixo; ali ela
+  desce até 2 linhas para o mundo seguir em 2× em 1366 × 768.
 - Mural de caçadas (atalaia): fala do atalaia, saldo, abas Caçadas (cartões com progresso, espera
   "Volta em 19 h 59 min" e Aceitar, Retomar ou Guardar) e Troca de pontos. Cada abate que conta mostra
   "27/40" sobre a criatura, e a caçada cumprida mostra o cartão "CAÇADA CUMPRIDA". O atalaia tem um
@@ -193,8 +218,10 @@ Interface e visual
   palavras-chave, do tamanho do dedo) só abre quando o console não está à vista: no celular com a folha
   Conversa fechada, ou com o console recolhido. Clique na caixa ou aperte F (perto do personagem) para
   completar o texto; de novo, para fechar. F só volta a falar com ele depois de a caixa fechar.
-- Layouts: largo (1280 px ou mais, painéis dos dois lados), médio (painel direito com abas) e
-  celular (até 760 px, painéis em folhas pela barra inferior). Foco visível no teclado, rótulos de
+- Layouts: largo (1280 px ou mais, janelas dos dois lados; com até 940 px de altura o minimapa fica sobre
+  o mundo, no canto de cima), médio (uma coluna de janelas à direita, Personagem e Caçada minimizadas no
+  começo, vida/fé/XP no HUD e o minimapa sobre o mundo; pode-se abrir a coluna da esquerda arrastando uma
+  janela para lá) e celular (até 760 px, painéis em folhas pela barra inferior). Foco visível no teclado, rótulos de
   acessibilidade nos botões e respeito a "reduzir movimento".
 
 Campanha
@@ -217,7 +244,7 @@ Acampamento à beira-mar, Refidim e Cafarnaum), estradas, áreas de caça, lagos
 um mercador numa banca, um guia de caravanas e um atalaia em tendas, e um cais ao norte (no Egito, na
 margem do Nilo; na Galileia, no lago). As bancas vazias de Canaã e do Deserto estão reservadas para o
 ferreiro. Cada vila tem moradores para conversar.
-O minimapa mostra 80×60 casas em volta do jogador.
+O minimapa mostra 80×60 casas em volta do jogador; clicar nele anda até lá (veja Controles).
 
 Combate
 - Dano corpo a corpo = 6 + 3 × (nível − 1) + bônus da arma + ⌊habilidade corpo ÷ 4⌋.
@@ -612,8 +639,15 @@ Para desenvolvedores
   devolve abrirLoja (o id dele) e com um guia, abrirViagem (o id dele); viajar devolve precoViagem e o
   embarque, passagemPaga. O teste 58 confere mercador, guia e cais em toda cidade e os catálogos; o 59, a
   viagem de todas para todas, os preços, as recusas e o barco ligando todos os cais.
-- Andar por toque/clique (game.js): rota em 8 direções por busca em largura sobre Mundo.casaLivre, sem
-  atravessar casas de transição que não sejam o destino; a perseguição do alvo refaz a rota a cada passo.
+- Andar por toque/clique (game.js): o clique no chão e no minimapa usam rotaNaGrade(livre, origem, destino)
+  (logica.js, pura): A* em 8 direções com custo pelo tempo do passo (REGRAS_ROTA em dados/mundo.js: reto 7,
+  diagonal 9, como 140 e 180 ms), que devolve { passos, chegada, exato } e, sem caminho até o destino, vai até
+  a casa alcançada mais perto dele. A grade vem de Mundo.gradeDePassagem(p) (a regra de casaLivre montada de
+  uma vez); as casas de transição só entram como destino. O mapa inteiro (160 × 120) leva poucos ms (~3 ms
+  numa rota de 125 passos). Bloqueada no meio (uma criatura entrou), a rota refaz o A* até o mesmo destino.
+  NPCs, saques, pesca e a perseguição do alvo seguem com a busca em largura curta (calcularRota). O teste 75
+  confere o caminho mais rápido contra uma busca completa, a casa mais perto quando o destino é bloqueado ou
+  cercado, a grade de passagem e uma rota de ponta a ponta de Canaã andada com o comando mover.
 - Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
   interface.js (window.UI: painéis, modais, atalhos, toque; window.UI.abrirMural(npcId) abre o mural de
   um atalaia, ou a consulta com null; window.UI.abrirBestiario() abre o bestiário). Os nomes antigos continuam

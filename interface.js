@@ -1089,6 +1089,7 @@
   }
   function abrirConsole(aberto, salvar = true) {
     const c = painel("pRegistro");
+    const antes = c.dataset.aberto === "true";
     c.dataset.aberto = String(aberto);
     const b = $("#btnRegistro");
     const rot = aberto ? "Recolher o console" : "Abrir o console";
@@ -1098,7 +1099,8 @@
     $("#rodape")?.classList.toggle("recolhido", !aberto && modo !== "estreito");
     if (salvar) { prefConsole.aberto = aberto; salvarConsole(); }
     if (aberto && modo !== "estreito") definirAlturaConsole(prefConsole.altura || ALTURA_CONSOLE.padrao);
-    if (aberto) { limparNaoLidas(); rolarConsole(); }
+    // Só ao abrir: mudar a altura (janela, layout) não tira o jogador do ponto do histórico em que está lendo.
+    if (aberto && !antes) { limparNaoLidas(); rolarConsole(); }
   }
   // ----- Altura do console (dock de baixo) -----
   // O zoom do mundo (game.js, pixelsPorPixelDeArte) é um número inteiro de pixels de tela por pixel de arte,
@@ -1131,7 +1133,8 @@
     if (!f || chatSobMundo()) return 0;
     const filhos = Array.from(f.children).filter((el) => el.offsetParent !== null);
     const gap = parseFloat(getComputedStyle(f).rowGap) || 0;
-    return Math.ceil(filhos.reduce((t, el) => t + el.offsetHeight, 0) + gap * Math.max(0, filhos.length - 1) + 16);
+    const cs = getComputedStyle(f), borda = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + 4;
+    return Math.ceil(filhos.reduce((t, el) => t + el.offsetHeight, 0) + gap * Math.max(0, filhos.length - 1) + borda);
   }
   function limitesDoConsole() {
     const caixa = caixaDoConsole(), palco = $("#palco");
@@ -2365,6 +2368,7 @@
       [k("F"), "Ação ao lado: falar, embarcar, desembarcar ou seguir a rota"],
       [k("Enter"), "Escrever no console: diga oi, comprar, vender, viajar, caçadas, embarcar, preço, missão ou tchau a quem está perto (ou clique nas palavras entre colchetes); Esc volta ao jogo"],
       ["Clique no chão", "Anda até lá (contorna obstáculos); num personagem ou saque, vai até ele"],
+      ["Clique no minimapa", "Anda até aquele ponto, por longe que seja (a cruz de ouro marca o destino)"],
       ["Clique no inimigo", "Escolhe o alvo, vai até ele e ataca sozinho a cada 2 s"],
       [k("Espaço"), "Golpe corpo a corpo no alvo (também na diagonal)"],
       [k("R"), "Flecha no alvo, se houver arco equipado e flechas"],
@@ -2380,7 +2384,7 @@
       [k("O"), "Ofícios: nível de cada ofício e receitas para fabricar com os materiais da mochila"],
       [`${k("+")} ${k("−")}`, "Aproximar ou afastar o mapa (também com a roda do mouse); a escolha fica salva"],
       [k("1", "–", "8"), "Habilidades da vocação (com vocação; os itens passam para Shift + 1 a 6)"],
-      [k("X"), "Mostrar ou ocultar o analisador de caçada (XP/h, saque/h, lucro)"],
+      [k("X"), "Minimizar ou mostrar o analisador de caçada (XP/h, saque/h, lucro)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
       [k("M"), "Mostrar ou ocultar o mapa"],
       [k("Alt"), "Segure para ver o nome de todos"],
@@ -2391,7 +2395,10 @@
     const secTeclado = `
       <h3>Teclado e mouse</h3>
       <table class="teclas"><tbody>${linhas.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")}</tbody></table>`;
-    const secItens = `
+    const secJanelas = mm("(min-width: 761px)") ? `
+      <h3>Janelas</h3>
+      <p>Arraste o cabeçalho de uma janela para a outra coluna ou outra posição. Os botões do cabeçalho minimizam (ou dois cliques no título) e fecham; o menu de três pontos move pelo teclado. O menu Janelas, no topo, reabre as janelas fechadas, escolhe o lugar da conversa e restaura o layout. A alça na borda de cima da conversa muda a altura dela.</p>` : "";
+    const secItens = `${secJanelas}
       <h3>Itens</h3>
       <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele. Botão direito numa tecla de atalho a esvazia. Espada e arco ocupam as mãos: equipar um guarda o outro.</p>`;
     const secToque = `

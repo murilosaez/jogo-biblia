@@ -479,6 +479,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .atalho::after{content:"";position:absolute;inset:0;background:linear-gradient(#000a 0 var(--recarga,0%),transparent var(--recarga,0%));pointer-events:none}
 .atalho.usado{animation:entra .3s steps(3)}
 #abasCel{display:none}
+.atalhos-rotulo{display:none}
 
 /* ---------- dock de baixo (largo e médio) ----------
    Uma faixa de uma ponta à outra: o console (lista e barra) à esquerda e os atalhos à direita, empilhados
@@ -493,14 +494,14 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
  #rodape>.console{position:static;min-width:0;min-height:0}
  #rodape .console-alca{top:-7px}
  #rodape .console-barra{border-top:2px solid #0009}
- #rodape .atalhos-faixa{flex-direction:column;justify-content:center;align-items:flex-end;gap:6px;padding:6px 10px;border-left:2px solid var(--tinta);box-shadow:inset 2px 0 0 #ffe9a815;
+ #rodape .atalhos-faixa{flex-direction:column;justify-content:center;align-items:flex-end;gap:4px;padding:4px 10px;border-left:2px solid var(--tinta);box-shadow:inset 2px 0 0 #ffe9a815;
   background:linear-gradient(var(--couro-700),var(--couro-900))}
  /* atalhos no dock: rótulo em cima, a dica embaixo (some quando a barra de habilidades aparece) */
- #rodape .atalhos-faixa::before{content:"Atalhos";align-self:center;font:700 var(--fs-13)/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--ouro-300);text-shadow:1px 1px 0 #120a06}
+ #rodape .atalhos-rotulo{display:block;align-self:center;font:700 var(--fs-13)/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--ouro-300);text-shadow:1px 1px 0 #120a06}
  body:not(.chat-sob-mundo) #rodape .atalhos-faixa{align-items:center}
  body:not(.chat-sob-mundo) #atalhos-dica{order:3;max-width:330px;margin:0;text-align:center;color:var(--texto-mudo)}
  body:not(.chat-sob-mundo) .atalhos-faixa:has(#barraHab:not([hidden])) #atalhos-dica{display:none}
- body.chat-sob-mundo #rodape .atalhos-faixa::before{content:none}
+ body.chat-sob-mundo #rodape .atalhos-rotulo{display:none}
  #rodape .barra-hab .hab,#rodape .atalho{width:46px;height:46px}
  /* conversa sob o mundo: o dock é só a faixa dos atalhos, como antes */
  body.chat-sob-mundo #rodape{display:flex;flex-direction:column;justify-content:center}
@@ -1073,6 +1074,7 @@ body.toque-forcado #dpad{display:block}
 
   <footer id="rodape">
     <div class="atalhos-faixa">
+      <span class="atalhos-rotulo" aria-hidden="true">Atalhos</span>
       <p id="atalhos-dica">Arraste uma poção para uma tecla (ou toque nela e depois na tecla). Clique no inimigo para atacar.</p>
       <div id="barraHab" class="barra-hab" role="toolbar" aria-label="Habilidades (teclas 1 a 8)" hidden></div>
       <div id="atalhos" role="toolbar" aria-label="Barra de atalhos (teclas 1 a 6)"></div>
