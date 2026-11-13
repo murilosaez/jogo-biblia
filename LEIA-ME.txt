@@ -62,7 +62,9 @@ o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado 
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
 (sem bolsões fechados, lojas, tendas e bancas, moradores em toda vila, zonas de caça longe
 das vilas, coleta nas zonas e migração das posições antigas); o teste 69 confere as casas e lojas onde
-se entra (porta, balcão, mercador atrás dele) e o barqueiro.
+se entra (porta, balcão, mercador atrás dele) e o barqueiro; o teste 70 confere as palavras-chave de
+cada papel (palavrasChaveDoNpc e palavraChaveDoTexto, em logica.js: um NPC de papel novo ganha [oi],
+[tchau] e as palavras de PALAVRAS_DO_PAPEL).
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
@@ -88,6 +90,12 @@ Controles — teclado e mouse
 - F: ação ao lado — conversar com o NPC, embarcar/desembarcar no cais ou seguir a rota do portal
   (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo; ao lado
   de um atalaia ele mostra "F · Caçadas" e abre o mural (o clique no atalaia faz o mesmo).
+- Enter: escrever no console, embaixo do mundo. Com alguém por perto, as palavras-chave conversam
+  como nos MMORPGs clássicos: oi e tchau (todos), comprar e vender (mercador), viajar (guia),
+  caçadas (atalaia), embarcar e preço (barqueiro), vocação (Jetro), conversar (moradores) e missão
+  (quem dá missões, ou quem uma missão manda procurar). Valem sem acento, no meio de uma frase
+  ("quanto custa a passagem?") e com alguns sinônimos (olá, loja, trade, barco…); as palavras de cada
+  fala também aparecem entre colchetes, clicáveis. ↑ e ↓ trazem as últimas falas; Esc volta ao jogo.
 - Clique no chão: anda até a casa clicada pelo caminho mais curto, contornando obstáculos (a rota não
   passa por cais, trilha ou portal no meio do caminho). Clique num personagem, num saque ou num ponto de
   pesca: vai até ele e conversa, recolhe ou pesca. Qualquer tecla de movimento cancela a caminhada.
@@ -138,8 +146,8 @@ Controles — toque (celular e tablet)
 - À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
   (falar, caçadas, cais, pesca, rota). Os vãos entre os botões deixam o toque chegar ao mundo, e os
   avisos no topo são menores e não seguram o dedo.
-- Barra inferior: Mochila, Equipamento, Batalha, Missão e Registro abrem em folhas recolhíveis (o
-  analisador de caçada fica na folha Batalha).
+- Barra inferior: Mochila, Equipamento, Batalha, Missão e Conversa abrem em folhas recolhíveis (o
+  analisador de caçada fica na folha Batalha; a folha Conversa é o console, com as abas e a entrada).
   Toque num item e depois no espaço de equipamento ou no atalho; toque longo mostra a descrição.
 
 Interface e visual
@@ -155,15 +163,25 @@ Interface e visual
   5 como S); as teclas usam Alegreya Sans negrito.
 - Painéis: Missão (texto de textoMissaoAtual e as caçadas em andamento, com "27/40"), Personagem
   (barras de vida, fé e XP com números, habilidades, estatísticas de estatisticasCombate e pontos de
-  tarefa), Equipamento, Mochila, Bolsa, Batalha (inimigos da área, alvo destacado; o glifo de contagem
-  marca quem conta para uma caçada ativa), Caçada (analisador, recolhível), Registro (últimas 30 mensagens
-  com horário) e minimapa. No médio, o analisador fica na aba Batalha.
+  tarefa), Equipamento (boneco: a figura no meio, com o arco nas costas, a arma na mão direita, o
+  escudo na esquerda, a armadura sobre o peito e, ao lado, a munição com as flechas da mochila; arrastar,
+  duplo clique e tocar-e-escolher funcionam como antes), Mochila, Bolsa, Batalha (inimigos da área, alvo
+  destacado; o glifo de contagem marca quem conta para uma caçada ativa), Caçada (analisador, recolhível)
+  e minimapa. No médio, o analisador fica na aba Batalha.
+- Console (o histórico, embaixo do mundo): abas Geral (tudo), NPCs (falas, o que você disse e as
+  palavras-chave) e Servidor (saque, XP, níveis, avisos e anúncios), até 200 linhas com a hora (HH:MM) e a
+  cor de cada tipo; a aba com novidade ganha um ponto. A alça no topo muda a altura e a seta recolhe o
+  console (fica só a barra); a escolha fica neste navegador. Ele fica preso embaixo do mundo enquanto o
+  mapa ainda cabe com 2 px de tela por pixel de arte; em telas baixas (1366 × 768) só a barra fica presa e
+  as mensagens ficam sobre a borda de baixo do mundo, para o zoom não cair pela metade.
 - Mural de caçadas (atalaia): fala do atalaia, saldo, abas Caçadas (cartões com progresso, espera
   "Volta em 19 h 59 min" e Aceitar, Retomar ou Guardar) e Troca de pontos. Cada abate que conta mostra
   "27/40" sobre a criatura, e a caçada cumprida mostra o cartão "CAÇADA CUMPRIDA". O atalaia tem um
   visual só, igual em todas as regiões, com o balão de riscos de contagem depois da 1ª caçada aceita.
-- Avisos curtos aparecem no topo do mundo e também ficam no Registro. Conversas abrem um quadro de
-  diálogo com o retrato do personagem. Clique na caixa ou aperte F (perto do personagem) para
+- Avisos curtos aparecem no topo do mundo e também ficam no console (aba Servidor). As falas dos
+  personagens vão para a aba NPCs, com as palavras-chave. O quadro de diálogo com o retrato (e as
+  palavras-chave, do tamanho do dedo) só abre quando o console não está à vista: no celular com a folha
+  Conversa fechada, ou com o console recolhido. Clique na caixa ou aperte F (perto do personagem) para
   completar o texto; de novo, para fechar. F só volta a falar com ele depois de a caixa fechar.
 - Layouts: largo (1280 px ou mais, painéis dos dois lados), médio (painel direito com abas) e
   celular (até 760 px, painéis em folhas pela barra inferior). Foco visível no teclado, rótulos de
@@ -222,7 +240,7 @@ Saques e raridades
   +25%), vida máxima e carga (escudo e armadura).
 - Quando cai um saque incomum ou melhor (ou de linha com 1% de chance ou menos), toca um arpejo da
   raridade e sobe o nome dela sobre a criatura; épico e relíquia também piscam a tela. Saque épico ou
-  melhor, e todo drop de 1% ou menos, é anunciado no Registro ("Saque épico! Lobo deixou cair: …",
+  melhor, e todo drop de 1% ou menos, é anunciado no console ("Saque épico! Lobo deixou cair: …",
   "Drop muito raro (0,1%)! Lobo deixou cair: Sárdio.").
   O som pode ser desligado na ajuda (?), e a escolha fica no navegador.
 - No save, um item com raridade é um texto que se descreve sozinho, "<item>@<raridade>.<atributo><valor>…"

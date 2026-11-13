@@ -2343,6 +2343,118 @@ function catalogoDaLoja(npcId) {
   return lista.filter((item) => registroDe(PRECOS_LOJA, item)).map((item) => ({ item, preco: PRECOS_LOJA[item] }));
 }
 
+// ---------------------------------------------------------------------
+// Conversa por palavras-chave (console da interface)
+// ---------------------------------------------------------------------
+// Cada palavra leva a uma ação que já existe, sem regra nova: "interagir" (a mesma conversa do
+// clique ou do F: missão, rodízio do morador, mural, vocação), "loja" (na aba comprar ou vender),
+// "viagem" (janela do guia), "barco" (janela da passagem), "fala" (só a resposta) e "despedir".
+// Os sinônimos valem sem acento e sem maiúsculas, sozinhos ou no meio de uma frase.
+const PALAVRAS_CHAVE = {
+  oi: { acao: "interagir", sinonimos: ["ola", "oie", "hi", "hello", "bom dia", "boa tarde", "boa noite", "shalom", "saudacoes"] },
+  comprar: { acao: "loja", aba: "comprar", sinonimos: ["compra", "trade", "loja", "negociar", "mercadorias", "buy"] },
+  vender: { acao: "loja", aba: "vender", sinonimos: ["venda", "vendo", "sell"] },
+  viajar: { acao: "viagem", sinonimos: ["viagem", "caravana", "destinos", "travel"] },
+  caçadas: { acao: "interagir", sinonimos: ["cacada", "mural", "tarefas", "task", "tasks"] },
+  embarcar: { acao: "barco", sinonimos: ["barco", "navegar", "mar", "boat"] },
+  preço: { acao: "fala", sinonimos: ["quanto", "custa", "custo", "passagem", "valor", "price"] },
+  vocação: { acao: "interagir", sinonimos: ["vocacoes", "talentos", "vocation"] },
+  conversar: { acao: "interagir", sinonimos: ["falar", "conversa", "novidades", "noticias", "news"] },
+  missão: { acao: "interagir", sinonimos: ["missoes", "quest", "mission"] },
+  tchau: { acao: "despedir", sinonimos: ["adeus", "ate logo", "ate mais", "bye", "falou"] },
+};
+// Palavras próprias de cada papel (dados/npcs.js); [oi], [missão] e [tchau] valem conforme a conversa.
+const PALAVRAS_DO_PAPEL = {
+  loja: ["comprar", "vender"],
+  guia: ["viajar"],
+  mural: ["caçadas"],
+  barqueiro: ["embarcar", "preço"],
+  vocacao: ["vocação"],
+  ambiente: ["conversar"],
+  apoio: ["conversar"],
+};
+
+// "Preço?" — sem acento, minúsculas, só letras, números e espaços simples.
+function normalizarPalavra(texto) {
+  return String(texto ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Fala do barqueiro sobre a passagem (a mesma da conversa e da palavra [preço]).
+function falaPassagemBarco(p) {
+  const passagem = REGRAS_BARCO.passagem;
+  return p.moedas >= passagem
+    ? `A passagem para o ${areas.mar.nome} custa ${passagem} moedas. Você tem ${p.moedas}. Quer embarcar?`
+    : `A passagem para o ${areas.mar.nome} custa ${passagem} moedas, e você só tem ${p.moedas}. Volte quando tiver o bastante.`;
+}
+
+// O NPC tem o que dizer sobre missões agora? Quem dá missões (missao, lider, mestre) sempre; os
+// outros enquanto uma missão deles está aberta ou um objetivo "falar" pede a conversa com eles.
+function temConversaDeMissao(p, npc) {
+  if (["missao", "lider", "mestre"].includes(npc.papel)) return true;
+  const falarAberto = ORDEM_MISSOES.some((missaoId) => {
+    const estado = estadoMissao(p, missaoId);
+    if (estado.status !== "em_andamento") return false;
+    return etapaDaMissao(MISSOES[missaoId], estado).objetivos.some(
+      (o, i) => o.tipo === "falar" && o.npc === npc.id && contagemObjetivo(estado.progresso?.[i]) < o.quantidade,
+    );
+  });
+  if (falarAberto) return true;
+  if (npc.papel === "mural") return false;
+  const missao = missaoDaVez(p, missoesDoNpc(npc.id));
+  if (!missao) return false;
+  const fase = faseMissao(p, missao.id);
+  return fase === "andamento" || fase === "retorno" || (fase === "inicio" && missao.npc === npc.id);
+}
+
+// Palavras-chave de um NPC para o jogador: [{ palavra, acao, aba?, fala? }], na ordem do console
+// (oi, as do papel, missão, tchau). fala: a resposta do NPC quando a palavra não chama a conversa.
+function palavrasChaveDoNpc(p, npcId) {
+  const npc = registroDe(npcs, npcId);
+  if (!p || !npc) return [];
+  const nome = npc.nome.split(",")[0];
+  const palavras = ["oi", ...(PALAVRAS_DO_PAPEL[npc.papel] || [])];
+  if (temConversaDeMissao(p, npc)) palavras.push("missão");
+  palavras.push("tchau");
+  const falas = {
+    comprar: "Veja o que tenho para vender.",
+    vender: "Mostre o que tem; compro peles, presas, ervas, peixe e pedras.",
+    viajar: "Para onde vamos? O preço depende da distância.",
+    embarcar: falaPassagemBarco(p),
+    preço: falaPassagemBarco(p),
+    tchau: "Vá em paz.",
+  };
+  return palavras.map((palavra) => {
+    const { acao, aba } = PALAVRAS_CHAVE[palavra];
+    return {
+      palavra,
+      acao,
+      ...(aba ? { aba } : {}),
+      ...(falas[palavra] ? { fala: `${nome}: ${falas[palavra]}` } : {}),
+    };
+  });
+}
+
+// Qual palavra-chave da lista o jogador disse? Aceita a palavra, os sinônimos e frases
+// ("quanto custa?", "quero comprar"); a que aparece primeiro no texto vence. null se nenhuma.
+function palavraChaveDoTexto(lista, texto) {
+  const frase = ` ${normalizarPalavra(texto)} `;
+  if (!frase.trim()) return null;
+  let melhor = null, posicao = Infinity;
+  for (const k of lista || []) {
+    const formas = [k.palavra, ...(PALAVRAS_CHAVE[k.palavra]?.sinonimos || [])].map(normalizarPalavra);
+    for (const forma of formas) {
+      const i = frase.indexOf(` ${forma} `);
+      if (i >= 0 && i < posicao) { melhor = k; posicao = i; }
+    }
+  }
+  return melhor;
+}
+
 // Fase do capítulo do ponto de vista do jogador (a fase da sua missão).
 function faseCapitulo(p, chave) {
   return faseMissao(p, CAPITULOS[chave]?.missao) || "bloqueado";
@@ -4192,12 +4304,7 @@ const Mundo = {
       };
     }
     if (npc.papel === "barqueiro") {
-      const passagem = REGRAS_BARCO.passagem;
-      const nome = npc.nome.split(",")[0];
-      const fala = p.moedas >= passagem
-        ? `A passagem para o ${areas.mar.nome} custa ${passagem} moedas. Você tem ${p.moedas}. Quer embarcar?`
-        : `A passagem para o ${areas.mar.nome} custa ${passagem} moedas, e você só tem ${p.moedas}. Volte quando tiver o bastante.`;
-      return { ok: true, abrirBarco: npc.id, mensagem: `${nome}: ${fala}` };
+      return { ok: true, abrirBarco: npc.id, mensagem: `${npc.nome.split(",")[0]}: ${falaPassagemBarco(p)}` };
     }
     if (npc.papel === "ambiente") return this.interagirMorador(id, npc);
     if (npc.papel === "vocacao") {
