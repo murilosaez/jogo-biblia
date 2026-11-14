@@ -117,6 +117,8 @@ body.sem-col-esq #colEsq,body.sem-col-dir #colDir{display:none}
    O cabeçalho é a alça: arraste para a outra coluna ou para outra posição. À direita, o menu (mover pelo
    teclado), minimizar (fica só o cabeçalho) e fechar (reabre pelo menu Janelas, no topo). */
 .janela>.painel-cab{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+/* o ícone também é alça: sem isto, o navegador começa a arrastar a imagem e cancela o arraste da janela */
+.janela>.painel-cab img{pointer-events:none;-webkit-user-drag:none}
 body.movendo-janela,body.movendo-janela *{cursor:grabbing!important}
 .janela>.painel-cab{gap:6px}
 .janela>.painel-cab h2{letter-spacing:.04em}
@@ -928,7 +930,7 @@ body.dialogo-aberto #toque{visibility:hidden}
 #folha{display:none}
 
 /* ======================================================================
-   MÉDIO: 761–1279 px — mundo + coluna direita com abas
+   MÉDIO: 761–1279 px — mundo + uma coluna de janelas à direita
    ====================================================================== */
 @media (max-width:1279px){
  :root{--slot:36px}

@@ -2626,10 +2626,10 @@
       <p>Arraste o cabeçalho de uma janela para a outra coluna ou outra posição. Os botões do cabeçalho minimizam (ou dois cliques no título) e fecham; o menu de três pontos move pelo teclado. O menu Janelas, no topo, reabre as janelas fechadas, escolhe o lugar da conversa e restaura o layout. A alça na borda de cima da conversa muda a altura dela.</p>` : "";
     const secItens = `${secJanelas}
       <h3>Itens</h3>
-      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele (ou botão direito nele: Guardar na mochila). Botão direito numa tecla de atalho a esvazia. O equipamento é um boneco: cabeça, colar, mão da arma, armadura, mão do escudo, pernas, pés, anel e munição. A mão da arma leva a espada, o arco ou a funda; o arco usa as duas mãos (guarda o escudo). As flechas ficam empilhadas no espaço de munição. Clique na mochila do boneco para abrir o painel Mochila.</p>`;
+      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele (ou botão direito nele: Guardar na mochila). Botão direito num item da mochila ou da bolsa (Shift + F10 no teclado) abre o menu dele: a descrição, beber ou equipar e jogar no chão um, alguns ou todos. Arrastar um item para o mundo também o joga no chão; o que você jogou não volta ao pisar em cima: clique nele para buscá-lo. Botão direito numa tecla de atalho a esvazia. O equipamento é um boneco: cabeça, colar, mão da arma, armadura, mão do escudo, pernas, pés, anel e munição. A mão da arma leva a espada, o arco ou a funda; o arco usa as duas mãos (guarda o escudo). As flechas ficam empilhadas no espaço de munição. Clique na mochila do boneco para abrir o painel Mochila.</p>`;
     const secToque = `
       <h3>Toque</h3>
-      <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
+      <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho. Toque longo num item da mochila ou da bolsa abre o menu dele (descrição, beber ou equipar, jogar no chão) e numa peça vestida, o menu com Guardar; nos outros, mostra a descrição.</p>`;
     // No toque, a seção de toque vem primeiro.
     const toque = comToque || mm("(pointer: coarse)");
     // Vigor: as faixas e a volta saem de REGRAS_VIGOR (dados/mundo.js).
@@ -3145,6 +3145,8 @@
 
   // ----- Menus: Janelas (topo) e o de cada janela -----
   // Um menu por vez; ↑ e ↓ andam entre as opções, Esc fecha e devolve o foco ao botão, clicar fora fecha.
+  // Aberto, o menu fica com o teclado (como o menu do item e os modais): Espaço e Enter ativam a opção, e
+  // nem as setas nem WASD andam com o personagem.
   const menuJanelas = { aberto: null };
   function abrirMenu(el, botao, html) {
     fecharMenuJanelas();
@@ -3152,6 +3154,7 @@
     el.hidden = false;
     menuJanelas.aberto = { id: el.id, el, botao };
     botao.setAttribute("aria-expanded", "true");
+    teclado(false);
     posicionarMenu();
     el.querySelector(".menu-op:not([aria-disabled='true'])")?.focus();
   }
@@ -3171,6 +3174,8 @@
     m.el.hidden = true;
     m.el.innerHTML = "";
     m.botao.setAttribute("aria-expanded", "false");
+    // O teclado volta ao jogo, a menos que outro dono o segure (modal, menu do item, caixa de conversa).
+    if (!modalAberto && !menuItem && document.activeElement?.id !== "entradaConversa") teclado(true);
     if (devolverFoco && document.contains(m.botao)) m.botao.focus();
   }
   const opMenu = (acao, rotulo, { desab = false, dica = "", papel = "menuitem", marcado = null, id = "" } = {}) =>
@@ -3239,6 +3244,14 @@
         const i = ops.indexOf(document.activeElement);
         if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fecharMenuJanelas(true); return; }
         if (e.key === "Tab") { fecharMenuJanelas(); return; }
+        // Espaço ativa a opção como Enter; ← e → não fazem nada aqui (nem rolam a coluna). O stopPropagation
+        // vale mesmo se uma cena nova religar o teclado do Phaser com o menu aberto (ele ouve na window).
+        if (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.key === " " && !e.repeat && ops.includes(document.activeElement)) acaoDoMenu(document.activeElement);
+          return;
+        }
         const passo = { ArrowDown: 1, ArrowUp: -1 }[e.key];
         if (passo) { e.preventDefault(); ops[(i + passo + ops.length) % ops.length]?.focus(); }
         if (e.key === "Home" || e.key === "End") { e.preventDefault(); ops[e.key === "Home" ? 0 : ops.length - 1]?.focus(); }
@@ -3249,6 +3262,20 @@
       if (m && !m.el.contains(e.target) && !m.botao.contains(e.target)) fecharMenuJanelas();
     }, true);
     addEventListener("resize", () => fecharMenuJanelas());
+    // Botões do cabeçalho das janelas e o botão Janelas, alcançados pelo teclado (Tab): Espaço os ativa como
+    // Enter, em vez de chegar ao jogo (ataque). Depois de um clique, o foco fica no botão, mas aí Espaço
+    // continua sendo o ataque, como antes; o Tab é que marca a navegação pelo teclado.
+    let navegandoPorTab = false;
+    document.addEventListener("pointerdown", () => { navegandoPorTab = false; }, true);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Tab") { navegandoPorTab = true; return; }
+      if (e.key !== " " || !navegandoPorTab || e.ctrlKey || e.metaKey || e.altKey) return;
+      const b = e.target.closest?.(".janela-btn, #btnJanelas");
+      if (!b) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) b.click();
+    }, true);
   }
 
   function abrirFolha(k) {
@@ -3920,8 +3947,8 @@
     // O mural de um atalaia também; a consulta (T) pode continuar aberta.
     if (modalAberto?.id === "modalMural" && muralNpc !== null) fecharModal(false);
     // A cena nova (área, morte, viagem) liga o teclado e a captura de Espaço e setas de novo; com um
-    // modal ainda aberto, desliga outra vez (sem isto, Espaço não ativa o botão focado do modal).
-    if (modalAberto) teclado(false);
+    // modal ou menu ainda aberto, desliga outra vez (sem isto, Espaço não ativa o botão focado e WASD anda).
+    if (modalAberto || menuJanelas.aberto || menuItem) teclado(false);
     alvoDesenhado = undefined;
     assinaturaBatalha = "";
     atualizar();

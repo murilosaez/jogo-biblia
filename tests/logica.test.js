@@ -7237,6 +7237,39 @@ teste("78. arte do mundo (revisão): decorações sem prop por cima, moitas long
   }
 });
 
+teste("79. integração: ajuda e LEIA-ME batem com o menu do item e a janela Caçada; menus de janela tomam o teclado", () => {
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  const html = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  const leia = fs.readFileSync(path.join(RAIZ, "LEIA-ME.txt"), "utf8").replace(/\s+/g, " ");
+  const trecho = (fonte, inicio) => {
+    const i = fonte.indexOf(inicio);
+    assert.ok(i >= 0, `achei ${inicio}`);
+    const fim = fonte.indexOf("\n  function ", i + inicio.length);
+    return fonte.slice(i, fim < 0 ? undefined : fim);
+  };
+  // (a) A ajuda (?) diz o que o toque longo e o botão direito fazem num item e como jogar no chão.
+  const ajuda = trecho(ui, "function abrirAjuda(").replace(/\s+/g, " ");
+  assert.doesNotMatch(ajuda, /toque longo mostra a descrição\./i, "o toque longo num item abre o menu, não só a descrição");
+  assert.match(ajuda, /Toque longo num item da mochila ou da bolsa abre o menu dele/);
+  assert.match(ajuda, /Shift \+ F10/, "o menu do item pelo teclado");
+  assert.match(ajuda, /jogar no chão um, alguns ou todos/i);
+  assert.match(ajuda, /Arrastar um item para o mundo também o joga no chão/);
+  // (b) O LEIA-ME não fala mais em abas no médio: a Caçada é uma janela que minimiza.
+  assert.doesNotMatch(leia, /aba ou folha Batalha no médio/);
+  assert.match(leia, /Janela "Caçada" \(coluna da esquerda no largo; coluna da direita, minimizada no começo, no médio; folha Batalha no celular\)\. Tecla X minimiza ou restaura/);
+  assert.doesNotMatch(html, /coluna direita com abas/);
+  // (c) Os menus Janelas e de cada janela desligam o teclado do Phaser enquanto abertos e o devolvem ao fechar;
+  // Espaço ativa a opção; os botões do cabeçalho alcançados pelo Tab respondem ao Espaço.
+  assert.match(trecho(ui, "function abrirMenu("), /teclado\(false\)/);
+  assert.match(trecho(ui, "function fecharMenuJanelas("), /if \(!modalAberto && !menuItem[^\n]*\) teclado\(true\)/);
+  const menus = trecho(ui, "function ligarMenusJanelas(");
+  assert.match(menus, /e\.key === " " && !e\.repeat[^\n]*acaoDoMenu\(document\.activeElement\)/);
+  assert.match(menus, /"ArrowLeft"[^\n]*"ArrowRight"/);
+  assert.match(menus, /closest\?\.\("\.janela-btn, #btnJanelas"\)/);
+  // (d) O ícone do cabeçalho não começa o arraste nativo da imagem (ele cancelaria o arraste da janela).
+  assert.match(html, /\.janela>\.painel-cab img\{pointer-events:none;-webkit-user-drag:none\}/);
+});
+
 teste("80. revisão de uso: jogar longe cai ao lado e avisa; equipar sem erro de concordância", () => {
   const j = carregarJogo();
   j.entrar();
