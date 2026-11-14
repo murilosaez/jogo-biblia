@@ -626,6 +626,7 @@
   function ligarFicha() {
     // Sem escolha guardada, as habilidades começam abertas, menos no largo com a tela baixa (até 1000 px), onde
     // a coluna direita não teria espaço para a Batalha; no médio e no celular o painel tem aba ou folha própria.
+    // No largo, habilidadesPeloEspaco revê a escolha pelo espaço da coluna depois do 1º desenho (dock de baixo).
     const padrao = !(calcModo() === "largo" && innerHeight < 1000);
     abrirSecaoFicha("habilidades", typeof prefFicha.habilidades === "boolean" ? prefFicha.habilidades : padrao);
     abrirSecaoFicha("oficios", prefFicha.oficios === true);
@@ -2697,17 +2698,21 @@
   // Largo em tela baixa (até 940 px de altura, ex.: 1600×900, 1366×768): o minimapa vai para cima do mundo,
   // como no médio, e as colunas ficam com as outras janelas inteiras.
   const TELA_BAIXA = "(max-height: 940px)";
-  let chaveLayout = null, telaBaixa = false;
+  // Largo bem baixo (até 800 px de altura, ex.: 1366×768, 1280×720, ou 1920×1080 a 125% com a barra do
+  // navegador): o layout padrão é outro (LAYOUT_PADRAO.baixo) e fica guardado à parte.
+  const TELA_MUITO_BAIXA = "(max-height: 800px)";
+  let chaveLayout = null, telaBaixa = false, telaMuitoBaixa = false;
   const painel = (id) => document.getElementById(id);
 
   function montar() {
     const novo = calcModo();
-    const baixa = novo === "largo" && mm(TELA_BAIXA);
-    const chave = `${novo}${baixa ? ":baixa" : ""}`;
+    const baixa = novo === "largo" && mm(TELA_BAIXA), muitoBaixa = baixa && mm(TELA_MUITO_BAIXA);
+    const chave = `${novo}${baixa ? ":baixa" : ""}${muitoBaixa ? ":muito" : ""}`;
     if (chave === chaveLayout) return;
     chaveLayout = chave;
     modo = novo;
     telaBaixa = baixa;
+    telaMuitoBaixa = muitoBaixa;
     for (const m of ["largo", "medio", "estreito"]) document.body.classList.toggle(`modo-${m}`, m === modo);
     document.body.classList.toggle("mapa-sobre-mundo", baixa);
     fecharMenuJanelas();
@@ -2743,6 +2748,10 @@
   };
   const LAYOUT_PADRAO = {
     largo: { esq: ["pMissao", "pMochila", "pBolsa", "pAnalisador"], dir: ["pMapa", "pPersonagem", "pEquip", "pBatalha"], min: [], fechadas: [] },
+    // Largo bem baixo (1366×768): com o dock de baixo, cada coluna tem ~540 px. Personagem e Equipamento enchem
+    // a direita, então a Batalha vai para a esquerda, sob a Missão, com a Mochila; Bolsa e Caçada começam
+    // minimizadas (as poções também estão nos atalhos). Assim a Batalha mostra 3 linhas sem rolar.
+    baixo: { esq: ["pMissao", "pBatalha", "pMochila", "pBolsa", "pAnalisador"], dir: ["pMapa", "pPersonagem", "pEquip"], min: ["pBolsa", "pAnalisador"], fechadas: [] },
     // Médio: uma coluna só, à direita (o Mapa fica sobre o mundo); vida, fé e XP já estão no HUD, então
     // Personagem e Caçada começam minimizadas.
     medio: { esq: [], dir: ["pMissao", "pBatalha", "pEquip", "pMochila", "pBolsa", "pPersonagem", "pAnalisador", "pMapa"], min: ["pPersonagem", "pAnalisador"], fechadas: [] },
@@ -2776,7 +2785,9 @@
   }
   let janelas = carregarJanelas();
   const salvarJanelas = () => { try { localStorage.setItem(CHAVE_JANELAS, JSON.stringify(janelas)); } catch (e) { /* sem armazenamento */ } };
-  const layout = () => janelas[modo] || janelas.largo;
+  // Qual layout guardado vale agora: o do modo de tela (o largo bem baixo tem o seu).
+  const chaveJanelas = () => (modo === "largo" && telaMuitoBaixa ? "baixo" : modo);
+  const layout = () => janelas[chaveJanelas()] || janelas.largo;
   const janelaFechada = (id) => modo !== "estreito" && layout().fechadas.includes(id);
   const janelaMinimizada = (id) => layout().min.includes(id);
   // O Mapa fica sobre o mundo no médio e em tela baixa (ali a janela dele não entra na coluna).
@@ -2933,6 +2944,21 @@
       mudouLayout();
       if (!agora) rolarAteJanela("pMochila");
     }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  }
+  // Sem escolha guardada, a seção Habilidades do Personagem (ligarFicha) só fica aberta no largo se a coluna
+  // dela ainda comportar tudo: nada rola e a Batalha, se divide a coluna, fica com 3 linhas à vista. Medido
+  // depois do 1º desenho, com o dock de baixo já no lugar (1920 × 1080: recolhida; 2560 × 1440: aberta).
+  const ALTURA_MIN_BATALHA = 164;
+  let habilidadesMedidas = false; // uma vez só, no 1º desenho com o personagem (atualizar)
+  function habilidadesPeloEspaco() {
+    if (habilidadesMedidas) return;
+    habilidadesMedidas = true;
+    if (modo !== "largo" || typeof prefFicha.habilidades === "boolean") return;
+    const col = painel("pPersonagem")?.closest(".coluna"), bat = painel("pBatalha");
+    if (!col || !$("#btnHabilidades")) return;
+    abrirSecaoFicha("habilidades", true);
+    const apertaBatalha = bat?.closest(".coluna") === col && bat.dataset.min !== "true" && bat.offsetHeight < ALTURA_MIN_BATALHA;
+    if (col.scrollHeight > col.clientHeight + 1 || apertaBatalha) abrirSecaoFicha("habilidades", false);
   }
   // Nome antigo (abas do médio): mostra as janelas daquele grupo.
   const GRUPOS_ANTIGOS = { personagem: ["pPersonagem"], mochila: ["pEquip", "pMochila", "pBolsa"], batalha: ["pAnalisador", "pBatalha"] };
@@ -3809,6 +3835,7 @@
     if (modalAberto?.id === "modalVocacao") desenharVocacao();
     if (modalAberto?.id === "modalOficios") desenharOficios();
     if (modalAberto?.id === "modalVisual") desenharVisual();
+    habilidadesPeloEspaco();
   }
 
   function areaMudou(area) {
@@ -4103,7 +4130,7 @@
     observarFolha();
     ligarJanelas();
     const re = () => { montar(); medirRodape(); };
-    for (const q of ["(min-width: 1280px)", "(max-width: 760px)", TELA_BAIXA]) {
+    for (const q of ["(min-width: 1280px)", "(max-width: 760px)", TELA_BAIXA, TELA_MUITO_BAIXA]) {
       const mq = matchMedia(q);
       (mq.addEventListener ? mq.addEventListener("change", re) : mq.addListener(re));
     }
