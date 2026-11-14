@@ -228,8 +228,8 @@ cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noi
   claro, aresta, face escura, contorno e sombra; com líquen no Sinai), seixos, conchas, cacos de cerâmica e
   brotos do plantio. Na beira da água: juncos com taboas (Canaã, deserto, Galileia), papiro com a umbela em
   leque (Nilo) e algas (Mar Vermelho). Os tipos, os pesos e a densidade de cada região ficam em
-  `DADOS_MAPAS[area].vegetacao` (`dados/mapas.js`). As moitas ficam longe das ruas e estradas (9 px), da água,
-  do chão pisado, dos personagens, portais, cais, decorações e pontos de extração; o sorteio é pela posição do
+  `DADOS_MAPAS[area].vegetacao` (`dados/mapas.js`). As moitas ficam longe das ruas e estradas (9 px, contados da
+  caixa inteira da peça, com contorno e sombra: `CAIXA_PECA`), da água, do chão pisado, dos personagens, portais, cais, decorações e pontos de extração; o sorteio é pela posição do
   mundo e a peça que passa da borda do pedaço é terminada pelo vizinho (sem emenda). Onde o chão contínuo pinta
   a vegetação, a decoração antiga em azulejos (`indiceDeco`) não aparece.
 - **Props das vilas** (`PROPS_VILA`, `DESENHO_PROP` em `sprites.js`): barril de aduelas com aros, caixotes de

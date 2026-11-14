@@ -7162,7 +7162,7 @@ teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no
   }
 });
 
-teste("78. arte do mundo (revisão): decorações sem prop por cima", () => {
+teste("78. arte do mundo (revisão): decorações sem prop por cima e moitas longe das estradas e do chão pisado", () => {
   const j = carregarJogo();
   j.entrar();
   const [mapas, MAPAS] = ["mapas", "DADOS_MAPAS"].map(j.g);
@@ -7173,6 +7173,32 @@ teste("78. arte do mundo (revisão): decorações sem prop por cima", () => {
     igual(mapas[area][dc.y][dc.x], 0, `${nome} numa casa bloqueada`);
     const perto = (d.marcos || []).filter((m) => Math.max(Math.abs(m.x - dc.x), Math.abs(m.y - dc.y)) <= 1);
     igual(perto.map((m) => `${m.tipo} ${m.x},${m.y}`).join("; "), "", `${nome} com marco ao lado`);
+  }
+  // (b) vegetação rasteira: nenhum px de moita (arbusto, pedra, tufo…) em estrada, rua de pedra, prédio, estrutura
+  // ou chão pisado (gasto > 0,45) — a caixa inteira da peça é conferida, não só o pé. Os juncos da beira ficam
+  // de fora (moram na água). Pedaços onde a peça antiga passava da beira: Canaã (estrada e frente da tenda),
+  // Galileia (estrada e rua de pedra) e Sinai (chão pisado).
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "cenario.js"), "utf8"), j.ctx, { filename: "cenario.js" });
+  const Cenario = j.ctx.Cenario, pisos = j.g("pisos"), PISO = j.g("PISO"), COLS = j.g("COLS"), ROWS = j.g("ROWS");
+  const BEIRA = new Set(Cenario.TIPOS_BEIRA);
+  const pedacos = { canaan: [[3, 1], [0, 1]], galileia: [[1, 7], [2, 3], [2, 1]], sinai: [[1, 5], [0, 6]] };
+  for (const [area, lista] of Object.entries(pedacos)) {
+    const { cls, gasto } = Cenario.classesDaArea(area);
+    const CHAO = 1; // classe "chão" de classesDaArea (cenario.js: NADA 0, CHAO 1, TERRA 2, RUA 3, PREDIO 4)
+    let pintados = 0;
+    const ruins = [];
+    const espiao = (wx, wy, peca) => {
+      if (BEIRA.has(peca)) return;
+      pintados++;
+      const cx = wx >> 5, cy = wy >> 5;
+      if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return; // orla
+      const i = cy * COLS + cx;
+      if (cls[i] !== CHAO || pisos[area][cy][cx] !== PISO.CHAO || gasto[i] > 0.45) ruins.push(`${peca}@${wx},${wy}`);
+    };
+    for (const [bx, by] of lista) Cenario.pintarPedacoChao(area, bx, by, espiao);
+    assert.ok(pintados > 1000, `${area}: a vegetação continua lá (${pintados} px)`);
+    igual(ruins.length, 0, `${area}: moita fora do chão livre (${ruins.slice(0, 4).join(", ")})`);
   }
 });
 
