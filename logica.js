@@ -525,8 +525,14 @@ function bonusArco(p) {
 // - item que não serve no espaço volta para a mochila (texto inválido some, como em todo o save);
 // - arco (duas mãos) com escudo: a arma fica e o escudo volta para a mochila;
 // - munição: na 1ª carga com o espaço (sem quantidadeMunicao no save), as flechas da mochila vão para ele.
+// Devolve { duasMaos }: duasMaos lista o que saiu do corpo por causa do arco de duas mãos (para o aviso).
 function normalizarEquipamento(p) {
-  if (!objetoValido(p.equipamento)) p.equipamento = {};
+  const mudancas = { duasMaos: [] };
+  if (!objetoValido(p.equipamento)) {
+    // Save estranho com o equipamento numa lista: nada se perde, tudo volta para a mochila.
+    if (Array.isArray(p.equipamento)) for (const item of p.equipamento) if (itemValido(item)) p.inventario.push(item);
+    p.equipamento = {};
+  }
   const eq = p.equipamento;
   const devolver = (item) => {
     if (itemValido(item)) p.inventario.push(item);
@@ -537,9 +543,9 @@ function normalizarEquipamento(p) {
     if (infoItem(arco)?.tipo === "arma_distancia") {
       const corpo = infoItem(eq.arma)?.tipo === "arma";
       if (!corpo || vocacaoADistancia(p)) {
-        if (eq.arma) devolver(eq.arma);
+        if (eq.arma) { devolver(eq.arma); mudancas.duasMaos.push(eq.arma); }
         eq.arma = arco;
-      } else devolver(arco);
+      } else { devolver(arco); mudancas.duasMaos.push(arco); }
     } else if (arco) devolver(arco);
   }
   for (const chave of Object.keys(eq)) {
@@ -554,6 +560,7 @@ function normalizarEquipamento(p) {
   }
   if (eq.arma && maosDoItem(eq.arma) === 2 && eq.escudo) {
     devolver(eq.escudo);
+    mudancas.duasMaos.push(eq.escudo);
     eq.escudo = null;
   }
   let qtd = Number.isInteger(p.quantidadeMunicao) ? Math.max(0, Math.min(MUNICAO_MAXIMA, p.quantidadeMunicao)) : null;
@@ -573,6 +580,7 @@ function normalizarEquipamento(p) {
     qtd = 0;
   }
   p.quantidadeMunicao = qtd;
+  return mudancas;
 }
 
 // Chance de crítico vinda do equipamento, em pontos de % (no máximo CRITICO_EQUIPAMENTO_MAXIMO).
@@ -742,7 +750,7 @@ function estatisticasCombate(p) {
 // ---------------------------------------------------------------------
 // Janela de habilidades (painel Personagem): tudo o que ela mostra, sem DOM
 // ---------------------------------------------------------------------
-const NOMES_FICHA_HABILIDADES = { corpo: "Corpo a corpo", distancia: "Distância", defesa: "Defesa (escudo)", oracao: "Oração" };
+const NOMES_FICHA_HABILIDADES = { corpo: "Corpo a corpo", distancia: "Distância", defesa: "Defesa", oracao: "Oração" };
 // Como cada habilidade treina: [singular, plural] do uso que rende XP_HABILIDADE_POR_USO.
 const USOS_HABILIDADE = {
   corpo: ["golpe corpo a corpo", "golpes corpo a corpo"],
@@ -2557,6 +2565,8 @@ function normalizarVigor(p, agora) {
     minutos: Number.isFinite(v.minutos) ? Math.max(0, Math.min(maximo, Math.round(v.minutos * 1000) / 1000)) : maximo,
     // Sem marca (save sem vigor), a ausência conta de agora; relógio atrasado também recomeça de agora.
     vistoEm: Number.isFinite(v.vistoEm) && v.vistoEm > 0 ? Math.min(v.vistoEm, agora) : agora,
+    // O maior instante já convertido em vigor: atrasar e adiantar o relógio não devolve a mesma ausência duas vezes.
+    creditadoAte: Number.isFinite(v.creditadoAte) && v.creditadoAte > 0 ? v.creditadoAte : 0,
   };
 }
 
@@ -2565,7 +2575,7 @@ function normalizarVigor(p, agora) {
 function vigorRecuperado(v, agora) {
   const R = REGRAS_VIGOR;
   const antes = Math.max(0, Math.min(R.maximoMinutos, Number(v?.minutos) || 0));
-  const desde = Number(v?.vistoEm) || agora;
+  const desde = Math.max(Number(v?.vistoEm) || agora, Number(v?.creditadoAte) || 0);
   const longe = agora - desde;
   if (!(longe >= R.carenciaMinutos * MINUTO_MS)) return { minutos: antes, ganho: 0, sabado: false };
   const sabado = tempoNoSabado(desde, agora) >= R.sabadoMinimoMinutos * MINUTO_MS;
@@ -2580,6 +2590,7 @@ function creditarVigor(p, agora) {
   const r = vigorRecuperado(p.vigor, agora);
   p.vigor.minutos = r.minutos;
   p.vigor.vistoEm = agora;
+  p.vigor.creditadoAte = Math.max(p.vigor.creditadoAte || 0, agora);
   return { ganho: r.ganho, sabado: r.sabado };
 }
 
@@ -3529,8 +3540,13 @@ const Mundo = {
       ganharHabilidade(p, chave, 0); // aplica a curva atual ao progresso guardado
     }
 
-    // Equipamento (boneco: uma mão da arma, peças do corpo e munição) e atalhos.
-    normalizarEquipamento(p);
+    // Equipamento (boneco: uma mão da arma, peças do corpo e munição) e atalhos. O que saiu do corpo por causa
+    // do arco de duas mãos ganha um aviso (o jogador entra com outra defesa e precisa saber por quê).
+    const mudancasEquip = normalizarEquipamento(p);
+    if (!novo && mudancasEquip.duasMaos.length) {
+      const nomes = mudancasEquip.duasMaos.map((item) => nomeItem(item)).join(" e ");
+      this.adicionarAviso(p, "boneco_duas_maos", `O equipamento agora tem uma mão para a arma, e o arco usa as duas: ${nomes} ${mudancasEquip.duasMaos.length > 1 ? "voltaram" : "voltou"} para a mochila.`);
+    }
     if (!Array.isArray(p.hotkeys)) p.hotkeys = ["pocao", null, null, null, null, null];
     p.hotkeys = Array.from({ length: 6 }, (_, i) => (ITENS[p.hotkeys[i]] ? p.hotkeys[i] : null));
 
@@ -3762,6 +3778,14 @@ const Mundo = {
       if (p.inimigosDerrotados.includes(e.id)) p.vidaInimigos[e.id] = 0;
       else if (vidaAntiga || !Number.isFinite(hp) || hp <= 0) p.vidaInimigos[e.id] = atributosInimigo(p, e).vidaMaxima;
       else p.vidaInimigos[e.id] = Math.min(hp, atributosInimigo(p, e).vidaMaxima);
+    }
+    // Pesos reais (kg): quem já carregava muito pode ter ficado acima da carga. Nada se perde, mas o saque e as
+    // recompensas em item só entram depois de aliviar a mochila — o aviso explica como.
+    if (!novo && pesoCarregado(p) > capacidadeCarga(p) + 0.0001) {
+      const carga = `${textoKg(pesoCarregado(p))} de ${textoKg(capacidadeCarga(p))} kg`;
+      this.adicionarAviso(p, "carga_real", `Os itens agora têm o peso de verdade, em kg: você carrega ${carga}. Nada se perdeu, ` +
+        "mas para pegar saques e receber recompensas em item venda ao mercador (vender 1, X ou tudo) ou jogue no chão " +
+        "o que não precisa (botão direito no item).");
     }
     p.versao = VERSAO_SAVE;
     return p;
@@ -4133,7 +4157,8 @@ const Mundo = {
     });
     let excesso = p.saqueNoChao.length - LIMITE_SAQUES_NO_CHAO;
     if (excesso > 0) {
-      const removiveis = p.saqueNoChao.filter((s) => !protegido(s)).sort((a, b) => a.criadoEm - b.criadoEm);
+      // O que o próprio jogador jogou no chão fica os 10 minutos anunciados: o corte por quantidade só leva saques.
+      const removiveis = p.saqueNoChao.filter((s) => !protegido(s) && !s.largado).sort((a, b) => a.criadoEm - b.criadoEm);
       const cortar = new Set();
       for (const s of removiveis) {
         if (excesso <= 0) break;
@@ -5510,6 +5535,7 @@ const Mundo = {
     }
     estado.proximoAtaqueJogador = agora + RECARGA_ATAQUE;
     estado.ultimoCombate = agora;
+    estado.ultimoGolpe = agora;
     const analisador = this.iniciarAnalisador(id, agora);
     if (distancia && gastaMunicao(p)) {
       gastarFlechas(p, 1);
@@ -5857,6 +5883,7 @@ const Mundo = {
     const furia = e.furioso ? COMPORTAMENTOS.furia : null;
     e.proximoAtaque = agora + Math.round(at.intervaloAtaque * (furia ? furia.intervalo : 1));
     estado.ultimoCombate = agora;
+    estado.ultimoGolpe = agora;
     // Combinações: golpe no atordoado é crítico; com medo, leva mais dano.
     const combo = combinacoesNoGolpe(p, agora);
     const fatorCombo = combo.multiplicador * (combo.critico ? MULTIPLICADOR_CRITICO : 1);
@@ -6329,6 +6356,7 @@ const Mundo = {
     const textos = [];
     if (ofensiva) {
       estado.ultimoCombate = agora;
+      estado.ultimoGolpe = agora;
       const a = this.iniciarAnalisador(id, agora);
       if (gastaFlecha) {
         gastarFlechas(p, golpes);
@@ -6627,7 +6655,8 @@ const Mundo = {
     const R = REGRAS_VIGOR;
     const desde = estado.vigorEm || agora;
     estado.vigorEm = agora;
-    if (!(estado.ultimoCombate > 0) || agora - estado.ultimoCombate > R.janelaCombateSegundos * 1000) return;
+    // Só golpes dados ou recebidos contam (estado.ultimoGolpe); veneno e sangramento não gastam vigor.
+    if (!(estado.ultimoGolpe > 0) || agora - estado.ultimoGolpe > R.janelaCombateSegundos * 1000) return;
     if (!objetoValido(p.vigor)) normalizarVigor(p, agora);
     const ms = Math.min(agora - desde, R.passoMaximoSegundos * 1000);
     if (ms > 0) gastarVigor(p, ms / MINUTO_MS);
@@ -6776,6 +6805,7 @@ const Mundo = {
         if (atingiu) {
           p.vida = Math.max(0, p.vida - dano);
           estado.ultimoCombate = agora;
+          estado.ultimoGolpe = agora;
         }
         eventos.push({
           tipo: "explosao",

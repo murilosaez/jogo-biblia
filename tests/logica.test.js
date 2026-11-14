@@ -6571,6 +6571,8 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
 // ---------------------------------------------------------------------
 // Janela de habilidades e vigor (teste 74)
 // ---------------------------------------------------------------------
+// O vigor guarda também creditadoAte (a guarda contra o relógio, teste 77); aqui contam minutos e presença.
+const semCredito = (v) => ({ minutos: v.minutos, vistoEm: v.vistoEm });
 // Põe o vigor no meio da faixa de XP normal (×1): os testes de outras regras de XP (missão, caçadas, campeões,
 // descanso) continuam conferindo só a regra deles. O personagem novo começa cheio, na faixa de +10%.
 function vigorNeutro(j, p = j.p) {
@@ -6595,7 +6597,7 @@ teste("74. janela de habilidades (a): fichaDeHabilidades traz nível, vida, fé,
   igual(f.combate.map((h) => [h.chave, h.nome, h.nivel, h.pct]), [
     ["corpo", "Corpo a corpo", 0, 0],
     ["distancia", "Distância", 0, 0],
-    ["defesa", "Defesa (escudo)", 0, 0],
+    ["defesa", "Defesa", 0, 0],
     ["oracao", "Oração", 0, 0],
   ]);
   igual(f.oficios.map((o) => o.id), j.g("ORDEM_OFICIOS"));
@@ -6657,7 +6659,7 @@ teste("74. vigor (b): gasta só caçando, em tempo real, e a aba parada não con
   const p = j.p;
   const est = j.M.estado[ID];
   const R = j.g("REGRAS_VIGOR");
-  igual(p.vigor, { minutos: R.maximoMinutos, vistoEm: j.agora }, "personagem novo começa cheio");
+  igual(semCredito(p.vigor), { minutos: R.maximoMinutos, vistoEm: j.agora }, "personagem novo começa cheio");
   // Parado (sem golpe): nada gasta.
   for (let i = 0; i < 120; i++) {
     j.avancar(1000);
@@ -6666,7 +6668,7 @@ teste("74. vigor (b): gasta só caçando, em tempo real, e a aba parada não con
   assert.strictEqual(p.vigor.minutos, R.maximoMinutos);
   // Caçando (golpe a cada segundo): 10 minutos de caçada gastam 10 minutos de vigor; caçar marca presença.
   for (let i = 0; i < 600; i++) {
-    est.ultimoCombate = j.agora;
+    est.ultimoCombate = est.ultimoGolpe = j.agora; // um golpe dado ou recebido
     j.avancar(1000);
     j.atualizar();
   }
@@ -6681,10 +6683,10 @@ teste("74. vigor (b): gasta só caçando, em tempo real, e a aba parada não con
   assert.ok(Math.abs(antes - p.vigor.minutos - (R.janelaCombateSegundos - 1) / 60) < 1e-6, "conta só a janela depois do golpe");
   // Um passo enorme (aba parada) conta no máximo passoMaximoSegundos.
   antes = p.vigor.minutos;
-  est.ultimoCombate = j.agora;
+  est.ultimoCombate = est.ultimoGolpe = j.agora;
   j.avancar(1000);
   j.atualizar();
-  est.ultimoCombate = j.agora;
+  est.ultimoCombate = est.ultimoGolpe = j.agora;
   j.avancar(40_000);
   j.atualizar();
   assert.ok(Math.abs(antes - p.vigor.minutos - (1 + R.passoMaximoSegundos) / 60) < 1e-6);
@@ -6699,7 +6701,7 @@ teste("74. vigor (b): gasta só caçando, em tempo real, e a aba parada não con
   assert.ok(gasto >= luta.duracao - 0.2 && gasto <= luta.duracao + 1.6, `${gasto} s de vigor numa luta de ${luta.duracao} s`);
   // Nunca abaixo de zero.
   p.vigor.minutos = 0.001;
-  est.ultimoCombate = j.agora;
+  est.ultimoCombate = est.ultimoGolpe = j.agora;
   j.avancar(1000);
   j.atualizar();
   assert.strictEqual(p.vigor.minutos, 0);
@@ -6764,7 +6766,7 @@ teste("74. vigor (c): volta longe do jogo (1 min a cada 3, depois da carência) 
   sair(j6);
   const j7 = carregarJogo({ store: j6.store, inicio: local(12, 9) });
   const p7 = j7.entrar();
-  igual(p7.vigor, { minutos: 1000, vistoEm: local(12, 9) });
+  igual(semCredito(p7.vigor), { minutos: 1000, vistoEm: local(12, 9) });
 });
 
 teste("74. vigor (d): faixas e XP da criatura × campeão × vigor; o descanso dobra depois e a vocação não mexe", () => {
@@ -6858,7 +6860,7 @@ teste("74. vigor (e): save sem versão nova — quem não tem o campo começa ch
   assert.strictEqual(j.p.versao, j.g("VERSAO_SAVE"));
   // Save de antes do vigor (sem o campo): cheio, com a ausência contando de agora.
   let q = recarregar((x) => delete x.vigor);
-  igual(q.vigor, { minutos: R.maximoMinutos, vistoEm: local(10, 9) });
+  igual(semCredito(q.vigor), { minutos: R.maximoMinutos, vistoEm: local(10, 9) });
   assert.strictEqual(q.versao, j.g("VERSAO_SAVE"), "sem versão nova");
   for (const [ruim, minutos] of [
     ["abc", R.maximoMinutos],
@@ -6869,11 +6871,11 @@ teste("74. vigor (e): save sem versão nova — quem não tem o campo começa ch
     [{ minutos: null }, R.maximoMinutos],
   ]) {
     q = recarregar((x) => (x.vigor = json(ruim)));
-    igual(q.vigor, { minutos, vistoEm: local(10, 9) }, JSON.stringify(ruim));
+    igual(semCredito(q.vigor), { minutos, vistoEm: local(10, 9) }, JSON.stringify(ruim));
   }
   // O que foi gasto atravessa o save.
   q = recarregar((x) => (x.vigor = { minutos: 777.5, vistoEm: local(10, 9) }));
-  igual(q.vigor, { minutos: 777.5, vistoEm: local(10, 9) });
+  igual(semCredito(q.vigor), { minutos: 777.5, vistoEm: local(10, 9) });
 });
 
 teste("75. rota longa (A*): caminho mais rápido, casa alcançável mais perto, o mapa inteiro sem travar, o clique no minimapa e os layouts das janelas", () => {
@@ -7081,6 +7083,83 @@ teste("76. arte do mundo: props das vilas (dados, arte e colisão) e vegetação
   }
   const a = Cenario.pintarPedacoChao("galileia", 3, 1).buf, b = Cenario.pintarPedacoChao("galileia", 3, 1).buf;
   assert.ok(a.length === b.length && a.every((v, i) => v === b[i]), "o pedaço do chão é sempre o mesmo");
+});
+
+teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no chão, vigor sem trapaça no relógio e só com golpe", () => {
+  // (a) Save de veterano acima da carga nova: nada some e há um aviso único explicando o que fazer.
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    p.inventario.push(...Array(60).fill("madeira"));
+    p.versao = 15;
+    const j2 = carregarJogo({ store: { save_jogador1: JSON.stringify(p) } });
+    j2.entrar();
+    const pesado = j2.p;
+    assert.strictEqual(pesado.inventario.filter((x) => x === "madeira").length, 60, "nenhuma madeira some");
+    assert.ok(pesado.avisosPendentes.some((a) => a.id === "carga_real" && /peso de verdade/.test(a.texto)), "aviso da carga real");
+  }
+  // (b) Save antigo de arqueiro com arco e escudo: o escudo volta para a mochila com aviso; equipamento em lista não perde nada.
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    p.equipamento = { arma: null, arco: "arco_composto", escudo: "escudo_bronze", armadura: "tunica_pano" };
+    p.versao = 15;
+    const j2 = carregarJogo({ store: { save_jogador1: JSON.stringify(p) } });
+    j2.entrar();
+    igual([j2.p.equipamento.arma, j2.p.equipamento.escudo], ["arco_composto", null]);
+    assert.ok(j2.p.inventario.includes("escudo_bronze"), "o escudo está na mochila");
+    assert.ok(j2.p.avisosPendentes.some((a) => a.id === "boneco_duas_maos" && /Escudo de bronze/.test(a.texto)), "aviso do arco de duas mãos");
+    p.equipamento = ["espada_ferro", "escudo_madeira"];
+    const j3 = carregarJogo({ store: { save_jogador1: JSON.stringify(p) } });
+    j3.entrar();
+    assert.ok(j3.p.inventario.includes("espada_ferro") && j3.p.inventario.includes("escudo_madeira"), "equipamento em lista volta para a mochila");
+  }
+  // (c) Pilha jogada no chão não sai no corte por quantidade (só pelos 10 minutos).
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    p.inventario.push(...Array(20).fill("pele_lobo"));
+    assert.ok(j.exec({ tipo: "largarItem", item: "pele_lobo", quantidade: 20 }).ok);
+    const pilha = p.saqueNoChao.find((s) => s.largado);
+    assert.ok(pilha, "a pilha está no chão");
+    for (let i = 0; i < 70; i++) p.saqueNoChao.push({ id: `extra${i}`, area: p.area, x: 3, y: 3, item: "pele_lobo", criadoEm: j.agora + i });
+    j.M.limparSaques(p, j.agora + 1000);
+    assert.ok(p.saqueNoChao.some((s) => s.id === pilha.id), "a pilha largada continua no chão");
+    j.M.limparSaques(p, j.agora + 11 * 60_000);
+    assert.ok(!p.saqueNoChao.some((s) => s.id === pilha.id), "depois de 10 minutos, some");
+  }
+  // (d) Atrasar e adiantar o relógio não devolve vigor de graça.
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    const agora = j.agora;
+    p.vigor = { minutos: 600, vistoEm: agora, creditadoAte: agora };
+    const credito = j.g("creditarVigor");
+    credito(p, agora - 24 * 3600_000); // relógio atrasado: nada
+    const depois = credito(p, agora + 1000); // relógio de volta: a ausência já contada não conta de novo
+    assert.ok(p.vigor.minutos <= 600.01 && depois.ganho < 0.01, `vigor ${p.vigor.minutos}`);
+  }
+  // (e) Veneno sem golpe não gasta vigor.
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    const estado = j.M.estado[ID];
+    const antes = p.vigor.minutos;
+    const t0 = j.agora;
+    estado.ultimoCombate = t0; // um tique de veneno marca combate, mas não é golpe
+    estado.ultimoGolpe = 0;
+    estado.vigorEm = t0;
+    j.M.passoVigor(p, estado, t0 + 4000);
+    igual(p.vigor.minutos, antes, "sem golpe, o vigor não cai");
+    estado.ultimoGolpe = t0 + 4000;
+    j.M.passoVigor(p, estado, t0 + 8000);
+    assert.ok(p.vigor.minutos < antes, "com golpe, cai");
+  }
 });
 
 const filtro = process.argv[2];

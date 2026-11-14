@@ -216,7 +216,7 @@ Interface e visual
 - Painéis: Missão (texto de textoMissaoAtual e as caçadas em andamento, com "27/40"), Personagem
   (a janela de habilidades: barras de vida, fé e XP — o XP em % até o próximo nível, com os números na dica
   ou num clique na barra —, capacidade e vigor sempre à vista; a seção Habilidades, recolhível, com Corpo a
-  corpo, Distância, Defesa (escudo) e Oração em linhas "nome … nível" com o fio de % até o próximo nível, os
+  corpo, Distância, Defesa (treina com os golpes recebidos) e Oração em linhas "nome … nível" com o fio de % até o próximo nível, os
   números do combate de estatisticasCombate e a seção Ofícios, também recolhível, com os 6 ofícios. Um clique
   ou toque na linha abre a dica do que falta. Quem sobe pisca em ouro, e a habilidade de combate avisa no
   console, aba Servidor: "Você avançou em Corpo a corpo: nível 15." As seções lembram a escolha neste
