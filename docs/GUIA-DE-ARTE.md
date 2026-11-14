@@ -20,6 +20,9 @@ com os personagens, as cores do visual e as montarias da JGB-49, e documenta a p
   pixels inteiros (`.ic-menu`, `.ic-min` no `index.html`), sem curva nem borrão; fechar usa o glifo
   `ui_fechar`. O destino da rota aparece no minimapa como uma cruz de ouro `#ffe9a8` de 7 px com contorno
   sépia `#2a1a14` (presa na borda quando o destino está fora do recorte), e no chão como o quadrado de ouro.
+- A pega da alça do dock de baixo é uma fileira de pontos de 2 px em bronze (ouro com o ponteiro ou o foco)
+  numa plaquinha de couro de 30 × 6 px; as caixas e os rádios dos menus de janela são quadrados (o rádio tem o
+  miolo de 6 px, a caixa de 8 px), e as teclas dos menus usam a mesma capa de tecla das outras janelas.
 
 ## 2. Luz, contorno e acabamento
 
