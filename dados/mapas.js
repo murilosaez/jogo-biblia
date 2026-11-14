@@ -55,8 +55,14 @@ const DADOS_ESTRUTURAS = {
 //   na vertical); largura em casas. O caminho abre a passagem e é desenhado como estrada.
 // estruturas: casas, tendas, bancas e poços (DADOS_ESTRUTURAS). npc: quem atende ali (a tenda ou banca
 //   fica logo atrás dele); reservada: loja futura prevista para a banca vazia.
-// marcos: obstáculos de uma casa com tipo fixo (fogueira, estandarte, barco, jarros...).
+// marcos: obstáculos de uma casa com tipo fixo (fogueira, estandarte, barco, jarros...) e os props das vilas
+//   (barril, caixotes, carroca, jarros, lenha, cocho, cerca; desenho ob_<área>_<tipo> em sprites.js). O marco
+//   bloqueia a casa: fica fora das ruas, da frente das portas e da volta dos personagens (teste 76).
 // decoracoes: enfeites planos no chão (dc_tapete, dc_esteira, dc_rede, dc_fogo_apagado).
+// vegetacao: enfeites do chão que não bloqueiam, pintados em moitas pelo chão contínuo (cenario.js):
+//   densidade (chance de uma moita a cada 44 px, modulada por um ruído largo), moitas (tipo: peso — capim,
+//   flor, arbusto, pedra, liquen, seixos, concha, caco, broto) e beira (o que nasce na beira da água: junco,
+//   papiro ou alga, com a densidade).
 // zonasColeta: onde ervas (Canaã) e odres (Deserto) brotam de novo depois de coletados (x, y, raio).
 const DADOS_MAPAS = {
   canaan: {
@@ -93,8 +99,15 @@ const DADOS_MAPAS = {
       { tipo: "casa", x: 28, y: 26, variante: 1 },
       { tipo: "casa", x: 35, y: 26, variante: 1 },
     ],
-    marcos: [],
+    marcos: [
+      // props da vila (barril, caixotes, carroça, jarros, lenha, cocho e cerca: arte em sprites.js)
+      { tipo: "barril", x: 10, y: 8 }, { tipo: "caixotes", x: 11, y: 8 }, { tipo: "jarros", x: 40, y: 8 },
+      { tipo: "barril", x: 28, y: 15 }, { tipo: "caixotes", x: 32, y: 15 }, { tipo: "lenha", x: 16, y: 25 },
+      { tipo: "cocho", x: 22, y: 25 }, { tipo: "carroca", x: 24, y: 32 }, { tipo: "cerca", x: 36, y: 23 },
+      { tipo: "cerca", x: 37, y: 23 }, { tipo: "cerca", x: 38, y: 23 },
+    ],
     decoracoes: [{ chave: "dc_fogo_apagado", x: 31, y: 23 }],
+    vegetacao: { densidade: 0.5, moitas: { capim: 5, flor: 3, arbusto: 2, pedra: 1, seixos: 1 }, beira: { junco: 0.7 } },
     zonasColeta: [
       { x: 56, y: 15, raio: 9 },
       { x: 44, y: 84, raio: 12 },
@@ -133,8 +146,15 @@ const DADOS_MAPAS = {
       { tipo: "tenda", x: 120, y: 25, variante: 3 },
       { tipo: "tenda", x: 125, y: 27, variante: 0 },
     ],
-    marcos: [{ tipo: "fogueira", x: 135, y: 19 }],
+    marcos: [
+      { tipo: "fogueira", x: 135, y: 19 },
+      // props da vila (barril, caixotes, carroça, jarros, lenha, cocho e cerca: arte em sprites.js)
+      { tipo: "jarros", x: 119, y: 10 }, { tipo: "lenha", x: 136, y: 20 }, { tipo: "caixotes", x: 139, y: 17 },
+      { tipo: "barril", x: 147, y: 18 }, { tipo: "cocho", x: 141, y: 13 }, { tipo: "carroca", x: 131, y: 26 },
+      { tipo: "jarros", x: 124, y: 27 },
+    ],
     decoracoes: [{ chave: "dc_tapete", x: 136, y: 17 }],
+    vegetacao: { densidade: 0.3, moitas: { capim: 3, pedra: 3, seixos: 3, arbusto: 1 }, beira: { junco: 0.6 } },
     zonasColeta: [
       { x: 56, y: 76, raio: 12 },
       { x: 110, y: 48, raio: 12 },
@@ -197,8 +217,12 @@ const DADOS_MAPAS = {
     marcos: [
       { tipo: "jarros", x: 18, y: 94 },
       { tipo: "jarros", x: 17, y: 95 },
+      // props da vila (barril, caixotes, carroça, jarros, lenha, cocho e cerca: arte em sprites.js)
+      { tipo: "caixotes", x: 19, y: 92 }, { tipo: "cocho", x: 21, y: 101 }, { tipo: "lenha", x: 15, y: 104 },
+      { tipo: "carroca", x: 23, y: 106 }, { tipo: "barril", x: 30, y: 106 }, { tipo: "jarros", x: 36, y: 99 },
     ],
     decoracoes: [{ chave: "dc_esteira", x: 22, y: 98 }],
+    vegetacao: { densidade: 0.4, moitas: { broto: 3, capim: 2, caco: 1, seixos: 1 }, beira: { papiro: 0.8 } },
     zonasColeta: [],
   },
   marVermelho: {
@@ -231,8 +255,13 @@ const DADOS_MAPAS = {
       { tipo: "tenda", x: 15, y: 103, variante: 3 },
       { tipo: "tenda", x: 30, y: 104, variante: 1 },
     ],
-    marcos: [],
+    marcos: [
+      // props da vila (barril, caixotes, carroça, jarros, lenha, cocho e cerca: arte em sprites.js)
+      { tipo: "caixotes", x: 16, y: 93 }, { tipo: "barril", x: 16, y: 94 }, { tipo: "lenha", x: 9, y: 100 },
+      { tipo: "jarros", x: 18, y: 104 }, { tipo: "carroca", x: 21, y: 90 }, { tipo: "barril", x: 35, y: 88 },
+    ],
     decoracoes: [],
+    vegetacao: { densidade: 0.32, moitas: { concha: 3, seixos: 2, pedra: 2, capim: 1 }, beira: { alga: 0.7 } },
     zonasColeta: [],
   },
   sinai: {
@@ -263,8 +292,15 @@ const DADOS_MAPAS = {
       { tipo: "tenda", x: 15, y: 103, variante: 3 },
       { tipo: "tenda", x: 30, y: 104, variante: 0 },
     ],
-    marcos: [{ tipo: "estandarte", x: 17, y: 95 }],
+    marcos: [
+      { tipo: "estandarte", x: 17, y: 95 },
+      // props da vila (barril, caixotes, carroça, jarros, lenha, cocho e cerca: arte em sprites.js)
+      { tipo: "barril", x: 16, y: 92 }, { tipo: "caixotes", x: 16, y: 93 }, { tipo: "jarros", x: 9, y: 99 },
+      { tipo: "lenha", x: 35, y: 89 }, { tipo: "carroca", x: 21, y: 106 }, { tipo: "cocho", x: 19, y: 90 },
+      { tipo: "cerca", x: 34, y: 99 }, { tipo: "cerca", x: 35, y: 99 }, { tipo: "cerca", x: 36, y: 99 },
+    ],
     decoracoes: [],
+    vegetacao: { densidade: 0.4, moitas: { pedra: 3, seixos: 3, capim: 2, liquen: 2, arbusto: 1 }, beira: {} },
     zonasColeta: [],
   },
   galileia: {
@@ -306,12 +342,18 @@ const DADOS_MAPAS = {
       { tipo: "barco", x: 46, y: 18 },
       { tipo: "barco", x: 50, y: 20 },
       { tipo: "barco", x: 54, y: 21 },
+      // props da vila (barril, caixotes, carroça, jarros, lenha, cocho e cerca: arte em sprites.js)
+      { tipo: "barril", x: 41, y: 22 }, { tipo: "caixotes", x: 42, y: 22 }, { tipo: "lenha", x: 14, y: 23 },
+      { tipo: "jarros", x: 21, y: 32 }, { tipo: "carroca", x: 21, y: 41 }, { tipo: "cocho", x: 28, y: 36 },
+      { tipo: "barril", x: 7, y: 25 }, { tipo: "cerca", x: 37, y: 36 }, { tipo: "cerca", x: 38, y: 36 },
+      { tipo: "cerca", x: 39, y: 36 },
     ],
     decoracoes: [
       { chave: "dc_rede", x: 42, y: 22 },
       { chave: "dc_rede", x: 48, y: 22 },
       { chave: "dc_esteira", x: 34, y: 29 },
     ],
+    vegetacao: { densidade: 0.55, moitas: { flor: 4, capim: 4, arbusto: 2, seixos: 1 }, beira: { junco: 0.8 } },
     zonasColeta: [],
   },
 };

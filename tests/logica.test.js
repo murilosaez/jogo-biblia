@@ -7007,6 +7007,82 @@ teste("75. rota longa (A*): caminho mais rápido, casa alcançável mais perto, 
   assert.match(HTML, /\.console-lista time\{[^}]*font:700 var\(--fs-13\)/, "a hora em 13 px");
 });
 
+teste("76. arte do mundo: props das vilas (dados, arte e colisão) e vegetação rasteira em moitas", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const [mapas, pisos, areas, npcs, MAPAS, PISO, estruturasPorArea] = ["mapas", "pisos", "areas", "npcs", "DADOS_MAPAS", "PISO", "estruturasPorArea"].map(j.g);
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "cenario.js"), "utf8"), j.ctx, { filename: "cenario.js" });
+  const Arte = j.ctx.Arte, Cenario = j.ctx.Cenario;
+  const PROPS = ["barril", "caixotes", "carroca", "jarros", "lenha", "cocho", "cerca"];
+  const ehProp = (m) => PROPS.includes(m.tipo);
+  // Alcance a partir do início, andando nas 4 direções (como fecharBolsoes).
+  const alcance = (mapa, inicio) => {
+    const visto = new Set([`${inicio.x},${inicio.y}`]), fila = [[inicio.x, inicio.y]];
+    while (fila.length) {
+      const [x, y] = fila.pop();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const k = `${x + dx},${y + dy}`;
+        if (mapa[y + dy]?.[x + dx] === 0 && !visto.has(k)) { visto.add(k); fila.push([x + dx, y + dy]); }
+      }
+    }
+    return visto;
+  };
+  let total = 0;
+  for (const [area, d] of Object.entries(MAPAS)) {
+    const props = d.marcos.filter(ehProp);
+    if (!d.vilas.length) continue;
+    assert.ok(props.length >= 5, `${area}: a vila tem props (${props.length})`);
+    const ruas = new Set();
+    for (const c of d.caminhos) j.g("casasDoCaminho")(c, (x, y) => ruas.add(`${x},${y}`));
+    const portas = estruturasPorArea[area].filter((e) => e.entrar).map((e) => `${e.porta.x},${e.porta.y + 1}`);
+    const doNpc = Object.values(npcs).filter((n) => n.area === area);
+    for (const m of props) {
+      total++;
+      const k = `${m.x},${m.y}`, nome = `${area}: ${m.tipo} em ${k}`;
+      // dentro de uma vila (fora do muro), bloqueando a casa, fora das ruas e da frente das portas
+      assert.ok(d.vilas.some((v) => m.x > v.x && m.y > v.y && m.x < v.x + v.largura - 1 && m.y < v.y + v.altura - 1), `${nome} fora das vilas`);
+      assert.strictEqual(mapas[area][m.y][m.x], 1, `${nome} sem colisão`);
+      assert.strictEqual(pisos[area][m.y][m.x], PISO.CHAO, `${nome}: piso`);
+      assert.ok(!ruas.has(k), `${nome} em cima de uma rua`);
+      assert.ok(!portas.includes(k), `${nome} na frente de uma porta`);
+      // a clareira de cada personagem (as 8 casas em volta) fica livre
+      for (const n of doNpc) assert.ok(Math.max(Math.abs(n.x - m.x), Math.abs(n.y - m.y)) > 1, `${nome} encostado em ${n.id}`);
+      // a arte da região: ob_<área>_<tipo>, sem deslocamento sorteado, com pixels em todo quadro
+      const t = Arte.tipoObstaculo(area, m.x, m.y), def = Arte.PIXEL_PATTERNS[t.chave];
+      assert.strictEqual(t.chave, `ob_${area}_${m.tipo}`, nome);
+      assert.ok(def && (def.prop || (area === "egito" && m.tipo === "jarros")), `${nome}: desenho de prop`);
+      for (let q = 0; q < def.quadros; q++) assert.ok(Arte.pixels(t.chave, { quadro: q }).data.some(Boolean), `${t.chave} quadro ${q} vazio`);
+    }
+    // Os props não fecham caminho nenhum: sem eles o mapa alcança as mesmas casas (mais as dos próprios props).
+    const comProps = alcance(mapas[area], areas[area].inicio);
+    const original = d.marcos;
+    d.marcos = original.filter((m) => !ehProp(m));
+    const gerar = () => {
+      j.g("gerarMapa")(area);
+      for (const pt of [areas[area].inicio, areas[area].chegada, areas[area].passagem]) if (pt) j.g("abrirCasa")(area, pt.x, pt.y);
+      return alcance(j.g("mapas")[area], areas[area].inicio);
+    };
+    const semProps = gerar();
+    d.marcos = original;
+    const outra = gerar();
+    for (const k of semProps) assert.ok(outra.has(k) || props.some((m) => `${m.x},${m.y}` === k), `${area}: o prop fecha a casa ${k}`);
+    for (const m of props) assert.ok(semProps.has(`${m.x},${m.y}`), `${area}: ${m.tipo} em ${m.x},${m.y} numa casa que já era fechada`);
+    assert.ok(comProps.size > 0);
+  }
+  assert.ok(total >= 40, `props nas vilas: ${total}`);
+  // Vegetação rasteira: tipos conhecidos pelo cenario.js, densidade de 0 a 1, e o chão pinta igual duas vezes.
+  for (const [area, d] of Object.entries(MAPAS)) {
+    const veg = d.vegetacao;
+    if (!veg) continue;
+    assert.ok(veg.densidade > 0 && veg.densidade <= 1, `${area}: densidade da vegetação`);
+    for (const tipo of Object.keys(veg.moitas)) assert.ok(Cenario.TIPOS_MOITA.includes(tipo), `${area}: moita "${tipo}" sem desenho`);
+    for (const [tipo, dens] of Object.entries(veg.beira || {})) assert.ok(Cenario.TIPOS_BEIRA.includes(tipo) && dens > 0 && dens <= 1, `${area}: beira "${tipo}"`);
+  }
+  const a = Cenario.pintarPedacoChao("galileia", 3, 1).buf, b = Cenario.pintarPedacoChao("galileia", 3, 1).buf;
+  assert.ok(a.length === b.length && a.every((v, i) => v === b[i]), "o pedaço do chão é sempre o mesmo");
+});
+
 const filtro = process.argv[2];
 const selecionados = filtro ? testes.filter((t) => t.nome.startsWith(filtro)) : testes;
 let falhas = 0;

@@ -11,7 +11,9 @@ Conteúdo do jogo (pasta dados/)
   regiões (bosques, pedregais, clareiras, com o tipo de obstáculo), águas (lagos e rios), vilas (com
   muro opcional), caminhos (estradas e ruas; dentro das vilas viram ruas de pedra), estruturas (casas e
   lojas onde se entra, tendas, bancas e poços; ver DADOS_ESTRUTURAS: tamanho, porta, móveis e balcão),
-  marcos (fogueira, estandarte, barcos, jarros), decoração do chão e zonas de coleta. Nenhuma
+  marcos (fogueira, estandarte, barcos, jarros e os props das vilas: barril, caixotes, carroça, jarros, lenha,
+  cocho e cerca, que bloqueiam a casa), decoração do chão, vegetação rasteira (vegetacao: densidade, tipos das
+  moitas e o que nasce na beira da água; só aparência, não bloqueia) e zonas de coleta. Nenhuma
   coordenada fica no código: o gerador (gerarMapa, em logica.js) monta o mapa a partir daqui, e as
   casas livres que não se alcançam a partir do início da área viram obstáculo.
 - dados/mundo.js: áreas (início, trilha, cais, chegada da viagem e os portos do mar, um por cidade),
@@ -78,7 +80,9 @@ das vilas, coleta nas zonas e migração das posições antigas); o teste 69 con
 se entra (porta, balcão, mercador atrás dele) e o barqueiro; o teste 70 confere as palavras-chave de
 cada papel (palavrasChaveDoNpc e palavraChaveDoTexto, em logica.js: um NPC de papel novo ganha [oi],
 [tchau] e as palavras de PALAVRAS_DO_PAPEL); o teste 73 confere o boneco (toda peça nova precisa de espaço,
-peso de verdade, ícone em sprites.js e estar à venda ou num saque).
+peso de verdade, ícone em sprites.js e estar à venda ou num saque); o teste 76 confere os props das vilas
+(dentro da vila, fora das ruas, da frente das portas e da volta dos personagens, sem fechar casa nenhuma, com
+desenho da região) e os tipos da vegetação rasteira.
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
@@ -198,6 +202,13 @@ Interface e visual
   arma (espada, arco ou funda na mão), o escudo, a armadura e as peças da cabeça, das pernas e dos pés. As regras de desenho e as paletas de cada região estão
   em docs/GUIA-DE-ARTE.md. Os ícones da mochila, bolsa, equipamento, atalhos,
   loja e lista de batalha usam os mesmos desenhos do mundo.
+- Mundo no estilo dos MMORPGs clássicos em 2D (visto de cima, em casas, paleta curta, bordas nítidas): árvores
+  maiores que a casa (a copa transborda para cima; o tronco fica na casa que bloqueia), arbustos e rochas
+  facetadas com contorno e sombra, chão com poucos tons por região e as beiras definidas (relva, terra,
+  areia; a água com espuma e areia molhada), vegetação rasteira em moitas que não bloqueia (capim, flores,
+  arbustos baixos, pedras; juncos, papiro e algas na beira da água) e props nas vilas (barris, caixotes,
+  carroças, jarros, lenha, cochos e cercas). A câmera e quem anda ficam em pixels inteiros do mundo: 1 pixel
+  de arte é sempre 1 pixel do mundo, sem meio pixel entre o chão e os personagens.
 - Estilo "iluminura viva": couro, pergaminho e bronze; fontes Cinzel (títulos), Alegreya Sans
   (textos) e Pixelify Sans (números, rótulos e textos do mundo). Os dígitos 0–9 da Pixelify são
   substituídos por dígitos em pixel 5×7 gerados pelo interface.js (a Pixelify desenha o 2 como Z e o

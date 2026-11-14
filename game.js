@@ -166,6 +166,7 @@ class Cena extends Phaser.Scene {
 
   // ===== criação ======================================================
   create() {
+    const t0Criacao = performance.now();
     this.p = Mundo.entrar(MEU_ID);
     this.areaAtual = this.p.area;
     this.bio = Arte.BIOMAS[this.areaAtual] || Arte.BIOMAS.canaan;
@@ -233,6 +234,7 @@ class Cena extends Phaser.Scene {
     this.criarCamera();
     this.criarAtmosfera();
     this.criarAmbiente();
+    this.msCriacao = performance.now() - t0Criacao; // tempo de montar a cena (medido nas capturas de arte)
 
     window.gameScene = this;
     if (window.Jogo) window.Jogo.pronto = true;
@@ -363,7 +365,7 @@ class Cena extends Phaser.Scene {
         if (!mapa[y][x] || piso[y][x] === PISO.AGUA || piso[y][x] >= PISO.ESTRUTURA) continue;
         if (cais && x === cais.x && y < cais.y) continue; // sob o píer do cais
         const tipo = Arte.tipoObstaculo(this.areaAtual, x, y);
-        if (!tipo || !this.textures.exists(tipo.chave)) continue;
+        if (!tipo || !Arte.garantirTextura(this, tipo.chave)) continue; // a arte dos obstáculos é gerada só para a área atual
         // muro de vila e mureta de pedra: emendam com os vizinhos do mesmo tipo (cenario.js)
         const muro = this.tipoMuro(x, y);
         if (muro) {
@@ -377,7 +379,7 @@ class Cena extends Phaser.Scene {
         const def = PIXEL_PATTERNS[tipo.chave];
         const variante = tipo.animado ? 0 : Math.floor(Arte.hash2(x, y, 4) * def.quadros);
         // árvores e pedras fora da grade: deslocamento e espelho sorteados por casa (bosque natural)
-        const solto = !tipo.animado && !muro;
+        const solto = !tipo.animado && !muro && !def.prop; // os props das vilas ficam no lugar (a cerca emenda)
         const desloc = solto ? Math.round((Arte.hash2(x, y, 5) - 0.5) * (tipo.alto ? 14 : 8)) : 0;
         const descer = solto ? Math.round((Arte.hash2(x, y, 7) - 0.5) * 6) : 0;
         const img = this.add.image(centroX(x) + desloc, y * TAM + TAM + (def.obstaculo ? 2 * Arte.PX : 0) + descer, tipo.chave, variante)
@@ -396,7 +398,7 @@ class Cena extends Phaser.Scene {
   criarOrla() {
     if (!window.Cenario) return;
     for (const o of Cenario.obstaculosDaOrla(this.areaAtual)) {
-      if (!this.textures.exists(o.chave)) continue;
+      if (!Arte.garantirTextura(this, o.chave)) continue;
       const def = PIXEL_PATTERNS[o.chave];
       const img = this.add.image(centroX(o.x) + o.dx, o.y * TAM + TAM + o.dy + (def.obstaculo ? 2 * Arte.PX : 0), o.chave, Math.floor(Arte.hash2(o.x, o.y, 4) * def.quadros))
         .setOrigin(0.5, 1).setDepth(PROF.entidade + o.y * TAM + TAM - 2).setFlipX(Arte.hash2(o.x, o.y, 8) < 0.5);
@@ -983,10 +985,27 @@ class Cena extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBackgroundColor("#1c1210");
     cam.setBounds(-MOLDURA * TAM, -MOLDURA * TAM, (COLS + MOLDURA * 2) * TAM, (ROWS + MOLDURA * 2) * TAM);
-    cam.startFollow(this.jogador, true, 1, 1, 0, 16);
+    // A câmera segue um alvo em px inteiros de mundo e, a cada quadro, quem se move pelo mundo (personagens,
+    // barras, nomes, números) vai para px inteiros (pixelsInteiros): 1 px de arte = 1 px de mundo em qualquer
+    // zoom, sem meio pixel de arte entre o chão e quem anda.
+    this.alvoCamera = { x: Math.round(this.jogador.x), y: Math.round(this.jogador.y) };
+    cam.startFollow(this.alvoCamera, true, 1, 1, 0, 16);
     cam.setRoundPixels(true);
+    this.events.on("postupdate", this.pixelsInteiros, this);
+    this.events.once("shutdown", () => this.events.off("postupdate", this.pixelsInteiros, this));
     this.scale.on("resize", this.aoRedimensionar, this);
     this.aoRedimensionar();
+  }
+  // Depois do quadro (tweens e update): tudo o que está visível no mundo fica em px inteiros e a câmera vai junto.
+  pixelsInteiros() {
+    const lista = this.children.list;
+    for (let i = 0; i < lista.length; i++) {
+      const o = lista[i];
+      if (!o.visible || o.scrollFactorX !== 1) continue;
+      if (o.x !== Math.round(o.x)) o.x = Math.round(o.x);
+      if (o.y !== Math.round(o.y)) o.y = Math.round(o.y);
+    }
+    if (this.jogador && this.alvoCamera) { this.alvoCamera.x = this.jogador.x; this.alvoCamera.y = this.jogador.y; }
   }
   // Pixels da tela por pixel de arte (inteiro), para ver cerca de VISAO casas; o ajuste do jogador soma ou
   // tira 1 por vez. w e h em pixels do canvas (já multiplicados pelo devicePixelRatio).
@@ -2021,8 +2040,9 @@ class Cena extends Phaser.Scene {
       const dx = x - s.x, dy = y - s.y;
       const andando = Math.abs(dx) + Math.abs(dy) > 1;
       if (andando) {
-        s.x += dx * 0.2;
-        s.y += dy * 0.2;
+        // pelo menos 1 px por quadro (as posições do mundo ficam em px inteiros)
+        s.x += Math.abs(dx) > 1 ? Math.sign(dx) * Math.max(1, Math.round(Math.abs(dx) * 0.2)) : dx;
+        s.y += Math.abs(dy) > 1 ? Math.sign(dy) * Math.max(1, Math.round(Math.abs(dy) * 0.2)) : dy;
         if (Math.abs(dx) > 1) s.setFlipX(dx < 0);
       } else s.setPosition(x, y);
       s.setDepth(PROF.entidade + s.y);
