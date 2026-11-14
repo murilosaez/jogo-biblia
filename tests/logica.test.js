@@ -7162,6 +7162,20 @@ teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no
   }
 });
 
+teste("78. arte do mundo (revisão): decorações sem prop por cima", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const [mapas, MAPAS] = ["mapas", "DADOS_MAPAS"].map(j.g);
+  // (a) cada decoração fica numa casa livre (criarDecoracao só desenha ali) e nenhum marco (prop, barco…)
+  // a até 1 casa: o prop bloquearia a casa ou passaria por cima do enfeite
+  for (const [area, d] of Object.entries(MAPAS)) for (const dc of d.decoracoes || []) {
+    const nome = `${area}: ${dc.chave} em ${dc.x},${dc.y}`;
+    igual(mapas[area][dc.y][dc.x], 0, `${nome} numa casa bloqueada`);
+    const perto = (d.marcos || []).filter((m) => Math.max(Math.abs(m.x - dc.x), Math.abs(m.y - dc.y)) <= 1);
+    igual(perto.map((m) => `${m.tipo} ${m.x},${m.y}`).join("; "), "", `${nome} com marco ao lado`);
+  }
+});
+
 const filtro = process.argv[2];
 const selecionados = filtro ? testes.filter((t) => t.nome.startsWith(filtro)) : testes;
 let falhas = 0;

@@ -403,6 +403,8 @@ class Cena extends Phaser.Scene {
       const img = this.add.image(centroX(o.x) + o.dx, o.y * TAM + TAM + o.dy + (def.obstaculo ? 2 * Arte.PX : 0), o.chave, Math.floor(Arte.hash2(o.x, o.y, 4) * def.quadros))
         .setOrigin(0.5, 1).setDepth(PROF.entidade + o.y * TAM + TAM - 2).setFlipX(Arte.hash2(o.x, o.y, 8) < 0.5);
       if (o.escuro) { const c = Math.round(255 * (1 - o.escuro)); img.setTint(Phaser.Display.Color.GetColor(c, c, Math.round(c * 0.95))); }
+      // a copa alta da orla (56–68 px) cobre a fileira andável junto à borda: fica translúcida como as do interior
+      if (def.alto) this.copas.set(`${o.x},${o.y}`, img);
       this.noBloco(img, o.x, o.y);
     }
   }
