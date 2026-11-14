@@ -163,9 +163,11 @@ body:not(.movendo-janela) .painel-cab:hover .janela-btn[data-janela-menu],.paine
 .menu-op[aria-disabled="true"]{color:var(--texto-mudo);cursor:default;background:none;box-shadow:none}
 .menu-op img{width:16px;height:16px}
 .menu-op .dica-op{margin-left:auto;font:500 var(--fs-13)/1 var(--f-texto);color:var(--texto-mudo);text-shadow:none}
+.menu-op .tecla-op{margin-left:auto;min-width:22px;height:22px;text-shadow:none}
 .menu-op .caixa{flex:0 0 16px;width:16px;height:16px;border:2px solid var(--bronze-400);background:#140c08;box-shadow:inset 1px 1px 0 #000}
 .menu-op[aria-checked="true"] .caixa{background:linear-gradient(var(--ouro-300),var(--ouro-300)) center/8px 8px no-repeat,#140c08}
-.menu-op[role="menuitemradio"] .caixa{border-radius:50%}
+/* rádio: quadrado como a caixa (sem curva, sem borrão), com o miolo menor */
+.menu-op[role="menuitemradio"][aria-checked="true"] .caixa{background:linear-gradient(var(--ouro-300),var(--ouro-300)) center/6px 6px no-repeat,#140c08}
 @media (pointer:coarse){ .janela-btn{width:32px;height:28px} .menu-op{min-height:44px} }
 /* largo bem baixo (1366×768): as dicas de rodapé da Mochila e da Bolsa saem (a dica do item continua) */
 @media (min-width:1280px) and (max-height:800px){ .coluna #pMochila .nota,.coluna #pBolsa .nota{display:none} }

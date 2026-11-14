@@ -3116,7 +3116,7 @@
   }
   const opMenu = (acao, rotulo, { desab = false, dica = "", papel = "menuitem", marcado = null, id = "" } = {}) =>
     `<button type="button" class="menu-op" role="${papel}" data-op="${acao}"${id ? ` data-id="${id}"` : ""}${marcado === null ? "" : ` aria-checked="${marcado}"`}${desab ? ' aria-disabled="true" tabindex="-1"' : ""}>`
-    + `${marcado === null ? "" : '<span class="caixa" aria-hidden="true"></span>'}<span>${esc(rotulo)}</span>${dica ? `<span class="dica-op">${esc(dica)}</span>` : ""}</button>`;
+    + `${marcado === null ? "" : '<span class="caixa" aria-hidden="true"></span>'}<span>${esc(rotulo)}</span>${!dica ? "" : dica.length === 1 ? `<kbd class="tecla-op" title="Tecla ${esc(dica)}">${esc(dica)}</kbd>` : `<span class="dica-op">${esc(dica)}</span>`}</button>`;
   function htmlMenuJanelas() {
     const lay = layout();
     let html = "<h3>Janelas</h3>";
