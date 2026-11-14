@@ -1342,6 +1342,8 @@
     MATERIAIS_PREDIO, material, LADO_PEDACO: LADO,
     obstaculosDaOrla, naOrla, MOLDURA_CASAS, temOrla: (area) => !!ORLAS[area],
     texturasPredio, texturaMovel, texturaPorta, texturaPedacoChao, classesDaArea, texturaMuro, MUROS, ALTURA_MURO,
+    // vegetação rasteira: os tipos de moita e de beira que DADOS_MAPAS[area].vegetacao pode citar
+    TIPOS_MOITA: Object.keys(PECAS_MOITA), TIPOS_BEIRA: ["junco", "papiro", "alga"],
     // para testes e ferramentas
     pintarPredio, pintarMovel, pintarPedacoChao,
   };

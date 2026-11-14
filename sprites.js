@@ -3885,6 +3885,158 @@
 
   // Tipo de obstáculo por casa: o tipo fixo do mapa (bosque, muro da vila, marco; dados/mapas.js) ou o
   // sorteio por peso do bioma. Tipos com desenho próprio fora do bioma ficam em MARCOS.
+  // -------------------------------------------------------------------
+  // Props das vilas (marcos de dados/mapas.js): barril, caixotes, carroça, jarros, lenha, cocho e cerca. Um
+  // desenho por região (ob_<area>_<tipo>) com a madeira, o barro e a pedra de lá; bloqueiam a casa como todo
+  // marco e não têm deslocamento sorteado (a cerca emenda com a vizinha: postes a cada 16 px e as travessas de
+  // ponta a ponta). Desenho em px de arte, luz de cima e da esquerda, 4–5 tons por material, contorno sépia.
+  // -------------------------------------------------------------------
+  const PROPS_VILA = ["barril", "caixotes", "carroca", "jarros", "lenha", "cocho", "cerca"];
+  const MATERIAL_PROPS = {
+    canaan: { madeira: ["#3a2416", "#5a3a22", "#7a5232", "#9a6e44", "#bc8e5e"], barro: ["#5a2e1c", "#84462a", "#a8603a", "#c87e52", "#e0a070"], pedra: ["#4a463c", "#6a6456", "#8c8672", "#aea690", "#cac2aa"] },
+    deserto: { madeira: ["#4a2e1c", "#6e4628", "#92623a", "#b4824e", "#d0a06a"], barro: ["#6a3a20", "#92562e", "#b8743e", "#d49656", "#ecb878"], pedra: ["#5a3a26", "#7e5434", "#a47248", "#c4945e", "#deb47c"] },
+    egito: { madeira: ["#4e3a20", "#72562e", "#967444", "#b8945c", "#d4b47a"], barro: ["#5e2c18", "#8a4426", "#b05e36", "#cc7c4c", "#e49c68"], pedra: ["#6a5c40", "#8a7a5a", "#ab9b78", "#cdbf9c", "#e4d8b8"] },
+    marVermelho: { madeira: ["#3e342c", "#5e5246", "#80705e", "#a08e78", "#c0ae96"], barro: ["#5a2e22", "#82442e", "#a65e40", "#c27c58", "#dc9e78"], pedra: ["#4a2a24", "#6e3e30", "#965a44", "#b87a5c", "#d49c7e"] },
+    sinai: { madeira: ["#33241c", "#52392a", "#73503a", "#94704e", "#b48e68"], barro: ["#56301e", "#7a462a", "#9c603a", "#ba7e52", "#d29c6c"], pedra: ["#3a2c28", "#5a463c", "#7a6250", "#9c8068", "#bca084"] },
+    galileia: { madeira: ["#36231a", "#56382a", "#784e38", "#9a6a4a", "#ba8a64"], barro: ["#56301e", "#7e4a2c", "#a2643c", "#c08254", "#d8a274"], pedra: ["#222224", "#363636", "#4e4c4a", "#6c6a64", "#8c8880"] },
+  };
+  const FERRO_PROPS = ["#24201c", "#3e3832", "#5e564c", "#80786a"];
+  const AGUA_PROPS = ["#24505e", "#346e7e", "#5a98a4", "#9ccacc"];
+  // retângulo em px de arte com a cor de cada px (função ou cor)
+  function retPx(g, X, Y, w, h, c) {
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const cor = typeof c === "function" ? c(i, j, w, h) : c; if (cor) g.fino(X + i, Y + j, cor); }
+  }
+  // elipse cheia em px de arte; c(nx, ny) devolve a cor
+  function elipPx(g, cx, cy, rx, ry, c) {
+    for (let Y = Math.floor(cy - ry); Y <= Math.ceil(cy + ry); Y++) for (let X = Math.floor(cx - rx); X <= Math.ceil(cx + rx); X++) {
+      const nx = (X + 0.5 - cx) / rx, ny = (Y + 0.5 - cy) / ry;
+      if (nx * nx + ny * ny <= 1) { const cor = c(nx, ny, X, Y); if (cor) g.fino(X, Y, cor); }
+    }
+  }
+  const DESENHO_PROP = {
+    // barril de aduelas com dois aros de ferro e a tampa de cima; a variante 1 tem um barril menor ao lado
+    barril(g, v, M, B) {
+      const um = (cx, base, rx, alt) => {
+        const m = M.madeira, topo = base - alt;
+        for (let Y = topo + 2; Y <= base; Y++) {
+          const t = (Y - topo) / alt, bojo = Math.sin(t * Math.PI) * 1.6, r = rx - 1.6 + bojo;
+          for (let X = Math.round(cx - r); X <= Math.round(cx + r) - 1; X++) {
+            const u = (X + 0.5 - (cx - r)) / (2 * r), ad = Math.floor(u * 6);
+            let k = u < 0.2 ? 4 : u < 0.45 ? 3 : u < 0.75 ? 2 : u < 0.9 ? 1 : 0;
+            if (Math.floor(((X - (cx - r)) / (2 * r)) * 6 * 2) % 2 === 1 && k > 0 && ad % 2) k--;
+            let cor = m[k];
+            const aro = Math.abs(Y - (topo + alt * 0.3)) < 1 || Math.abs(Y - (topo + alt * 0.75)) < 1;
+            if (aro) cor = FERRO_PROPS[Math.min(3, Math.max(0, k - 1))];
+            g.fino(X, Y, cor);
+          }
+        }
+        elipPx(g, cx - 0.5, topo + 2.5, rx - 1.2, 2.4, (nx, ny) => (nx * nx + ny * ny > 0.55 ? m[1] : ny < 0 ? m[4] : m[3]));
+      };
+      g.sombra(11, B / 2, 7, 1.6, "#1c1210", 0.3);
+      if (v === 1) um(27, B - 1, 6, 14);
+      um(15, B, 9, 22);
+    },
+    // caixotes de tábuas com o quadro escuro e a trave em X; empilhados
+    caixotes(g, v, M, B) {
+      const m = M.madeira;
+      const cx = (X, Y, w, h, tampa) => {
+        retPx(g, X, Y, w, tampa, (i) => (i === 0 ? m[4] : i === w - 1 ? m[2] : m[3]));
+        retPx(g, X, Y + tampa, w, h - tampa, (i, j, W, H) => {
+          if (i === 0 || j === 0) return m[3];
+          if (i === W - 1 || j === H - 1) return m[0];
+          if (i === 1 || i === W - 2 || j === 1 || j === H - 2) return m[1];
+          const d = Math.abs((i - 2) / (W - 4) - (j - 2) / (H - 4));
+          if (d < 0.12) return m[1];
+          return j % 4 === 0 ? m[1] : i < W / 2 ? m[3] : m[2];
+        });
+      };
+      g.sombra(11, B / 2, 8, 1.6, "#1c1210", 0.3);
+      cx(3, B - 15, 17, 16, 4);
+      cx(19, B - 12, 13, 13, 3);
+      if (v !== 1) cx(7, B - 26, 13, 12, 3);
+    },
+    // carroça de duas rodas, de lado: caixa de tábuas com sacos ou feno, roda de raios e os varais no chão
+    carroca(g, v, M, B) {
+      const m = M.madeira, W = g.w;
+      g.sombra(W / 4 + 1, B / 2, 13, 1.8, "#1c1210", 0.3);
+      // varais
+      linhaPx(g, W - 4, B - 1, W - 16, B - 9, m[1]); linhaPx(g, W - 4, B - 2, W - 16, B - 10, m[3]);
+      // carga
+      if (v === 0) for (let k = 0; k < 3; k++) elipPx(g, 12 + k * 7, B - 19, 4.2, 4, (nx, ny) => (ny < -0.3 && nx < 0.2 ? "#e0d0a8" : nx > 0.4 || ny > 0.5 ? "#a08a60" : "#c8b488"));
+      else for (let X = 7; X < 30; X++) for (let Y = B - 23 + Math.round(Math.sin(X * 0.7) * 1.2); Y < B - 15; Y++) g.fino(X, Y, (X + Y) % 3 === 0 ? "#b89a40" : Y < B - 20 ? "#e8d070" : "#d0b050");
+      // caixa
+      retPx(g, 5, B - 16, 28, 9, (i, j, w, h) => (j === 0 ? m[4] : j === h - 1 || i === w - 1 ? m[0] : j % 3 === 0 ? m[1] : i < 3 ? m[3] : m[2]));
+      // roda
+      const rx = 17, ry = B - 7;
+      elipPx(g, rx, ry, 7, 7, (nx, ny, X, Y) => {
+        const d = Math.hypot(nx, ny);
+        if (d > 0.74) return d > 0.9 ? m[0] : nx + ny < 0 ? m[3] : m[1];
+        if (d < 0.2) return m[4];
+        const a = Math.atan2(ny, nx), raio = Math.abs(((a / Math.PI) * 3 + 6) % 1 - 0.5) < 0.12;
+        return raio ? m[2] : null;
+      });
+    },
+    // jarros de barro (talhas): 2 ou 3 de tamanhos diferentes, com a boca escura e a luz à esquerda
+    jarros(g, v, M, B) {
+      const b = M.barro;
+      const jarro = (cx, base, rx, alt) => {
+        const cy = base - alt * 0.42;
+        elipPx(g, cx, cy, rx, alt * 0.42, (nx, ny) => { const l = -(0.65 * nx + 0.6 * ny); return l > 0.5 ? b[4] : l > 0.1 ? b[3] : l > -0.35 ? b[2] : l > -0.7 ? b[1] : b[0]; });
+        const topo = base - alt;
+        retPx(g, Math.round(cx - rx * 0.45), topo + 2, Math.round(rx * 0.9), Math.round(alt * 0.22), (i, j, w) => (i === 0 ? b[3] : i === w - 1 ? b[0] : b[2]));
+        retPx(g, Math.round(cx - rx * 0.6), topo, Math.round(rx * 1.2), 2, (i, j, w) => (j === 0 ? (i === 0 ? b[3] : b[4]) : i < w - 2 && i > 1 ? "#1c1210" : b[1]));
+      };
+      g.sombra(11, B / 2, 8, 1.6, "#1c1210", 0.3);
+      jarro(22, B - 2, 6, 16);
+      jarro(12, B, 7.5, 22);
+      if (v === 1) jarro(27, B, 4.5, 12);
+    },
+    // lenha empilhada: toras vistas de ponta (anéis claros, casca escura) em fileiras de 3, 2 e 1
+    lenha(g, v, M, B) {
+      const m = M.madeira;
+      g.sombra(11, B / 2, 8, 1.5, "#1c1210", 0.3);
+      // as toras de lado, atrás
+      retPx(g, 4, B - 13, 26, 12, (i, j, w, h) => (j === 0 ? m[3] : j === h - 1 ? m[0] : j % 4 === 0 ? m[0] : (i * 7 + j) % 11 === 0 ? m[1] : m[2]));
+      const fil = [[3, B - 4], [2, B - 11], [1, B - 18]];
+      fil.forEach(([n, y], f) => {
+        for (let k = 0; k < n; k++) {
+          const x = 10 + k * 8 - (n - 3) * 4 + (v && f === 1 ? 1 : 0);
+          elipPx(g, x, y, 4, 3.6, (nx, ny) => {
+            const d = Math.hypot(nx, ny);
+            if (d > 0.78) return nx + ny < -0.3 ? m[2] : m[0];
+            return d < 0.25 ? "#a07a4a" : Math.abs(d - 0.5) < 0.1 ? "#c8a070" : "#e0c08a";
+          });
+        }
+      });
+    },
+    // cocho: pedra (ou madeira no deserto) com a água dentro, a face da frente mais escura
+    cocho(g, v, M, B) {
+      const p = M.pedra, a = AGUA_PROPS;
+      g.sombra(11, B / 2, 9, 1.5, "#1c1210", 0.3);
+      retPx(g, 3, B - 14, 30, 6, (i, j, w, h) => {
+        if (j === 0 || i === 0) return p[4];
+        if (i === w - 1) return p[1];
+        if (j === h - 1 || i === 1 || i === w - 2) return p[3];
+        return j === 1 ? a[0] : (i + j * 3) % 9 === 0 ? a[3] : j === 2 ? a[1] : a[2];
+      });
+      retPx(g, 3, B - 8, 30, 8, (i, j, w, h) => (j === 0 ? p[2] : i === w - 1 || j === h - 1 ? p[0] : (i % 7 === 0 && j > 1) ? p[0] : i < 3 ? p[2] : p[1]));
+    },
+    // cerca de madeira: postes a cada 16 px (com a cabeça clara) e duas travessas de ponta a ponta da casa
+    cerca(g, v, M, B) {
+      const m = M.madeira, W = g.w, x0 = (W - 32) / 2;
+      for (const y of [B - 15, B - 8]) retPx(g, x0, y, 32, 3, (i, j) => (j === 0 ? m[3] : j === 2 ? m[0] : (i + y) % 9 === 0 ? m[1] : m[2]));
+      for (const px of [x0 + 1, x0 + 17]) retPx(g, px, B - 20, 4, 20, (i, j, w, h) => (j === 0 ? m[4] : i === 0 ? m[3] : i === w - 1 ? m[0] : j === h - 1 ? m[0] : m[2]));
+    },
+  };
+  for (const area of Object.keys(MATERIAL_PROPS)) for (const tipo of PROPS_VILA) {
+    const chave = `ob_${area}_${tipo}`;
+    if (PIXEL_PATTERNS[chave]) continue; // os jarros do Egito já são obstáculo do bioma
+    const largo = tipo === "carroca";
+    registrar(chave, {
+      w: largo ? 22 : 18, h: tipo === "caixotes" || tipo === "barril" || tipo === "jarros" ? 20 : 18, quadros: 2, obstaculo: true, prop: true, origem: [0.5, 1],
+      desenhar(g, v) { DESENHO_PROP[tipo](g, v, MATERIAL_PROPS[area], g.h - 5); },
+    });
+  }
   const MARCOS = {
     fogueira: { chave: "fx_fogueira", alto: false, animado: 3 },
     estandarte: { chave: "ob_sinai_estandarte", alto: true },
@@ -3898,6 +4050,7 @@
       const doBioma = bio.obstaculos.find((o) => o.tipo === fixo);
       if (doBioma) return { chave: `ob_${area}_${fixo}`, alto: !!doBioma.alto };
       if (MARCOS[fixo]) return MARCOS[fixo];
+      if (PIXEL_PATTERNS[`ob_${area}_${fixo}`]?.prop) return { chave: `ob_${area}_${fixo}`, alto: false, prop: true };
     }
     const lista = bio.obstaculos.filter((o) => !o.soMarco);
     const total = lista.reduce((s, o) => s + o.peso, 0);

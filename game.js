@@ -379,7 +379,7 @@ class Cena extends Phaser.Scene {
         const def = PIXEL_PATTERNS[tipo.chave];
         const variante = tipo.animado ? 0 : Math.floor(Arte.hash2(x, y, 4) * def.quadros);
         // árvores e pedras fora da grade: deslocamento e espelho sorteados por casa (bosque natural)
-        const solto = !tipo.animado && !muro;
+        const solto = !tipo.animado && !muro && !def.prop; // os props das vilas ficam no lugar (a cerca emenda)
         const desloc = solto ? Math.round((Arte.hash2(x, y, 5) - 0.5) * (tipo.alto ? 14 : 8)) : 0;
         const descer = solto ? Math.round((Arte.hash2(x, y, 7) - 0.5) * 6) : 0;
         const img = this.add.image(centroX(x) + desloc, y * TAM + TAM + (def.obstaculo ? 2 * Arte.PX : 0) + descer, tipo.chave, variante)
