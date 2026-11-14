@@ -1075,16 +1075,32 @@
   // missão e o minimapa) e a borda da folha. Se não couber ali, como com a
   // Mochila aberta, ele fica oculto em vez de cobrir o HUD; o texto continua
   // no Registro.
+  // Mundo estreito (largo ou médio com as duas colunas de janelas): entre o HUD e o minimapa não cabe um
+  // aviso legível; os avisos descem para baixo dos dois, na largura do mundo (#palco.avisos-abaixo).
+  const LARGURA_MIN_AVISO = 240;
   function posicionarAvisos() {
     const caixa = $("#avisos"), palco = $("#palco");
     if (!caixa || !palco) return;
-    if (!document.body.classList.contains("folha-aberta")) { caixa.classList.remove("sem-espaco"); return; }
-    const base = palco.getBoundingClientRect().top;
-    let topo = 0;
-    for (const sel of ["#hud", "#missaoLinha", "#mapaSobre"]) {
+    const pr = palco.getBoundingClientRect();
+    const fundoDe = (sels) => sels.reduce((t, sel) => {
       const el = $(sel);
-      if (el && el.offsetParent) topo = Math.max(topo, el.getBoundingClientRect().bottom - base);
+      return el && el.offsetParent && el.offsetHeight ? Math.max(t, el.getBoundingClientRect().bottom - pr.top) : t;
+    }, 0);
+    if (!document.body.classList.contains("folha-aberta")) {
+      caixa.classList.remove("sem-espaco");
+      let abaixo = false;
+      if (modo && modo !== "estreito" && pr.width) {
+        const hud = $("#hud"), mapa = $("#mapaSobre");
+        const esq = hud?.offsetParent ? hud.getBoundingClientRect().right - pr.left : 0;
+        const dir = mapa?.offsetParent && mapa.offsetHeight ? pr.right - mapa.getBoundingClientRect().left : 0;
+        abaixo = pr.width - esq - dir - 16 < LARGURA_MIN_AVISO;
+        if (abaixo) palco.style.setProperty("--avisos-topo", `${Math.round(fundoDe(["#hud", "#quadroAlvo", "#mapaSobre"]) + 8)}px`);
+      }
+      palco.classList.toggle("avisos-abaixo", abaixo);
+      return;
     }
+    palco.classList.remove("avisos-abaixo");
+    const topo = fundoDe(["#hud", "#missaoLinha", "#mapaSobre"]);
     palco.style.setProperty("--avisos-topo", `${Math.round(topo + 8)}px`);
     const ultimo = caixa.lastElementChild;
     caixa.classList.toggle("sem-espaco", !!ultimo && ultimo.offsetHeight > caixa.clientHeight);
@@ -3229,7 +3245,7 @@
       posicionarAvisos();
     }).observe(f);
     const ro = new ResizeObserver(() => posicionarAvisos());
-    for (const sel of ["#hud", "#missaoLinha", "#mapaSobre"]) if ($(sel)) ro.observe($(sel));
+    for (const sel of ["#hud", "#missaoLinha", "#mapaSobre", "#palco"]) if ($(sel)) ro.observe($(sel));
   }
 
   // ------------------------------------------------------------------

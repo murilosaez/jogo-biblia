@@ -484,6 +484,8 @@ body.mapa-oculto #mapaSobre,body.mapa-oculto #pMapa{display:none}
 /* largo em tela baixa: o minimapa fica sobre o mundo, no canto direito; os
    avisos usam a faixa à esquerda dele */
 body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;max-width:560px;margin:0 auto;transform:none}
+/* mundo estreito (interface.js, posicionarAvisos): os avisos descem para baixo do HUD e do minimapa */
+#palco.avisos-abaixo #avisos{top:var(--avisos-topo,8px);left:8px;right:8px;width:auto;max-width:none;margin:0;transform:none}
 .aviso{pointer-events:auto;display:flex;align-items:center;gap:8px;max-width:100%;padding:6px 12px 6px 8px;color:var(--tinta);font:600 var(--fs-14)/1.3 var(--f-texto);
  background:linear-gradient(#fbf1dc66,#fbf1dc66),var(--tex-perg),var(--perg-200);background-blend-mode:normal,multiply,normal;border:2px solid var(--tinta);border-left:4px solid var(--cor,var(--tinta-suave));box-shadow:0 2px 0 #0009,0 4px 10px #0006;animation:aviso-entra .2s steps(3)}
 .aviso img{width:16px;height:16px;flex:0 0 16px}
