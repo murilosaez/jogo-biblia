@@ -243,8 +243,9 @@ Interface e visual
   maior altura que ainda mantém o zoom. Em 1366 × 768: dock de ~170 px (6 linhas) e o mundo em 2×, com
   ~12 × 8 casas à vista. Em 1920 × 1080: dock de 176 px e o mundo em 2×, com ~20 × 13 casas; com o dock em
   ~130 px ou menos (ou com a tecla +) o mundo vai a 3×, com ~14 × 9 casas. Pelo menu Janelas a conversa
-  também pode ficar sob o mundo, entre as colunas (como antes), com a barra de atalhos embaixo; ali ela
-  desce até 2 linhas para o mundo seguir em 2× em 1366 × 768.
+  também pode ficar sob o mapa ("Sob o mapa, entre as colunas", como antes), com a barra de atalhos
+  embaixo: as colunas ganham a altura toda (em 1366 × 768 a Batalha mostra 4 linhas) e a conversa desce até
+  2 linhas para o mundo seguir em 2×. A pega (a fileira de pontos no meio da borda) marca a alça.
 - Mural de caçadas (atalaia): fala do atalaia, saldo, abas Caçadas (cartões com progresso, espera
   "Volta em 19 h 59 min" e Aceitar, Retomar ou Guardar) e Troca de pontos. Cada abate que conta mostra
   "27/40" sobre a criatura, e a caçada cumprida mostra o cartão "CAÇADA CUMPRIDA". O atalaia tem um

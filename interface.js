@@ -3123,7 +3123,7 @@
     html += Object.keys(JANELAS).map((id) => opMenu("alternar", JANELAS[id].nome, { papel: "menuitemcheckbox", marcado: !lay.fechadas.includes(id), id, dica: JANELAS[id].tecla || "" })).join("");
     html += "<hr><h3>Conversa</h3>";
     html += opMenu("chat-dock", "Na faixa de baixo", { papel: "menuitemradio", marcado: !chatSobMundo() });
-    html += opMenu("chat-mundo", "Sob o mundo, entre as colunas", { papel: "menuitemradio", marcado: chatSobMundo() });
+    html += opMenu("chat-mundo", "Sob o mapa, entre as colunas", { papel: "menuitemradio", marcado: chatSobMundo() });
     html += "<hr>" + opMenu("restaurar", "Restaurar layout");
     return html;
   }
