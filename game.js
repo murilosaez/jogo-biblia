@@ -41,7 +41,13 @@ function escuridaoDoDia(agora = Date.now()) {
   return { fracao: f, escuro: CICLO_DIA.escuroMax * (k * k * (3 - 2 * k)) };
 }
 const BLOCO = 16; // lado (em casas) dos blocos de cenário ligados e desligados conforme a câmera
-const MINIMAPA_JANELA = { colunas: 80, linhas: 60 }; // casas mostradas no minimapa, em volta do jogador
+// Minimapa: casas mostradas em volta do jogador, em 3 níveis (0 = mais perto). A escolha fica neste navegador.
+const MINIMAPA_NIVEIS = [{ colunas: 40, linhas: 30 }, { colunas: 80, linhas: 60 }, { colunas: 160, linhas: 120 }];
+const CHAVE_MINIMAPA = "jornada_minimapa";
+const estadoMinimapa = {
+  nivel: (() => { try { const v = localStorage.getItem(CHAVE_MINIMAPA); const n = v === null ? 1 : Number(v); return Number.isInteger(n) && MINIMAPA_NIVEIS[n] ? n : 1; } catch (e) { return 1; } })(),
+  dx: 0, dy: 0, // deslocamento da janela em casas (arrastar o mapa); centralizar() zera
+};
 // Texto do mundo (nomes, rótulos, números): condensada em negrito com contorno escuro, legível sobre qualquer chão.
 const FONTE_PIXEL = '"Barlow Semi Condensed", "Arial Narrow", "Alegreya Sans", sans-serif';
 const FONTE_TITULO = '"Cinzel", Georgia, serif';
@@ -89,13 +95,65 @@ function quadroAndando(sprite, time) {
     const n = def.ciclo.length, fase = sprite.getData("fasePasso");
     return def.ciclo[typeof fase === "number" ? Math.max(0, Math.min(n - 1, Math.floor(fase * n))) : Math.floor(time / 110) % n];
   }
-  return def?.direcoes ? CICLO_PASSO[Math.floor(time / 110) % 4] : 2 + (Math.floor(time / 125) % 2);
+  // legado: a mesma fração do passo quando o deslize a informa (pés em fase com o deslocamento)
+  const fase = sprite.getData("fasePasso"), comFase = typeof fase === "number";
+  if (def?.direcoes) return CICLO_PASSO[comFase ? Math.max(0, Math.min(3, Math.floor(fase * 4))) : Math.floor(time / 110) % 4];
+  return 2 + (comFase ? Math.max(0, Math.min(1, Math.floor(fase * 2))) : Math.floor(time / 125) % 2);
 }
 // Quadro do golpe/fala (dentro da vista): no contrato novo, antecipação e depois o golpe nos últimos
 // 70 ms (def.quadroAcao = [antecipação, golpe]); no legado, o quadro 4.
 function quadroDeAcao(sprite, restanteMs) {
   const qa = PIXEL_PATTERNS[sprite.texture?.key]?.quadroAcao;
   return qa ? (restanteMs > 70 ? qa[0] : qa[1]) : 4;
+}
+
+// ---------------------------------------------------------------------
+// Deslize: jogador, criaturas e aliados andam de casa em casa por interpolação linear no tempo (sem
+// tweens). O estado guarda a posição-base (sem o recuo de golpe) e o passo em curso; animar() chama
+// avancarDeslize a cada quadro. Um passo novo parte de onde o sprite está: se o anterior não acabou,
+// o movimento emenda sem parada nem salto.
+// ---------------------------------------------------------------------
+const PASSO_RETO_MS = 140, PASSO_DIAGONAL_MS = 180; // intervalo real entre dois passos do jogador
+const PASSO_CRIATURA_MS = { minimo: 250, maximo: 700, padrao: 600 };
+function novoDeslize(x, y) {
+  return { x, y, passo: null, n: 0, ultimoInicio: -1e9, durMedida: 0, durTeto: 0, casaX: null, casaY: null, recuoX: 0, recuoY: 0, recuoAte: 0, tremorAte: 0, yProf: null };
+}
+// Leva a posição-base até o instante `time`. Devolve a fração do passo (0 a 1) ou -1 se está parado.
+function avancarDeslize(st, time) {
+  const p = st.passo;
+  if (!p) return -1;
+  let k = Math.max(0, Math.min(1, (time - p.t0) / p.dur));
+  const kk = p.suave ? 1 - Math.pow(1 - k, 3) : k;
+  st.x = p.x0 + (p.x1 - p.x0) * kk;
+  st.y = p.y0 + (p.y1 - p.y0) * kk;
+  if (k >= 1) { st.passo = null; k = -1; }
+  return k;
+}
+function iniciarDeslize(st, x1, y1, t0, dur, suave = false) {
+  avancarDeslize(st, t0);
+  st.passo = { x0: st.x, y0: st.y, x1, y1, t0, dur: Math.max(1, dur), suave };
+  st.ultimoInicio = t0;
+  st.n++;
+}
+// Posiciona o sprite (base + recuo de golpe + tremor) e grava a fase do ciclo de andar. Passo curto
+// (jogador, 140 a 180 ms por casa): uma passada por casa, meio ciclo — o pé de apoio troca a cada casa;
+// passo longo (criaturas): um ciclo inteiro por casa.
+function aplicarDeslize(st, sprite, time) {
+  const k = avancarDeslize(st, time);
+  if (k >= 0) {
+    const meio = st.passo.dur < 300;
+    sprite.setData("fasePasso", meio ? ((st.n & 1) + k) / 2 : k);
+  } else if (sprite.getData("fasePasso") != null) sprite.setData("fasePasso", null);
+  let x = st.x, y = st.y;
+  if (st.recuoAte > time) { x += st.recuoX; y += st.recuoY; }
+  if (st.tremorAte > time && Math.floor((st.tremorAte - time) / 60) % 2) x += 2;
+  if (sprite.x !== x || sprite.y !== y) sprite.setPosition(x, y);
+  return k >= 0;
+}
+// Folga somada à duração do passo: o passo seguinte só sai no primeiro quadro depois do intervalo, e sem
+// ela o sprite pararia um quadro em cada casa. Com ela o passo novo emenda no anterior ainda em curso.
+function folgaDeQuadro(cena) {
+  return Math.max(20, Math.min(40, (cena.game?.loop?.delta || 17) * 1.5));
 }
 
 // Vizinhos da grade em ordem de ângulo (0°, 45°… com y para baixo), para o joystick analógico.
@@ -206,13 +264,18 @@ class Cena extends Phaser.Scene {
     this.marcadores = [];
     this.proximaAtualizacaoColetaveis = 0;
     this.proximoMinimapa = 0;
+    this.proximoDesenhoMinimapa = 0;
     this.proximosRotulos = 0;
     this.proximoBalao = 0;
     this.nivelAnterior = this.p.nivel;
     this.vidaBaixa = false;
 
     // Textos do mundo (nomes, dano, avisos) na resolução do zoom: nítidos de perto.
-    const fabrica = this.add, textoOriginal = fabrica.text.bind(fabrica);
+    // A cena reinicia a cada troca de região e `this.add` é o mesmo objeto: guarda a fábrica original uma vez só,
+    // senão o ajuste abaixo se empilha e os nomes crescem 2 px a cada região visitada.
+    const fabrica = this.add;
+    if (!fabrica._textoOriginal) fabrica._textoOriginal = fabrica.text.bind(fabrica);
+    const textoOriginal = fabrica._textoOriginal;
     // A fonte do mundo vai sempre em negrito, nunca abaixo de 13 px, e com contorno de pelo menos 4 px.
     fabrica.text = (x, y, texto, estilo = {}) => {
       const e = { ...estilo, resolution: Math.max(estilo.resolution || 1, this.resolucaoTexto()) };
@@ -835,6 +898,7 @@ class Cena extends Phaser.Scene {
       corNome,
       corAtual: corNome,
       fase: Math.random() * 1200, acaoAte: 0, andandoAte: 0, feridoAte: 0,
+      desl: Object.assign(novoDeslize(x, y), { casaX: dados.x, casaY: dados.y, durTeto: tipo === "inimigo" ? Number(dados.intervaloMovimento) || PASSO_CRIATURA_MS.padrao : 0 }),
       alturaCabeca: Math.round((def.alturaCabeca || (quadrupede ? def.h * Arte.PX - 6 : def.h * Arte.PX - 8)) * escala),
       vidaFantasma: tipo === "inimigo" ? Mundo.obterVidaInimigo(MEU_ID, dados.id) : 0,
       fantasmaDesde: 0,
@@ -906,7 +970,9 @@ class Cena extends Phaser.Scene {
     this.sombraJogador = this.add.image(x + 3, y - 1, this.areaAtual === "mar" ? "fx_sombra_g" : "fx_sombra").setDepth(PROF.sombra);
     if (this.areaAtual === "mar") this.sombraJogador.setVisible(false);
     this.jogador = this.add.sprite(x, y + (this.areaAtual === "mar" ? 6 : 0), this.chaveAtualJogador, 0).setOrigin(0.5, 1).setDepth(PROF.entidade + y + 1);
-    this.estadoJogador = { andandoAte: 0, acaoAte: 0, fase: 0 };
+    this.estadoJogador = { andandoAte: 0, acaoAte: 0, fase: 0, desl: novoDeslize(this.jogador.x, this.jogador.y) };
+    // a câmera segue este ponto (só a posição interpolada: sem o recuo de golpe)
+    this.alvoCamera = { x: this.jogador.x, y: this.jogador.y };
     this.sprite = this.jogador; // compatibilidade
   }
   atualizarVisualJogador() {
@@ -982,7 +1048,7 @@ class Cena extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBackgroundColor("#1c1210");
     cam.setBounds(-MOLDURA * TAM, -MOLDURA * TAM, (COLS + MOLDURA * 2) * TAM, (ROWS + MOLDURA * 2) * TAM);
-    cam.startFollow(this.jogador, true, 1, 1, 0, 16);
+    cam.startFollow(this.alvoCamera, true, 1, 1, 0, 16);
     cam.setRoundPixels(true);
     this.scale.on("resize", this.aoRedimensionar, this);
     this.aoRedimensionar();
@@ -1308,8 +1374,7 @@ class Cena extends Phaser.Scene {
         this.time.delayedCall(60, () => ent.sprite.active && ent.sprite.clearTint());
         if (!reduzMovimento()) {
           const dx = Math.sign(e.x - this.p.x) * 2, dy = Math.sign(e.y - this.p.y) * 2;
-          ent.sprite.x += dx; ent.sprite.y += dy;
-          this.time.delayedCall(80, () => { if (ent.sprite.active) { ent.sprite.x -= dx; ent.sprite.y -= dy; } });
+          Object.assign(ent.desl, { recuoX: dx, recuoY: dy, recuoAte: this.time.now + 80 });
         }
       }
     };
@@ -1344,22 +1409,24 @@ class Cena extends Phaser.Scene {
   aposAtaque(r) {
     if (r.derrotado) {
       const id = r.inimigoId;
+      const caiu = this.entidades[id]?.sprite, ondeCaiu = caiu ? { x: caiu.x, y: caiu.y } : null; // onde o sprite estava (pode estar no meio de um passo)
       this.animarMorte(id);
       this.agendarRespawn(id);
       this.alvoId = null;
       const e = inimigos[id];
-      if (e) this.time.delayedCall(200, () => this.numero(centroX(e.x), baseY(e.y) - 40, `+${r.xpGanho ?? e.xpRecompensa} XP`, "xp"));
+      const nx = ondeCaiu ? ondeCaiu.x : e ? centroX(e.x) : 0, ny = ondeCaiu ? ondeCaiu.y : e ? baseY(e.y) : 0;
+      if (e) this.time.delayedCall(200, () => this.numero(nx, ny - 40, `+${r.xpGanho ?? e.xpRecompensa} XP`, "xp"));
       // Caçadas que avançaram com este abate: "27/40" depois do "+XP" (até 3, uma por vez). Nascem abaixo
       // do "+XP", que já subiu, e sobem no mesmo ritmo: os dois números nunca se cobrem.
       if (e) (r.tarefas || []).slice(0, 3).forEach((t, i) => {
-        this.time.delayedCall(450 + i * 250, () => this.numero(centroX(e.x), baseY(e.y) - 28, `${t.progresso}/${t.meta}`, "tarefa"));
+        this.time.delayedCall(450 + i * 250, () => this.numero(nx, ny - 28, `${t.progresso}/${t.meta}`, "tarefa"));
       });
       if (e && r.saquesRaros?.length) this.time.delayedCall(300, () => this.anunciarSaqueRaro(r.saquesRaros, e));
       // Bestiário: a espécie subiu de estágio ("ESTÁGIO 2/3") ou o abate completou o amuleto da família.
       const b = r.bestiario;
       if (e && b?.subiu) {
         const atraso = 700 + Math.min(3, (r.tarefas || []).length) * 250;
-        this.time.delayedCall(atraso, () => this.numero(centroX(e.x), baseY(e.y) - 28, b.amuleto ? "AMULETO!" : `ESTÁGIO ${b.estagio}/${ESTAGIO_MAXIMO_BESTIARIO}`, "bestiario"));
+        this.time.delayedCall(atraso, () => this.numero(nx, ny - 28, b.amuleto ? "AMULETO!" : `ESTÁGIO ${b.estagio}/${ESTAGIO_MAXIMO_BESTIARIO}`, "bestiario"));
         if (b.amuleto) this.time.delayedCall(atraso, () => this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#c9e0a0", 14, { subir: true, dur: 900 }));
       }
       if (r.explosao) this.marcarExplosao(r.explosao);
@@ -1489,7 +1556,8 @@ class Cena extends Phaser.Scene {
   }
 
   // Devolve true se o passo aconteceu (o joystick analógico tenta outro passo quando não acontece).
-  mover(dx, dy, duracao = 130) {
+  // intervalo: tempo real até o próximo passo (quem chama marca this.proximoPasso com o mesmo valor).
+  mover(dx, dy, intervalo = PASSO_RETO_MS) {
     if (this.trocando) return false;
     // Cais com barqueiro: antes de embarcar, a janela dele mostra o preço da passagem e pede confirmação.
     const a = areas[this.areaAtual];
@@ -1523,8 +1591,9 @@ class Cena extends Phaser.Scene {
     if (this.areaAtual !== "mar") virar(this.jogador, dx, dy);
     if (this.areaAtual === "mar" && dx) this.jogador.setFlipX(dx < 0);
     const nx = centroX(this.p.x), ny = baseY(this.p.y) + (this.areaAtual === "mar" ? 6 : 0);
-    this.estadoJogador.andandoAte = this.time.now + duracao + 10;
-    this.tweens.add({ targets: this.jogador, x: nx, y: ny, duration: duracao });
+    const agora = this.time.now, dur = intervalo + folgaDeQuadro(this);
+    iniciarDeslize(this.estadoJogador.desl, nx, ny, agora, dur);
+    this.estadoJogador.andandoAte = agora + dur;
     if (this.areaAtual === "mar" && !reduzMovimento()) this.particulasSimples(this.jogador.x - dx * 20, this.jogador.y - 4, "#e8f2e0", 2, { espalha: 6, dur: 500 });
     window.atualizarInterface?.();
     return true;
@@ -1569,10 +1638,13 @@ class Cena extends Phaser.Scene {
   update(time) {
     if (!this.jogador) return;
     const agora = Date.now();
+    if (time >= this.proximoDesenhoMinimapa) {
+      this.proximoDesenhoMinimapa = time + 100; // acompanha o deslize do jogador
+      this.desenharMinimapa();
+    }
     if (time >= this.proximoMinimapa) {
       this.proximoMinimapa = time + 250;
       this.p = Mundo.jogadores[MEU_ID] || this.p;
-      this.desenharMinimapa();
       this.atualizarMapaSobre();
       Arte.animarAgua(this, this.areaAtual, time / 250);
       this.atualizarVisualJogador();
@@ -1656,8 +1728,8 @@ class Cena extends Phaser.Scene {
     this.desvioJoystick = 0;
     if (!dx && !dy && ent) { dx = Math.sign(ent.dx || 0); dy = Math.sign(ent.dy || 0); }
     if (dx || dy) {
-      this.proximoPasso = time + 140;
-      this.mover(dx, dy);
+      this.proximoPasso = Math.max(time, this.proximoPasso) + PASSO_RETO_MS;
+      this.mover(dx, dy, PASSO_RETO_MS);
       return;
     }
     if (this.rota) return this.passoDaRota(time);
@@ -1716,9 +1788,10 @@ class Cena extends Phaser.Scene {
     const r = this.rota;
     if (!r.passos.length) return this.concluirRota();
     const [dx, dy] = r.passos[0];
-    if (this.mover(dx, dy, dx && dy ? 170 : 130)) {
+    const dur = dx && dy ? PASSO_DIAGONAL_MS : PASSO_RETO_MS;
+    if (this.mover(dx, dy, dur)) {
       r.passos.shift();
-      this.proximoPasso = time + (dx && dy ? 180 : 140);
+      this.proximoPasso = Math.max(time, this.proximoPasso) + dur;
       if (this.trocando) { this.rota = null; return; }
       if (!r.passos.length) this.concluirRota();
       return;
@@ -1727,7 +1800,7 @@ class Cena extends Phaser.Scene {
     const nova = this.calcularRota(r.objetivo);
     if (!nova || !nova.length) { this.pararRota(); return; }
     r.passos = nova;
-    this.proximoPasso = time + 140;
+    this.proximoPasso = time + PASSO_RETO_MS;
   }
   concluirRota() {
     const r = this.rota;
@@ -1803,8 +1876,9 @@ class Cena extends Phaser.Scene {
     if (!passos) { this.perseguir = false; this.mensagem("Não há caminho até o alvo."); return; }
     if (!passos.length) return;
     const [dx, dy] = passos[0];
-    if (this.mover(dx, dy, dx && dy ? 170 : 130)) this.proximoPasso = time + (dx && dy ? 180 : 140);
-    else this.proximoPasso = time + 140;
+    const dur = dx && dy ? PASSO_DIAGONAL_MS : PASSO_RETO_MS;
+    if (this.mover(dx, dy, dur)) this.proximoPasso = Math.max(time, this.proximoPasso) + dur;
+    else this.proximoPasso = time + PASSO_RETO_MS;
   }
 
   // Joystick analógico em 360°: o mapa é em casas, então cada passo é um dos 2 vizinhos da grade em volta
@@ -1834,23 +1908,41 @@ class Cena extends Phaser.Scene {
       if (!tentativas.some((t) => t[0] === d[0] && t[1] === d[1])) tentativas.push(d);
     }
     for (const d of tentativas) {
-      const dur = Math.round(140 * Math.min(1.3, Math.max(1, avanco(d))));
-      if (!this.mover(d[0], d[1], dur - 10)) continue;
+      const dur = Math.round(PASSO_RETO_MS * Math.min(1.3, Math.max(1, avanco(d))));
+      if (!this.mover(d[0], d[1], dur)) continue;
       // Um passo de desvio (bloqueio) não entra na conta: a linha recomeça de onde o jogador está.
       this.desvioJoystick = ordem.includes(d) ? desvio + cruz(d) : 0;
-      this.proximoPasso = time + dur;
+      this.proximoPasso = Math.max(time, this.proximoPasso) + dur;
       return;
     }
-    this.proximoPasso = time + 140; // tudo bloqueado: tenta de novo no próximo passo
+    this.proximoPasso = time + PASSO_RETO_MS; // tudo bloqueado: tenta de novo no próximo passo
   }
 
-  moverInimigo(id) {
+  // A criatura mudou de casa na lógica: desliza até lá no tempo de um passo dela. Esse tempo é o medido
+  // entre dois passos seguidos da mesma criatura (cobre fuga e campeão rápido), de 250 a 700 ms e nunca
+  // acima do intervalo dos dados da criatura (600 se não houver), que também vale no primeiro passo. durFixa: empurrão de habilidade.
+  moverInimigo(id, durFixa = 0) {
     const ent = this.entidades[id], e = inimigos[id];
     if (!ent || !e) return;
-    const nx = centroX(e.x), ny = baseY(e.y);
-    virar(ent.sprite, nx - ent.sprite.x, ny - ent.sprite.y);
-    ent.andandoAte = this.time.now + 220;
-    this.tweens.add({ targets: ent.sprite, x: nx, y: ny, duration: 200 });
+    this.deslizarAte(ent.desl, ent.sprite, e.x, e.y, durFixa);
+    ent.andandoAte = ent.desl.passo ? ent.desl.passo.t0 + ent.desl.passo.dur : 0;
+  }
+  // Passo de criatura ou aliado até a casa (cx, cy), virando o sprite pelo passo da grade (e não pela
+  // posição do sprite, que ainda pode estar a caminho da casa anterior).
+  deslizarAte(st, sprite, cx, cy, durFixa = 0) {
+    const agora = this.time.now, L = PASSO_CRIATURA_MS;
+    const dcx = cx - (st.casaX ?? cx), dcy = cy - (st.casaY ?? cy);
+    st.casaX = cx; st.casaY = cy;
+    const nx = centroX(cx), ny = baseY(cy);
+    if (Math.max(Math.abs(dcx), Math.abs(dcy)) > 3) { st.passo = null; st.x = nx; st.y = ny; return; } // reapareceu longe: sem deslizar
+    if (!dcx && !dcy && !st.passo && st.x === nx && st.y === ny) return;
+    if (dcx || dcy) virar(sprite, dcx, dcy);
+    // só passos seguidos entram na medida: a pausa de quem vagueia não alonga o deslize seguinte
+    const desde = agora - st.ultimoInicio;
+    const teto = st.durTeto || L.maximo; // o intervalo dos dados: modificadores só encurtam o passo
+    if (desde <= (st.durMedida || st.durTeto || L.padrao) * 1.25) st.durMedida = Math.max(L.minimo, Math.min(teto, desde));
+    const dur = durFixa || (st.durMedida || st.durTeto || L.padrao) + folgaDeQuadro(this);
+    iniciarDeslize(st, nx, ny, agora, dur);
   }
 
   jogadorAtingido(x) {
@@ -1888,11 +1980,17 @@ class Cena extends Phaser.Scene {
     if (ent) {
       ent.acaoAte = this.time.now + 120;
       virar(ent.sprite, this.p.x - e.x, this.p.y - e.y);
+      // golpe corpo a corpo com o deslize ainda a caminho da casa vizinha: o resto do passo vira um bote curto
+      const ps = ent.desl.passo, agora = this.time.now;
+      if (ps && !x.distancia && ps.t0 + ps.dur - agora > 100) {
+        const ult = ent.desl.ultimoInicio;
+        iniciarDeslize(ent.desl, ps.x1, ps.y1, agora, 100, true);
+        ent.desl.ultimoInicio = ult; ent.desl.n--;
+      }
     }
     if (e && !reduzMovimento()) {
       const dx = Math.sign(this.p.x - e.x) * 2, dy = Math.sign(this.p.y - e.y) * 2;
-      this.jogador.x += dx; this.jogador.y += dy;
-      this.time.delayedCall(90, () => { this.jogador.x -= dx; this.jogador.y -= dy; });
+      Object.assign(this.estadoJogador.desl, { recuoX: dx, recuoY: dy, recuoAte: this.time.now + 90 });
     }
   }
 
@@ -1924,8 +2022,8 @@ class Cena extends Phaser.Scene {
     const e = inimigos[x.inimigoId];
     const ent = this.entidades[x.inimigoId];
     if (!e || !ent?.sprite?.active) return;
-    this.numero(centroX(e.x), baseY(e.y) - 34, `−${x.dano}`, x.status === "veneno" ? "veneno" : "recebido");
-    if (!reduzMovimento()) this.particulasSimples(centroX(e.x), baseY(e.y) - 16, x.status === "veneno" ? "#a8c84a" : "#c2452d", 2, { dur: 450, espalha: 4 });
+    this.numero(ent.sprite.x, ent.sprite.y - 34, `−${x.dano}`, x.status === "veneno" ? "veneno" : "recebido");
+    if (!reduzMovimento()) this.particulasSimples(ent.sprite.x, ent.sprite.y - 16, x.status === "veneno" ? "#a8c84a" : "#c2452d", 2, { dur: 450, espalha: 4 });
   }
 
   // ===== vocações (JGB-20) ============================================
@@ -1940,13 +2038,13 @@ class Cena extends Phaser.Scene {
     }
     this.p = Mundo.jogadores[MEU_ID];
     if (r.movimento) {
-      this.tweens.add({ targets: this.jogador, x: centroX(this.p.x), y: baseY(this.p.y), duration: 160, ease: "Cubic.easeOut" });
+      iniciarDeslize(this.estadoJogador.desl, centroX(this.p.x), baseY(this.p.y) + (this.areaAtual === "mar" ? 6 : 0), this.time.now, 160, true); // Cubic.easeOut
       if (!reduzMovimento()) this.particulasSimples(this.jogador.x, this.jogador.y - 6, "#e6cf9c", 5, { espalha: 8, dur: 400 });
     }
     for (const l of r.alvos || []) {
       const e = inimigos[l.inimigoId];
       if (!e) continue;
-      if (l.repelido) this.moverInimigo(l.inimigoId);
+      if (l.repelido) this.moverInimigo(l.inimigoId, 180);
       if (l.dano) this.numeroNoInimigo(l.inimigoId, l.critico ? `${l.dano}!` : `${l.dano}`, l.critico ? "critico" : "dano");
       if (l.status) this.time.delayedCall(200, () => this.numeroNoInimigo(l.inimigoId, STATUS_CRIATURAS[l.status].nome.toUpperCase(), "bloqueio"));
       const ent = this.entidades[l.inimigoId];
@@ -1968,8 +2066,9 @@ class Cena extends Phaser.Scene {
     return this.usarHabilidade(h.id);
   }
   numeroNoInimigo(id, txt, tipo) {
-    const e = inimigos[id];
-    if (e) this.numero(centroX(e.x), baseY(e.y) - 40, txt, tipo);
+    const e = inimigos[id], s = this.entidades[id]?.sprite;
+    if (s?.active) this.numero(s.x, s.y - 40, txt, tipo);
+    else if (e) this.numero(centroX(e.x), baseY(e.y) - 40, txt, tipo);
   }
   numeroNoAliado(id, txt) {
     const s = this.spritesAliados[id];
@@ -1986,18 +2085,16 @@ class Cena extends Phaser.Scene {
       if (!s) {
         const chave = Arte.garantirTextura(this, a.tipo === "cao" ? "al_cao" : "al_ovelha");
         s = this.add.sprite(x, y, chave, 0).setOrigin(0.5, 1).setDepth(PROF.entidade + y);
+        s.desl = Object.assign(novoDeslize(x, y), { casaX: a.x, casaY: a.y });
         this.spritesAliados[a.id] = s;
         if (!reduzMovimento()) this.particulasSimples(x, y - 8, "#f6efdc", 6, { espalha: 8, dur: 500 });
       }
-      const dx = x - s.x, dy = y - s.y;
-      const andando = Math.abs(dx) + Math.abs(dy) > 1;
-      if (andando) {
-        s.x += dx * 0.2;
-        s.y += dy * 0.2;
-        if (Math.abs(dx) > 1) s.setFlipX(dx < 0);
-      } else s.setPosition(x, y);
-      s.setDepth(PROF.entidade + s.y);
-      s.setFrame(andando ? 2 + (Math.floor(time / 150) % 2) : 0);
+      const st = s.desl;
+      if (st.casaX !== a.x || st.casaY !== a.y) this.deslizarAte(st, s, a.x, a.y);
+      const andando = aplicarDeslize(st, s, time);
+      const yi = Math.round(st.y);
+      if (yi !== st.yProf) { st.yProf = yi; s.setDepth(PROF.entidade + yi); }
+      s.setFrame(quadroComVista(s, andando ? quadroAndando(s, time) : 0));
     }
     for (const [id, s] of Object.entries(this.spritesAliados)) {
       if (vistos.has(id)) continue;
@@ -2040,7 +2137,7 @@ class Cena extends Phaser.Scene {
       ent.alerta?.destroy();
       ent.alerta = this.add.text(s.x, y, "!", { fontFamily: FONTE_PIXEL, fontSize: "18px", color: "#ffd24a", stroke: COR.tinta, strokeThickness: 4, resolution: 2 })
         .setOrigin(0.5, 1).setDepth(PROF.numero);
-      if (!reduzMovimento()) this.tweens.add({ targets: s, x: s.x + 2, duration: 60, yoyo: true, repeat: 6 });
+      if (!reduzMovimento()) ent.desl.tremorAte = this.time.now + 840;
       // Telegrafo no chão: as casas por onde a investida vai passar, pulsando até o golpe.
       const marcas = (x.casas || []).map((c) => {
         const r = this.add.rectangle(c.x * TAM + TAM / 2, c.y * TAM + TAM / 2, TAM - 4, TAM - 4, 0xff3a1a, 0.8)
@@ -2106,18 +2203,32 @@ class Cena extends Phaser.Scene {
   animar(time) {
     const reduz = reduzMovimento();
     // jogador
-    const ej = this.estadoJogador, j = this.jogador;
+    const ej = this.estadoJogador, j = this.jogador, dj = ej.desl;
+    // Posição: o passo em curso; parado fora da casa da lógica (teleporte, empurrão), volta a ela.
+    if (!dj.passo) {
+      const cx = centroX(this.p.x), cy = baseY(this.p.y) + (this.areaAtual === "mar" ? 6 : 0);
+      if (dj.x !== cx || dj.y !== cy) {
+        if (Math.max(Math.abs(dj.x - cx), Math.abs(dj.y - cy)) > TAM * 3) { dj.x = cx; dj.y = cy; }
+        else { iniciarDeslize(dj, cx, cy, time, 120); ej.andandoAte = time + 120; }
+      }
+    }
+    aplicarDeslize(dj, j, time);
+    this.alvoCamera.x = dj.x; this.alvoCamera.y = dj.y;
     if (this.areaAtual === "mar") j.setFrame(Math.floor(time / 600) % 2);
     else if (ej.acaoAte > time) j.setFrame(quadroComVista(j, quadroDeAcao(j, ej.acaoAte - time)));
     else if (ej.andandoAte > time) j.setFrame(quadroComVista(j, quadroAndando(j, time)));
     else j.setFrame(quadroComVista(j, reduz ? 0 : Math.floor(time / 600) % 2));
-    // setDepth sempre reordena a cena inteira (milhares de obstáculos): só quando a profundidade muda
-    if (j.depth !== PROF.entidade + j.y + 1) j.setDepth(PROF.entidade + j.y + 1);
+    // setDepth sempre reordena a cena inteira (milhares de obstáculos): só quando o y inteiro muda
+    const yj = Math.round(dj.y);
+    if (yj !== dj.yProf) { dj.yProf = yj; j.setDepth(PROF.entidade + yj + 1); }
     this.sombraJogador.setPosition(j.x + 3, j.y - 1);
 
     // entidades
     for (const ent of Object.values(this.entidades)) {
-      const s = ent.sprite;
+      const s = ent.sprite, de = ent.desl;
+      // criatura fora da casa da lógica sem evento de passo (retorno, empurrão): desliza até lá
+      if (!de.passo && ent.tipo === "inimigo" && (de.casaX !== ent.dados.x || de.casaY !== ent.dados.y)) this.moverInimigo(ent.id);
+      aplicarDeslize(de, s, time);
       let q;
       const agindo = ent.acaoAte > time;
       if (agindo) q = quadroDeAcao(s, ent.acaoAte - time);
@@ -2125,8 +2236,11 @@ class Cena extends Phaser.Scene {
       else q = reduz ? 0 : Math.floor((time + ent.fase) / 600) % 2;
       if (ent.dados.id === "jesusGalileia" && agindo && ent.acaoAte - time > 400) q = 0;
       s.setFrame(quadroComVista(s, q));
-      if (s.depth !== PROF.entidade + s.y) s.setDepth(PROF.entidade + s.y);
+      const ye = Math.round(de.y);
+      if (ye !== de.yProf) { de.yProf = ye; s.setDepth(PROF.entidade + ye); }
       ent.sombra.setPosition(s.x + 3, s.y - 1);
+      // o nome acompanha o deslize a cada quadro (o arranjo contra sobreposição roda a cada 100 ms)
+      if (ent.rotuloDx !== undefined && ent.rotulo._alvo === 1) ent.rotulo.setPosition(Math.round(s.x + ent.rotuloDx), Math.round(s.y + ent.rotuloDy));
       if (s.auraCampeao) s.auraCampeao.setPosition(s.x, s.y - 2);
       if (ent.alerta) ent.alerta.setPosition(s.x, s.y - ent.alturaCabeca - 6 - (reduz ? 0 : Math.floor(time / 120) % 2));
       if (ent.tipo === "npc" && ent.acaoAte < time && (this.p.x !== ent.dados.x || this.p.y !== ent.dados.y) && cheb(this.p, ent.dados) <= 3) virar(s, this.p.x - ent.dados.x, this.p.y - ent.dados.y);
@@ -2270,7 +2384,7 @@ class Cena extends Phaser.Scene {
       const barra = ent.tipo === "inimigo";
       const balao = ent.balao && ent.balao.visible;
       const y = ent.sprite.y - ent.alturaCabeca - 4 - (barra ? 14 : 0) - (balao ? 22 : 0);
-      visiveis.push({ t: ent.rotulo, x: ent.sprite.x, y });
+      visiveis.push({ t: ent.rotulo, x: ent.sprite.x, y, ent });
     }
     for (const m of this.marcadores) {
       const mostra = todos || cheb(this.p, m) <= 3;
@@ -2296,6 +2410,7 @@ class Cena extends Phaser.Scene {
       if (!ok) { this.desvanecer(v.t, false); continue; }
       colocados.push({ x: v.x, y, w, h });
       v.t.setPosition(Math.round(v.x), Math.round(y));
+      if (v.ent) { v.ent.rotuloDx = v.x - v.ent.sprite.x; v.ent.rotuloDy = y - v.ent.sprite.y; }
       this.desvanecer(v.t, true);
     }
   }
@@ -2346,78 +2461,252 @@ class Cena extends Phaser.Scene {
     }
     caixa.classList.toggle("encoberto", coberto);
   }
-  // O minimapa mostra uma janela de MINIMAPA_JANELA casas em volta do jogador (o mapa inteiro é
-  // pintado uma vez num canvas maior e recortado a cada desenho).
+  // O minimapa mostra uma janela de casas em volta do jogador (MINIMAPA_NIVEIS, 3 níveis). O mapa inteiro
+  // é pintado uma vez num canvas com um número inteiro de px por casa e recortado a cada desenho. O
+  // tamanho do canvas vem do DOM (a interface decide; aqui só se acompanha).
   desenharMinimapa() {
-    const canvas = document.querySelector("#miniMap"), ctx = canvas?.getContext("2d");
-    if (!ctx || !this.p) return;
+    const canvas = document.querySelector("#miniMap");
+    if (!canvas || !this.p) return;
+    const lw = canvas.clientWidth, lh = canvas.clientHeight;
+    if (lw > 8 && lh > 8 && (canvas.width !== lw || canvas.height !== lh)) { canvas.width = lw; canvas.height = lh; this.minimapaEstatico = null; }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     const W = canvas.width, H = canvas.height;
-    const jc = Math.min(COLS, MINIMAPA_JANELA.colunas), jl = Math.min(ROWS, MINIMAPA_JANELA.linhas);
-    const sx = W / jc, sy = H / jl;
-    if (!this.minimapaEstatico) {
-      const cores = Arte.minimapaCores(this.areaAtual);
-      const c = document.createElement("canvas");
-      c.width = Math.ceil(COLS * sx); c.height = Math.ceil(ROWS * sy);
-      const g = c.getContext("2d"), m = mapas[this.areaAtual], piso = pisos[this.areaAtual], ts = this.tileset;
-      const noMar = this.areaAtual === "mar";
-      g.fillStyle = cores.fundo; g.fillRect(0, 0, c.width, c.height);
-      for (let y = 0; y < ROWS; y++)
-        for (let x = 0; x < COLS; x++) {
-          const borda = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
-          const idx = ts.indice(x, y);
-          // No mar toda casa usa um índice de água (o "chão" já é água);
-          // ali valem borda, ilhas/rochedos e a rota.
-          const agua = !noMar && idx >= Arte.ID_TILE.COSTA && idx < Arte.ID_TILE.BORDA;
-          let cor = cores.chao;
-          if (agua) cor = cores.agua;
-          else if (borda) cor = cores.borda;
-          else if (piso[y][x] === PISO.ESTRUTURA || piso[y][x] === PISO.PAREDE) cor = cores.estrutura;
-          else if (piso[y][x] === PISO.PORTA || piso[y][x] === PISO.INTERIOR) cor = m[y][x] ? cores.estrutura : cores.interior || "#c8a878";
-          else if (m[y][x]) cor = cores.obstaculo;
-          else if (ts.ehCaminho(x, y)) cor = cores.caminho;
-          g.fillStyle = cor;
-          g.fillRect(Math.floor(x * sx), Math.floor(y * sy), Math.ceil(sx), Math.ceil(sy));
-        }
-      this.minimapaEstatico = c;
-    }
-    // janela centrada no jogador, presa às bordas do mapa
-    const ox = Math.max(0, Math.min(COLS - jc, this.p.x - (jc >> 1)));
-    const oy = Math.max(0, Math.min(ROWS - jl, this.p.y - (jl >> 1)));
+    const nivel = MINIMAPA_NIVEIS[estadoMinimapa.nivel] || MINIMAPA_NIVEIS[1];
+    const E = Math.max(1, Math.round(W / nivel.colunas)); // px do minimapa por casa (inteiro: casas iguais)
+    if (!this.minimapaEstatico || this.minimapaEstatico.escala !== E) this.minimapaEstatico = this.pintarMinimapa(E);
+    const jc = W / E, jl = H / E; // casas que cabem
+    // janela centrada no jogador (mais o arrasto), presa às bordas do mapa
+    const preso = (v, max) => (max <= 0 ? max / 2 : Math.max(0, Math.min(max, v)));
+    const cx = this.p.x + 0.5 + estadoMinimapa.dx, cy = this.p.y + 0.5 + estadoMinimapa.dy;
+    const ox = preso(Math.round((cx - jc / 2) * E) / E, COLS - jc), oy = preso(Math.round((cy - jl / 2) * E) / E, ROWS - jl);
     ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, W, H);
-    ctx.drawImage(this.minimapaEstatico, Math.round(ox * sx), Math.round(oy * sy), W, H, 0, 0, W, H);
-    const ponto = (x, y, cor, t = 2) => {
-      const px = (x - ox + 0.5) * sx, py = (y - oy + 0.5) * sy;
+    ctx.fillStyle = this.minimapaEstatico.fundo;
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(this.minimapaEstatico.canvas, -Math.round(ox * E), -Math.round(oy * E));
+    const TINTA = "#1c1210";
+    // Marcas: quadrado (criaturas e gente), losango (portais, cais, missão) e cruz (o jogador), todas com
+    // borda escura de 1 px para ler sobre qualquer chão.
+    const marca = (x, y, cor, forma = "ponto", t = 2) => {
+      const px = Math.round((x - ox + 0.5) * E), py = Math.round((y - oy + 0.5) * E);
       if (px < -t || py < -t || px > W + t || py > H + t) return;
-      ctx.fillStyle = "#2a1a14";
-      ctx.fillRect(Math.round(px - t / 2) - 1, Math.round(py - t / 2) - 1, t + 2, t + 2);
-      ctx.fillStyle = cor;
-      ctx.fillRect(Math.round(px - t / 2), Math.round(py - t / 2), t, t);
+      if (forma === "cruz") {
+        const b = t, e = 1; // braço e meia espessura
+        ctx.fillStyle = TINTA;
+        ctx.fillRect(px - b - 1, py - e - 1, 2 * b + 3, 2 * e + 3); ctx.fillRect(px - e - 1, py - b - 1, 2 * e + 3, 2 * b + 3);
+        ctx.fillStyle = cor;
+        ctx.fillRect(px - b, py - e, 2 * b + 1, 2 * e + 1); ctx.fillRect(px - e, py - b, 2 * e + 1, 2 * b + 1);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(px, py, 1, 1);
+      } else if (forma === "losango") {
+        for (const [r, c] of [[t + 1, TINTA], [t, cor]])
+          for (let d = -r; d <= r; d++) { const m = r - Math.abs(d); ctx.fillStyle = c; ctx.fillRect(px - m, py + d, 2 * m + 1, 1); }
+      } else {
+        const a = Math.floor(t / 2);
+        ctx.fillStyle = TINTA; ctx.fillRect(px - a - 1, py - a - 1, t + 2, t + 2);
+        ctx.fillStyle = cor; ctx.fillRect(px - a, py - a, t, t);
+      }
     };
+    const grande = E >= 2 ? 1 : 0;
     const a = areas[this.areaAtual];
-    for (const t of PORTAIS) if (t.area === this.areaAtual) ponto(t.x, t.y, "#b98ad0", 3);
-    if (a?.passagem) ponto(a.passagem.x, a.passagem.y, "#b98ad0", 3);
-    if (a?.cais) ponto(a.cais.x, a.cais.y, "#6fd0d0", 3);
+    for (const t of PORTAIS) if (t.area === this.areaAtual) marca(t.x, t.y, "#c9a0e6", "losango", 2 + grande);
+    if (a?.passagem) marca(a.passagem.x, a.passagem.y, "#c9a0e6", "losango", 2 + grande);
+    if (a?.cais) marca(a.cais.x, a.cais.y, "#7fe0e0", "losango", 2 + grande);
     if (this.areaAtual === "mar") {
-      for (const pt of Object.values(a.portos || {})) ponto(pt.cais.x, pt.cais.y, "#6fd0d0", 3);
-      for (const pt of pontosPesca) ponto(pt.x, pt.y, "#6fd0d0", 2);
+      for (const pt of Object.values(a.portos || {})) marca(pt.cais.x, pt.cais.y, "#7fe0e0", "losango", 2 + grande);
+      for (const pt of pontosPesca) marca(pt.x, pt.y, "#bfeff0", "ponto", 2);
     }
+    const depois = [];
     for (const ent of Object.values(this.entidades)) {
       const d = ent.tipo === "inimigo" ? inimigos[ent.id] : ent.dados;
       if (ent.tipo === "npc") {
-        // "!"/"?" em destaque; o atalaia com o mural em uso fica na cor das caçadas (pergaminho);
-        // moradores (só conversa) em tom discreto.
+        // "!"/"?" em losango dourado; o atalaia com o mural em uso na cor das caçadas (pergaminho);
+        // comerciantes e guias em âmbar; moradores (só conversa) em tom discreto.
         const destaque = ent.estadoBalao === "missao" || ent.estadoBalao === "entregar";
-        const cor = destaque ? "#f2d27a" : ent.estadoBalao === "mural" ? "#e6cf9c" : d.papel === "ambiente" ? "#cfae74" : "#e8b94a";
-        ponto(d.x, d.y, cor, destaque ? 4 : d.papel === "ambiente" ? 2 : 3);
-      } else ponto(d.x, d.y, "#ef6a5e", 3);
+        if (destaque) depois.push([d.x, d.y, "#ffd24a", "losango", 2 + grande]);
+        else marca(d.x, d.y, ent.estadoBalao === "mural" ? "#f3e4c0" : d.papel === "ambiente" ? "#cfae74" : "#f0a830", "ponto", d.papel === "ambiente" ? 2 : 3);
+      } else if (ent.id === this.alvoId) depois.push([d.x, d.y, "#ffffff", "ponto", 4], [d.x, d.y, "#ff3a2a", "ponto", 2]);
+      else marca(d.x, d.y, ent.corNome === COR_CAMPEAO ? "#ffb02a" : "#ef4a3a", "ponto", Arte.CHEFES.has(ent.id) ? 4 : 2 + grande);
     }
+    for (const s of Object.values(this.spritesAliados)) if (s.desl) marca(s.desl.casaX, s.desl.casaY, "#8fd16a", "ponto", 2);
+    for (const m of depois) marca(...m);
+    if (this.rota?.destino) marca(this.rota.destino.x, this.rota.destino.y, "#f2d27a", "losango", 1);
+    // o que a câmera mostra
     const v = this.cameras.main.worldView;
-    ctx.strokeStyle = "#2a1a14cc";
+    const rx = Math.round((v.x / TAM - ox) * E), ry = Math.round((v.y / TAM - oy) * E), rw = Math.round((v.width * E) / TAM), rh = Math.round((v.height * E) / TAM);
     ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round((v.x / TAM - ox) * sx) + 0.5, Math.round((v.y / TAM - oy) * sy) + 0.5, Math.round(v.width * sx / TAM), Math.round(v.height * sy / TAM));
-    if (Math.floor(this.time.now / 400) % 2 === 0 || reduzMovimento()) ponto(this.p.x, this.p.y, "#f3e4c0", 4);
-    else ponto(this.p.x, this.p.y, "#3b5a9a", 4);
+    ctx.strokeStyle = "#1c1210aa"; ctx.strokeRect(rx + 0.5, ry + 0.5, rw, rh);
+    ctx.strokeStyle = "#f3e4c066"; ctx.strokeRect(rx + 1.5, ry + 1.5, rw - 2, rh - 2);
+    // o jogador: cruz clara que pisca em azul, na posição do sprite (acompanha o deslize)
+    const dj = this.estadoJogador?.desl;
+    const jx = dj ? dj.x / TAM - 0.5 : this.p.x, jy = dj ? (dj.y - (this.areaAtual === "mar" ? 6 : 0) + 1) / TAM - 1 : this.p.y;
+    marca(jx, jy, Math.floor(this.time.now / 400) % 2 === 0 || reduzMovimento() ? "#fff6dc" : "#6fa8ff", "cruz", E >= 4 ? 4 : 3);
+  }
+  // Pinta o mapa inteiro da área com E px por casa. Cores do bioma (menos lavadas que as do pergaminho),
+  // com leve variação por casa; cada obstáculo na cor média do seu próprio desenho (copa verde, rocha,
+  // muro de pedra), com luz em cima e à esquerda e sombra embaixo e à direita; copas isoladas de cantos
+  // redondos; margem escura entre água e terra; prédios como um bloco de telhado com contorno e porta.
+  pintarMinimapa(E) {
+    const brutas = Arte.minimapaCores(this.areaAtual), mis = Arte.misturar, M = Arte.motor;
+    // as cores do motor vêm misturadas a 35% de pergaminho: aqui volta-se a ~12%, para o mapa ter contraste
+    const viva = (cor) => {
+      try {
+        const a = M.hexRgb(cor), p = M.hexRgb("#e6cf9c");
+        const c = [0, 1, 2].map((i) => Math.max(0, Math.min(255, Math.round((a[i] - 0.35 * p[i]) / 0.65))));
+        return mis(M.rgbHex(c[0], c[1], c[2]), "#e6cf9c", 0.12);
+      } catch (e) { return cor; }
+    };
+    const cores = {};
+    for (const k of Object.keys(brutas)) cores[k] = k === "fundo" ? brutas[k] : viva(brutas[k]);
+    const c = document.createElement("canvas");
+    c.width = COLS * E; c.height = ROWS * E;
+    const g = c.getContext("2d"), m = mapas[this.areaAtual], piso = pisos[this.areaAtual], ts = this.tileset;
+    const noMar = this.areaAtual === "mar";
+    const CH = 0, CA = 1, AG = 2, OB = 3, ES = 4, IN = 5, BO = 6, PO = 7;
+    const tipo = (x, y) => {
+      if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return BO;
+      const idx = ts.indice(x, y);
+      // No mar toda casa usa um índice de água (o "chão" já é água); ali valem borda, ilhas/rochedos e a rota.
+      if (!noMar && idx >= Arte.ID_TILE.COSTA && idx < Arte.ID_TILE.BORDA) return AG;
+      if (x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1) return BO;
+      const p = piso[y][x];
+      if (p === PISO.ESTRUTURA || p === PISO.PAREDE) return ES;
+      if (p === PISO.PORTA) return m[y][x] ? ES : PO;
+      if (p === PISO.INTERIOR) return m[y][x] ? ES : IN;
+      if (m[y][x]) return OB;
+      return ts.ehCaminho(x, y) ? CA : CH;
+    };
+    const T = [];
+    for (let y = 0; y < ROWS; y++) { const l = new Uint8Array(COLS); for (let x = 0; x < COLS; x++) l[x] = tipo(x, y); T.push(l); }
+    const em = (x, y) => (x < 0 || y < 0 || x >= COLS || y >= ROWS ? BO : T[y][x]);
+    // Cor de cada tipo de obstáculo: a média dos px do desenho (uma vez por tipo), um pouco escurecida.
+    const corDoTipo = {}, tonsOb = {};
+    const tonsDe = (chave) => {
+      if (tonsOb[chave]) return tonsOb[chave];
+      let cor = cores.obstaculo;
+      try {
+        const px = Arte.pixels(chave, { quadro: 0 });
+        let r = 0, gg = 0, b2 = 0, n = 0;
+        // só os 60% de cima (a copa, o topo da rocha) e sem os px quase pretos do contorno
+        const fim = Math.floor(px.h * 0.6) * px.w;
+        for (let i = 0; i < fim; i += 3) { const v = px.data[i]; if (!v) continue; const a = M.hexRgb(v); if (a[3] < 200 || a[0] + a[1] + a[2] < 150) continue; r += a[0]; gg += a[1]; b2 += a[2]; n++; }
+        if (n > 8) {
+          // um pouco mais de saturação: a média de muitos tons sai acinzentada
+          const md = (r + gg + b2) / (3 * n), sat = (v) => md + (v / n - md) * 1.45;
+          cor = mis(M.rgbHex(sat(r), sat(gg), sat(b2)), "#1c1210", 0.22);
+        }
+      } catch (e) { /* fica a cor do bioma */ }
+      corDoTipo[chave] = cor;
+      return (tonsOb[chave] = { base: [mis(cor, "#1c1210", 0.07), cor, cor, mis(cor, "#fff6dc", 0.06)], luz: mis(cor, "#fff6dc", 0.3), sombra: mis(cor, "#1c1210", 0.4) });
+    };
+    const muroTons = { base: 0, luz: 0, sombra: 0 };
+    { const cor = mis(cores.borda, "#8a8078", 0.5); Object.assign(muroTons, { base: [cor, cor, cor, cor], luz: mis(cor, "#fff6dc", 0.4), sombra: mis(cor, "#1c1210", 0.5) }); }
+    const base = [cores.chao, cores.caminho, cores.agua, cores.obstaculo, cores.estrutura, mis(cores.estrutura, "#fff6dc", 0.09), cores.borda, mis(cores.estrutura, "#1c1210", 0.55)];
+    // tons prontos (a variação por casa escolhe um de 4): nada de misturar cor casa a casa
+    const tons = base.map((cor, t) => [0, 1, 2, 3].map((i) => (t === CH || t === AG ? mis(cor, i < 2 ? "#1c1210" : "#fff6dc", [0.05, 0.015, 0.015, 0.045][i]) : cor)));
+    const margem = mis(noMar ? cores.obstaculo : cores.agua, "#1c1210", 0.45), fundoAgua = mis(cores.agua, "#fff6dc", 0.16);
+    const sombraChao = mis(cores.chao, "#1c1210", 0.2);
+    const telhado = mis(cores.estrutura, "#fff6dc", 0.3), contorno = mis(cores.estrutura, "#1c1210", 0.55);
+    const b = Math.max(1, Math.round(E / 4)); // espessura das margens
+    const seca = (t) => t !== AG;
+    const macico = (v) => v === OB || v === BO;
+    for (let y = 0; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++) {
+        const t = T[y][x], X = x * E, Y = y * E;
+        const n = em(x, y - 1), s = em(x, y + 1), o = em(x - 1, y), l = em(x + 1, y);
+        if (t === OB) {
+          const muro = this.tipoMuro(x, y);
+          const tp = muro ? null : Arte.tipoObstaculo(this.areaAtual, x, y);
+          const tn = muro ? muroTons : tp ? tonsDe(tp.chave) : tonsDe("");
+          // por baixo, o chão (aparece nos cantos da copa isolada)
+          g.fillStyle = tons[CH][Math.floor(Arte.hash2(x, y, 77) * 4)];
+          g.fillRect(X, Y, E, E);
+          g.fillStyle = tn.base[Math.floor(Arte.hash2(x, y, 79) * 4)];
+          if (E === 1) {
+            g.fillRect(X, Y, 1, 1);
+            if (!macico(n) && !macico(o)) { g.fillStyle = tn.luz; g.fillRect(X, Y, 1, 1); } else if (!macico(s) || !macico(l)) { g.fillStyle = tn.sombra; g.fillRect(X, Y, 1, 1); }
+            continue;
+          }
+          g.fillRect(X, Y, E, E);
+          if (E === 2) { // 2 px por casa: só um px de luz e um de sombra, para a árvore solta ler como copa
+            if (muro) { g.fillStyle = tn.sombra; if (!macico(s)) g.fillRect(X, Y + 1, 2, 1); else if (!macico(l)) g.fillRect(X + 1, Y, 1, 2); continue; } // muro: traço contínuo
+            if (!macico(n) || !macico(o)) { g.fillStyle = tn.luz; g.fillRect(X, Y, 1, 1); }
+            if (!macico(s) || !macico(l)) { g.fillStyle = tn.sombra; g.fillRect(X + 1, Y + 1, 1, 1); }
+            continue;
+          }
+          g.fillStyle = tn.luz;
+          if (!macico(n)) g.fillRect(X, Y, E, b);
+          if (!macico(o)) g.fillRect(X, Y, b, E);
+          g.fillStyle = tn.sombra;
+          if (!macico(s)) g.fillRect(X, Y + E - b, E, b);
+          if (!macico(l)) g.fillRect(X + E - b, Y, b, E);
+          // cantos redondos onde o maciço acaba em quina (só com 3 px ou mais por casa, e nunca em muro)
+          if (E >= 3 && !muro) {
+            g.fillStyle = tons[CH][1];
+            if (!macico(n) && !macico(o)) g.fillRect(X, Y, 1, 1);
+            if (!macico(n) && !macico(l)) g.fillRect(X + E - 1, Y, 1, 1);
+            if (!macico(s) && !macico(o)) g.fillRect(X, Y + E - 1, 1, 1);
+            if (!macico(s) && !macico(l)) g.fillRect(X + E - 1, Y + E - 1, 1, 1);
+          }
+          continue;
+        }
+        g.fillStyle = tons[t][Math.floor(Arte.hash2(x, y, 77) * 4)];
+        g.fillRect(X, Y, E, E);
+        if (t === AG || (noMar && t === CH)) {
+          // margem: a água junto da terra escurece (no mar, junto das ilhas e rochedos)
+          const terra = noMar ? macico : seca;
+          if (E === 1) { if (terra(n) || terra(s) || terra(o) || terra(l)) { g.fillStyle = margem; g.fillRect(X, Y, 1, 1); } }
+          else {
+            if (!noMar && !terra(n) && !terra(s) && !terra(o) && !terra(l) && Arte.hash2(x, y, 78) < 0.16) { g.fillStyle = fundoAgua; g.fillRect(X + 1, Y + (E >> 1), Math.max(1, E - 2), 1); }
+            g.fillStyle = margem;
+            if (terra(n)) g.fillRect(X, Y, E, b);
+            if (terra(s)) g.fillRect(X, Y + E - b, E, b);
+            if (terra(o)) g.fillRect(X, Y, b, E);
+            if (terra(l)) g.fillRect(X + E - b, Y, b, E);
+          }
+        } else if (t === CH || t === CA) {
+          // sombra projetada: chão logo abaixo ou à direita de um obstáculo ou prédio
+          if (E >= 2 && !noMar) {
+            g.fillStyle = sombraChao;
+            if (n === OB || n === ES) g.fillRect(X, Y, E, b);
+            if (o === OB || o === ES) g.fillRect(X, Y, b, E);
+          }
+        } else if (t === ES || t === IN || t === PO) {
+          const fora = (v) => v !== ES && v !== IN && v !== PO;
+          if (E === 1) { if (fora(s) || fora(l)) { g.fillStyle = contorno; g.fillRect(X, Y, 1, 1); } else if (fora(n) || fora(o)) { g.fillStyle = telhado; g.fillRect(X, Y, 1, 1); } }
+          else {
+            g.fillStyle = telhado;
+            if (fora(n)) g.fillRect(X, Y, E, b);
+            if (fora(o)) g.fillRect(X, Y, b, E);
+            g.fillStyle = contorno;
+            if (fora(s)) g.fillRect(X, Y + E - b, E, b);
+            if (fora(l)) g.fillRect(X + E - b, Y, b, E);
+          }
+        }
+      }
+    return { canvas: c, escala: E, fundo: cores.borda };
+  }
+  // Fachada do minimapa (Jogo.minimapa): zoom em 3 níveis, arrasto da janela e volta ao jogador.
+  minimapaZoom(delta) {
+    const passo = -Math.sign(delta || 0), ult = MINIMAPA_NIVEIS.length - 1;
+    let n = Math.max(0, Math.min(ult, estadoMinimapa.nivel + passo));
+    // canvas pequeno (celular): dois níveis podem dar o mesmo px por casa; pula o que não mudaria a imagem
+    const W = document.querySelector("#miniMap")?.width || 0;
+    const px = (i) => Math.max(1, Math.round(W / MINIMAPA_NIVEIS[i].colunas));
+    while (W && passo && n > 0 && n < ult && px(n) === px(estadoMinimapa.nivel)) n += passo;
+    if (W && n !== estadoMinimapa.nivel && px(n) === px(estadoMinimapa.nivel)) n = estadoMinimapa.nivel;
+    if (n !== estadoMinimapa.nivel) {
+      estadoMinimapa.nivel = n;
+      try { localStorage.setItem(CHAVE_MINIMAPA, String(n)); } catch (e) { /* armazenamento bloqueado */ }
+      this.minimapaEstatico = null;
+      this.desenharMinimapa();
+    }
+    return n;
+  }
+  minimapaMover(dx, dy) {
+    const lim = (v, max) => Math.max(-max, Math.min(max, v));
+    estadoMinimapa.dx = lim(estadoMinimapa.dx + (dx || 0), COLS);
+    estadoMinimapa.dy = lim(estadoMinimapa.dy + (dy || 0), ROWS);
+    this.desenharMinimapa();
   }
 }
 
@@ -2450,6 +2739,24 @@ window.Jogo = {
   usarAtalho(i) { return window.gameScene?.usarHotkey(i); },
   usarHabilidade(i) { return window.gameScene?.usarHabilidadeDaBarra(i); },
   alvoAtual() { return window.gameScene?.alvoId || null; },
+  // Minimapa (o MUNDO desenha no #miniMap; a interface só manda): zoom(+1) aproxima e zoom(-1) afasta,
+  // em 3 níveis guardados neste navegador; mover(dx, dy) arrasta a janela em casas; centralizar() volta
+  // ao jogador; nivel() devolve o nível (0 = mais perto) e janela() as casas mostradas nesse nível.
+  minimapa: {
+    zoom(delta) {
+      const s = window.gameScene;
+      if (s) return s.minimapaZoom(delta);
+      const n = Math.max(0, Math.min(MINIMAPA_NIVEIS.length - 1, estadoMinimapa.nivel - Math.sign(delta || 0)));
+      estadoMinimapa.nivel = n;
+      try { localStorage.setItem(CHAVE_MINIMAPA, String(n)); } catch (e) { /* armazenamento bloqueado */ }
+      return n;
+    },
+    mover(dx, dy) { window.gameScene?.minimapaMover(dx, dy); },
+    centralizar() { estadoMinimapa.dx = 0; estadoMinimapa.dy = 0; window.gameScene?.desenharMinimapa(); },
+    nivel() { return estadoMinimapa.nivel; },
+    niveis() { return MINIMAPA_NIVEIS.length; },
+    janela() { return { ...MINIMAPA_NIVEIS[estadoMinimapa.nivel] }; },
+  },
   podeInteragir() {
     const r = window.gameScene?.podeInteragir();
     return r ? { tipo: r.tipo, id: r.id, rotulo: r.rotulo } : null;

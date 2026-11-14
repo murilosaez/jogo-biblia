@@ -266,6 +266,33 @@
   function retratoURL(chave, opcoes) {
     try { return temArte() && chave ? Arte.retratoURL(chave, opcoes) || "" : ""; } catch (e) { return ""; }
   }
+  // Miniatura das listas da coluna (Batalha e alvo): o corpo recortado da célula, em px de arte inteiros
+  // (os sprites de 40 a 64 px não cabem inteiros em 26 px sem borrar). Só no largo e no médio.
+  const cacheMini = new Map();
+  function miniArte(chave) {
+    if (!chave || !window.matchMedia("(min-width: 761px)").matches) return "";
+    if (cacheMini.has(chave)) return cacheMini.get(chave);
+    let html = "";
+    try {
+      const def = (Arte.PIXEL_PATTERNS || window.PIXEL_PATTERNS || {})[chave];
+      const px = def && Arte.pixels(chave, { quadro: def.retratoQuadro ?? (def.humano ? 4 : 0) });
+      if (px) {
+        const r = px.res || 1;
+        let x0 = px.w, y0 = px.h, x1 = -1, y1 = -1;
+        if (def.busto) { x0 = def.busto[0] * r; y0 = def.busto[1] * r; x1 = x0 + def.busto[2] * r - 1; y1 = y0 + def.busto[3] * r - 1; }
+        else for (let y = 0; y < px.h; y++) for (let x = 0; x < px.w; x++) if (px.data[y * px.w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 >= x0 && y1 >= y0) {
+          const w = x1 - x0 + 1, h = y1 - y0 + 1, e = w * 2 <= 36 && h * 2 <= 24 ? 2 : 1;
+          const c = document.createElement("canvas"); c.width = w; c.height = h;
+          const ctx = c.getContext("2d");
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const cor = px.data[(y0 + y) * px.w + x0 + x]; if (cor) { ctx.fillStyle = cor; ctx.fillRect(x, y, 1, 1); } }
+          html = `<img class="px mini-arte" src="${c.toDataURL()}" width="${w * e}" height="${h * e}" alt="">`;
+        }
+      }
+    } catch (e) { html = ""; }
+    cacheMini.set(chave, html);
+    return html;
+  }
   function visualDe(id) {
     try { return temArte() ? Arte.visualDe(id) : ""; } catch (e) { return ""; }
   }
@@ -702,7 +729,7 @@
         const rotulo = `${curto}, vida ${vida} de ${max}${ehChefe(e.id) ? ", chefe" : ""}${f?.campeao ? ", campeão" : ""}${conta.length ? `, conta para ${conta.map((t) => t.nome).join(" e ")}` : ""}`;
         const classe = f?.campeao ? " campeao" : f?.nomeado ? " nomeado" : "";
         return `<button type="button" role="listitem" class="linha-inimigo${classe}${alvo === e.id ? " selecionada" : ""}" data-alvo="${esc(e.id)}" aria-pressed="${alvo === e.id}" aria-label="${esc(rotulo)}" title="${esc(textoFicha(f))}">
-          <span class="mini">${mini ? `<img class="px" src="${mini}" alt="">` : ""}</span>
+          <span class="mini">${miniArte(visualDe(e.id)) || (mini ? `<img class="px" src="${mini}" alt="">` : "")}</span>
           <span class="nome"><span class="nome-txt">${esc(curto)}</span>${marcas}</span>
           <span class="vida"><span class="mini-barra"><i style="width:${pct}%"></i></span><b>${vida}/${max}</b></span></button>`;
       }).join("");
@@ -720,7 +747,7 @@
         if (!c) continue;
         if (!e) { c.innerHTML = ""; c.classList.remove("ativo"); continue; }
         const mini = retratoURL(visualDe(e.id), { escala: 2, recorte: "busto" });
-        c.innerHTML = `<span class="mini">${mini ? `<img class="px" src="${mini}" alt="">` : ""}</span>
+        c.innerHTML = `<span class="mini">${miniArte(visualDe(e.id)) || (mini ? `<img class="px" src="${mini}" alt="">` : "")}</span>
           <span class="alvo-info"><strong title="${esc(textoFicha(ficha(e.id)))}">${ehChefe(e.id) ? imgGlifo("ui_estrela_chefe", "px g16") : ""}${marcasDaCriatura(ficha(e.id))}${esc(nomeDaCriatura(e))}</strong>
           <span class="alvo-barra"><i></i></span><span class="alvo-recarga" title="Recarga do autoataque"><i></i></span></span>
           <span class="alvo-vida"></span>`;
@@ -1092,14 +1119,19 @@
   // Altura do console embaixo do mundo. O zoom do mapa (game.js) é inteiro e arredondado: com o
   // palco abaixo de 1,5 × as 11 casas de altura, ele cai para 1 px de tela por pixel de arte (tudo
   // pela metade). Por isso o console fica PRESO embaixo do mundo (o palco encolhe) quando ainda
-  // sobram pelo menos 2 px de tela por pixel de arte; senão, em telas baixas (1366 × 768), só a barra
-  // fica presa e as mensagens ficam SOBRE a borda de baixo do mundo, com o mesmo couro. Sem altura
-  // escolhida, ele pega a maior (até 168 px) que cabe presa, ou 112 px sobre o mundo.
-  const ALTURA_MIN_CONSOLE = 112, ALTURA_MAX_CONSOLE = 168;
+  // sobram pelo menos 2 px de tela por pixel de arte (em 1366 × 768 sobram, com 132 px de console);
+  // senão, em telas mais baixas, só a barra fica presa e as mensagens ficam SOBRE a borda de baixo do
+  // mundo, com o mesmo couro. Sem altura escolhida, ele tem 132 px (ou o que couber preso, de 112 a 132).
+  const ALTURA_MIN_CONSOLE = 112, ALTURA_MAX_CONSOLE = 168, ALTURA_PADRAO_CONSOLE = 132;
+  const alturaBarraConsole = () => $(".console-barra", painel("pRegistro"))?.offsetHeight || 30;
   function palcoMinimo() {
     const dpr = typeof dprAtual === "function" ? dprAtual() : window.devicePixelRatio || 1;
-    const casas = (typeof VISAO !== "undefined" ? VISAO.deitada[1] : 11) * (typeof PIXELS_ARTE_POR_CASA !== "undefined" ? PIXELS_ARTE_POR_CASA : 32);
-    return Math.ceil((casas * (Math.ceil(2 * dpr) - 0.5)) / dpr) + 2;
+    const px = typeof PIXELS_ARTE_POR_CASA !== "undefined" ? PIXELS_ARTE_POR_CASA : 32;
+    const [colunas, linhas] = typeof VISAO !== "undefined" ? VISAO.deitada : [15, 11];
+    // Palco estreito (médio): a LARGURA já segura o zoom abaixo do alvo; não adianta guardar altura para ele.
+    const pelaLargura = Math.max(1, Math.round((($("#palco")?.clientWidth || 0) * dpr) / (colunas * px)) || 1);
+    const alvo = Math.min(Math.ceil(2 * dpr), pelaLargura);
+    return Math.ceil((linhas * px * (alvo - 0.5)) / dpr) + 2;
   }
   // Altura do palco com o console recolhido (só a barra presa).
   function espacoDoConsole() {
@@ -1107,17 +1139,19 @@
     const preso = c.parentElement?.id === "mundo" ? c.offsetHeight - (barra?.offsetHeight || 0) : 0;
     return $("#palco").clientHeight + (c.classList.contains("sobre") ? 0 : preso);
   }
-  const alturaConsole = () => parseInt(painel("pRegistro").style.getPropertyValue("--altura-console"), 10) || ALTURA_MAX_CONSOLE;
+  const alturaConsole = () => parseInt(painel("pRegistro").style.getPropertyValue("--altura-console"), 10) || ALTURA_PADRAO_CONSOLE;
   function encaixarConsole() {
     const c = painel("pRegistro");
     const noMundo = c.parentElement?.id === "mundo";
-    const sobre = noMundo && c.dataset.aberto === "true" && espacoDoConsole() - alturaConsole() + 40 < palcoMinimo();
+    // "Sobre" só quando isso de fato segura o zoom: se nem com o console recolhido o palco chega lá, fica preso.
+    const espaco = espacoDoConsole(), minimo = palcoMinimo();
+    const sobre = noMundo && c.dataset.aberto === "true" && espaco >= minimo && espaco - alturaConsole() + alturaBarraConsole() < minimo;
     c.classList.toggle("sobre", sobre);
     document.body.classList.toggle("console-sobre", sobre);
-    document.documentElement.style.setProperty("--console-sobre", sobre ? `${alturaConsole() - ($(".console-barra", c)?.offsetHeight || 40)}px` : "0px");
+    document.documentElement.style.setProperty("--console-sobre", sobre ? `${alturaConsole() - alturaBarraConsole()}px` : "0px");
   }
   function definirAlturaConsole(h) {
-    const max = Math.max(ALTURA_MIN_CONSOLE, Math.round(espacoDoConsole() * 0.6));
+    const max = Math.max(ALTURA_MIN_CONSOLE, Math.min(ALTURA_MAX_CONSOLE, Math.round(espacoDoConsole() * 0.6)));
     h = Math.max(ALTURA_MIN_CONSOLE, Math.min(max, Math.round(h)));
     painel("pRegistro").style.setProperty("--altura-console", `${h}px`);
     encaixarConsole();
@@ -1129,8 +1163,8 @@
     if (c.parentElement?.id !== "mundo") return;
     let h = prefConsole.altura;
     if (!h) {
-      const sobra = espacoDoConsole() - palcoMinimo() + 40;
-      h = sobra >= ALTURA_MIN_CONSOLE ? Math.min(ALTURA_MAX_CONSOLE, sobra) : ALTURA_MIN_CONSOLE;
+      const sobra = espacoDoConsole() - palcoMinimo() + alturaBarraConsole();
+      h = sobra >= ALTURA_MIN_CONSOLE ? Math.min(ALTURA_PADRAO_CONSOLE, sobra) : ALTURA_MIN_CONSOLE;
     }
     definirAlturaConsole(h);
     abrirConsole(prefConsole.aberto !== false, false);
@@ -2115,14 +2149,15 @@
     p.dataset.aberto = String(aberto);
     $("#btnAnalisador").setAttribute("aria-expanded", String(aberto));
     try { localStorage.setItem(CHAVE_ANALISADOR, aberto ? "1" : "0"); } catch (e) { /* sem armazenamento */ }
+    aplicarJanelas();
     if (aberto) atualizarAnalisador(true);
   }
   function alternarAnalisador() {
     const aberto = painel("pAnalisador")?.dataset.aberto !== "true";
     abrirAnalisador(aberto);
-    // No celular e no médio o painel fica dentro de Batalha: a tecla abre o lugar dele.
+    // No celular o painel fica dentro de Batalha: a tecla abre o lugar dele. Na coluna, reabre a janela.
     if (aberto && modo === "estreito" && folhaAtual !== "batalha") abrirFolha("batalha");
-    if (aberto && modo === "medio" && abaMedia !== "batalha") mostrarAbaMedia("batalha");
+    if (aberto && modo !== "estreito" && janelaFechada("pAnalisador")) fecharJanela("pAnalisador", false);
   }
   // Só os números se redesenham (4 vezes por segundo, com o relógio); o botão Zerar fica fixo no HTML,
   // para o clique não se perder entre o mousedown e o mouseup.
@@ -2367,13 +2402,7 @@
   // ------------------------------------------------------------------
   // Layout responsivo: distribui os painéis (largo / médio / estreito)
   // ------------------------------------------------------------------
-  let modo = null, abaMedia = "mochila", folhaAtual = null;
-  const ABAS_MEDIO = {
-    personagem: { rotulo: "Personagem", glifo: "ui_personagem", paineis: ["pPersonagem"] },
-    // Equipamento junto da mochila: dá para arrastar de um para o outro.
-    mochila: { rotulo: "Mochila", glifo: "ui_mochila", paineis: ["pEquip", "pMochila", "pBolsa"] },
-    batalha: { rotulo: "Batalha", glifo: "ui_espadas", paineis: ["pAnalisador", "pBatalha"] },
-  };
+  let modo = null, folhaAtual = null;
   const FOLHAS = {
     mochila: { titulo: "Mochila e bolsa", paineis: ["pEquip", "pMochila", "pBolsa"] },
     equip: { titulo: "Personagem", paineis: ["pPersonagem", "pEquip"] },
@@ -2383,68 +2412,174 @@
     // O console (conversa e registro): no largo e no médio ele fica preso embaixo do mundo.
     registro: { titulo: "Conversa e registro", paineis: ["pRegistro"] },
   };
-  const calcModo = () => (mm("(min-width: 1280px)") ? "largo" : mm("(max-width: 760px)") ? "estreito" : "medio");
-  // Largo em tela baixa (até 760 px de altura, ex.: 1280×720): o minimapa vai
-  // para cima do mundo, como no médio, e a coluna direita fica com
-  // Personagem, Equipamento e Batalha inteiros.
-  const TELA_BAIXA = "(max-height: 760px)";
+  // Largo (a partir de 1024 px) e médio (761 a 1023 px) têm a MESMA estrutura: o mundo e uma coluna de
+  // janelinhas; só a largura da coluna muda (CSS). Estreito (até 760 px) é o celular.
+  const calcModo = () => (mm("(max-width: 760px)") ? "estreito" : mm("(min-width: 1024px)") ? "largo" : "medio");
   let chaveLayout = null;
   const painel = (id) => document.getElementById(id);
 
+  // Janelinhas da coluna, de cima para baixo. Cada uma minimiza (fica só a barra de título) e fecha; a
+  // faixa de botões no topo da coluna reabre. O estado fica neste navegador. Três delas têm dono próprio
+  // e aqui só se LÊ o estado dele: o Mapa é body.mapa-oculto (tecla M), Mochila e Bolsa juntas são
+  // body.hideBags (tecla I) e o recolhido da Caçada é o do analisador (tecla X).
+  const JANELAS = [
+    { id: "pMapa", rotulo: "Mapa", glifo: "ui_rosa", tecla: "M" },
+    { id: "pPersonagem", rotulo: "Estado", glifo: "ui_coracao" },
+    { id: "pEquip", rotulo: "Equipamento", glifo: "ui_escudo_bloq" },
+    { id: "pBatalha", rotulo: "Batalha", glifo: "ui_espadas" },
+    { id: "pMochila", rotulo: "Mochila", glifo: "ui_mochila", tecla: "I" },
+    { id: "pBolsa", rotulo: "Bolsa", glifo: "ui_bolsa", tecla: "I" },
+    { id: "pMissao", rotulo: "Missão", glifo: "ui_pergaminho" },
+    { id: "pAnalisador", rotulo: "Caçada", glifo: "ui_ampulheta", tecla: "X" },
+  ];
+  const BOLSAS = ["pMochila", "pBolsa"];
+  const CHAVE_JANELAS = "jornada_janelas";
+  let prefJanelas = {};
+  try { prefJanelas = JSON.parse(localStorage.getItem(CHAVE_JANELAS) || "{}") || {}; } catch (e) { prefJanelas = {}; }
+  const prefJanela = (id) => (prefJanelas[id] && typeof prefJanelas[id] === "object" ? prefJanelas[id] : (prefJanelas[id] = {}));
+  function salvarJanelas() {
+    if (modo && modo !== "estreito") {
+      prefJanelas.mapaOculto = document.body.classList.contains("mapa-oculto");
+      prefJanelas.bolsasOcultas = document.body.classList.contains("hideBags");
+    }
+    try { localStorage.setItem(CHAVE_JANELAS, JSON.stringify(prefJanelas)); } catch (e) { /* sem armazenamento */ }
+  }
+  function janelaFechada(id) {
+    if (id === "pMapa") return document.body.classList.contains("mapa-oculto");
+    if (BOLSAS.includes(id) && document.body.classList.contains("hideBags")) return true;
+    return !!prefJanela(id).fechada;
+  }
+  const janelaMinimizada = (id) => (id === "pAnalisador" ? painel(id)?.dataset.aberto === "false" : !!prefJanela(id).min);
+  // Mudanças em body.hideBags feitas AQUI não passam pela regra da tecla I (ver observarMochila).
+  let bolsasPelaJanela = false;
+  function definirBolsasOcultas(ocultas) {
+    if (document.body.classList.contains("hideBags") === ocultas) return;
+    bolsasPelaJanela = true;
+    document.body.classList.toggle("hideBags", ocultas);
+  }
+  function fecharJanela(id, fechada) {
+    if (id === "pMapa") {
+      if (janelaFechada(id) !== fechada) alternarMinimapa();
+    } else if (BOLSAS.includes(id)) {
+      const outra = BOLSAS.find((b) => b !== id);
+      const outraFechada = janelaFechada(outra);
+      if (fechada && outraFechada) {
+        // as duas fechadas = "bolsas ocultas": a tecla I traz as duas de volta
+        prefJanela(id).fechada = prefJanela(outra).fechada = false;
+        definirBolsasOcultas(true);
+      } else {
+        prefJanela(id).fechada = fechada;
+        prefJanela(outra).fechada = outraFechada;
+        definirBolsasOcultas(false);
+      }
+    } else prefJanela(id).fechada = fechada;
+    aplicarJanelas();
+    salvarJanelas();
+  }
+  function minimizarJanela(id, min) {
+    if (id === "pAnalisador") { abrirAnalisador(!min); return; }
+    prefJanela(id).min = min;
+    aplicarJanelas();
+    salvarJanelas();
+  }
+  // Botões de cada barra de título (criados uma vez; fora da coluna o CSS os esconde).
+  function criarBotoesDeJanela() {
+    for (const j of JANELAS) {
+      const cab = $(".painel-cab", painel(j.id));
+      if (!cab || $(".jan-btns", cab)) continue;
+      const caixa = document.createElement("span");
+      caixa.className = "jan-btns";
+      caixa.innerHTML = `<button type="button" class="jan-btn jan-min" data-jan-min="${j.id}"></button><button type="button" class="jan-btn jan-fechar" data-jan-fechar="${j.id}" aria-label="Fechar a janela ${j.rotulo}" title="Fechar${j.tecla && j.tecla !== "X" ? ` (${j.tecla})` : ""}"></button>`;
+      caixa.addEventListener("click", (e) => {
+        const b = e.target.closest("button");
+        if (!b) return;
+        e.stopPropagation();
+        if (b.dataset.janMin) minimizarJanela(j.id, !janelaMinimizada(j.id));
+        else fecharJanela(j.id, true);
+      });
+      cab.appendChild(caixa);
+    }
+  }
+  let faixaJanelas = null;
+  function botoesDaColuna() {
+    if (faixaJanelas) return faixaJanelas;
+    faixaJanelas = document.createElement("div");
+    faixaJanelas.className = "col-botoes";
+    faixaJanelas.setAttribute("role", "toolbar");
+    faixaJanelas.setAttribute("aria-label", "Janelas");
+    faixaJanelas.innerHTML = JANELAS.map((j) => `<button type="button" data-janela="${j.id}" aria-pressed="true" aria-label="Janela ${j.rotulo}">${imgGlifo(j.glifo, "px")}</button>`).join("");
+    faixaJanelas.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-janela]");
+      if (b) fecharJanela(b.dataset.janela, !janelaFechada(b.dataset.janela));
+    });
+    return faixaJanelas;
+  }
+  // Põe o estado nas janelas e nos botões. No celular os atributos saem (a folha mostra tudo aberto).
+  function aplicarJanelas() {
+    const naColuna = !!modo && modo !== "estreito";
+    for (const j of JANELAS) {
+      const el = painel(j.id);
+      if (!el) continue;
+      const fechada = janelaFechada(j.id), min = janelaMinimizada(j.id);
+      if (naColuna && j.id !== "pAnalisador" && min) el.dataset.min = "true"; else delete el.dataset.min;
+      if (naColuna && prefJanela(j.id).fechada && j.id !== "pMapa") el.dataset.fechada = "true"; else delete el.dataset.fechada;
+      const bMin = $(`[data-jan-min="${j.id}"]`);
+      if (bMin) {
+        const rot = `${min ? "Restaurar" : "Minimizar"} a janela ${j.rotulo}`;
+        bMin.setAttribute("aria-expanded", String(!min));
+        bMin.setAttribute("aria-label", rot);
+        bMin.title = min ? "Restaurar" : "Minimizar";
+      }
+      const b = faixaJanelas && $(`[data-janela="${j.id}"]`, faixaJanelas);
+      if (b) {
+        b.setAttribute("aria-pressed", String(!fechada));
+        b.title = `${j.rotulo}${j.tecla ? ` (${j.tecla})` : ""}: ${fechada ? "abrir" : "fechar"}`;
+      }
+    }
+    const pp = painel("pPersonagem"), bAtr = $("#btnAtributos");
+    if (pp && bAtr) {
+      const abertos = !!prefJanelas.atributos;
+      if (naColuna) pp.dataset.atributos = String(abertos); else delete pp.dataset.atributos;
+      bAtr.setAttribute("aria-expanded", String(abertos));
+    }
+  }
+
   function montar() {
     const novo = calcModo();
-    const baixa = novo === "largo" && mm(TELA_BAIXA);
-    const chave = `${novo}${baixa ? ":baixa" : ""}`;
-    if (chave === chaveLayout) return;
-    chaveLayout = chave;
+    if (novo === chaveLayout) return;
+    const primeira = chaveLayout === null;
+    chaveLayout = novo;
     modo = novo;
-    document.body.classList.toggle("mapa-sobre-mundo", baixa);
     const dep = $("#deposito");
     for (const id of ["pMissao", "pMochila", "pBolsa", "pAnalisador", "pRegistro", "pMapa", "pPersonagem", "pEquip", "pBatalha"]) dep.appendChild(painel(id));
     $("#colEsq").innerHTML = "";
     $("#colDir").innerHTML = "";
     fecharFolha();
+    criarBotoesDeJanela();
     const moldura = $("#mapaMoldura");
-    if (modo === "largo") {
-      for (const id of ["pMissao", "pMochila", "pBolsa", "pAnalisador"]) $("#colEsq").appendChild(painel(id));
-      for (const id of [...(baixa ? [] : ["pMapa"]), "pPersonagem", "pEquip", "pBatalha"]) $("#colDir").appendChild(painel(id));
-      (baixa ? $("#mapaSobre") : $("#mapaCasa")).appendChild(moldura);
-      $("#mundo").appendChild(painel("pRegistro"));
-    } else if (modo === "medio") {
-      $("#colDir").appendChild(painel("pMissao"));
-      const nav = document.createElement("div");
-      nav.className = "abas";
-      nav.setAttribute("role", "tablist");
-      nav.setAttribute("aria-label", "Painéis");
-      nav.innerHTML = Object.entries(ABAS_MEDIO).map(([k, a]) =>
-        `<button type="button" class="aba" role="tab" id="aba-${k}" data-aba="${k}" aria-controls="painelAba" aria-selected="${k === abaMedia}" title="${a.rotulo}">${imgGlifo(a.glifo)}<span>${a.rotulo}</span></button>`).join("");
-      $("#colDir").appendChild(nav);
-      const caixa = document.createElement("div");
-      caixa.className = "painel-aba";
-      caixa.id = "painelAba";
-      caixa.setAttribute("role", "tabpanel");
-      $("#colDir").appendChild(caixa);
-      mostrarAbaMedia(abaMedia);
-      $("#mapaSobre").appendChild(moldura);
+    if (modo !== "estreito") {
+      // O que estava guardado (mapa e bolsas ocultos) volta só aqui: no celular essas classes têm outro uso.
+      if (primeira) {
+        if (prefJanelas.mapaOculto) document.body.classList.add("mapa-oculto");
+        if (prefJanelas.bolsasOcultas) document.body.classList.add("hideBags");
+      }
+      const col = $("#colDir");
+      col.appendChild(botoesDaColuna());
+      for (const j of JANELAS) col.appendChild(painel(j.id));
+      $("#mapaCasa").appendChild(moldura);
+      // habilidades e atalhos: do rodapé para a faixa de ação, entre o palco e o console
+      $("#faixaAcao").append($("#barraHab"), $("#atalhos"), $("#atalhos-dica"));
       $("#mundo").appendChild(painel("pRegistro"));
     } else {
+      $(".atalhos-faixa").append($("#atalhos-dica"), $("#barraHab"), $("#atalhos"));
       $("#mapaSobre").appendChild(moldura);
     }
+    $("#tPersonagem").textContent = modo === "estreito" ? "PERSONAGEM" : "ESTADO";
+    aplicarJanelas();
     ajustarConsole();
     const visivel = modo === "estreito" ? document.body.classList.contains("mapa-visivel-cel") : !document.body.classList.contains("mapa-oculto");
     $("#btnMapa").setAttribute("aria-pressed", String(visivel));
     medirRodape();
-  }
-
-  function mostrarAbaMedia(k) {
-    abaMedia = k;
-    const caixa = $("#painelAba");
-    if (!caixa) return;
-    const dep = $("#deposito");
-    for (const el of Array.from(caixa.children)) dep.appendChild(el);
-    for (const id of ABAS_MEDIO[k].paineis) caixa.appendChild(painel(id));
-    caixa.setAttribute("aria-labelledby", `aba-${k}`);
-    for (const b of $$("[data-aba]")) b.setAttribute("aria-selected", String(b.dataset.aba === k));
   }
 
   function abrirFolha(k) {
@@ -2491,15 +2626,22 @@
     for (const sel of ["#hud", "#missaoLinha", "#mapaSobre"]) if ($(sel)) ro.observe($(sel));
   }
 
-  // A tecla I do MUNDO alterna body.hideBags; no médio/estreito isso abre a mochila.
+  // A tecla I do MUNDO alterna body.hideBags e a M, body.mapa-oculto. Na coluna (largo e médio) isso
+  // fecha e reabre as janelas Mochila e Bolsa (a tecla I sempre traz as DUAS de volta) e a do Mapa; no
+  // celular, a tecla I abre a folha da mochila.
   function observarMochila() {
-    let antes = document.body.classList.contains("hideBags");
+    let antes = document.body.classList.contains("hideBags"), mapaAntes = document.body.classList.contains("mapa-oculto");
     new MutationObserver(() => {
-      const agora = document.body.classList.contains("hideBags");
-      if (agora === antes) return;
+      const agora = document.body.classList.contains("hideBags"), mapaAgora = document.body.classList.contains("mapa-oculto");
+      if (agora === antes && mapaAgora === mapaAntes) return;
+      const mudouBolsas = agora !== antes, pelaJanela = bolsasPelaJanela;
       antes = agora;
-      if (modo === "medio") mostrarAbaMedia(abaMedia === "mochila" ? "personagem" : "mochila");
-      else if (modo === "estreito") abrirFolha("mochila");
+      mapaAntes = mapaAgora;
+      bolsasPelaJanela = false;
+      if (modo === "estreito") { if (mudouBolsas) abrirFolha("mochila"); return; }
+      if (mudouBolsas && !pelaJanela && !agora) for (const id of BOLSAS) prefJanela(id).fechada = false;
+      aplicarJanelas();
+      salvarJanelas();
     }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   }
 
@@ -2888,10 +3030,21 @@
       const b = $("#missaoLinha");
       b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"));
     });
-    // Abas do médio e folhas do celular
+    // Estado: atributos recolhíveis (só na coluna)
+    $("#btnAtributos")?.addEventListener("click", () => {
+      prefJanelas.atributos = !prefJanelas.atributos;
+      aplicarJanelas();
+      salvarJanelas();
+    });
+    // Mapa: zoom e centralizar (o MUNDO desenha; a interface só manda)
+    $(".mapa-ctl")?.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mapa]"), mm2 = window.Jogo?.minimapa;
+      if (!b || !mm2) return;
+      if (b.dataset.mapa === "centro") mm2.centralizar?.();
+      else mm2.zoom?.(b.dataset.mapa === "mais" ? 1 : -1);
+    });
+    // Folhas do celular
     document.addEventListener("click", (e) => {
-      const aba = e.target.closest("[data-aba]");
-      if (aba) mostrarAbaMedia(aba.dataset.aba);
       const folha = e.target.closest("[data-folha]");
       if (folha) abrirFolha(folha.dataset.folha);
       if (e.target.closest("[data-abrir-cacadas]")) abrirMural(null);
@@ -3093,7 +3246,7 @@
     observarFolha();
     abrirAnalisador(analisadorAberto());
     const re = () => { montar(); medirRodape(); };
-    for (const q of ["(min-width: 1280px)", "(max-width: 760px)", TELA_BAIXA]) {
+    for (const q of ["(min-width: 1024px)", "(max-width: 760px)"]) {
       const mq = matchMedia(q);
       (mq.addEventListener ? mq.addEventListener("change", re) : mq.addListener(re));
     }

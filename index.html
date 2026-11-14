@@ -238,10 +238,6 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 
 /* lista de batalha */
 #pBatalha{min-height:110px}
-/* na coluna direita, a Batalha ocupa a altura que sobra e rola por dentro:
-   a moldura de baixo aparece sempre, sem rolar a coluna */
-#colDir #pBatalha{flex:1 1 0;min-height:88px;display:flex;flex-direction:column}
-#colDir #linhasBatalha{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent}
 #linhasBatalha{display:flex;flex-direction:column}
 .linha-inimigo{display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 8px 4px 5px;border:0;border-left:3px solid transparent;border-bottom:1px solid #0005;background:none;color:var(--texto);text-align:left;width:100%;font:inherit;cursor:pointer}
 .linha-inimigo:hover{background:#ffe9a80d}
@@ -732,18 +728,20 @@ body.dialogo-aberto #toque{visibility:hidden}
 #folha{display:none}
 
 /* ======================================================================
-   MÉDIO: 761–1279 px — mundo + coluna direita com abas
+   Até 1279 px: a barra do topo não cabe inteira (sai o subtítulo e o rótulo "salvo"; o selo verde fica).
+   O layout do largo e do médio (≥761 px) está no fim da folha, em "CLIENTE".
    ====================================================================== */
 @media (max-width:1279px){
- :root{--slot:36px}
- #layout{grid-template-columns:minmax(0,1fr) 288px}
- #colEsq{display:none}
- #colDir{order:2}
- /* a barra do topo não cabe inteira: sai o subtítulo e o rótulo "salvo" (o selo verde fica) */
  .marca-sub{display:none}
  .salvo{font-size:0;gap:0}
  #topo{gap:8px}
  .btn-icone{padding:0 8px;white-space:nowrap}
+}
+@media (max-width:760px){
+ :root{--slot:36px}
+ #layout{grid-template-columns:minmax(0,1fr) 288px}
+ #colEsq{display:none}
+ #colDir{order:2}
  #atalhos-dica{max-width:200px}
 }
 /* médio estreito: os rótulos não cabem e se sobrepunham; os botões ficam só com o ícone (têm aria-label/title) */
@@ -751,9 +749,9 @@ body.dialogo-aberto #toque{visibility:hidden}
  .btn-icone .rotulo{display:none}
  .btn-icone{min-width:34px;justify-content:center}
 }
-@media (max-width:1279px){
+@media (max-width:760px){
  .slot img{width:32px;height:32px}
- /* HUD de vida/fé/XP sobre o mundo (o painel Personagem fica numa aba) */
+ /* HUD de vida/fé/XP sobre o mundo (o painel Personagem fica numa folha) */
  #hud{display:block;position:absolute;left:8px;top:8px;z-index:var(--z-hud);width:184px;padding:6px 8px;background:#2c1a12d9;border:2px solid var(--bronze-700);box-shadow:0 2px 0 #0008}
  #hud .linha-barra{margin:0 0 4px;gap:5px}
  #hud .linha-barra:last-of-type{margin-bottom:0}
@@ -871,8 +869,200 @@ body.dialogo-aberto #toque{visibility:hidden}
 @media (max-width:760px) and (pointer:fine){ #dpad{display:none} }
 body.toque-forcado #dpad{display:block}
 
-/* largo: oculta mochila/bolsa com a tecla I */
-@media (min-width:1280px){ body.hideBags #pMochila, body.hideBags #pBolsa{display:none} }
+/* ======================================================================
+   CLIENTE (largo ≥1024 px e médio 761–1023 px): palco grande, UMA coluna de janelinhas à direita,
+   faixa de ação e console presos embaixo do mundo, sem rodapé. O celular (≤760 px) não passa por aqui:
+   o que é novo nasce oculto e só aparece dentro deste bloco.
+   ====================================================================== */
+#faixaAcao,.jan-btns,.col-botoes,.mapa-ctl,.atr-alternar{display:none}
+#folha #quadroAlvo{display:none}
+@media (min-width:761px){
+ :root{--rodape:0px;--slot-atalho:40px;--col:248px}
+ #app{grid-template-rows:32px minmax(0,1fr)}
+ #rodape{display:none}
+ /* topo de 32 px */
+ #topo{gap:6px;padding:0 8px}
+ #topo .btn-icone{height:24px;padding:0 8px}
+ #topo .moedas{height:24px;padding:0 8px;font-size:var(--fs-14)}
+ .marca-nome{font-size:var(--fs-14)}
+ .marca-sub,.salvo{font-size:var(--fs-13)}
+ #layout{grid-template-columns:minmax(0,1fr) var(--col);gap:6px;padding:6px}
+ #colEsq{display:none}
+
+ /* ----- mundo: moldura de 4 px; palco, faixa de ação e console ----- */
+ #mundo{position:relative;border-width:4px;border-image:var(--moldura-bronze) 8 / 4px round}
+ /* o nome da região é uma etiqueta sobre o canto do palco (não tira altura do mundo) */
+ .mundo-cab{position:absolute;left:6px;top:6px;z-index:var(--z-hud);height:auto;flex:none;display:block;max-width:44%;padding:4px 10px 4px 8px;pointer-events:none;
+  background:linear-gradient(90deg,#1c1210e6,#1c1210b3);border:1px solid #120a06;border-left:3px solid var(--bioma);box-shadow:0 2px 0 #0007,inset 0 1px 0 #ffe9a81f}
+ .mundo-cab::after,.cab-acoes{display:none}
+ #areaNome{font-size:var(--fs-13);letter-spacing:.1em}
+ #areaSub{margin-top:2px;font-size:var(--fs-12);line-height:1.15;color:var(--texto-mudo)}
+ /* faixa de ação: habilidades (1–8) e atalhos de itens (1–6), em espaços de 40 px */
+ #faixaAcao{flex:0 0 48px;display:grid;grid-template-columns:minmax(0,1fr) auto auto minmax(0,1fr);align-items:center;min-width:0;padding:0 6px;overflow:hidden;
+  background:var(--tex-couro),linear-gradient(var(--couro-600),var(--couro-800));background-blend-mode:soft-light,normal;border-top:2px solid #120a06;box-shadow:inset 0 1px 0 #ffe9a82e}
+ #faixaAcao .barra-hab{grid-column:2;margin-right:10px}
+ #faixaAcao #atalhos{grid-column:3}
+ /* a dica dos atalhos cabe ao lado deles só no largo */
+ #faixaAcao #atalhos-dica{grid-column:4;display:none;max-width:300px;margin:0 0 0 12px;font:italic 500 var(--fs-13)/1.25 var(--f-texto);color:var(--texto-mudo);text-align:left}
+ #faixaAcao .barra-hab,#faixaAcao #atalhos{gap:2px;padding:2px;border:1px solid #120a06;background:#120a06;box-shadow:0 1px 0 #ffe9a826}
+ #faixaAcao .barra-hab[hidden]{display:none}
+ #faixaAcao .hab,#faixaAcao .atalho{border-width:1px;border-color:var(--bronze-700);box-shadow:inset 1px 1px 0 #000a,inset -1px -1px 0 #ffe9a814}
+ #faixaAcao .hab:hover,#faixaAcao .atalho:hover{border-color:var(--ouro-300)}
+ #faixaAcao .tecla-n{left:0;top:0;min-width:13px;height:13px;font-size:11px;border-width:0 1px 1px 0}
+ #faixaAcao .atalho .qtd{right:2px;font-size:var(--fs-13)}
+ /* console: 132 px por padrão (112–168 pela alça); recolhido, só a barra (30 px) */
+ #mundo>.console{height:var(--altura-console,132px);border-top:2px solid #120a06;box-shadow:inset 0 1px 0 #ffe9a81f}
+ #mundo>.console[data-aberto="false"],#mundo>.console.sobre{height:auto}
+ #mundo .console-barra{min-height:28px;height:28px;gap:6px;padding:0 3px}
+ #mundo .console-abas{align-self:flex-end;gap:1px}
+ #mundo .console-abas button{height:24px;padding:0 12px;border-bottom:0;border-radius:2px 2px 0 0;font-size:var(--fs-13)}
+ #mundo .console-entrada{gap:4px}
+ #mundo .console-entrada input{height:22px;border-width:1px;font-size:var(--fs-13)}
+ #mundo .console-enviar{min-height:22px;height:22px;padding:0 10px;border-width:1px;font-size:var(--fs-13);box-shadow:var(--relevo)}
+ #mundo .console-recolher{width:26px;height:22px;border-width:1px}
+ #mundo .console-recolher .seta{border-width:5px;margin-top:5px}
+ #mundo .console-recolher[aria-expanded="false"] .seta{margin:-5px 0 0}
+ #mundo .console-lista{padding:3px 8px 2px;line-height:1.32}
+ /* tela baixa: as mensagens ficam sobre a borda de baixo do PALCO (acima da faixa de ação, de 48 px) */
+ #mundo .console.sobre .console-lista{bottom:calc(100% + 48px);height:calc(var(--altura-console) - 30px)}
+ #mundo .console.sobre .console-alca{top:calc(-24px - var(--altura-console))}
+
+ /* ----- coluna de janelinhas ----- */
+ #colDir{gap:4px;padding-right:0}
+ /* faixa de botões: um por janela, para fechar e reabrir */
+ .col-botoes{position:sticky;top:0;z-index:3;flex:0 0 auto;display:flex;gap:1px;padding:2px;border:1px solid #120a06;background:#120a06;box-shadow:0 2px 0 #0008}
+ .col-botoes button{flex:1 1 0;min-width:0;height:22px;display:grid;place-items:center;padding:0;border:1px solid var(--bronze-700);border-radius:0;
+  background:linear-gradient(var(--couro-700),var(--couro-800));box-shadow:inset 0 1px 0 #ffe9a81f}
+ .col-botoes button img{width:16px;height:16px;opacity:.45;filter:grayscale(.6)}
+ .col-botoes button:hover{border-color:var(--ouro-300)}
+ .col-botoes button:hover img{opacity:.9}
+ .col-botoes button[aria-pressed="true"]{background:linear-gradient(var(--couro-500),var(--couro-600));border-color:var(--bronze-500);box-shadow:inset 0 -2px 0 var(--ouro-300),inset 0 1px 0 #ffe9a833}
+ .col-botoes button[aria-pressed="true"] img{opacity:1;filter:none}
+ /* janela: moldura de 4 px, barra de título de 20 px, corpo */
+ #colDir>section{flex:0 0 auto;min-width:0;padding:0;border:4px solid var(--bronze-600);border-image:var(--moldura-bronze) 8 / 4px round;box-shadow:0 2px 0 #0009}
+ #colDir>section.perg{background:linear-gradient(#fbf1dc66,#fbf1dc66),var(--tex-perg),var(--perg-200);background-blend-mode:normal,multiply,normal}
+ #colDir>section[data-fechada="true"]{display:none}
+ #colDir>section[data-min="true"]>:not(.painel-cab){display:none}
+ body.hideBags #colDir>#pMochila,body.hideBags #colDir>#pBolsa{display:none}
+ #colDir .painel-cab{height:20px;gap:5px;margin:0;padding:0 2px 0 4px;background:linear-gradient(#74462c,#4a2c1c 55%,var(--couro-700));border-bottom:1px solid #120a06;box-shadow:inset 0 1px 0 #ffe9a838}
+ #colDir .painel-cab h2{flex:1 1 auto;padding:0;font:700 var(--fs-12)/20px var(--f-titulo);letter-spacing:.1em;color:var(--ouro-300);text-shadow:1px 1px 0 #120a06}
+ #colDir .painel-cab .extra{font-size:var(--fs-12);color:var(--texto-2);text-shadow:1px 1px 0 #120a06}
+ #colDir .painel-cab .extra img{vertical-align:-3px}
+ #colDir .painel-cab .seta{display:none}
+ #colDir .painel-cab button.recolher{gap:5px;min-width:0}
+ #colDir .painel-corpo{padding:4px}
+ .jan-btns{flex:none;gap:2px;margin-left:2px}
+ #colDir .painel-cab .extra{margin-left:0}
+ #colDir .jan-btns{display:flex}
+ .jan-btn{position:relative;flex:none;width:16px;height:16px;padding:0;border:1px solid #120a06;border-radius:0;background:linear-gradient(var(--bronze-500),var(--bronze-700));box-shadow:inset 1px 1px 0 #ffe9a866,inset -1px -1px 0 #0006}
+ .jan-btn:hover{background:linear-gradient(var(--bronze-400),var(--bronze-600))}
+ .jan-btn:active{background:var(--bronze-700);box-shadow:inset 1px 1px 0 #0008}
+ .jan-btn::before{content:"";position:absolute;left:3px;top:3px;width:8px;height:8px}
+ .jan-min::before{background:linear-gradient(#fff6e0,#fff6e0) 0 6px/8px 2px no-repeat}
+ [data-min="true"] .jan-min::before,[data-aberto="false"] .jan-min::before{background:linear-gradient(#fff6e0,#fff6e0) 0 0/8px 2px no-repeat,linear-gradient(#fff6e0,#fff6e0) 0 7px/8px 1px no-repeat,linear-gradient(#fff6e0,#fff6e0) 0 0/1px 8px no-repeat,linear-gradient(#fff6e0,#fff6e0) 7px 0/1px 8px no-repeat}
+ .jan-fechar::before{--q:linear-gradient(#fff6e0,#fff6e0);left:2px;top:2px;width:10px;height:10px;background:var(--q) 0 0/2px 2px no-repeat,var(--q) 2px 2px/2px 2px no-repeat,var(--q) 4px 4px/2px 2px no-repeat,var(--q) 6px 6px/2px 2px no-repeat,var(--q) 8px 8px/2px 2px no-repeat,var(--q) 8px 0/2px 2px no-repeat,var(--q) 6px 2px/2px 2px no-repeat,var(--q) 2px 6px/2px 2px no-repeat,var(--q) 0 8px/2px 2px no-repeat}
+ .jan-fechar:hover{background:linear-gradient(var(--vida-2),var(--vida-1))}
+
+ /* Mapa: 176×132 + coluna de 40 px (rosa, zoom, centralizar) e a coordenada embaixo */
+ #colDir #pMapa .painel-corpo{display:block;padding:4px}
+ #pMapa .mapa-moldura{display:grid;grid-template-columns:176px 40px;grid-template-rows:40px minmax(0,1fr);gap:4px;justify-content:center;line-height:1}
+ #pMapa #miniMap{grid-column:1;grid-row:1/3;width:176px;height:132px;border-width:1px;box-shadow:0 0 0 1px var(--bronze-700),0 0 0 2px #120a06;margin:2px}
+ #pMapa .mapa-margem{display:contents}
+ #pMapa .mapa-moldura .rosa{grid-column:2;grid-row:1;width:40px;height:40px;padding:3px;background:radial-gradient(circle at 40% 35%,#4a2e1f,#1a0f0a);border:1px solid #120a06;box-shadow:inset 0 0 0 1px var(--bronze-700)}
+ #pMapa .mapa-ctl{grid-column:2;grid-row:2;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:24px;gap:2px;align-content:start;padding-top:2px}
+ .mapa-ctl button{min-width:0;padding:0;border:1px solid #120a06;border-radius:0;background:linear-gradient(var(--bronze-600),var(--bronze-700));box-shadow:inset 1px 1px 0 #ffe9a855,inset -1px -1px 0 #0006;font:700 var(--fs-16)/1 var(--f-ui);color:#fff6e0;text-shadow:1px 1px 0 #120a06}
+ .mapa-ctl button:hover{background:linear-gradient(var(--bronze-400),var(--bronze-600))}
+ .mapa-ctl button:active{transform:translateY(1px)}
+ .mapa-ctl button[data-mapa="centro"]{grid-column:1/3;font-size:var(--fs-12);letter-spacing:.02em}
+ /* a coordenada é uma etiqueta no canto de baixo do mapa (não gasta uma linha da coluna) */
+ #pMapa .mapa-moldura .coord{grid-column:1;grid-row:2;align-self:end;justify-self:end;z-index:1;min-width:0;margin:0 3px 3px 0;padding:1px 4px;border:1px solid #120a06;background:#1c1210d9;font-size:var(--fs-12);line-height:13px;color:#fff6e0;text-align:center;pointer-events:none}
+
+ /* Estado: retrato, barras de 14 px, alvo e atributos recolhíveis */
+ #colDir .ficha{gap:5px;align-items:stretch}
+ #colDir .ficha .retrato{width:50px;height:50px;outline-width:1px;outline-offset:-3px;box-shadow:inset 0 0 0 3px var(--bronze-700)}
+ #colDir .ficha-nome{display:none}
+ #colDir .ficha-dados{display:flex;flex-direction:column;gap:4px}
+ #colDir .ficha-dados .linha-barra{margin:0;gap:4px}
+ #colDir .barra{height:14px;border-width:1px;border-color:#120a06;box-shadow:0 0 0 1px var(--bronze-700)}
+ #colDir .barra>b{font-size:var(--fs-12)}
+ #colDir .status-chips{margin-top:0}
+ #colDir .quadro-alvo{visibility:visible;height:30px;margin-top:5px;gap:6px;padding:0 5px 0 3px;border:1px solid #120a06;background:#120a0699;box-shadow:inset 1px 1px 0 #0008}
+ #colDir .quadro-alvo:not(.ativo)::before{content:"Sem alvo · clique num inimigo";font:italic 500 var(--fs-13)/1 var(--f-texto);color:var(--texto-mudo);padding-left:3px}
+ #colDir .quadro-alvo.ativo{border-color:#6a1c1c;background:#2a1010cc}
+ #colDir .quadro-alvo .mini{flex:none;width:36px;height:26px}
+ #colDir .quadro-alvo .alvo-info{flex:1;gap:2px}
+ #colDir .quadro-alvo strong{max-width:none}
+ #colDir .quadro-alvo .alvo-barra,#colDir .quadro-alvo .alvo-recarga{width:100%}
+ #colDir .atr-alternar{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;width:100%;height:18px;margin-top:5px;padding:0 5px;cursor:pointer;
+  border:1px solid #120a06;background:linear-gradient(var(--couro-600),var(--couro-700));box-shadow:inset 0 1px 0 #ffe9a826;font:700 var(--fs-12)/1 var(--f-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--texto-2)}
+ #colDir .atr-alternar:hover{color:#fff6e0;border-color:var(--bronze-500)}
+ #colDir .atr-alternar:focus-visible{outline:2px solid var(--foco)}
+ #colDir .atr-alternar::after{content:"";width:0;height:0;border:4px solid transparent;border-top-color:var(--ouro-300);margin-top:4px}
+ #colDir .atr-alternar[aria-expanded="false"]::after{border-top-color:transparent;border-left-color:var(--ouro-300);margin:0 -4px 0 0}
+ #colDir #pPersonagem[data-atributos="false"] .habilidades,#colDir #pPersonagem[data-atributos="false"] .atributos{display:none}
+ #colDir .habilidades{margin-top:5px;font-size:var(--fs-12)}
+ #colDir .atributos{margin-top:4px;padding-top:4px;gap:0 10px}
+ #colDir .atributos div,#colDir .atributos dt{font-size:var(--fs-13);line-height:1.3}
+
+ /* Equipamento (o boneco em cruz é do pacote seguinte) */
+ #colDir #gradeEquip{grid-template-columns:52px 92px 52px;gap:4px 6px;padding:0}
+ #colDir .equip{gap:2px;padding:2px 0 1px;border-width:1px 0}
+ #colDir .equip .slot{width:40px;height:40px}
+ #colDir .equip-txt small{display:none}
+ #colDir .equip-txt em{font-size:var(--fs-12);line-height:12px}
+ #colDir .boneco-figura img{width:80px;height:96px;margin-top:2px}
+ #colDir .equip.e-armadura{padding-top:42px;gap:0}
+ /* espaço vazio diz o que cabe nele; cheio, o que o item dá */
+ #colDir .equip.vazio:not(.e-municao) .equip-txt small{display:block;font-size:var(--fs-12);line-height:12px;color:var(--texto-mudo)}
+ #colDir .equip.vazio:not(.e-municao) .equip-txt em{display:none}
+ #colDir .equip.e-armadura .equip-txt{margin-top:auto}
+
+ /* Batalha: linhas de 26 px (nome e número em cima, barra embaixo); 5 linhas e rola por dentro */
+ #colDir #pBatalha{min-height:0}
+ #colDir #linhasBatalha{max-height:130px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent}
+ #colDir .linha-inimigo{display:grid;grid-template-columns:36px minmax(0,1fr) auto;grid-template-rows:14px 4px;gap:2px 5px;align-content:center;height:26px;min-height:26px;padding:0 5px 0 0;border-left-width:2px}
+ #colDir .linha-inimigo .mini{grid-row:1/3;width:36px;height:24px;flex:none;align-self:center}
+ #colDir .linha-inimigo .mini img{max-width:26px;max-height:22px}
+ /* miniatura em px de arte inteiros: recortada ao corpo, cabeça (à direita) sempre à vista */
+ #colDir .linha-inimigo .mini,#colDir .quadro-alvo .mini{display:flex;justify-content:flex-end;align-items:center;overflow:hidden}
+ #colDir .mini img.mini-arte{flex:none;max-width:none;max-height:none}
+ #colDir .linha-inimigo .nome{grid-column:2;grid-row:1;font:700 var(--fs-13)/14px var(--f-ui);letter-spacing:.01em}
+ #colDir .linha-inimigo .nome>img,#colDir .linha-inimigo .marca-cacada img{width:12px;height:12px;flex:0 0 12px}
+ #colDir .linha-inimigo .vida{display:contents}
+ #colDir .linha-inimigo .mini-barra{grid-column:2/4;grid-row:2;width:auto;height:4px;border:0;box-shadow:0 0 0 1px #120a06}
+ #colDir .linha-inimigo .mini-barra i{box-shadow:none;background:linear-gradient(var(--vida-3),var(--vida-2))}
+ #colDir .linha-inimigo .vida b{grid-column:3;grid-row:1;font-size:var(--fs-12);line-height:14px;color:var(--texto-2)}
+ #colDir .marca-tier{font-size:10px;line-height:11px;padding:0 2px}
+ #colDir .vazio-txt{margin:0;padding:6px 6px;font-size:var(--fs-13)}
+
+ /* Mochila e Bolsa: 5 colunas de 40 px */
+ #colDir #pMochila .painel-corpo,#colDir #pBolsa .painel-corpo{padding:4px}
+ #colDir .grade{justify-content:center}
+ #colDir #pMochila .nota,#colDir #pBolsa .nota{display:none}
+ /* Missão e Caçada (pergaminho) */
+ #colDir #pMissao .painel-corpo,#colDir #pAnalisador .painel-corpo{padding:4px 6px 5px}
+ #colDir #pMissao .capitulo{font-size:var(--fs-13)}
+ #colDir #pMissao .objetivo{font-size:var(--fs-13);line-height:1.3}
+ #colDir .analise dt,#colDir .analise-pe p,#colDir .analise-proximo,#colDir .analise-nota{font-size:var(--fs-13);line-height:1.35}
+ #colDir .analise{line-height:1.35}
+}
+@media (min-width:761px) and (pointer:coarse){
+ /* no toque as linhas da Batalha têm a altura do dedo */
+ #colDir .linha-inimigo{height:40px;min-height:40px}
+ #colDir #linhasBatalha{max-height:200px}
+ .jan-btn{width:24px;height:18px}
+ .jan-btn::before{left:7px;top:4px}
+}
+/* médio: coluna de 232 px */
+@media (min-width:761px) and (max-width:1023px){
+ #areaSub{display:none}
+ #avisos{top:34px}
+ :root{--col:232px;--slot:38px}
+ #pMapa .mapa-moldura{grid-template-columns:164px 40px}
+ #pMapa #miniMap{width:164px;height:123px}
+}
+@media (min-width:761px) and (max-width:899px){ :root{--slot-atalho:32px} #faixaAcao .barra-hab{margin-right:6px} }
+@media (min-width:1280px){ #faixaAcao #atalhos-dica{display:block} }
 
 @media (prefers-reduced-motion:reduce){
  *,*::before,*::after{animation:none!important;transition:none!important}
@@ -905,7 +1095,6 @@ body.toque-forcado #dpad{display:block}
     <section id="mundo" aria-label="Mundo do jogo">
       <div class="mundo-cab">
         <div class="area-bloco"><strong id="areaNome">Canaã</strong><span id="areaSub"></span></div>
-        <div class="quadro-alvo" id="quadroAlvo" aria-live="polite"></div>
         <div class="cab-acoes"></div>
       </div>
       <div class="palco" id="palco">
@@ -936,6 +1125,8 @@ body.toque-forcado #dpad{display:block}
           </div>
         </div>
       </div>
+      <!-- faixa de ação (largo e médio): o interface.js traz para cá as habilidades e os atalhos do rodapé -->
+      <div id="faixaAcao" aria-label="Habilidades e atalhos"></div>
     </section>
 
     <aside class="coluna" id="colDir" aria-label="Personagem e combate"></aside>
@@ -1008,8 +1199,10 @@ body.toque-forcado #dpad{display:block}
   </section>
 
   <section class="painel" id="pMapa" aria-labelledby="tMapa">
-    <h2 class="sr" id="tMapa">Mapa</h2>
-    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><div class="mapa-margem"><img class="px rosa" data-glifo="ui_rosa" alt=""><span class="coord" id="mapaCoord" aria-label="Posição"></span></div></div></div>
+    <div class="painel-cab"><img class="px g16" data-glifo="ui_rosa" alt=""><h2 id="tMapa">MAPA</h2></div>
+    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><div class="mapa-margem"><img class="px rosa" data-glifo="ui_rosa" alt="">
+      <div class="mapa-ctl" role="group" aria-label="Zoom do mapa"><button type="button" data-mapa="mais" aria-label="Aproximar o mapa" title="Aproximar o mapa">+</button><button type="button" data-mapa="menos" aria-label="Afastar o mapa" title="Afastar o mapa">−</button><button type="button" data-mapa="centro" aria-label="Centralizar o mapa no viajante" title="Centralizar no viajante">centro</button></div>
+      <span class="coord" id="mapaCoord" aria-label="Posição"></span></div></div></div>
   </section>
 
   <section class="painel" id="pPersonagem" aria-labelledby="tPersonagem">
@@ -1025,6 +1218,8 @@ body.toque-forcado #dpad{display:block}
           <div class="status-chips" id="statusFicha" aria-live="polite"></div>
         </div>
       </div>
+      <div class="quadro-alvo" id="quadroAlvo" aria-live="polite"></div>
+      <button type="button" class="atr-alternar" id="btnAtributos" aria-expanded="false" aria-controls="atributos">Atributos</button>
       <p class="habilidades" id="habilidades"></p>
       <dl class="atributos" id="atributos"></dl>
     </div>
