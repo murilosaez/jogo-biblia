@@ -2596,6 +2596,7 @@
       ["Clique no chão", "Anda até lá (contorna obstáculos); num personagem ou saque, vai até ele"],
       ["Clique no minimapa", "Anda até aquele ponto, por longe que seja (a cruz de ouro marca o destino)"],
       ["Clique no inimigo", "Escolhe o alvo, vai até ele e ataca sozinho a cada 2 s"],
+      ["Janela Batalha", `As criaturas a até ${typeof REGRAS_BATALHA !== "undefined" ? REGRAS_BATALHA.raio : 8} casas, da mais perto para a mais longe; clique numa para escolher o alvo`],
       [k("Espaço"), "Ataque com o que está na mão da arma: golpe (também na diagonal) ou, com arco ou funda, tiro"],
       [k("R"), "Ataque à distância (arco com flechas ou funda na mão); ao lado do alvo, golpeia"],
       [k("H"), "Usar poção de vida"],
