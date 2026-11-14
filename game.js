@@ -985,10 +985,27 @@ class Cena extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBackgroundColor("#1c1210");
     cam.setBounds(-MOLDURA * TAM, -MOLDURA * TAM, (COLS + MOLDURA * 2) * TAM, (ROWS + MOLDURA * 2) * TAM);
-    cam.startFollow(this.jogador, true, 1, 1, 0, 16);
+    // A câmera segue um alvo em px inteiros de mundo e, a cada quadro, quem se move pelo mundo (personagens,
+    // barras, nomes, números) vai para px inteiros (pixelsInteiros): 1 px de arte = 1 px de mundo em qualquer
+    // zoom, sem meio pixel de arte entre o chão e quem anda.
+    this.alvoCamera = { x: Math.round(this.jogador.x), y: Math.round(this.jogador.y) };
+    cam.startFollow(this.alvoCamera, true, 1, 1, 0, 16);
     cam.setRoundPixels(true);
+    this.events.on("postupdate", this.pixelsInteiros, this);
+    this.events.once("shutdown", () => this.events.off("postupdate", this.pixelsInteiros, this));
     this.scale.on("resize", this.aoRedimensionar, this);
     this.aoRedimensionar();
+  }
+  // Depois do quadro (tweens e update): tudo o que está visível no mundo fica em px inteiros e a câmera vai junto.
+  pixelsInteiros() {
+    const lista = this.children.list;
+    for (let i = 0; i < lista.length; i++) {
+      const o = lista[i];
+      if (!o.visible || o.scrollFactorX !== 1) continue;
+      if (o.x !== Math.round(o.x)) o.x = Math.round(o.x);
+      if (o.y !== Math.round(o.y)) o.y = Math.round(o.y);
+    }
+    if (this.jogador && this.alvoCamera) { this.alvoCamera.x = this.jogador.x; this.alvoCamera.y = this.jogador.y; }
   }
   // Pixels da tela por pixel de arte (inteiro), para ver cerca de VISAO casas; o ajuste do jogador soma ou
   // tira 1 por vez. w e h em pixels do canvas (já multiplicados pelo devicePixelRatio).
@@ -2002,8 +2019,9 @@ class Cena extends Phaser.Scene {
       const dx = x - s.x, dy = y - s.y;
       const andando = Math.abs(dx) + Math.abs(dy) > 1;
       if (andando) {
-        s.x += dx * 0.2;
-        s.y += dy * 0.2;
+        // pelo menos 1 px por quadro (as posições do mundo ficam em px inteiros)
+        s.x += Math.abs(dx) > 1 ? Math.sign(dx) * Math.max(1, Math.round(Math.abs(dx) * 0.2)) : dx;
+        s.y += Math.abs(dy) > 1 ? Math.sign(dy) * Math.max(1, Math.round(Math.abs(dy) * 0.2)) : dy;
         if (Math.abs(dx) > 1) s.setFlipX(dx < 0);
       } else s.setPosition(x, y);
       s.setDepth(PROF.entidade + s.y);

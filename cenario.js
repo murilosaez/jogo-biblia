@@ -781,7 +781,7 @@
     egito: { capim: ["#3a4220", "#56602c", "#6f7a3a", "#8c9a4a", "#acb866"], arbusto: ["#202c16", "#384a24", "#506630", "#6c8240", "#8ca058"], pedra: ["#584c34", "#7e6e50", "#a2926e", "#c4b690", "#e0d4b0"], junco: ["#34481c", "#52702e", "#76983a"], cabeca: ["#8cac52", "#b8d074"] },
     marVermelho: { capim: ["#5a5034", "#78704a", "#968c62", "#b4aa80", "#d0c8a0"], arbusto: ["#34342a", "#545440", "#6e6e56", "#8a8a70", "#a8a88c"], pedra: ["#3e1e18", "#6a3224", "#954a34", "#bc7052", "#d8987a"], junco: ["#3a4628", "#566636", "#6e7e4c"], cabeca: ["#46562e", "#62744a"] },
     sinai: { capim: ["#4a4428", "#666036", "#7a7f4a", "#969a5e", "#b4b67a"], arbusto: ["#262618", "#40402a", "#5a5a3a", "#76744c", "#949060"], pedra: ["#34261f", "#5a4436", "#7e624e", "#a2846a", "#c2a688"], junco: ["#3a4624", "#566634", "#748444"], cabeca: ["#5a3a24", "#7a5232"] },
-    galileia: { capim: ["#2a4020", "#44622c", "#5e7e40", "#7ca052", "#9cc06a"], arbusto: ["#122416", "#1e3c22", "#2e562c", "#46743a", "#62944c"], pedra: ["#22201e", "#3a3836", "#56524e", "#76726a", "#98948a"], junco: ["#2a4620", "#44682e", "#60863c"], cabeca: ["#4a2e1a", "#6e4426"] },
+    galileia: { capim: ["#2a4020", "#44622c", "#5e7e40", "#7ca052", "#9cc06a"], arbusto: ["#122416", "#1e3c22", "#2e562c", "#46743a", "#62944c"], pedra: ["#2a2826", "#4a4846", "#6a6662", "#8c8880", "#aeaaa0"], junco: ["#2a4620", "#44682e", "#60863c"], cabeca: ["#4a2e1a", "#6e4426"] },
   };
   const TIPOS_FLOR = new Set(["anemona", "flor_branca", "flor_amarela", "mostarda", "lirio"]);
   const MIOLO_FLOR = { anemona: "#2a1a14", flor_branca: "#e2b84a", flor_amarela: "#9a6a1a", mostarda: "#8a5a10", lirio: "#e9d36a" };
@@ -1046,7 +1046,7 @@
     // os campos finos (4 px) só quando o pedaço tem água, estrada ou chão pisado
     const temFino = CW.some((k) => k === TERRA) || AW.some((a) => a), temGasto = GA.some((g) => g);
     const FINO = temFino ? campo(L, 4, W0, H0, (x, y) => ruido(x / 9, y / 9, s + 19)) : null;
-    const GAS = temGasto ? campo(L, 4, W0, H0, (x, y) => gastoEm(x, y) + (ruido(x / 11, y / 11, s + 17) - 0.5) * 0.45) : null;
+    const GAS = temGasto ? campo(L, 4, W0, H0, (x, y) => gastoEm(x, y) + (ruido(x / 11, y / 11, s + 17) - 0.5) * 0.28) : null;
     const ONDA = areia ? campo(L, 8, W0, H0, (x, y) => ruido(x / 46, y / 46, s + 16) * 26) : null;
     const FORTE = areia ? campo(L, 8, W0, H0, (x, y) => ruido(x / 70, y / 70, s + 27)) : null;
     const SULCO = egito ? campo(L, 8, W0, H0, (x, y) => ruido(x / 60, y / 60, s) * 6) : null;
