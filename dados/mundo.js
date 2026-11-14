@@ -70,6 +70,11 @@ const REGRAS_BARCO = { passagem: 8 };
 // limiteCasas: quantas casas a busca pode abrir (o mapa inteiro tem 160 × 120 = 19 200 casas).
 const REGRAS_ROTA = { custoReto: 7, custoDiagonal: 9, limiteCasas: 20000 };
 
+// Janela Batalha: só as criaturas vivas a até raio casas de você (a distância dos ataques: as 8 vizinhas
+// contam 1; 8 é o maior raio de percepção das criaturas), da mais perto para a mais longe. O alvo atual e as
+// chamadas como reforço (que vêm de longe atrás de você) continuam na lista mesmo além do raio.
+const REGRAS_BATALHA = { raio: 8 };
+
 // Pontos de pesca no Mar das Rotas.
 const pontosPesca = [
   { id: "pesca1", x: 36, y: 30 },

@@ -887,15 +887,15 @@
   }
   const alvoAtual = () => (window.Jogo && typeof Jogo.alvoAtual === "function" ? Jogo.alvoAtual() : window.gameScene?.alvoId) || null;
 
-  function inimigosVivos(p) {
+  // Só as criaturas por perto, da mais perto para a mais longe (listaDeBatalha, logica.js; raio em dados/mundo.js).
+  function inimigosPorPerto(p, alvo) {
     if (typeof inimigos === "undefined" || typeof Mundo === "undefined") return [];
-    return Object.values(inimigos).filter((e) => e.area === p.area && Mundo.obterVidaInimigo(ID, e.id) > 0);
+    return listaDeBatalha(p, Object.values(inimigos), { alvoId: alvo, vivo: (e) => Mundo.obterVidaInimigo(ID, e.id) > 0 });
   }
 
   function atualizarBatalha(p) {
     const alvo = alvoAtual();
-    // Prioridade de alvo: curandeiros primeiro na lista, depois a ordem de sempre.
-    const vivos = inimigosVivos(p).sort((a, b) => (ficha(b.id)?.curandeiro ? 1 : 0) - (ficha(a.id)?.curandeiro ? 1 : 0));
+    const vivos = inimigosPorPerto(p, alvo);
     const cacadas = cacadasAtivas(p).map((t) => [t.id, t.progresso, t.estado]);
     const ass = JSON.stringify([alvo, vivos.map((e) => [e.id, Mundo.obterVidaInimigo(ID, e.id), ficha(e.id)?.nome]), cacadas]);
     if (ass === assinaturaBatalha) return;
