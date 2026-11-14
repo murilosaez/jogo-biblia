@@ -20,13 +20,15 @@ com os personagens, as cores do visual e as montarias da JGB-49, e documenta a p
 ## 2. Luz, contorno e acabamento
 
 - Luz de cima e da esquerda: realce em cima/esquerda, sombra embaixo/direita, sombra projetada à direita.
-- Contorno automático de **1 px de arte**: sépia `#2a1a14` (amigos, itens, cenário com volume) e carmim
-  `#4a1416` (inimigos). Chão e decoração rasteira não têm contorno.
+- Contorno automático de **1 px de arte**, **colorido**: cada px toma a cor do material vizinho, escurecida
+  e puxada ao sépia `#2a1a14` (amigos, itens, cenário com volume) ou ao carmim `#4a1416` (inimigos), um
+  pouco mais clara do lado da luz. Chão e decoração rasteira não têm contorno. Detalhes na seção 7.
 - Acabamento automático por dentro do contorno: 1 px mais claro nas bordas viradas para a luz e 1 px mais
   escuro nas viradas para baixo/direita.
 - Criaturas e montarias ganham a textura fina (traços de 2 px de pelo, escama ou couro), espalhada por hash,
   nunca em "ruído de TV".
-- Até 24 cores por sprite (o contorno não entra na fusão das cores raras).
+- Até 64 cores no miolo de cada sprite (16 nos glifos `ui_`, 24 nos `hb_`/`of_`); o contorno não conta nem
+  entra na fusão das cores raras.
 
 ## 3. Personagens (humanos) — proporção de MMORPG clássico (JGB-49)
 
@@ -251,3 +253,118 @@ Obstáculos: figueira, basalto_muro, basalto, barco.
 | Decoração | anemona `#d8443a`, mostarda `#e2c044`, lirio `#b8a0d0`, tufo `#5e7e40` |
 | Luz | `#ffe0a0` (screen, 0.08) · vinheta `#1a1408` |
 
+## 7. Contrato (motor e arquivos `arte/*.js`)
+
+`sprites.js` é o **motor** e guarda a arte legada de reserva. A arte nova mora em `arte/*.js`, carregados
+no `index.html` entre `sprites.js` e `cenario.js`, nesta ordem: `quadrupede`, `ave-serpente`, `artropode`,
+`humano`, `humano-equip`, `montado`, `flora`, `terreno`, `efeitos`, `itens`, `icones`. Cada arquivo chama
+`registrar()` com a **mesma chave** do desenho legado (a chave da textura do Phaser não muda) e assim o
+substitui; registrar por cima apaga os caches daquela chave. Uma família só assume as chaves reais quando
+está inteira; até lá publica prévias `pv_*`, que só aparecem nas folhas de contato.
+
+### 7.1 Resolução e células
+
+- 32 px de arte por casa: `Arte.RES = 2`, `PIXELS_ARTE_POR_CASA = 32`. `def.w` e `def.h` ficam em
+  **unidades de 1/16 de casa = 2 px de arte** (célula de 48 × 64 px é `w: 24, h: 32`).
+- Na arte nova, **só primitivas em px de arte**: `g.fino`, `g.pf`, `g.retf`, `g.linf` e, de
+  `Arte.motor.prim`, `retF`, `elipF`, `linF`, `bastao` e `pintarMascara`; no tileset, `pin.fino`. São
+  **proibidos** os blocos de unidade (2 × 2 px): `g.p`, `g.ret`, `g.lin`, `g.elip`, `g.carimbar`,
+  `pin.set` e `pin.encher` (`tests/arte/motor.test.js` recusa).
+- Células (largura × altura em px de arte):
+
+| Família | Célula |
+| --- | --- |
+| Humano | 48 × 64, pés na linha 61, corpo de 50 a 56 px, cabeça de 9 a 11 px |
+| Jogador montado | 72 × 80 |
+| Prévia de montaria `mt_*` | 64 × 64, 1 quadro |
+| Criatura pequena (rã, escorpião, caranguejo, corvo) | 40 × 40 |
+| Criatura média (cão, ovelha, lobo, chacal, hiena, cabra, javali, víbora, naja, abutre, águia, enxames) | 48 × 48 |
+| Criatura grande (leão, urso, leopardo, crocodilo) | 64 × 64 |
+| Árvore alta / árvore média e palmeira jovem | 64 × 96 / 48 × 64 |
+| Arbusto e junco / rocha / rochedo | 40 × 40 / 48 × 40 / 64 × 56 |
+| Estruturas `es_*` | a pegada de hoje (`es_casa` 104 × 104 etc.) |
+| Item | 32 × 32 |
+| Glifo `ui_*` / `hb_*` e `of_*` | 16 × 16 / 32 × 32, em res 2 |
+| Efeito `fx_*` | 32 × 32 por quadro; 48 × 48 em impacto e morte; 32 × 48 no fogo |
+| Barco | 64 × 56 |
+
+### 7.2 Vistas e quadros
+
+- `direcoes: 3` (lado virado para a direita, frente, costas; a esquerda é o espelho do lado, por
+  `setFlipX`), `quadrosPorVista: 8`, `quadros: 24` (se a def não disser, `registrar` calcula).
+- Em cada vista: **0** parado, **1** respirar, **2** contato A, **3** passagem A, **4** contato B,
+  **5** passagem B, **6** antecipação do golpe, **7** golpe.
+- Campos da def: `ciclo: [2, 3, 4, 5]`, `quadroAcao: [6, 7]`, `sombra: { w, h }` em px (o jogo pede a
+  textura a `Arte.garantirSombra`), `alturaCabeca` em px de mundo (onde ficam nome e barra) e, nos
+  humanos, `busto` e `retratoQuadro`. Opcional: `variante(porte, tinta)`, que devolve a def (ou só os
+  campos que mudam) do raro nomeado já no porte e na cor; `Arte.garantirVariante` registra em
+  `<chave>~v:<tinta>.<porte × 100>`. Sem ela, o jogo usa escala e tinta por cima.
+- Legado: sem `quadrosPorVista` valem 5 quadros por vista (0 parado, 1 respirar, 2 e 3 contatos, 4 ação)
+  e `CICLO_PASSO`. `game.js` lê tudo da def (`quadroComVista`, `quadroAndando`, `quadroDeAcao`), então os
+  dois contratos convivem. **Criaturas nunca recebem `humano: true`.**
+- Barco: 3 vistas × 4 quadros (`quadrosPorVista: 4`, `ciclo: [0, 1, 2, 3]`). Efeitos: tira simples, com o
+  número de quadros de cada um em `Arte.FX[chave] = { quadros, ms, laco }`.
+- `Arte.validar()` acusa quadros fora do contrato, célula de tamanho errado e cores a mais.
+
+### 7.3 Cor e sombreado
+
+- `rampa6(base, tipo)`: 6 tons do escuro ao claro (a base é o índice 3), com o matiz deslocado: a luz
+  puxa ao creme quente e a sombra ao púrpura-sépia. Tipos: `pano` (padrão), `pele`, `pelo`, `couro`,
+  `madeira`, `pedra`, `folha`, `metal` (mais contraste).
+- `sombrear(rampa, luz, X, Y, pontilhar)`: `luz` de −1 a 1 escolhe o tom; só na faixa de transição entre
+  dois tons vizinhos entra o pontilhado de Bayer 4 × 4 na posição do px. `esferaPx(rampa, vies)` serve de
+  cor para `elipF` (luz de cima e da esquerda) e `panoPx(rampa, x0, x1, { dobras, vies, y0, y1 })` para
+  `retF` (luz à esquerda, sombra à direita).
+- Limites do miolo: 64 cores por sprite, 16 nos `ui_`, 24 nos `hb_`/`of_`; `fx_` sem limite.
+- Sombra projetada: `g.sombra(cx, cy, rx, ry)` (em unidades) pinta na camada de sombra, sem contorno, com
+  miolo e uma penumbra de meio alfa na borda.
+
+### 7.4 Contorno
+
+- 1 px por fora da silhueta. A cor de cada px é a do vizinho preenchido mais escuro, escurecida 62% e
+  misturada 35% ao sépia (`contorno: "amigo"`, padrão) ou ao carmim (`"hostil"`), e 10% mais clara quando
+  a forma fica abaixo ou à direita do px (lado da luz). `contorno: null` desliga.
+- O motor reconhece o contorno pela máscara booleana `borda` da `Grade` (devolvida também por
+  `Arte.pixels(...).borda`), não pela cor: traço interno na cor da tinta é miolo.
+- `def.contornoLegado = true` volta ao traço de cor única para um sprite que piore com o colorido.
+
+### 7.5 Como escrever um `arte/*.js`
+
+```js
+(function (global) {
+  "use strict";
+  const Arte = global.Arte;
+  if (!Arte || !Arte.motor) return;
+  const { registrar, rampa6, esferaPx, prim: { elipF, retF } } = Arte.motor;
+  registrar("in_exemplo", {
+    w: 24, h: 24, direcoes: 3, quadrosPorVista: 8, ciclo: [2, 3, 4, 5], quadroAcao: [6, 7],
+    contorno: "hostil", sombra: { w: 26, h: 8 }, alturaCabeca: 40,
+    desenhar(g, quadro) {
+      const vista = Math.floor(quadro / 8), q = quadro % 8; // 0 lado, 1 frente, 2 costas
+      elipF(g, 24, 30 + (q === 1 ? 1 : 0), 14, 9, esferaPx(rampa6("#8a8478", "pelo")));
+    },
+  });
+})(typeof window !== "undefined" ? window : globalThis);
+```
+
+- IIFE, sem `document`, `canvas` nem `window` na carga (os testes rodam o arquivo numa vm sem DOM); nenhuma
+  coordenada de mapa no código; arte 100% original.
+- Do motor (`Arte.motor`): `Grade`, `registrar`, `pixels`, `PALETA`, `CONTORNO`, `BIOMAS`, `misturar`,
+  `hash2`, `ruido`, `rampa6`, `sombrear`, `esferaPx`, `panoPx`, `prim`, `Pincel`, `T`, e as tabelas dos
+  humanos: `HUMANOS` (cfg de cada chave), `MONTADOS`, `ACESSORIOS`, `ARMADURAS`, `LAMINAS`, `CORES_ESCUDO`,
+  `ARCOS`, `coresHumano`, `MONTARIAS_ARTE`.
+- **Humanos**: `definirHumano(spec)` troca o esqueleto de todos de uma vez. `spec = { w, h, quadrosPorVista,
+  ciclo, quadroAcao, busto, retratoQuadro, sombra, alturaCabeca, desenhar(g, cfg, quadro) }`; a spec recebe
+  a cfg original (cores, molde, armadura, acessórios) e re-registra os NPCs, os inimigos humanos e o
+  jogador, inclusive as chaves que `garantirJogador` gerar depois. `definirMontado(spec)` faz o mesmo com o
+  jogador montado (`desenhar(g, cfg, quadro, montaria)`); até ele ser chamado o montado fica no desenho
+  legado. Passar `null` volta ao legado.
+- **Tileset**: troque funções de `Arte.motor.pintores` (`chao`, `caminho`, `mancha`, `detalhe`, `borda`,
+  `deco`, `moldura`, `sombras`, `agua`, `costa`, `muralha`; mesmas assinaturas, descritas em `sprites.js`)
+  e chame `limparTilesets()`. `Arte.ID_TILE` e o formato de 8 × 15 casas não mudam.
+- As chamadas `item("…")`, `glifo("…")` e `balao("…")` legadas ficam em `sprites.js` (os testes as procuram
+  lá); o arquivo novo só registra por cima.
+- **Testes**: cada pacote escreve `tests/arte/<nome>.test.js`, que exporta
+  `function ({ teste, carregarJogo, carregarArte, arquivosDeArte, assert, igual, RAIZ })` e registra os
+  testes com nomes começados por `arte/<nome>:`. Rode só os seus com `node tests/logica.test.js arte/<nome>`.
+  `carregarArte(ctx)` roda `sprites.js` e todos os `arte/*.js` na ordem do `index.html`.

@@ -9,8 +9,11 @@
 //   * 1 pixel de arte (px-a) = 2 px de mundo (Arte.PX).
 //   * Luz vinda do oeste e de cima: realce em cima/esquerda, sombra
 //     embaixo/direita, sombra projetada para a direita.
-//   * Contorno automático de 1 px-a: sépia #2a1a14 (amigos, itens) e
-//     carmim #4a1416 (inimigos). Chão e decoração não têm contorno.
+//   * Contorno automático de 1 px de arte, colorido pelo material vizinho e
+//     puxado ao sépia #2a1a14 (amigos, itens) ou ao carmim #4a1416
+//     (inimigos). Chão e decoração não têm contorno.
+//   * Este arquivo é o motor e a arte legada de reserva; a arte nova mora em
+//     arte/*.js e registra por cima das mesmas chaves (Arte.motor).
 //   * Nada de DOM na carga: canvas/document só dentro das funções.
 //
 // Expõe window.Arte, window.PIXEL_PATTERNS e window.iconeItemURL.
@@ -132,6 +135,10 @@
       this.h = h * r;
       this.d = new Array(this.w * this.h).fill(null); // camada principal
       this.s = new Array(this.w * this.h).fill(null); // sombra projetada (sem contorno)
+      // Máscara do contorno automático: 1 nos px que contorno() gravou. acabamento(), textura() e a
+      // fusão de cores reconhecem o contorno por ela (o contorno é colorido: não dá para comparar a cor).
+      this.borda = new Uint8Array(this.w * this.h);
+      this.temBorda = false;
     }
     dentroF(X, Y) {
       return X >= 0 && Y >= 0 && X < this.w && Y < this.h;
@@ -144,6 +151,7 @@
       if (X % 1 || Y % 1) { X = Math.round(X); Y = Math.round(Y); }
       if (!c || !this.dentroF(X, Y)) return;
       this.d[Y * this.w + X] = c;
+      if (this.temBorda) this.borda[Y * this.w + X] = 0; // pintado por cima do contorno (def.depois)
     }
     p(x, y, c) {
       x = Math.round(x);
@@ -152,7 +160,10 @@
       const cor = typeof c === "function" ? c(x, y) : c;
       if (!cor) return;
       const r = this.r;
-      for (let j = 0; j < r; j++) for (let i = 0; i < r; i++) this.d[(y * r + j) * this.w + x * r + i] = cor;
+      for (let j = 0; j < r; j++) for (let i = 0; i < r; i++) {
+        this.d[(y * r + j) * this.w + x * r + i] = cor;
+        if (this.temBorda) this.borda[(y * r + j) * this.w + x * r + i] = 0;
+      }
     }
     // 1 px de arte na posição (x, y) em unidades (aceita meia unidade).
     pf(x, y, c) {
@@ -168,7 +179,10 @@
     apagar(x, y) {
       if (!this.dentro(x, y)) return;
       const r = this.r;
-      for (let j = 0; j < r; j++) for (let i = 0; i < r; i++) this.d[(y * r + j) * this.w + x * r + i] = null;
+      for (let j = 0; j < r; j++) for (let i = 0; i < r; i++) {
+        this.d[(y * r + j) * this.w + x * r + i] = null;
+        this.borda[(y * r + j) * this.w + x * r + i] = 0;
+      }
     }
     ret(x, y, w, h, c) {
       for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.p(x + i, y + j, typeof c === "function" ? c(x + i, y + j, i, j) : c);
@@ -248,35 +262,61 @@
         }
       });
     }
+    // Sombra projetada (camada própria, sem contorno): miolo com o alfa pedido e um anel de penumbra
+    // com metade dele na borda, para a sombra não terminar num degrau duro.
     sombra(cx, cy, rx, ry, cor = "#1c1210", alfa = 0.3) {
-      const c = comAlfa(cor, alfa), r = this.r;
+      const c = comAlfa(cor, alfa), c2 = comAlfa(cor, alfa * 0.5), r = this.r;
+      // o miolo é a elipse encolhida 1 px de arte (no mínimo 55% do raio)
+      const kx = Math.max(0.55, 1 - 1 / Math.max(1, rx * r)), ky = Math.max(0.55, 1 - 1 / Math.max(1, ry * r));
       for (let Y = Math.floor((cy - ry) * r); Y <= Math.ceil((cy + ry) * r); Y++)
         for (let X = Math.floor((cx - rx) * r); X <= Math.ceil((cx + rx) * r); X++) {
           const nx = ((X + 0.5) / r - cx) / rx, ny = ((Y + 0.5) / r - cy) / ry;
-          if (nx * nx + ny * ny <= 1 && this.dentroF(X, Y)) this.s[Y * this.w + X] = c;
+          if (nx * nx + ny * ny > 1 || !this.dentroF(X, Y)) continue;
+          const mx = nx / kx, my = ny / ky;
+          this.s[Y * this.w + X] = mx * mx + my * my <= 1 ? c : c2;
         }
     }
-    contorno(cor) {
+    // 1 px de arte na camada de sombra (sem contorno), para sombras projetadas de forma livre (copa de
+    // árvore, parede): alfa de 0 a 1; onde já há sombra fica a mais forte (as sombras não se somam).
+    sombraPx(X, Y, alfa = 0.3, cor = "#1c1210") {
+      X = Math.round(X); Y = Math.round(Y);
+      if (!this.dentroF(X, Y) || !(alfa > 0)) return;
+      const i = Y * this.w + X, c = comAlfa(cor, Math.min(1, alfa)), a = this.s[i];
+      if (!a || parseInt(a.slice(7, 9) || "ff", 16) < parseInt(c.slice(7, 9) || "ff", 16)) this.s[i] = c;
+    }
+    // Contorno automático de 1 px, por fora da silhueta. Colorido (padrão): cada px toma a cor do
+    // vizinho preenchido mais escuro, escurecida ~62% e puxada 35% para a tinta (sépia dos amigos,
+    // carmim dos hostis); 10% mais clara quando a forma fica abaixo/à direita do px (lado da luz: cima
+    // e esquerda). Com legado = true, a cor única de antes. Os px gravados entram na máscara `borda`.
+    contorno(cor, legado = false) {
       if (!cor) return;
       const w = this.w, h = this.h, d = this.d, marcar = [];
       for (let y = 0; y < h; y++)
         for (let x = 0; x < w; x++) {
           if (d[y * w + x]) continue;
-          if ((x > 0 && d[y * w + x - 1]) || (x < w - 1 && d[y * w + x + 1]) || (y > 0 && d[(y - 1) * w + x]) || (y < h - 1 && d[(y + 1) * w + x]))
-            marcar.push(y * w + x);
+          const o = x > 0 ? d[y * w + x - 1] : null, l = x < w - 1 ? d[y * w + x + 1] : null;
+          const n = y > 0 ? d[(y - 1) * w + x] : null, s = y < h - 1 ? d[(y + 1) * w + x] : null;
+          if (!o && !l && !n && !s) continue;
+          if (legado) { marcar.push(y * w + x, cor); continue; }
+          let viz = null, lum = Infinity;
+          for (const c of [s, l, n, o]) if (c) { const v = luminancia(c); if (v < lum) { lum = v; viz = c; } }
+          marcar.push(y * w + x, corDeContorno(viz, cor, (s || l) && !n && !o));
         }
-      for (const i of marcar) d[i] = cor;
+      for (let k = 0; k < marcar.length; k += 2) { d[marcar[k]] = marcar[k + 1]; this.borda[marcar[k]] = 1; }
+      this.temBorda = marcar.length > 0;
     }
     // Acabamento em px de arte (só na RES 2): realce de 1 px nas bordas viradas para a luz (cima e
     // esquerda) e meia-sombra nas viradas para baixo/direita, por dentro do contorno.
-    acabamento(cor) {
+    // O contorno é reconhecido pela máscara `borda`. cor (opcional) só vale para o contorno legado de
+    // cor única (def.contornoLegado): aí os traços internos nessa cor também contam como contorno.
+    acabamento(cor = null) {
       if (this.r < 2) return;
-      const w = this.w, h = this.h, d = this.d, nova = d.slice();
-      const fora = (x, y) => x < 0 || y < 0 || x >= w || y >= h || !d[y * w + x] || d[y * w + x] === cor;
+      const w = this.w, h = this.h, d = this.d, b = this.borda, nova = d.slice();
+      const fora = (x, y) => x < 0 || y < 0 || x >= w || y >= h || !d[y * w + x] || b[y * w + x] === 1 || d[y * w + x] === cor;
       for (let y = 0; y < h; y++)
         for (let x = 0; x < w; x++) {
           const c = d[y * w + x];
-          if (!c || c === cor || c.length > 7) continue;
+          if (!c || b[y * w + x] || c === cor || c.length > 7) continue;
           if (fora(x, y - 1) || fora(x - 1, y)) nova[y * w + x] = misturar(c, "#fff6e0", 0.16);
           else if (fora(x, y + 1) || fora(x + 1, y)) nova[y * w + x] = misturar(c, "#1c1210", 0.18);
         }
@@ -286,11 +326,11 @@
     // espalhados por hash (sem "ruído de TV": nunca 2 traços colados).
     textura(semente = 0, protegida = null) {
       if (this.r < 2) return;
-      const w = this.w, d = this.d;
+      const w = this.w, d = this.d, b = this.borda;
       for (let y = 1; y < this.h - 1; y++)
         for (let x = 1; x < w - 2; x++) {
           const c = d[y * w + x];
-          if (!c || c === protegida || c.length > 7 || d[y * w + x + 1] !== c) continue;
+          if (!c || b[y * w + x] || b[y * w + x + 1] || c === protegida || c.length > 7 || d[y * w + x + 1] !== c) continue;
           const h = hash2(x >> 1, y, semente + 911);
           if (h < 0.09 && (x + y) % 3 === 0) { d[y * w + x] = escuroT(c, 0.13); d[y * w + x + 1] = escuroT(c, 0.13); x += 2; }
           else if (h > 0.95 && (x + y) % 3 === 1) { d[y * w + x] = claroT(c, 0.1); x += 2; }
@@ -302,11 +342,84 @@
           const a = y * this.w + x, b = y * this.w + this.w - 1 - x;
           [this.d[a], this.d[b]] = [this.d[b], this.d[a]];
           [this.s[a], this.s[b]] = [this.s[b], this.s[a]];
+          const m = this.borda[a]; this.borda[a] = this.borda[b]; this.borda[b] = m;
         }
     }
     final() {
       return this.d.map((c, i) => c || this.s[i]);
     }
+  }
+
+  // Cor do contorno colorido (ver Grade.contorno). viz = cor do vizinho preenchido; tinta = sépia,
+  // carmim ou a cor pedida em def.contorno; luz = px do lado da luz (cima/esquerda da forma).
+  const cacheLum = new Map();
+  function luminancia(c) {
+    let v = cacheLum.get(c);
+    if (v === undefined) { const k = hexRgb(c); v = k[0] * 0.3 + k[1] * 0.59 + k[2] * 0.11; if (cacheLum.size < 50000) cacheLum.set(c, v); }
+    return v;
+  }
+  const cacheContorno = new Map();
+  function corDeContorno(viz, tinta, luz) {
+    const id = viz + tinta + (luz ? 1 : 0);
+    let r = cacheContorno.get(id);
+    if (r) return r;
+    r = misturar(misturar(viz.slice(0, 7), "#1c1210", 0.62), tinta.slice(0, 7), 0.35);
+    if (luz) r = misturar(r, "#fff6e0", 0.1);
+    if (cacheContorno.size < 50000) cacheContorno.set(id, r);
+    return r;
+  }
+
+  // Rampa de 6 tons (escuro → claro, como pede tom()/sombrear()) a partir da cor base, com o matiz
+  // deslocado: a luz puxa para o creme quente e a sombra para o púrpura-sépia (nada de cinza). A base
+  // fica no índice 3. tipo ajusta o contraste: "pano" (padrão), "pele", "pelo", "couro", "madeira",
+  // "pedra", "folha" e "metal" (mais contraste e realce quase branco).
+  const TIPOS_RAMPA = {
+    pano: { luz: "#fff2cc", sombra: "#2e1a2a", funda: "#1a0e16", k: 1 },
+    pele: { luz: "#ffe6c4", sombra: "#4a2030", funda: "#2a1018", k: 0.9 },
+    pelo: { luz: "#f6e2b8", sombra: "#2a1a26", funda: "#160c12", k: 1.05 },
+    couro: { luz: "#f2cf9a", sombra: "#2a1620", funda: "#160a10", k: 1 },
+    madeira: { luz: "#f4d8a0", sombra: "#2a1820", funda: "#180c10", k: 1 },
+    pedra: { luz: "#f4ecd8", sombra: "#2a2434", funda: "#16121c", k: 0.95 },
+    folha: { luz: "#f0f0a8", sombra: "#16303a", funda: "#0e1a22", k: 1.05 },
+    metal: { luz: "#fffbea", sombra: "#22203a", funda: "#0e0c1a", k: 1.3 },
+  };
+  const cacheRampa6 = new Map();
+  function rampa6(base, tipo = "pano") {
+    const id = base + tipo;
+    let r = cacheRampa6.get(id);
+    if (r) return r;
+    const t = TIPOS_RAMPA[tipo] || TIPOS_RAMPA.pano, k = t.k, m = (c, v) => misturar(base, c, Math.min(0.92, v * k));
+    r = [m(t.funda, 0.62), m(t.sombra, 0.44), m(t.sombra, 0.22), base.slice(0, 7), m(t.luz, 0.24), m(t.luz, 0.48)];
+    if (cacheRampa6.size < 5000) cacheRampa6.set(id, r);
+    return r;
+  }
+  // Sombreado contínuo por px de arte: l em [-1, 1] (-1 sombra, 1 luz) escolhe o tom da rampa (escuro →
+  // claro, qualquer tamanho). Com pontilhar (padrão), a faixa de transição entre dois tons vizinhos é
+  // pontilhada pela matriz de Bayer 4 × 4 na posição (X, Y) do px; fora dela o tom é chapado.
+  const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
+  const FAIXA_PONTILHADO = 0.2; // meia largura da faixa, em fração de um tom
+  function sombrear(rampa, l, X = 0, Y = 0, pontilhar = true) {
+    const n = rampa.length, p = Math.max(0, Math.min(n - 1, (l * 0.5 + 0.5) * (n - 1)));
+    const i = Math.floor(p), t = p - i;
+    if (i >= n - 1) return rampa[n - 1];
+    if (!pontilhar) return rampa[t < 0.5 ? i : i + 1];
+    if (t <= 0.5 - FAIXA_PONTILHADO) return rampa[i];
+    if (t >= 0.5 + FAIXA_PONTILHADO) return rampa[i + 1];
+    return rampa[(t - (0.5 - FAIXA_PONTILHADO)) / (2 * FAIXA_PONTILHADO) > BAYER4[(Y & 3) * 4 + (X & 3)] ? i + 1 : i];
+  }
+  // Volume esférico por px, para elipF(g, cx, cy, rx, ry, esferaPx(rampa)): luz de cima e da esquerda.
+  const esferaPx = (rampa, vies = 0, pontilhar = true) => (nx, ny, X, Y) => sombrear(rampa, -(0.55 * nx + 0.8 * ny) + vies, X, Y, pontilhar);
+  // Pano por px numa faixa de colunas [x0, x1], para retF(g, X, Y, W, H, panoPx(rampa, x0, x1)): luz à
+  // esquerda, sombra à direita. o = { vies, dobras (nº de dobras verticais), y0, y1 (escurece para baixo) }.
+  function panoPx(rampa, x0, x1, o = {}) {
+    const larg = Math.max(1, x1 - x0), vies = o.vies || 0, dobras = o.dobras || 0, pont = o.pontilhar !== false;
+    return (X, Y) => {
+      const t = (X - x0) / larg; // 0 à esquerda, 1 à direita
+      let l = 0.75 - 1.5 * t + vies;
+      if (dobras) l += Math.cos(t * dobras * 2 * Math.PI) * 0.22 - 0.1;
+      if (o.y1 > o.y0) l -= ((Y - o.y0) / (o.y1 - o.y0)) * 0.35;
+      return sombrear(rampa, l, X, Y, pont);
+    };
   }
 
   // Sombreado esférico: luz do oeste e de cima. rampa = escuro → claro.
@@ -323,17 +436,41 @@
   //     linhas|quadrosLinhas + cores   (padrão de caracteres)
   //     desenhar(g, quadro)            (padrão procedural) }
   // -------------------------------------------------------------------
+  //
+  // Contrato novo (arte/*.js; ver docs/GUIA-DE-ARTE.md, "Contrato"): direcoes = 3 (lado, frente,
+  // costas), quadrosPorVista = 8 e quadros = direcoes × quadrosPorVista; ciclo (quadros do passo),
+  // quadroAcao ([antecipação, golpe]), sombra { w, h } em px, alturaCabeca em px de mundo e
+  // variante(porte, tinta) para os raros. Sem quadrosPorVista, vale o legado (5 por vista).
+  // Registrar por cima de uma chave troca o desenho: os caches dela são apagados.
+  // -------------------------------------------------------------------
   const PIXEL_PATTERNS = {};
+  const cachePixels = new Map();
+  const cacheURL = new Map();
+  function limparCaches(chave) {
+    for (const id of cachePixels.keys()) if (id.startsWith(chave + "#")) cachePixels.delete(id);
+    for (const id of cacheURL.keys()) if (id.includes(":" + chave + ":")) cacheURL.delete(id);
+  }
   function registrar(chave, def) {
+    if (def.direcoes && def.quadrosPorVista && !def.quadros) def.quadros = def.direcoes * def.quadrosPorVista;
     def.quadros = def.quadros || (def.quadrosLinhas ? def.quadrosLinhas.length : 1);
     def.origem = def.origem || [0.5, 1];
     if (def.contorno === undefined) def.contorno = "amigo";
     if (def.res === undefined) def.res = /^(ui_|hb_|of_)/.test(chave) ? 1 : RES;
+    if (PIXEL_PATTERNS[chave]) limparCaches(chave);
     PIXEL_PATTERNS[chave] = def;
     return def;
   }
 
-  const cachePixels = new Map();
+  // Limite de cores do miolo de um sprite (os px do contorno não contam nem são fundidos).
+  const LIMITE_CORES = 64; // arte do mundo, em 32 px por casa
+  const LIMITE_UI = 16, LIMITE_GLIFO = 24; // glifos ui_ e hb_/of_ (em qualquer resolução)
+  function limiteDe(chave, def) {
+    if (def.limiteCores) return def.limiteCores;
+    if (chave.startsWith("ui_")) return LIMITE_UI;
+    if (/^(hb_|of_)/.test(chave) || def.res === 1) return LIMITE_GLIFO;
+    return chave.startsWith("fx_") ? 0 : LIMITE_CORES; // efeitos: sem fusão
+  }
+
   function pixels(chave, { quadro = 0 } = {}) {
     const id = chave + "#" + quadro;
     if (cachePixels.has(id)) return cachePixels.get(id);
@@ -347,23 +484,25 @@
       g.carimbar(0, 0, linhas, def.cores);
     }
     const corContorno = CONTORNO[def.contorno] || def.contorno || null;
-    if (def.textura ?? (def.res > 1 && /^(in_|al_|mt_)/.test(chave) && !def.humano)) g.textura(sementeDe(chave), corContorno);
-    g.contorno(corContorno);
-    if (corContorno && def.acabamento !== false) g.acabamento(corContorno);
+    // contornoLegado: o traço de cor única de antes, reconhecido também pela cor (traços internos)
+    const legado = def.contornoLegado ? corContorno : null;
+    // textura fina automática: só nas criaturas legadas; no contrato novo (quadrosPorVista) o desenho já
+    // traz o pelo px a px, e ela só entra se a def pedir (textura: true)
+    if (def.textura ?? (def.res > 1 && /^(in_|al_|mt_)/.test(chave) && !def.humano && !def.quadrosPorVista)) g.textura(sementeDe(chave), legado);
+    g.contorno(corContorno, !!def.contornoLegado);
+    if (corContorno && def.acabamento !== false) g.acabamento(legado);
     if (def.depois) def.depois(g, q);
-    const limite = def.limiteCores || (def.res === 1 ? (chave.startsWith("ui_") ? 6 : 12) : chave.startsWith("fx_") ? 0 : LIMITE_CORES);
-    const r = { w: g.w, h: g.h, res: def.res, data: reduzirCores(g.final(), limite, corContorno) };
+    const r = { w: g.w, h: g.h, res: def.res, data: reduzirCores(g.final(), limiteDe(chave, def), g.borda, legado), borda: g.borda };
     cachePixels.set(id, r);
     return r;
   }
 
-  const LIMITE_CORES = 24; // cores por sprite em 32 px por casa (o contorno não conta para a fusão)
-  // Limita o número de cores: funde a cor mais rara na vizinha mais próxima
-  // (o contorno nunca é fundido). Garante a regra de no máximo 12 cores.
-  function reduzirCores(data, limite, protegida) {
+  // Limita o número de cores: funde a cor mais rara na vizinha mais próxima. Os px do contorno (máscara
+  // borda) não contam nem são fundidos; no contorno legado, a cor dele (protegida) também não.
+  function reduzirCores(data, limite, borda = null, protegida = null) {
     if (!limite) return data;
     const conta = new Map();
-    for (const c of data) if (c) conta.set(c, (conta.get(c) || 0) + 1);
+    for (let i = 0; i < data.length; i++) { const c = data[i]; if (c && !(borda && borda[i])) conta.set(c, (conta.get(c) || 0) + 1); }
     if (conta.size <= limite) return data;
     const troca = new Map();
     const rgb = new Map();
@@ -379,13 +518,33 @@
       troca.set(rara, alvo);
       for (const [k, v] of troca) if (v === rara) troca.set(k, alvo);
     }
-    return data.map((c) => (c && troca.has(c) ? troca.get(c) : c));
+    return data.map((c, i) => (c && !(borda && borda[i]) && troca.has(c) ? troca.get(c) : c));
   }
 
   // px de tela por px de arte para uma escala dada em px de tela por unidade (inteiro, no mínimo 1).
   const escalaArte = (px, escala) => Math.max(1, Math.round(escala / (px.res || 1)));
   // Desenha um quadro num contexto 2D na posição (ox, oy) em px de tela.
+  // Na escala 1 (a do mundo: 1 px de arte por px de textura) grava o quadro de uma vez com ImageData;
+  // nas outras, um retângulo por px. putImageData substitui a área do quadro (não mistura): os chamadores
+  // pintam sempre num canvas novo.
+  const cacheRGBA = new Map();
+  function rgbaDe(c) {
+    let v = cacheRGBA.get(c);
+    if (!v) { v = hexRgb(c); if (cacheRGBA.size < 50000) cacheRGBA.set(c, v); }
+    return v;
+  }
   function pintarPixels(ctx, px, ox, oy, escala) {
+    if (escala === 1 && ctx.createImageData && ctx.putImageData) {
+      const img = ctx.createImageData(px.w, px.h), b = img.data, n = px.w * px.h;
+      for (let i = 0; i < n; i++) {
+        const c = px.data[i];
+        if (!c) continue;
+        const v = rgbaDe(c), o = i * 4;
+        b[o] = v[0]; b[o + 1] = v[1]; b[o + 2] = v[2]; b[o + 3] = v[3];
+      }
+      ctx.putImageData(img, ox, oy);
+      return;
+    }
     let atual = null;
     for (let y = 0; y < px.h; y++)
       for (let x = 0; x < px.w; x++) {
@@ -460,20 +619,21 @@
       if (e2 <= dX) { e += dX; Y0 += sY; }
     }
   }
-  // Máscara de px (chave Y * 64 + X) para formas com volume: bastão de largura w entre dois pontos.
+  // Máscara de px (chave Y * LM + X, com LM = 1024: cabe qualquer célula) para formas com volume: bastão de largura w entre dois pontos.
+  const LM = 1024;
   function bastao(mask, X0, Y0, X1, Y1, w) {
     const n = Math.max(Math.abs(X1 - X0), Math.abs(Y1 - Y0)) || 1, h = w >> 1;
     for (let t = 0; t <= n; t++) {
       const x = Math.round(X0 + ((X1 - X0) * t) / n), y = Math.round(Y0 + ((Y1 - Y0) * t) / n);
-      for (let j = 0; j < w; j++) for (let i = 0; i < w; i++) if (x - h + i >= 0 && y - h + j >= 0) mask.add((y - h + j) * 64 + x - h + i);
+      for (let j = 0; j < w; j++) for (let i = 0; i < w; i++) if (x - h + i >= 0 && y - h + j >= 0) mask.add((y - h + j) * LM + x - h + i);
     }
     return mask;
   }
   // Pinta a máscara com a rampa: realce na borda de cima/esquerda, sombra na de baixo/direita.
   function pintarMascara(g, mask, R) {
-    const tem = (X, Y) => mask.has(Y * 64 + X);
+    const tem = (X, Y) => mask.has(Y * LM + X);
     for (const k of mask) {
-      const X = k % 64, Y = (k - X) / 64;
+      const X = k % LM, Y = (k - X) / LM;
       const dir = !tem(X + 1, Y), baixo = !tem(X, Y + 1), esq = !tem(X - 1, Y), cima = !tem(X, Y - 1);
       g.fino(X, Y, dir && baixo ? R[3] : dir || baixo ? R[2] : esq || cima ? R[0] : R[1]);
     }
@@ -839,10 +999,10 @@
       const [hx, hy] = P.maoArma;
       if (!soMaos) {
         const m = bastao(new Set(), 20, yT + 3, hx, hy - 2, 4);
-        for (let i = 0; i < 3; i++) m.add(yT * 64 + 19 + i);
+        for (let i = 0; i < 3; i++) m.add(yT * LM + 19 + i);
         punho(m, M);
         // vinco escuro do lado de trás do braço, para ele se soltar do tronco
-        for (const k of m) { const X = k % 64, Y = (k - X) / 64; if (Y > yT + 3 && !m.has(k - 1)) g.fino(X, Y, M[3]); }
+        for (const k of m) { const X = k % LM, Y = (k - X) / LM; if (Y > yT + 3 && !m.has(k - 1)) g.fino(X, Y, M[3]); }
       }
       mao(g, c, hx, hy, false);
       return;
@@ -855,7 +1015,7 @@
     const braco = (x, hx, hy) => {
       const m = bastao(new Set(), x, yT + 3, hx, hy - 2, 4);
       const ombro = x < 20 ? x : x - 2;
-      for (let i = 0; i < 3; i++) m.add(yT * 64 + ombro + i);
+      for (let i = 0; i < 3; i++) m.add(yT * LM + ombro + i);
       return m;
     };
     if (!soMaos) {
@@ -1218,7 +1378,46 @@
 
   // Registra um humano: cfg = { molde, cores, barba, cabelo, porte, gola, capuz, mangaCor, armadura,
   // acessorios, barra (barra da veste na cor do cinto), hostil, duasMaosOcupadas, extra(g, P, c) }.
+  //
+  // Ganchos (Arte.motor): HUMANOS guarda a cfg de cada humano registrado e MONTADOS a de cada jogador
+  // montado já gerado. definirHumano(spec) / definirMontado(spec) trocam o esqueleto: re-registram
+  // todas essas chaves com a spec e fazem as próximas (garantirJogador) nascerem com ela.
+  //   spec = { w, h (em unidades), quadrosPorVista, ciclo, quadroAcao, busto, retratoQuadro, sombra,
+  //            alturaCabeca, desenhar(g, cfg, quadro[, montaria]) } + qualquer campo de def (limiteCores…).
+  // A spec recebe a cfg ORIGINAL (cores, molde, armadura, acessorios…): é ela quem aplica ARMADURAS,
+  // ACESSORIOS etc. definirHumano(null) / definirMontado(null) voltam ao desenho legado.
+  const HUMANOS = {}, MONTADOS = {};
+  let specHumano = null, specMontado = null;
+  function defDeSpec(spec, extra, desenhar) {
+    const def = Object.assign({}, spec, extra);
+    def.direcoes = VISTAS.length;
+    def.quadrosPorVista = spec.quadrosPorVista || 8;
+    def.quadros = def.direcoes * def.quadrosPorVista;
+    def.humano = true;
+    if (def.retratoQuadro === undefined) def.retratoQuadro = def.quadrosPorVista; // de frente, parado
+    def.desenhar = desenhar;
+    return def;
+  }
+  function definirHumano(spec) {
+    if (spec && (typeof spec.desenhar !== "function" || !spec.w || !spec.h)) throw new Error("definirHumano: a spec precisa de w, h e desenhar(g, cfg, quadro)");
+    specHumano = spec || null;
+    const chaves = Object.keys(HUMANOS);
+    for (const chave of chaves) humano(chave, HUMANOS[chave]);
+    return chaves.length;
+  }
+  function definirMontado(spec) {
+    if (spec && (typeof spec.desenhar !== "function" || !spec.w || !spec.h)) throw new Error("definirMontado: a spec precisa de w, h e desenhar(g, cfg, quadro, montaria)");
+    specMontado = spec || null;
+    const chaves = Object.keys(MONTADOS);
+    for (const chave of chaves) registrarMontado(chave, MONTADOS[chave].cfg, MONTADOS[chave].tipo);
+    return chaves.length;
+  }
   function humano(chave, cfg) {
+    HUMANOS[chave] = cfg;
+    if (specHumano) {
+      const spec = specHumano;
+      return registrar(chave, defDeSpec(spec, { contorno: cfg.hostil ? "hostil" : "amigo", origem: [0.5, 1] }, (g, quadro) => spec.desenhar(g, cfg, quadro)));
+    }
     if (cfg.armadura && ARMADURAS[cfg.armadura]?.veste) {
       cfg = Object.assign({}, cfg, { cores: Object.assign({}, cfg.cores, ARMADURAS[cfg.armadura].veste), gola: cfg.gola || ARMADURAS[cfg.armadura].gola });
     }
@@ -1579,6 +1778,11 @@
   // Jogador montado: montaria (fundo) + boneco sentado (ou de pé no carro) + montaria (frente).
   // A sela devolve [x, y] onde fica o quadril (linha yR = 33 do boneco); no carro, o chão da caixa.
   function registrarMontado(chave, cfg, tipo) {
+    MONTADOS[chave] = { cfg, tipo };
+    if (specMontado) {
+      const spec = specMontado, cfgM = Object.assign({}, cfg, { montado: tipo !== "carro", montaria: tipo });
+      return registrar(chave, defDeSpec(spec, { contorno: "amigo", origem: [0.5, 1], montado: tipo }, (g, quadro) => spec.desenhar(g, cfgM, quadro, tipo)));
+    }
     const cav = Object.assign({}, cfg, { montado: tipo !== "carro" });
     return registrar(chave, {
       w: W_MT, h: H_MT, quadros: QUADROS_POR_VISTA * VISTAS.length, direcoes: VISTAS.length, contorno: "amigo", origem: [0.5, 1],
@@ -2877,6 +3081,29 @@
   // -------------------------------------------------------------------
   registrar("fx_sombra", { w: 12, h: 5, contorno: null, origem: [0.5, 0.5], desenhar: (g) => g.elip(6, 2.5, 5, 1.6, comAlfa("#1c1210", 0.3)) });
   registrar("fx_sombra_g", { w: 16, h: 5, contorno: null, origem: [0.5, 0.5], desenhar: (g) => g.elip(8, 2.5, 7, 1.7, comAlfa("#1c1210", 0.32)) });
+  // Sombra de chão sob medida (def.sombra = { w, h } em px de arte): registra `fx_sombra_<w>x<h>` na
+  // primeira vez e devolve a chave (w e h arredondados para par). O jogo gera a textura por garantirTextura.
+  function garantirSombra(w, h) {
+    const W = Math.max(4, Math.round((w || 0) / 2) * 2), H = Math.max(2, Math.round((h || 0) / 2) * 2);
+    const chave = `fx_sombra_${W}x${H}`;
+    if (!PIXEL_PATTERNS[chave]) registrar(chave, { w: W / 2, h: H / 2, contorno: null, origem: [0.5, 0.5], desenhar: (g) => g.sombra(W / 4, H / 4, W / 4, H / 4, "#1c1210", 0.3) });
+    return chave;
+  }
+  // Raro nomeado sem escala fracionária nem tinta por cima: se a def tiver variante(porte, tinta), ela
+  // devolve a def (ou só os campos que mudam) do sprite já no porte e na cor pedidos; registra em
+  // `<chave>~v:<tinta>.<porte × 100>` e devolve essa chave. Sem variante na def, devolve null (o jogo
+  // continua com setScale e setTint).
+  function garantirVariante(chave, { escala = 1, tinta = null } = {}) {
+    const def = PIXEL_PATTERNS[chave];
+    if (!def || typeof def.variante !== "function") return null;
+    const porte = Math.round((escala || 1) * 100);
+    const nova = `${chave}~v:${String(tinta || "").replace("#", "")}.${porte}`;
+    if (PIXEL_PATTERNS[nova]) return nova;
+    const v = def.variante(porte / 100, tinta || null);
+    if (!v) return null;
+    registrar(nova, Object.assign({}, def, v, { varianteDe: chave }));
+    return nova;
+  }
   registrar("fx_sombra_lobo", { w: 18, h: 5, contorno: null, origem: [0.5, 0.5], desenhar: (g) => g.elip(9, 2.5, 8, 1.6, comAlfa("#1c1210", 0.3)) });
   function anel(chave, cor, quadros, tracejado) {
     registrar(chave, {
@@ -3707,7 +3934,7 @@
     const a = bio.agua;
     for (let mask = 0; mask < 16; mask++) {
       const i = ID.COSTA + mask;
-      pintarAgua(pin, i, a, mask % 4, t);
+      pintores.agua(pin, i, a, mask % 4, t);
       const terra = { n: mask & 1, l: mask & 2, s: mask & 4, o: mask & 8 };
       for (let k = 0; k < 16; k++) {
         const onda = (k + t) % 4 < 2;
@@ -3912,28 +4139,44 @@
     }
   }
 
-  const cacheTileset = {};
+  // Pintores do tileset, numa tabela substituível (Arte.motor.pintores): um arte/*.js troca a função
+  // (mesma assinatura) e chama limparTilesets() para os tilesets já gerados serem refeitos.
+  //   chao(pin, area, bio, semente) · caminho(pin, bio, semente) · mancha(pin, area, bio, semente)
+  //   detalhe(pin, area, bio, semente) · borda(pin, bio, area) · deco(pin, bio, area)
+  //   moldura(pin, bio, area) · sombras(pin, bio)
+  //   agua(pin, indice, agua, fase, t, clara) · costa(pin, { agua }, t) · muralha(pin, bio, t)  (animados)
+  const pintores = {
+    chao: pintarChao, caminho: pintarCaminho, mancha: pintarMancha, detalhe: detalharChao,
+    borda: pintarBorda, deco: pintarDeco, moldura: pintarMoldura, sombras: pintarSombras,
+    agua: pintarAgua, costa: pintarCosta, muralha: pintarMuralha,
+  };
+  let cacheTileset = {};
+  function limparTilesets(area) {
+    if (area) delete cacheTileset[area];
+    else cacheTileset = {};
+    ultimaFaseAgua = -1;
+  }
   function gerarTileset(area) {
     if (cacheTileset[area]) return cacheTileset[area];
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     const bio = BIOMAS[area] || BIOMAS.canaan;
     const semente = sementeDe(area);
     const pin = new Pincel(TS_COLS * T, TS_LINHAS * T);
-    pintarChao(pin, area, bio, semente);
-    pintarCaminho(pin, bio, semente);
-    pintarMancha(pin, area, bio, semente);
-    detalharChao(pin, area, bio, semente);
-    pintarBorda(pin, bio, area);
-    pintarDeco(pin, bio, area);
-    pintarMoldura(pin, bio, area);
-    pintarSombras(pin, bio);
+    pintores.chao(pin, area, bio, semente);
+    pintores.caminho(pin, bio, semente);
+    pintores.mancha(pin, area, bio, semente);
+    pintores.detalhe(pin, area, bio, semente);
+    pintores.borda(pin, bio, area);
+    pintores.deco(pin, bio, area);
+    pintores.moldura(pin, bio, area);
+    pintores.sombras(pin, bio);
     const agua = bio.agua || BIOMAS.mar.agua;
     const animados = [];
     const temMuralha = bio.borda.norte === "muralha";
-    if (temMuralha) animados.push((t) => pintarMuralha(pin, bio, t));
-    else animados.push((t) => pintarCosta(pin, { agua }, t));
-    animados.push((t) => { for (let f = 0; f < 4; f++) pintarAgua(pin, ID.AGUA + f, agua, f * 4, t); });
-    animados.push((t) => { for (let f = 0; f < 4; f++) pintarAgua(pin, ID.ROTA + f, agua, f * 4, t, true); });
+    if (temMuralha) animados.push((t) => pintores.muralha(pin, bio, t));
+    else animados.push((t) => pintores.costa(pin, { agua }, t));
+    animados.push((t) => { for (let f = 0; f < 4; f++) pintores.agua(pin, ID.AGUA + f, agua, f * 4, t); });
+    animados.push((t) => { for (let f = 0; f < 4; f++) pintores.agua(pin, ID.ROTA + f, agua, f * 4, t, true); });
     for (const a of animados) a(0);
 
     const mapa = typeof mapas !== "undefined" ? mapas[area] : null;
@@ -4103,8 +4346,8 @@
   }
 
   // -------------------------------------------------------------------
-  // Validação dos padrões (§6.1): largura das linhas, cores definidas
-  // e no máximo 12 cores por sprite (6 por glifo de UI).
+  // Validação dos padrões (§6.1): largura das linhas, cores definidas, contrato de quadros e limite de
+  // cores do miolo (64 por sprite do mundo, 16 por glifo ui_, 24 por glifo hb_/of_).
   // -------------------------------------------------------------------
   function validar() {
     const problemas = [];
@@ -4114,11 +4357,19 @@
         linhas.forEach((l, i) => { if (l.length !== def.w) problemas.push(`${chave}: linha ${i} com ${l.length} != ${def.w}`); });
         for (const l of linhas) for (const ch of l) if (ch !== "." && !def.cores[ch]) problemas.push(`${chave}: '${ch}' sem cor`);
       }
-      const limite = def.limiteCores ? def.limiteCores + 1 : def.res === 1 ? (chave.startsWith("ui_") ? 6 : 12) : chave.startsWith("fx_") ? 999 : LIMITE_CORES + 1;
+      // contrato de quadros: vistas × quadros por vista, e os quadros citados existem em cada vista
+      const qpv = def.quadrosPorVista || (def.direcoes ? QUADROS_POR_VISTA : 0);
+      if (def.direcoes && def.quadros !== def.direcoes * qpv) problemas.push(`${chave}: ${def.quadros} quadros != ${def.direcoes} vistas x ${qpv}`);
+      for (const q of [].concat(def.ciclo || [], def.quadroAcao || [])) if (!(q >= 0 && q < (qpv || def.quadros))) problemas.push(`${chave}: quadro ${q} fora da vista`);
+      // cores do miolo (o contorno, reconhecido pela máscara, não conta; +1 de folga no contorno legado)
+      const limite = limiteDe(chave, def) + (def.contornoLegado ? 1 : 0);
       for (let q = 0; q < def.quadros; q++) {
         const px = pixels(chave, { quadro: q });
-        const n = new Set(px.data.filter(Boolean)).size;
-        if (n > limite) { problemas.push(`${chave}#${q}: ${n} cores`); break; }
+        if (px.w !== Math.round(def.w * def.res) || px.h !== Math.round(def.h * def.res)) { problemas.push(`${chave}#${q}: ${px.w}x${px.h} px`); break; }
+        if (!limiteDe(chave, def)) continue;
+        const cores = new Set();
+        for (let i = 0; i < px.data.length; i++) if (px.data[i] && !px.borda[i]) cores.add(px.data[i]);
+        if (cores.size > limite) { problemas.push(`${chave}#${q}: ${cores.size} cores`); break; }
       }
     }
     return problemas;
@@ -4127,7 +4378,6 @@
   // -------------------------------------------------------------------
   // URLs para a interface
   // -------------------------------------------------------------------
-  const cacheURL = new Map();
   function paraURL(c) {
     return c && c.toDataURL ? c.toDataURL("image/png") : "";
   }
@@ -4157,7 +4407,7 @@
     if (cacheURL.has(id)) return cacheURL.get(id);
     const def = PIXEL_PATTERNS[chave];
     if (!def) return "";
-    const quadroInteiro = recorte === "inteiro" && def.direcoes ? 5 : null; // de frente, parado
+    const quadroInteiro = recorte === "inteiro" && def.direcoes ? def.quadrosPorVista || QUADROS_POR_VISTA : null; // de frente, parado
     const px = pixels(chave, { quadro: quadroInteiro ?? def.retratoQuadro ?? (def.humano ? 4 : 0) });
     const r = px.res || 1;
     // busto: retângulo em unidades (def.busto = [x, y, w, h]); sem ele, o quadro inteiro
@@ -4223,7 +4473,8 @@
     for (const chave of Object.keys(PIXEL_PATTERNS)) {
       // sob demanda: portais, variantes do jogador, humanos, criaturas e montarias (criarEntidade gera
       // só os que aparecem na área)
-      if (/^(mk_portal_|pj_|in_|al_|mt_)/.test(chave)) continue;
+      // (e as prévias pv_, as sombras sob medida e as variantes dos raros)
+      if (/^(mk_portal_|pj_|in_|al_|mt_|pv_|fx_sombra_\d)/.test(chave) || chave.includes("~v:")) continue;
       garantirTextura(scene, chave);
     }
   }
@@ -4254,6 +4505,19 @@
     garantirJogador, chaveJogador, tipoObstaculo, validar,
     hash2, ruido, misturar,
     ID_TILE: ID,
+    garantirSombra, garantirVariante, limparTilesets,
+    // Tabela dos efeitos animados (arte/efeitos.js preenche): chave → { quadros, ms, ... }.
+    FX: {},
+    // Motor para os arquivos arte/*.js (ver docs/GUIA-DE-ARTE.md, "Contrato").
+    motor: {
+      Grade, registrar, pixels, limparCaches, PIXEL_PATTERNS, aliasItem, CHEFES, TS_COLS, TS_LINHAS, PALETA, CONTORNO, BIOMAS, SEMANTICA, RES, T, VISTAS,
+      misturar, hash2, ruido, comAlfa, hexRgb, rgbHex, sementeDe,
+      rampa6, sombrear, esferaPx, panoPx, tom, esfera, rampaDe,
+      prim: { retF, elipF, linF, bastao, pintarMascara, LM },
+      HUMANOS, MONTADOS, ACESSORIOS, ARMADURAS, LAMINAS, CORES_ESCUDO, ARCOS, coresHumano, MONTARIAS_ARTE,
+      definirHumano, definirMontado, garantirSombra, garantirVariante,
+      pintores, limparTilesets, Pincel, ID_TILE: ID,
+    },
   };
   global.PIXEL_PATTERNS = PIXEL_PATTERNS;
   global.iconeItemURL = (itemId, escala = 2) => iconeURL(aliasItem(itemId), escala);

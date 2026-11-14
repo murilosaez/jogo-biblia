@@ -395,6 +395,20 @@ function jogarCampanha(semente) {
 // ---------------------------------------------------------------------
 // Testes
 // ---------------------------------------------------------------------
+// Arte: roda no contexto os scripts de arte na ordem do index.html, de sprites.js até cenario.js
+// (exclusive): o motor com a arte legada e os arquivos arte/*.js que a sobrescrevem. Devolve ctx.Arte.
+function arquivosDeArte() {
+  const html = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
+  const ini = scripts.indexOf("sprites.js"), fim = scripts.indexOf("cenario.js");
+  assert.ok(ini >= 0 && fim > ini, "index.html: sprites.js antes de cenario.js");
+  return scripts.slice(ini, fim);
+}
+function carregarArte(ctx) {
+  for (const arq of arquivosDeArte()) vm.runInContext(fs.readFileSync(path.join(RAIZ, arq), "utf8"), ctx, { filename: arq });
+  return ctx.Arte;
+}
+
 const testes = [];
 const teste = (nome, fn) => testes.push({ nome, fn });
 
@@ -2833,7 +2847,7 @@ teste("43. mapas: tamanho e desenho vêm de dados/, sem bolsões fechados nem co
   // O mapa é sempre o mesmo (o desenho é determinístico).
   igual(carregarJogo().g("mapas"), mapas, "duas cargas geram o mesmo mapa");
   // Nenhuma coordenada de mapa escrita no código: trilhas, vilas, tendas, marcos e decoração vêm de dados/.
-  for (const arquivo of ["logica.js", "game.js", "sprites.js"]) {
+  for (const arquivo of ["logica.js", "game.js", ...arquivosDeArte()]) {
     const fonte = fs.readFileSync(path.join(RAIZ, arquivo), "utf8");
     assert.doesNotMatch(fonte, /mapas\.\w+\[\d/, `${arquivo}: linha de mapa escrita no código`);
     assert.doesNotMatch(fonte, /\b[xy] === \d+ && [xy] === \d+/, `${arquivo}: casa fixa no código`);
@@ -2922,7 +2936,7 @@ teste("44. mapas: tendas e bancas dos comerciantes, estruturas com colisão, vil
     }
   }
   // Os tipos de obstáculo citados nos mapas existem na arte (sprites.js).
-  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  carregarArte(j.ctx);
   const Arte = j.ctx.Arte;
   vm.runInContext(fs.readFileSync(path.join(RAIZ, "cenario.js"), "utf8"), j.ctx, { filename: "cenario.js" });
   for (const [area, d] of Object.entries(MAPAS)) {
@@ -3350,7 +3364,7 @@ teste("50. criaturas: 30+ espécies, cada uma com família, tier, comportamento,
   assert.ok(especies.filter((e) => e.tier === "elite").length >= 5, "5+ elites");
   // Sprite próprio: cada criatura nova tem um sprite que nenhuma outra espécie usa (o raro nomeado usa o
   // da espécie dele, maior e tingido).
-  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  carregarArte(j.ctx);
   const Arte = j.ctx.Arte;
   const visual = new Map();
   for (const e of especies) {
@@ -5857,52 +5871,67 @@ teste("67. cosméticos (JGB-27): trajes por vocação e montarias só visuais, c
   assert.doesNotMatch(ui, /\.cosmeticos\.(possui|traje|montaria)\s*=/, "a interface não escreve em p.cosmeticos");
 });
 
-teste("68. arte em 32 px por casa (JGB-48): humanos em 3 vistas com equipamento visível, criaturas e itens na nova resolução", () => {
+teste("68. arte em 32 px por casa: contrato de vistas e quadros dos humanos, equipamento visível, criaturas e itens na resolução", () => {
   const j = carregarJogo();
-  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
-  const Arte = j.ctx.Arte, PP = j.ctx.PIXEL_PATTERNS;
+  const Arte = carregarArte(j.ctx), PP = j.ctx.PIXEL_PATTERNS;
   assert.strictEqual(Arte.RES, 2, "2 px de arte por unidade (32 por casa)");
   assert.match(FONTE_GAME, /const PIXELS_ARTE_POR_CASA = 32;/);
-  // Humanos: 15 quadros (lado, frente, costas), célula 40 × 48 e corpo de ~32 × 44.
+  // Quadros por vista: 8 no contrato novo (arte/*.js), 5 no desenho legado.
+  const qpvDe = (def) => def.quadrosPorVista || 5;
+  // Humanos: 3 vistas (lado, frente, costas) × quadros por vista; célula = def.w × 2 px.
   const humanos = Object.keys(PP).filter((k) => PP[k].humano && !PP[k].montado);
   assert.ok(humanos.length >= 38, `${humanos.length} humanos`);
   for (const k of humanos) {
-    const def = PP[k];
-    igual([def.quadros, def.direcoes], [15, 3], k);
-    const px = Arte.pixels(k, { quadro: 5 });
-    igual([px.w, px.h], [40, 48], k);
-    // altura do corpo (do topo ao pé) entre 36 e 46 px de arte
+    const def = PP[k], qpv = qpvDe(def);
+    igual([def.quadros, def.direcoes], [3 * qpv, 3], k);
+    const px = Arte.pixels(k, { quadro: qpv });
+    igual([px.w, px.h], [def.w * 2, def.h * 2], k);
+    // altura do corpo (do topo ao pé, sem a sombra do chão) entre 36 e 60 px de arte
     let topo = px.h, base = 0;
     for (let y = 0; y < px.h; y++) for (let x = 0; x < px.w; x++) if (px.data[y * px.w + x] && !String(px.data[y * px.w + x]).match(/^#1c1210[0-9a-f]{2}$/)) { topo = Math.min(topo, y); base = Math.max(base, y); }
-    assert.ok(base - topo >= 36 && base - topo <= 47, `${k}: altura ${base - topo}`);
+    // (até 62: no esqueleto de 48 × 64 px um cajado ou estandarte passa da cabeça)
+    assert.ok(base - topo >= 36 && base - topo <= 62, `${k}: altura ${base - topo}`);
     // as 3 vistas são desenhos diferentes
     const q = (n) => Arte.pixels(k, { quadro: n }).data.join();
-    assert.ok(q(0) !== q(5) && q(5) !== q(10) && q(0) !== q(10), `${k}: vistas diferentes`);
-    assert.ok(q(5) !== q(7) && q(5) !== q(9), `${k}: passo e ação mudam o quadro`);
+    assert.ok(q(0) !== q(qpv) && q(qpv) !== q(2 * qpv) && q(0) !== q(2 * qpv), `${k}: vistas diferentes`);
+    // o passo e a ação mudam o quadro (de frente): contato A do ciclo e o golpe
+    const passo = def.ciclo ? def.ciclo[0] : 2, acao = def.quadroAcao ? def.quadroAcao[1] : 4;
+    assert.ok(passo > 0 && passo < qpv && acao > 0 && acao < qpv, `${k}: passo ${passo} e ação ${acao} dentro da vista`);
+    assert.ok(q(qpv) !== q(qpv + passo) && q(qpv) !== q(qpv + acao), `${k}: passo e ação mudam o quadro`);
   }
-  // Equipamento visível: arma, escudo e armadura mudam o desenho do jogador.
-  const jog = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
+  // Equipamento visível: arma, escudo e armadura mudam o desenho do jogador (de frente, parado).
+  const frente = (chave) => Arte.pixels(chave, { quadro: qpvDe(PP[chave]) }).data.join();
+  const jog = (eq) => frente(Arte.garantirJogador(eq));
   const nu = jog({});
   for (const eq of [{ arma: "espada_ferro" }, { escudo: "escudo_bronze" }, { armadura: "armadura_couro" }, { armadura: "couraca_escamas" }, { arco: "arco_madeira" }, { arma: "espada_ferro@raro.dano2" }])
     assert.notStrictEqual(jog(eq), nu, JSON.stringify(eq));
   // Montarias e trajes geram sprite; montado tem as 3 vistas.
   for (const m of ["jumento", "camelo", "cavalo", "carro"]) {
-    const chave = Arte.garantirJogador({}, { montaria: m });
-    igual([PP[chave].quadros, PP[chave].direcoes, Arte.pixels(chave).w, Arte.pixels(chave).h], [15, 3, 56, 64], m);
+    const chave = Arte.garantirJogador({}, { montaria: m }), def = PP[chave];
+    igual([def.quadros, def.direcoes, Arte.pixels(chave).w, Arte.pixels(chave).h], [3 * qpvDe(def), 3, def.w * 2, def.h * 2], m);
+    assert.ok(def.montado && def.w * 2 >= 56 && def.h * 2 >= 64, `${m}: célula do montado`);
+    assert.notStrictEqual(frente(chave), nu, `${m}: montado muda o desenho`);
     assert.ok(PP["mt_" + m], `prévia mt_${m}`);
   }
-  for (const t of Object.keys(j.g("TRAJES"))) assert.notStrictEqual(Arte.pixels(Arte.garantirJogador({}, { traje: t }), { quadro: 5 }).data.join(), nu, t);
-  // Criaturas e itens: 32 px por casa (2 px de arte por unidade) e contorno de 1 px.
+  for (const t of Object.keys(j.g("TRAJES"))) assert.notStrictEqual(frente(Arte.garantirJogador({}, { traje: t })), nu, t);
+  // Criaturas e itens: px = unidades × resolução (2 px de arte por unidade, 32 por casa).
   for (const k of ["in_lobo", "in_leao", "in_naja", "in_aguia", "espada_ferro", "pocao", "escudo_bronze"]) {
     const def = PP[k], px = Arte.pixels(k);
-    igual([px.w, px.h], [def.w * 2, def.h * 2], k);
+    assert.strictEqual(def.res, 2, `${k}: resolução`);
+    igual([px.w, px.h], [def.w * def.res, def.h * def.res], k);
   }
-  // Glifos da interface ficam em 1 px por unidade.
-  assert.strictEqual(Arte.pixels("ui_moeda").w, 8);
+  // Glifos da interface: px = unidades × a resolução do glifo.
+  assert.strictEqual(Arte.pixels("ui_moeda").w, PP.ui_moeda.w * PP.ui_moeda.res);
+  // Toda def com vistas respeita quadros = vistas × quadros por vista, e a validação não acusa nada.
+  for (const [k, def] of Object.entries(PP)) if (def.direcoes) igual(def.quadros, def.direcoes * qpvDe(def), `${k}: quadros`);
+  igual(Arte.validar(), [], "Arte.validar()");
   // game.js vira o boneco para a direção do passo (lado, frente ou costas).
   assert.match(FONTE_GAME, /function virar\(sprite, dx, dy\)/);
   assert.match(FONTE_GAME, /quadroComVista\(j, quadroAndando\(j, time\)\)/);
   assert.match(FONTE_GAME, /const CICLO_PASSO = \[2, 0, 3, 0\];/, "andando: contato A, passagem, contato B, passagem");
+  // e lê do contrato os quadros por vista, o ciclo e o quadro de ação.
+  assert.match(FONTE_GAME, /def\.quadrosPorVista \|\| 5/);
+  assert.match(FONTE_GAME, /function quadroDeAcao\(sprite, restanteMs\)/);
 });
 
 // ---------------------------------------------------------------------
@@ -6065,7 +6094,7 @@ teste("71. cores do visual (JGB-49): paleta fixa, comando definirCores validado,
   igual([q.versao, q.cosmeticos.cores], [g("VERSAO_SAVE"), nulas]);
   assert.strictEqual(g("VERSAO_SAVE"), 16, "cores não pedem versão nova do save");
   // Arte: as cores entram na chave da textura (e só as da paleta); trocam o desenho, também com traje.
-  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  carregarArte(j.ctx);
   const Arte = j.ctx.Arte;
   assert.strictEqual(Arte.chaveJogador({}, { cores: nulas }), "pj_jogador");
   assert.strictEqual(Arte.chaveJogador({}, { cores: { tronco: "inventada" } }), "pj_jogador");
@@ -6082,6 +6111,22 @@ teste("71. cores do visual (JGB-49): paleta fixa, comando definirCores validado,
   assert.match(ui, /tipo: "definirCores"/);
   assert.doesNotMatch(ui, /\.cosmeticos\.cores\s*(\[|\.\w+\s*=|=)/, "a interface não escreve em p.cosmeticos.cores");
 });
+
+// Testes de cada pacote de arte: tests/arte/<nome>.test.js exporta uma função que recebe as ferramentas
+// desta suíte e registra os seus testes com teste(). Cada pacote escreve só o próprio arquivo.
+const PASTA_TESTES_ARTE = path.join(__dirname, "arte");
+if (fs.existsSync(PASTA_TESTES_ARTE)) {
+  for (const arq of fs.readdirSync(PASTA_TESTES_ARTE).filter((a) => a.endsWith(".test.js")).sort()) {
+    // um arquivo de outro pacote a meio caminho (erro de sintaxe) vira um teste que falha, sem derrubar os demais
+    try {
+      const registrar = require(path.join(PASTA_TESTES_ARTE, arq));
+      assert.strictEqual(typeof registrar, "function", `tests/arte/${arq}: module.exports deve ser uma função`);
+      registrar({ teste, carregarJogo, carregarArte, arquivosDeArte, assert, igual, RAIZ });
+    } catch (erro) {
+      teste(`arte/${arq.replace(/\.test\.js$/, "")}: o arquivo de testes carrega`, () => { throw erro; });
+    }
+  }
+}
 
 const filtro = process.argv[2];
 const selecionados = filtro ? testes.filter((t) => t.nome.startsWith(filtro)) : testes;

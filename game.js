@@ -61,9 +61,11 @@ const ESTILO_NUM = {
 // Nome do campeão e aura dele.
 const COR_CAMPEAO = "#f2c94c";
 
-// Humanos têm 3 vistas (sprites.js): quadros 0–4 de lado (espelhados para a esquerda), 5–9 de frente
-// e 10–14 de costas. A vista sai do último passo ou do alvo: lado se o passo for mais horizontal.
-const DESLOC_VISTA = { lado: 0, frente: 5, costas: 10 };
+// Sprites com 3 vistas (def.direcoes): lado (espelhado para a esquerda), frente e costas, cada uma com
+// def.quadrosPorVista quadros (8 no contrato novo de arte/*.js; 5 no legado: 0–4, 5–9, 10–14).
+// A vista sai do último passo ou do alvo: lado se o passo for mais horizontal.
+const DESLOC_VISTA = { lado: 0, frente: 5, costas: 10 }; // legado (5 quadros por vista)
+const ORDEM_VISTA = { lado: 0, frente: 1, costas: 2 };
 function virar(sprite, dx, dy) {
   if (!sprite || (!dx && !dy)) return;
   const def = PIXEL_PATTERNS[sprite.texture?.key];
@@ -74,13 +76,26 @@ function virar(sprite, dx, dy) {
 }
 function quadroComVista(sprite, q) {
   const def = PIXEL_PATTERNS[sprite.texture?.key];
-  return def?.direcoes ? q + DESLOC_VISTA[sprite.getData("vista") || "frente"] : q;
+  return def?.direcoes ? q + ORDEM_VISTA[sprite.getData("vista") || "frente"] * (def.quadrosPorVista || 5) : q;
 }
 // Andando: humanos (3 vistas) tocam contato A, passagem (quadro 0), contato B, passagem — no contato o
-// tronco desce 1 px (sprites.js); as criaturas alternam os 2 passos.
+// tronco desce 1 px (sprites.js); as criaturas alternam os 2 passos. No contrato novo a def traz o
+// ciclo (def.ciclo, ex.: [2, 3, 4, 5]): a fase vem da fração do passo (dado "fasePasso", de 0 a 1,
+// quando o movimento a define) ou do relógio.
 const CICLO_PASSO = [2, 0, 3, 0];
 function quadroAndando(sprite, time) {
-  return PIXEL_PATTERNS[sprite.texture?.key]?.direcoes ? CICLO_PASSO[Math.floor(time / 110) % 4] : 2 + (Math.floor(time / 125) % 2);
+  const def = PIXEL_PATTERNS[sprite.texture?.key];
+  if (def?.ciclo) {
+    const n = def.ciclo.length, fase = sprite.getData("fasePasso");
+    return def.ciclo[typeof fase === "number" ? Math.max(0, Math.min(n - 1, Math.floor(fase * n))) : Math.floor(time / 110) % n];
+  }
+  return def?.direcoes ? CICLO_PASSO[Math.floor(time / 110) % 4] : 2 + (Math.floor(time / 125) % 2);
+}
+// Quadro do golpe/fala (dentro da vista): no contrato novo, antecipação e depois o golpe nos últimos
+// 70 ms (def.quadroAcao = [antecipação, golpe]); no legado, o quadro 4.
+function quadroDeAcao(sprite, restanteMs) {
+  const qa = PIXEL_PATTERNS[sprite.texture?.key]?.quadroAcao;
+  return qa ? (restanteMs > 70 ? qa[0] : qa[1]) : 4;
 }
 
 // Vizinhos da grade em ordem de ângulo (0°, 45°… com y para baixo), para o joystick analógico.
@@ -787,11 +802,18 @@ class Cena extends Phaser.Scene {
   }
 
   criarEntidade(tipo, dados, chave) {
+    // Raro nomeado (escala e tinta nos dados): se a arte tiver a variante pronta, no porte e na cor,
+    // usa a textura dela (sem escala fracionária nem tinta por cima); senão, setScale e setTint.
+    const variante = dados.escala || dados.tinta ? Arte.garantirVariante(chave, { escala: dados.escala || 1, tinta: dados.tinta }) : null;
+    if (variante) chave = variante;
     Arte.garantirTextura(this, chave);
     const def = PIXEL_PATTERNS[chave];
     const quadrupede = !!def && !def.humano;
     const x = centroX(dados.x), y = baseY(dados.y);
-    const sombra = this.add.image(x + 3, y - 1, quadrupede ? "fx_sombra_lobo" : Arte.CHEFES.has(dados.id) ? "fx_sombra_g" : "fx_sombra").setDepth(PROF.sombra);
+    // sombra: a medida da def (contrato novo) ou uma das três do legado
+    const chaveSombra = def?.sombra ? Arte.garantirTextura(this, Arte.garantirSombra(def.sombra.w, def.sombra.h))
+      : quadrupede ? "fx_sombra_lobo" : Arte.CHEFES.has(dados.id) ? "fx_sombra_g" : "fx_sombra";
+    const sombra = this.add.image(x + 3, y - 1, chaveSombra).setDepth(PROF.sombra);
     const sprite = this.add.sprite(x, y, chave, 0).setOrigin(0.5, 1).setDepth(PROF.entidade + y);
     sprite.setInteractive({ useHandCursor: true });
     // Criatura: nome com os modificadores de campeão (dourado), elite prateado e raro nomeado lilás,
@@ -800,9 +822,9 @@ class Cena extends Phaser.Scene {
     const nome = ficha ? ficha.nome : Arte.nomeCurto(dados.nome);
     const corTier = ficha && typeof TIERS_CRIATURAS !== "undefined" ? TIERS_CRIATURAS[ficha.tier]?.cor : null;
     const corNome = ficha?.campeao ? COR_CAMPEAO : corTier || (tipo === "inimigo" ? COR.hostil : COR.amigo);
-    const escala = dados.escala || 1;
+    const escala = variante ? 1 : dados.escala || 1;
     if (escala !== 1) sprite.setScale(escala);
-    if (dados.tinta) sprite.setTint(hexNum(dados.tinta));
+    if (dados.tinta && !variante) sprite.setTint(hexNum(dados.tinta));
     if (ficha?.campeao || ficha?.nomeado) {
       sprite.auraCampeao = this.add.image(x, y - 2, "fx_aura").setDepth(PROF.sombra + 1).setTint(hexNum(ficha.campeao ? COR_CAMPEAO : corTier)).setAlpha(0.55).setScale(1.2);
       if (!reduzMovimento()) this.tweens.add({ targets: sprite.auraCampeao, alpha: 0.25, duration: 800, yoyo: true, repeat: -1 });
@@ -813,7 +835,7 @@ class Cena extends Phaser.Scene {
       corNome,
       corAtual: corNome,
       fase: Math.random() * 1200, acaoAte: 0, andandoAte: 0, feridoAte: 0,
-      alturaCabeca: Math.round((quadrupede ? def.h * Arte.PX - 6 : def.h * Arte.PX - 8) * escala),
+      alturaCabeca: Math.round((def.alturaCabeca || (quadrupede ? def.h * Arte.PX - 6 : def.h * Arte.PX - 8)) * escala),
       vidaFantasma: tipo === "inimigo" ? Mundo.obterVidaInimigo(MEU_ID, dados.id) : 0,
       fantasmaDesde: 0,
     };
@@ -2086,7 +2108,7 @@ class Cena extends Phaser.Scene {
     // jogador
     const ej = this.estadoJogador, j = this.jogador;
     if (this.areaAtual === "mar") j.setFrame(Math.floor(time / 600) % 2);
-    else if (ej.acaoAte > time) j.setFrame(quadroComVista(j, 4));
+    else if (ej.acaoAte > time) j.setFrame(quadroComVista(j, quadroDeAcao(j, ej.acaoAte - time)));
     else if (ej.andandoAte > time) j.setFrame(quadroComVista(j, quadroAndando(j, time)));
     else j.setFrame(quadroComVista(j, reduz ? 0 : Math.floor(time / 600) % 2));
     // setDepth sempre reordena a cena inteira (milhares de obstáculos): só quando a profundidade muda
@@ -2097,10 +2119,11 @@ class Cena extends Phaser.Scene {
     for (const ent of Object.values(this.entidades)) {
       const s = ent.sprite;
       let q;
-      if (ent.acaoAte > time) q = 4;
+      const agindo = ent.acaoAte > time;
+      if (agindo) q = quadroDeAcao(s, ent.acaoAte - time);
       else if (ent.andandoAte > time) q = quadroAndando(s, time);
       else q = reduz ? 0 : Math.floor((time + ent.fase) / 600) % 2;
-      if (ent.dados.id === "jesusGalileia" && q === 4 && ent.acaoAte - time > 400) q = 0;
+      if (ent.dados.id === "jesusGalileia" && agindo && ent.acaoAte - time > 400) q = 0;
       s.setFrame(quadroComVista(s, q));
       if (s.depth !== PROF.entidade + s.y) s.setDepth(PROF.entidade + s.y);
       ent.sombra.setPosition(s.x + 3, s.y - 1);
