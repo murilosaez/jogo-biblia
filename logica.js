@@ -870,6 +870,94 @@ function dentroDoMapa(x, y) {
   return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < COLS && y < ROWS;
 }
 
+// Caminho mais rápido numa grade em 8 direções (A*), da casa "origem" até a casa "destino". livre(x, y) diz
+// se dá para pisar na casa (cada casa é perguntada uma vez só; a de partida não precisa ser livre). O
+// passo reto custa custoReto e o diagonal custoDiagonal (REGRAS_ROTA, dados/mundo.js). Se o destino não
+// puder ser alcançado (obstáculo, área fechada ou o limite de casas), o caminho vai até a casa alcançada
+// mais perto dele (empate: a de caminho mais curto). Devolve { passos: [[dx, dy], …], chegada: { x, y },
+// exato } (passos vazio: ficar onde está já é o melhor); null só com origem ou destino inválidos.
+function rotaNaGrade(livre, origem, destino, opcoes = {}) {
+  const cols = opcoes.colunas ?? COLS, rows = opcoes.linhas ?? ROWS;
+  const reto = opcoes.custoReto ?? REGRAS_ROTA.custoReto, diag = opcoes.custoDiagonal ?? REGRAS_ROTA.custoDiagonal;
+  const limite = opcoes.limite ?? REGRAS_ROTA.limiteCasas;
+  const dentro = (x, y) => Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < cols && y < rows;
+  if (!origem || !destino || !dentro(origem.x, origem.y) || !Number.isInteger(destino.x) || !Number.isInteger(destino.y)) return null;
+  const tx = Math.max(0, Math.min(cols - 1, destino.x)), ty = Math.max(0, Math.min(rows - 1, destino.y));
+  const n = cols * rows, inicio = origem.y * cols + origem.x, alvo = ty * cols + tx;
+  const custo = new Float64Array(n).fill(Infinity), veio = new Int32Array(n).fill(-1);
+  const fechado = new Uint8Array(n), pisavel = new Uint8Array(n); // pisavel: 0 = não perguntado, 1 = livre, 2 = bloqueada
+  // estimativa octil até o destino (nunca passa do custo real: o A* acha o caminho mais rápido)
+  const h = (i) => {
+    const dx = Math.abs((i % cols) - tx), dy = Math.abs(((i / cols) | 0) - ty);
+    return reto * (dx + dy) + (diag - 2 * reto) * Math.min(dx, dy);
+  };
+  // fila de prioridade (heap binário) de [f, casa]
+  const heapF = [], heapI = [];
+  const empurrar = (f, i) => {
+    let k = heapF.length;
+    heapF.push(f); heapI.push(i);
+    while (k > 0) {
+      const pai = (k - 1) >> 1;
+      if (heapF[pai] <= f) break;
+      heapF[k] = heapF[pai]; heapI[k] = heapI[pai];
+      k = pai;
+    }
+    heapF[k] = f; heapI[k] = i;
+  };
+  const tirar = () => {
+    const topo = heapI[0], f = heapF.pop(), i = heapI.pop();
+    if (heapF.length) {
+      let k = 0;
+      for (;;) {
+        const a = 2 * k + 1, b = a + 1;
+        let m = k, fm = f;
+        if (a < heapF.length && heapF[a] < fm) { m = a; fm = heapF[a]; }
+        if (b < heapF.length && heapF[b] < fm) { m = b; fm = heapF[b]; }
+        if (m === k) break;
+        heapF[k] = heapF[m]; heapI[k] = heapI[m];
+        k = m;
+      }
+      heapF[k] = f; heapI[k] = i;
+    }
+    return topo;
+  };
+  custo[inicio] = 0;
+  empurrar(h(inicio), inicio);
+  let melhor = inicio, melhorH = h(inicio), abertas = 0;
+  while (heapF.length && abertas < limite) {
+    const i = tirar();
+    if (fechado[i]) continue;
+    fechado[i] = 1;
+    abertas++;
+    const hi = h(i);
+    if (hi < melhorH || (hi === melhorH && custo[i] < custo[melhor])) { melhor = i; melhorH = hi; }
+    if (i === alvo) break;
+    const x = i % cols, y = (i / cols) | 0;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const j = ny * cols + nx;
+        if (fechado[j]) continue;
+        if (!pisavel[j]) pisavel[j] = livre(nx, ny) ? 1 : 2;
+        if (pisavel[j] !== 1) continue;
+        const c = custo[i] + (dx && dy ? diag : reto);
+        if (c >= custo[j]) continue;
+        custo[j] = c;
+        veio[j] = i;
+        empurrar(c + h(j), j);
+      }
+  }
+  const passos = [];
+  for (let k = melhor; k !== inicio; k = veio[k]) {
+    const de = veio[k];
+    passos.push([(k % cols) - (de % cols), ((k / cols) | 0) - ((de / cols) | 0)]);
+  }
+  passos.reverse();
+  return { passos, chegada: { x: melhor % cols, y: (melhor / cols) | 0 }, exato: melhor === alvo };
+}
+
 // ---------------------------------------------------------------------
 // Áreas e mapas base
 // ---------------------------------------------------------------------
@@ -3812,6 +3900,20 @@ const Mundo = {
     return Object.values(npcs).find(
       (n) => n.area === p.area && distanciaChebyshev(p, n) <= alcanceDoNpc(n) && filtro(n),
     );
+  },
+
+  // Casas onde o jogador pode pisar agora na área dele (1 = livre, 0 = não), na mesma regra de casaLivre
+  // (obstáculo do mapa, NPC ou criatura viva bloqueiam; a casa do próprio jogador conta como livre). Montada
+  // de uma vez para as rotas longas (rotaNaGrade): perguntar casa por casa percorreria NPCs e criaturas a
+  // cada vez.
+  gradeDePassagem(p) {
+    const mapa = mapas[p?.area], grade = new Uint8Array(COLS * ROWS);
+    if (!mapa) return grade;
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) grade[y * COLS + x] = mapa[y][x] === 0 ? 1 : 0;
+    for (const n of Object.values(npcs)) if (n.area === p.area && dentroDoMapa(n.x, n.y)) grade[n.y * COLS + n.x] = 0;
+    for (const e of Object.values(inimigos))
+      if (e.area === p.area && dentroDoMapa(e.x, e.y) && this.inimigoVivo(p, e.id)) grade[e.y * COLS + e.x] = 0;
+    return grade;
   },
 
   casaLivre(x, y, p, ignorarJogador = false) {

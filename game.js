@@ -1727,8 +1727,14 @@ class Cena extends Phaser.Scene {
       if (!r.passos.length) this.concluirRota();
       return;
     }
-    // Algo entrou no caminho (uma criatura andou): refaz a rota uma vez a cada bloqueio.
-    const nova = this.calcularRota(r.objetivo);
+    // Algo entrou no caminho (uma criatura andou): refaz a rota uma vez a cada bloqueio (a rota longa, do
+    // clique no chão ou no minimapa, refaz pelo A* até o mesmo destino).
+    let nova;
+    if (r.longa) {
+      const nr = this.rotaAte(r.longa.x, r.longa.y);
+      nova = nr?.passos;
+      if (nr?.passos.length) { r.destino = nr.chegada; r.objetivo = (cx, cy) => cx === nr.chegada.x && cy === nr.chegada.y; this.marcarDestino(nr.chegada); }
+    } else nova = this.calcularRota(r.objetivo);
     if (!nova || !nova.length) { this.pararRota(); return; }
     r.passos = nova;
     this.proximoPasso = time + 140;
@@ -1751,14 +1757,29 @@ class Cena extends Phaser.Scene {
     }
     this.marcaDestino.setPosition(centroX(c.x), c.y * TAM + TAM / 2).setVisible(true).setAlpha(1);
   }
-  // Destinos do toque: casa do chão (ou a vizinha mais perto, se for obstáculo), NPC (fala ao chegar),
-  // saque (recolhe ao pisar) e ponto de pesca (pesca ao chegar).
+  // Rota longa até (x, y) pelo A* (rotaNaGrade, logica.js), sobre a grade de passagem da área montada de
+  // uma vez: serve para qualquer distância (o mapa inteiro tem 160 × 120 casas e a busca leva poucos ms).
+  // Casas de transição (cais, trilha, portal) só entram como destino. Destino bloqueado ou fora de alcance:
+  // a casa alcançável mais perto dele.
+  rotaAte(x, y) {
+    const grade = Mundo.gradeDePassagem(this.p), transicao = this.casasDeTransicao(), alvo = y * COLS + x;
+    return rotaNaGrade((cx, cy) => {
+      const k = cy * COLS + cx;
+      return grade[k] === 1 && (k === alvo || !transicao.has(k));
+    }, this.p, { x, y });
+  }
+  // Destinos do toque: casa do chão (ou a mais perto dela que dá para alcançar), NPC (fala ao chegar),
+  // saque (recolhe ao pisar) e ponto de pesca (pesca ao chegar). O clique no minimapa também chega aqui.
+  // Um clique novo troca a rota; andar com as teclas ou o joystick cancela.
   irAteCasa(x, y) {
-    if (x < 0 || y < 0 || x >= COLS || y >= ROWS || (x === this.p.x && y === this.p.y)) return;
-    const livre = Mundo.casaLivre(x, y, this.p, true);
-    const objetivo = livre ? (cx, cy) => cx === x && cy === y : (cx, cy) => cheb({ x: cx, y: cy }, { x, y }) <= 1;
-    this.iniciarRota(objetivo, null, { x, y });
+    if (x < 0 || y < 0 || x >= COLS || y >= ROWS || (x === this.p.x && y === this.p.y)) return false;
+    const r = this.rotaAte(x, y);
+    this.perseguir = false;
+    if (!r || !r.passos.length) { this.pararRota(); return false; }
+    this.rota = { passos: r.passos, objetivo: (cx, cy) => cx === r.chegada.x && cy === r.chegada.y, fim: null, destino: r.chegada, longa: { x, y } };
+    this.marcarDestino(r.chegada);
     window.atualizarInterface?.();
+    return true;
   }
   irAteNpc(id) {
     const n = npcs[id];
@@ -2390,6 +2411,7 @@ class Cena extends Phaser.Scene {
     // janela centrada no jogador, presa às bordas do mapa
     const ox = Math.max(0, Math.min(COLS - jc, this.p.x - (jc >> 1)));
     const oy = Math.max(0, Math.min(ROWS - jl, this.p.y - (jl >> 1)));
+    this.janelaMinimapa = { ox, oy, sx, sy }; // para o clique no minimapa (ligarMinimapa)
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, W, H);
     ctx.drawImage(this.minimapaEstatico, Math.round(ox * sx), Math.round(oy * sy), W, H, 0, 0, W, H);
@@ -2423,6 +2445,15 @@ class Cena extends Phaser.Scene {
     ctx.strokeStyle = "#2a1a14cc";
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round((v.x / TAM - ox) * sx) + 0.5, Math.round((v.y / TAM - oy) * sy) + 0.5, Math.round(v.width * sx / TAM), Math.round(v.height * sy / TAM));
+    // destino da rota: um alvo de ouro (na borda, se estiver fora do recorte)
+    const d = this.rota?.destino;
+    if (d) {
+      const px = Math.round(Math.max(3, Math.min(W - 4, (d.x - ox + 0.5) * sx))), py = Math.round(Math.max(3, Math.min(H - 4, (d.y - oy + 0.5) * sy)));
+      ctx.fillStyle = "#2a1a14";
+      ctx.fillRect(px - 4, py - 1, 9, 3); ctx.fillRect(px - 1, py - 4, 3, 9);
+      ctx.fillStyle = "#ffe9a8";
+      ctx.fillRect(px - 3, py, 7, 1); ctx.fillRect(px, py - 3, 1, 7);
+    }
     if (Math.floor(this.time.now / 400) % 2 === 0 || reduzMovimento()) ponto(this.p.x, this.p.y, "#f3e4c0", 4);
     else ponto(this.p.x, this.p.y, "#3b5a9a", 4);
   }
@@ -2473,6 +2504,28 @@ window.Jogo = {
   },
 };
 
+// Clique (ou toque) no minimapa: anda até a casa clicada pela rota longa (irAteCasa). O minimapa mostra
+// um recorte em volta do jogador; a cena guarda o do último desenho (janelaMinimapa). Vale onde ele
+// estiver: na janela Mapa ou sobre o mundo (ali, translúcido com alguém embaixo, o clique passa ao mundo).
+function ligarMinimapa() {
+  const c = document.getElementById("miniMap");
+  if (!c || c.dataset.ligado) return;
+  c.dataset.ligado = "1";
+  c.addEventListener("click", (e) => {
+    const s = window.gameScene, j = s?.janelaMinimapa;
+    if (!s?.p || !j || s.trocando) return;
+    const r = c.getBoundingClientRect();
+    const px = ((e.clientX - r.left - c.clientLeft) / (c.clientWidth || 1)) * c.width;
+    const py = ((e.clientY - r.top - c.clientTop) / (c.clientHeight || 1)) * c.height;
+    if (px < 0 || py < 0 || px >= c.width || py >= c.height) return;
+    const x = Math.floor(j.ox + px / j.sx), y = Math.floor(j.oy + py / j.sy);
+    if (!s.irAteCasa(x, y) && !(x === s.p.x && y === s.p.y)) s.mensagem?.("Não há caminho até lá.");
+    s.desenharMinimapa();
+  });
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarMinimapa);
+else ligarMinimapa();
+
 // ---------------------------------------------------------------------
 // Boot: espera as fontes (no máximo 1,5 s) e cria o jogo em Scale.RESIZE.
 // ---------------------------------------------------------------------
@@ -2510,8 +2563,11 @@ function iniciarJogo() {
         const m = medida(), chave = `${m.w}x${m.h}@${m.dpr}`;
         if (chave === ultima) return;
         ultima = chave;
-        jogo.scale.setZoom(1 / m.dpr);
+        // resize antes de setZoom: com zoom 1 (devicePixelRatio 1) o resize do Phaser não mexe no tamanho CSS
+        // do canvas, e o setZoom o acerta com o tamanho que estiver valendo. Na ordem inversa, o canvas ficava
+        // com o tamanho da medida anterior (uma faixa escura embaixo do mundo ao mudar a altura da conversa).
         jogo.scale.resize(m.w, m.h);
+        jogo.scale.setZoom(1 / m.dpr);
       };
       if (window.ResizeObserver && raiz) new ResizeObserver(redimensionar).observe(raiz);
       window.addEventListener("resize", redimensionar);

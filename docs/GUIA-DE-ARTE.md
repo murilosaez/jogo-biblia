@@ -16,6 +16,10 @@ com os personagens, as cores do visual e as montarias da JGB-49, e documenta a p
   `g.retf` (aceitam meia unidade) ou `g.fino(X, Y)` em px de arte.
 - Os glifos da interface (`ui_`, `hb_`, `of_`) ficam em 1 px por unidade: são ícones de botão, não arte do
   mundo.
+- Os botões das janelas laterais (menu de três pontos, minimizar e restaurar) são desenhados no CSS em
+  pixels inteiros (`.ic-menu`, `.ic-min` no `index.html`), sem curva nem borrão; fechar usa o glifo
+  `ui_fechar`. O destino da rota aparece no minimapa como uma cruz de ouro `#ffe9a8` de 7 px com contorno
+  sépia `#2a1a14` (presa na borda quando o destino está fora do recorte), e no chão como o quadrado de ouro.
 
 ## 2. Luz, contorno e acabamento
 

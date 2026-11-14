@@ -65,6 +65,11 @@ const REGRAS_VIAGEM = {
 // cais de qualquer cidade aberta para desembarcar (a pesca no mar continua de graça).
 const REGRAS_BARCO = { passagem: 8 };
 
+// Andar por clique (no chão ou no minimapa): o caminho mais rápido em 8 direções (A*, rotaNaGrade em
+// logica.js). Os custos seguem o tempo de cada passo (reto 140 ms, diagonal 180 ms, em game.js);
+// limiteCasas: quantas casas a busca pode abrir (o mapa inteiro tem 160 × 120 = 19 200 casas).
+const REGRAS_ROTA = { custoReto: 7, custoDiagonal: 9, limiteCasas: 20000 };
+
 // Pontos de pesca no Mar das Rotas.
 const pontosPesca = [
   { id: "pesca1", x: 36, y: 30 },
