@@ -209,7 +209,8 @@ Interface e visual
   números do combate de estatisticasCombate e a seção Ofícios, também recolhível, com os 6 ofícios. Um clique
   ou toque na linha abre a dica do que falta. Quem sobe pisca em ouro, e a habilidade de combate avisa no
   console, aba Servidor: "Você avançou em Corpo a corpo: nível 15." As seções lembram a escolha neste
-  navegador; sem escolha, Habilidades começa recolhida no largo com tela de até 1000 px de altura),
+  navegador; sem escolha, no largo Habilidades só começa aberta se a coluna dela comportar a seção sem rolar e
+  com 3 linhas da Batalha à vista — recolhida em 1920 × 1080, aberta em 2560 × 1440),
   Equipamento (boneco clássico: colar, cabeça e mochila em cima; mão da arma, armadura e mão do
   escudo; anel, pernas e munição; pés embaixo; o espaço vazio mostra o contorno do que vai nele e a dica dá os
   efeitos; ao lado, a figura com o que está vestido, o jeito de atacar da mão e o ataque e a defesa),
@@ -224,8 +225,13 @@ Interface e visual
   teclado: para a outra coluna, subir, descer, minimizar e fechar. O menu Janelas, no topo, lista todas as
   janelas para reabrir ou fechar, escolhe o lugar da conversa e tem "Restaurar layout". Uma coluna sem
   janelas sai e o mundo fica mais largo. A Caçada recolhe pelo título ou pela tecla X (é o minimizar dela).
-  O layout fica neste navegador (localStorage "jornada_janelas"), um para o largo e outro para o médio; um
-  layout salvo estragado ou de outra versão volta ao padrão sem erro.
+  O espaço da mochila no boneco reabre a janela Mochila (fechada ou minimizada). Em telas de até 800 px de
+  altura (1366 × 768, 1280 × 720) o padrão é outro: com o dock de baixo cada coluna tem ~540 px, então a
+  Batalha fica à esquerda, sob a Missão, com a Mochila, e Bolsa e Caçada começam minimizadas; à direita,
+  Personagem e Equipamento inteiros. O layout fica neste navegador (localStorage "jornada_janelas"), um para
+  o largo, outro para o largo de até 800 px de altura e outro para o médio; um layout salvo estragado ou de
+  outra versão volta ao padrão sem erro. Com as duas colunas no médio, o mundo fica estreito e o zoom pode
+  cair para 1× (cada pixel da arte em 1 px de tela, ainda nítido).
 - Console (o histórico): abas Geral (tudo), NPCs (falas, o que você disse e as palavras-chave) e Servidor
   (saque, XP, níveis, avisos e anúncios), até 200 linhas com a hora (HH:MM) e a cor de cada tipo, em letra
   de 15 px (a hora em 13 px) com mais espaço entre as linhas; a aba com novidade ganha um ponto. No largo e no
@@ -243,7 +249,8 @@ Interface e visual
   "Volta em 19 h 59 min" e Aceitar, Retomar ou Guardar) e Troca de pontos. Cada abate que conta mostra
   "27/40" sobre a criatura, e a caçada cumprida mostra o cartão "CAÇADA CUMPRIDA". O atalaia tem um
   visual só, igual em todas as regiões, com o balão de riscos de contagem depois da 1ª caçada aceita.
-- Avisos curtos aparecem no topo do mundo e também ficam no console (aba Servidor). As falas dos
+- Avisos curtos aparecem no topo do mundo (com o mundo estreito, logo abaixo do HUD e do minimapa) e também
+  ficam no console (aba Servidor). As falas dos
   personagens vão para a aba NPCs, com as palavras-chave. O quadro de diálogo com o retrato (e as
   palavras-chave, do tamanho do dedo) só abre quando o console não está à vista: no celular com a folha
   Conversa fechada, ou com o console recolhido. Clique na caixa ou aperte F (perto do personagem) para

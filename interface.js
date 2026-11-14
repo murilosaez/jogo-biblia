@@ -788,8 +788,8 @@
   // na aba dele; no celular, na folha Mochila) e o destaca por um instante.
   function abrirMochila() {
     if (modo === "estreito" && folhaAtual !== "mochila") abrirFolha("mochila");
-    else if (modo === "medio" && abaMedia !== "mochila") mostrarAbaMedia("mochila");
-    else if (document.body.classList.contains("hideBags")) document.body.classList.remove("hideBags");
+    // Largo e médio: a janela Mochila reabre (fechada) ou volta a crescer (minimizada); "Janelas laterais".
+    else if (modo !== "estreito" && (janelaFechada("pMochila") || janelaMinimizada("pMochila"))) mostrarJanela("pMochila");
     const m = $("#pMochila");
     if (!m) return;
     m.scrollIntoView?.({ block: "nearest", behavior: reduzMovimento() ? "auto" : "smooth" });
@@ -2699,8 +2699,6 @@
   // Layout responsivo: largo (≥ 1280 px), médio e estreito (celular, ≤ 760 px)
   // ------------------------------------------------------------------
   let modo = null, folhaAtual = null;
-  // Nome antigo (o médio tinha abas): "mochila" quando a Mochila está à vista, para o código que ainda pergunta.
-  let abaMedia = "mochila";
   const FOLHAS = {
     mochila: { titulo: "Mochila e bolsa", paineis: ["pEquip", "pMochila", "pBolsa"] },
     equip: { titulo: "Personagem", paineis: ["pPersonagem", "pEquip"] },
@@ -2854,7 +2852,6 @@
       }
     }
     marcarAnalisador();
-    abaMedia = !janelaFechada("pMochila") && !janelaMinimizada("pMochila") ? "mochila" : "outra";
     if (modo === "estreito") return;
     const dep = $("#deposito");
     for (const [lado, col] of [["esq", $("#colEsq")], ["dir", $("#colDir")]]) {
@@ -2976,15 +2973,6 @@
     const apertaBatalha = bat?.closest(".coluna") === col && bat.dataset.min !== "true" && bat.offsetHeight < ALTURA_MIN_BATALHA;
     if (col.scrollHeight > col.clientHeight + 1 || apertaBatalha) abrirSecaoFicha("habilidades", false);
   }
-  // Nome antigo (abas do médio): mostra as janelas daquele grupo.
-  const GRUPOS_ANTIGOS = { personagem: ["pPersonagem"], mochila: ["pEquip", "pMochila", "pBolsa"], batalha: ["pAnalisador", "pBatalha"] };
-  function mostrarAbaMedia(k) {
-    if (modo === "estreito" || !GRUPOS_ANTIGOS[k]) return;
-    for (const id of GRUPOS_ANTIGOS[k]) { marcarEm(layout().fechadas, id, false); marcarEm(layout().min, id, false); }
-    mudouLayout();
-    rolarAteJanela(GRUPOS_ANTIGOS[k][0]);
-  }
-
   // ----- Arrastar janelas -----
   // O cabeçalho é a alça (com o mouse, a caneta ou o dedo). Passou de 6 px, vira arraste: a janela fica
   // apagada, um rótulo segue o ponteiro e um traço de ouro mostra onde ela vai entrar. A metade da tela
