@@ -349,7 +349,7 @@ const DADOS_MAPAS = {
       { tipo: "cerca", x: 39, y: 36 },
     ],
     decoracoes: [
-      { chave: "dc_rede", x: 42, y: 22 },
+      { chave: "dc_rede", x: 46, y: 22 }, // na praia, entre a rua do cais e os barcos (fora dos props da vila)
       { chave: "dc_rede", x: 48, y: 22 },
       { chave: "dc_esteira", x: 34, y: 29 },
     ],

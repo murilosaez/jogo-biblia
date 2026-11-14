@@ -7162,6 +7162,81 @@ teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no
   }
 });
 
+teste("78. arte do mundo (revisão): decorações sem prop por cima, moitas longe das estradas, cerca com poste de fecho e escala de 1 px", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const [mapas, MAPAS] = ["mapas", "DADOS_MAPAS"].map(j.g);
+  // (a) cada decoração fica numa casa livre (criarDecoracao só desenha ali) e nenhum marco (prop, barco…)
+  // a até 1 casa: o prop bloquearia a casa ou passaria por cima do enfeite
+  for (const [area, d] of Object.entries(MAPAS)) for (const dc of d.decoracoes || []) {
+    const nome = `${area}: ${dc.chave} em ${dc.x},${dc.y}`;
+    igual(mapas[area][dc.y][dc.x], 0, `${nome} numa casa bloqueada`);
+    const perto = (d.marcos || []).filter((m) => Math.max(Math.abs(m.x - dc.x), Math.abs(m.y - dc.y)) <= 1);
+    igual(perto.map((m) => `${m.tipo} ${m.x},${m.y}`).join("; "), "", `${nome} com marco ao lado`);
+  }
+  // (b) vegetação rasteira: nenhum px de moita (arbusto, pedra, tufo…) em estrada, rua de pedra, prédio, estrutura
+  // ou chão pisado (gasto > 0,45) — a caixa inteira da peça é conferida, não só o pé. Os juncos da beira ficam
+  // de fora (moram na água). Pedaços onde a peça antiga passava da beira: Canaã (estrada e frente da tenda),
+  // Galileia (estrada e rua de pedra) e Sinai (chão pisado).
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "cenario.js"), "utf8"), j.ctx, { filename: "cenario.js" });
+  const Cenario = j.ctx.Cenario, pisos = j.g("pisos"), PISO = j.g("PISO"), COLS = j.g("COLS"), ROWS = j.g("ROWS");
+  const BEIRA = new Set(Cenario.TIPOS_BEIRA);
+  const pedacos = { canaan: [[3, 1], [0, 1]], galileia: [[1, 7], [2, 3], [2, 1]], sinai: [[1, 5], [0, 6]] };
+  for (const [area, lista] of Object.entries(pedacos)) {
+    const { cls, gasto } = Cenario.classesDaArea(area);
+    const CHAO = 1; // classe "chão" de classesDaArea (cenario.js: NADA 0, CHAO 1, TERRA 2, RUA 3, PREDIO 4)
+    let pintados = 0;
+    const ruins = [];
+    const espiao = (wx, wy, peca) => {
+      if (BEIRA.has(peca)) return;
+      pintados++;
+      const cx = wx >> 5, cy = wy >> 5;
+      if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return; // orla
+      const i = cy * COLS + cx;
+      if (cls[i] !== CHAO || pisos[area][cy][cx] !== PISO.CHAO || gasto[i] > 0.45) ruins.push(`${peca}@${wx},${wy}`);
+    };
+    for (const [bx, by] of lista) Cenario.pintarPedacoChao(area, bx, by, espiao);
+    assert.ok(pintados > 1000, `${area}: a vegetação continua lá (${pintados} px)`);
+    igual(ruins.length, 0, `${area}: moita fora do chão livre (${ruins.slice(0, 4).join(", ")})`);
+  }
+  // (c) cerca: só a última peça de cada fileira (sem cerca à direita) pede o fecho, e o quadro de fecho tem um
+  // poste na ponta direita onde o quadro comum só tem as travessas soltas
+  const Arte = j.ctx.Arte;
+  let fileiras = 0;
+  for (const [area, d] of Object.entries(MAPAS)) {
+    const cercas = new Set(d.marcos.filter((m) => m.tipo === "cerca").map((m) => `${m.x},${m.y}`));
+    for (const k of cercas) {
+      const [x, y] = k.split(",").map(Number), t = Arte.tipoObstaculo(area, x, y), fim = !cercas.has(`${x + 1},${y}`);
+      igual(t.fecho, fim, `${area}: cerca em ${k} (fecho)`);
+      if (fim) fileiras++;
+    }
+    if (!cercas.size) continue;
+    const chave = `ob_${area}_cerca`, def = Arte.PIXEL_PATTERNS[chave];
+    assert.ok(def.fecho > 0 && def.quadros === 2 * def.fecho, `${chave}: quadros de fecho`);
+    const comum = Arte.pixels(chave, { quadro: 0 }), fecho = Arte.pixels(chave, { quadro: def.fecho });
+    const W = comum.w, x0 = (W - 32) / 2;
+    // coluna x0 + 30 (dentro do poste de fecho): o poste pinta 20 px de altura, as travessas soltas só as 2 faixas
+    const coluna = (px) => { let n = 0; for (let Y = 0; Y < px.h; Y++) if (px.data[Y * W + x0 + 30]) n++; return n; };
+    assert.ok(coluna(fecho) >= 18 && coluna(comum) <= 12, `${chave}: poste de fecho (${coluna(comum)} → ${coluna(fecho)} px)`);
+  }
+  assert.ok(fileiras >= 3, `fileiras de cerca: ${fileiras}`);
+  // (d) escala de pixel: decorações do chão, ponto de pesca, poço, tenda e banca em px de arte (1 px de arte =
+  // 1 px de mundo), não em blocos de 2 px. Mede a fração das trocas de cor que caem fora da grade de 2 px:
+  // perto de 0 é arte em unidades (blocos de 2 px), perto de 1 é arte de 1 px.
+  for (const chave of ["dc_tapete", "dc_esteira", "dc_rede", "dc_fogo_apagado", "mk_pesca", "es_poco", "es_tenda", "es_banca"]) {
+    const def = Arte.PIXEL_PATTERNS[chave];
+    let naGrade = 0, fora = 0;
+    for (let q = 0; q < def.quadros; q++) {
+      const { w, h, data } = Arte.pixels(chave, { quadro: q }), em = (x, y) => data[y * w + x];
+      for (let y = 0; y < h; y++) for (let x = 0; x + 1 < w; x++) if (em(x, y) !== em(x + 1, y)) x % 2 ? naGrade++ : fora++;
+      for (let y = 0; y + 1 < h; y++) for (let x = 0; x < w; x++) if (em(x, y) !== em(x, y + 1)) y % 2 ? naGrade++ : fora++;
+    }
+    const fracao = (2 * fora) / (naGrade + fora);
+    assert.ok(fracao > 0.6, `${chave}: arte em blocos de 2 px (fração fora da grade ${fracao.toFixed(2)})`);
+  }
+});
+
 teste("80. revisão de uso: jogar longe cai ao lado e avisa; equipar sem erro de concordância", () => {
   const j = carregarJogo();
   j.entrar();

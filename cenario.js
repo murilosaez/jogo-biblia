@@ -802,6 +802,21 @@
     return t;
   }
   // Peças. pt(x, y, cor) pinta 1 px em coordenadas do mundo; (x, y) é o pé da peça; h em [0, 1) sorteia a forma.
+  const medidaArbusto = (x, y, h) => ({ rx: 7 + Math.floor(h * 4), ry: 5 + Math.floor(hash2(x, y, 62) * 3) });
+  const medidaPedra = (h) => ({ rx: 4 + Math.floor(h * 4), ry: 3 + (h > 0.4 ? 1 : 0) });
+  // Caixa [x0, y0, x1, y1] (px do mundo, inclusive) de tudo o que a peça pode pintar: folhas, contorno e sombra.
+  // pintarMoitas confere a caixa inteira (com a folga das estradas), não só o pé da peça.
+  const CAIXA_PECA = {
+    tufo: (x, y) => [x - 6, y - 9, x + 5, y + 1],
+    broto: (x, y) => [x - 3, y - 3, x + 3, y + 1],
+    flor: (x, y) => [x - 2, y - 8, x + 2, y],
+    arbusto: (x, y, h) => { const { rx, ry } = medidaArbusto(x, y, h); return [x - rx - 2, y - 2 * ry - 2, x + rx + 4, y + 2]; },
+    pedra: (x, y, h) => { const { rx, ry } = medidaPedra(h); return [x - rx - 1, y - 2 * ry - 2, x + rx + 3, y + 1]; },
+    seixo: (x, y) => [x, y - 1, x + 2, y + 1],
+    concha: (x, y) => [x - 1, y - 1, x + 1, y + 1],
+    caco: (x, y) => [x - 1, y - 1, x + 2, y + 1],
+    alga: (x, y) => [x - 2, y - 3, x + 2, y],
+  };
   const PECAS = {
     // tufo de capim: 5 a 8 folhas de 4 a 10 px, pé escuro, ponta clara, as de fora inclinadas para fora
     tufo(pt, x, y, h, T, alto = false) {
@@ -845,7 +860,7 @@
     // arbusto baixo (não bloqueia): bolha recortada em lobos de 14 a 20 px, 4 tons pela luz, folhas em grupos de
     // 2 px, contorno escuro e sombra no chão para a direita
     arbusto(pt, x, y, h, T, sombra) {
-      const c = T.arbusto, rx = 7 + Math.floor(h * 4), ry = 5 + Math.floor(hash2(x, y, 62) * 3), cy = y - ry, fase = h * 6.283;
+      const c = T.arbusto, { rx, ry } = medidaArbusto(x, y, h), cy = y - ry, fase = h * 6.283;
       const dentro = (X, Y) => {
         const nx = (X + 0.5 - x) / rx, ny = (Y + 0.5 - cy) / ry;
         return Y <= y && Math.sqrt(nx * nx + ny * ny) <= 1 + 0.12 * Math.sin(Math.atan2(ny, nx) * 6 + fase) + (hash2(X >> 1, Y >> 1, 69) - 0.5) * 0.1;
@@ -867,7 +882,7 @@
     },
     // pedra: bloco com a face de cima clara, a aresta de luz, a face lateral escura, contorno e sombra
     pedra(pt, x, y, h, T, sombra, liquen) {
-      const c = T.pedra, rx = 4 + Math.floor(h * 4), ry = 3 + (h > 0.4 ? 1 : 0), cy = y - ry;
+      const c = T.pedra, { rx, ry } = medidaPedra(h), cy = y - ry;
       const dentro = (X, Y) => { const nx = (X + 0.5 - x) / rx, ny = (Y + 0.5 - cy) / (ry + 0.4); return Y <= y && nx * nx + ny * ny <= 1 + (hash2(X, Y >> 1, 70) - 0.5) * 0.12; };
       for (let X = x - rx + 2; X <= x + rx + 3; X++) for (let Y = y; Y <= y + 1; Y++) if (!dentro(X, Y)) pt(X, Y, sombra);
       const aresta = x + Math.round(rx * 0.3);
@@ -991,7 +1006,8 @@
   // e por cima os motivos em grupos limpos de 2–3 px (folhinhas de relva, grãos, seixos com luz em cima/esquerda).
   // A estrada de terra tem a beira orgânica com uma fileira de px escura e pontas de relva; a rua da vila é de
   // pedra; a água ganha a beira de areia (ou seixos de basalto na Galileia), a areia molhada, a espuma e o raso.
-  function pintarPedacoChao(area, bx, by) {
+  // espiao (opcional, para testes): função (wx, wy, peça) chamada a cada px pintado pela vegetação rasteira.
+  function pintarPedacoChao(area, bx, by, espiao) {
     const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan;
     const { cls, gasto } = classesDaArea(area);
     const P = paletasDoChao(area);
@@ -1208,7 +1224,7 @@
     }
     // 4) vegetação rasteira em moitas (não bloqueia)
     const veg = DADOS_MAPAS[area] && DADOS_MAPAS[area].vegetacao;
-    if (veg) pintarMoitas(area, veg, { W0, H0, L, put, celula, ehAgua, terraEm, s, P });
+    if (veg) pintarMoitas(area, veg, { W0, H0, L, put, celula, ehAgua, terraEm, s, P, espiao });
     return tela;
   }
 
@@ -1217,23 +1233,41 @@
   // tipo pelo peso e junta 2 a 6 peças em volta do centro, pintadas de cima para baixo. Na beira da água, o tipo
   // de vegetacao.beira (juncos, papiro, algas) entre a espuma e a areia seca.
   const PASSO_MOITA = 44, FOLGA_MOITA = 26, PASSO_BEIRA = 14;
+  // distância mínima (px) de uma peça até estrada, rua, prédio ou chão pisado; gasto acima disso já é chão pisado
+  const FOLGA_MOITA_ESTRADA = 9, GASTO_MAX_MOITA = 0.45;
   function pintarMoitas(area, veg, c) {
-    const { W0, H0, L, put, celula, ehAgua, terraEm, s, P } = c;
+    const { W0, H0, L, put, celula, ehAgua, terraEm, s, P, espiao } = c;
     const T = tonsMoita(area), proib = casasSemVegetacao(area), mapa = mapas[area], piso = pisos[area];
     const { gasto } = classesDaArea(area);
-    const pt = (x, y, cor) => { x -= W0; y -= H0; if (x >= 0 && y >= 0 && x < L && y < L) put((y * L + x) * 4, cor); };
+    let pecaAtual = null;
+    const pt = (x, y, cor) => {
+      const lx = x - W0, ly = y - H0;
+      if (lx < 0 || ly < 0 || lx >= L || ly >= L) return;
+      put((ly * L + lx) * 4, cor);
+      if (espiao) espiao(x, y, pecaAtual);
+    };
     const sombra = P.chao[0];
     const casaOk = (cx, cy, bloco) => {
       if (celula(cx, cy) !== CHAO || proib.has(cx + "," + cy)) return false;
       if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return true; // orla, fora do mapa
-      if (piso[cy][cx] !== PISO.CHAO || gasto[cy * COLS + cx] > 0.45) return false;
+      if (piso[cy][cx] !== PISO.CHAO || gasto[cy * COLS + cx] > GASTO_MAX_MOITA) return false;
       return bloco || !mapa[cy][cx];
     };
     const semAgua = (cx, cy) => { for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (ehAgua(cx + i, cy + j)) return false; return true; };
-    // a peça fica a 9 px de qualquer casa que não seja chão (a beira orgânica das estradas chega a 9 px)
-    const pontoOk = (wx, wy, bloco) => casaOk(wx >> 5, wy >> 5, bloco) && semAgua(wx >> 5, wy >> 5) &&
-      celula((wx - 9) >> 5, (wy - 9) >> 5) === CHAO && celula((wx + 9) >> 5, (wy - 9) >> 5) === CHAO &&
-      celula((wx - 9) >> 5, (wy + 4) >> 5) === CHAO && celula((wx + 9) >> 5, (wy + 4) >> 5) === CHAO;
+    // chão de relva ou areia sem nada: nem estrada, rua de pedra, prédio, estrutura, água ou chão pisado
+    const chaoLivre = (cx, cy) => {
+      if (celula(cx, cy) !== CHAO) return false;
+      if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return true; // orla, fora do mapa
+      return piso[cy][cx] === PISO.CHAO && gasto[cy * COLS + cx] <= GASTO_MAX_MOITA;
+    };
+    // o pé da peça numa casa boa e a caixa inteira da peça (folhas, contorno e sombra) a FOLGA_MOITA_ESTRADA px de
+    // qualquer casa que não seja chão livre (a beira orgânica das estradas e do chão pisado chega a 9 px)
+    const pontoOk = (nome, x, y, h, bloco) => {
+      if (!casaOk(x >> 5, y >> 5, bloco) || !semAgua(x >> 5, y >> 5)) return false;
+      const [x0, y0, x1, y1] = CAIXA_PECA[nome](x, y, h), f = FOLGA_MOITA_ESTRADA;
+      for (let cy = (y0 - f) >> 5; cy <= (y1 + f) >> 5; cy++) for (let cx = (x0 - f) >> 5; cx <= (x1 + f) >> 5; cx++) if (!chaoLivre(cx, cy)) return false;
+      return true;
+    };
     const tipos = Object.entries(veg.moitas || {}).filter(([t]) => PECAS_MOITA[t] && (t !== "flor" || T.flores.length));
     const escolher = (r, bonusFlor) => {
       const total = tipos.reduce((a, [t, p]) => a + p * (t === "flor" ? bonusFlor : 1), 0);
@@ -1257,7 +1291,9 @@
     lista.sort((a, b) => a[2] - b[2] || a[1] - b[1]);
     for (const [nome, x, y, h, ...extra] of lista) {
       const bloco = nome === "tufo" || nome === "seixo" || nome === "pedra";
-      if (pontoOk(x, y, bloco)) PECAS[nome](pt, x, y, h, T, ...(nome === "arbusto" || nome === "pedra" ? [sombra, ...extra] : extra));
+      if (!pontoOk(nome, x, y, h, bloco)) continue;
+      pecaAtual = nome;
+      PECAS[nome](pt, x, y, h, T, ...(nome === "arbusto" || nome === "pedra" ? [sombra, ...extra] : extra));
     }
     // beira da água
     for (const [tipoB, densB] of Object.entries(veg.beira || {})) {
@@ -1275,6 +1311,7 @@
         pecas.push([wx, wy, hash2(gx, gy, s + 84)]);
       }
       pecas.sort((a, b) => a[1] - b[1]);
+      pecaAtual = tipoB;
       for (const [wx, wy, h] of pecas) {
         if (tipoB === "alga") PECAS.alga(pt, wx, wy, h, T);
         else PECAS.junco(pt, wx, wy, h, T, tipoB === "papiro");

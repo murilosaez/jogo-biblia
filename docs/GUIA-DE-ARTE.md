@@ -187,7 +187,10 @@ convenções do gênero (escala das árvores, contorno escuro, luz de cima e da 
 cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noite).
 
 - **Escala de pixel**: 1 px de arte = 1 px de mundo em tudo o que fica no chão e em pé (árvores, pedras, props,
-  água, chão). A câmera segue um alvo em px inteiros e, a cada quadro, quem anda (personagens, barras, nomes,
+  decorações do chão, poço, tendas, bancas, a mureta solta, água, a muralha de água do Mar Vermelho e o chão;
+  o teste 78 mede as decorações, o ponto de pesca, o poço, a tenda e a banca). Ficam de fora, de propósito, os
+  sinais e efeitos (setas do portal `mk_setas`, anel de alvo, faíscas e golpes `fx_*`), em traço de 2 px para
+  ler de longe, e o `es_casa`, que não aparece no mundo (as casas onde se entra vêm de `cenario.js`). A câmera segue um alvo em px inteiros e, a cada quadro, quem anda (personagens, barras, nomes,
   números) vai para px inteiros (`pixelsInteiros` em `game.js`): nada fica a meio pixel de arte do chão, em
   qualquer zoom. Os ícones da interface usam `image-rendering: pixelated`.
 - **Árvores em escala de MMORPG** (`arvore`, `Copa`, `moldeCopa` em `sprites.js`): a árvore é maior que a casa —
@@ -228,14 +231,14 @@ cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noi
   claro, aresta, face escura, contorno e sombra; com líquen no Sinai), seixos, conchas, cacos de cerâmica e
   brotos do plantio. Na beira da água: juncos com taboas (Canaã, deserto, Galileia), papiro com a umbela em
   leque (Nilo) e algas (Mar Vermelho). Os tipos, os pesos e a densidade de cada região ficam em
-  `DADOS_MAPAS[area].vegetacao` (`dados/mapas.js`). As moitas ficam longe das ruas e estradas (9 px), da água,
-  do chão pisado, dos personagens, portais, cais, decorações e pontos de extração; o sorteio é pela posição do
+  `DADOS_MAPAS[area].vegetacao` (`dados/mapas.js`). As moitas ficam longe das ruas e estradas (9 px, contados da
+  caixa inteira da peça, com contorno e sombra: `CAIXA_PECA`), da água, do chão pisado, dos personagens, portais, cais, decorações e pontos de extração; o sorteio é pela posição do
   mundo e a peça que passa da borda do pedaço é terminada pelo vizinho (sem emenda). Onde o chão contínuo pinta
   a vegetação, a decoração antiga em azulejos (`indiceDeco`) não aparece.
 - **Props das vilas** (`PROPS_VILA`, `DESENHO_PROP` em `sprites.js`): barril de aduelas com aros, caixotes de
   tábuas com a trave em X, carroça de duas rodas (com sacos ou feno), jarros de barro, lenha empilhada (toras de
   ponta com os anéis), cocho com água e cerca (postes a cada 16 px e travessas de ponta a ponta: emenda com a
-  vizinha). Um desenho por região, `ob_<área>_<tipo>`, com a madeira, o barro e a pedra de lá
+  vizinha; a última da fileira, sem cerca à direita, usa o quadro de fecho com o poste na ponta). Um desenho por região, `ob_<área>_<tipo>`, com a madeira, o barro e a pedra de lá
   (`MATERIAL_PROPS`). São marcos de `dados/mapas.js` (bloqueiam a casa, ficam no lugar, sem deslocamento
   sorteado); o teste 76 confere que ficam dentro das vilas, fora das ruas, da frente das portas e da clareira
   dos personagens, e que não fecham casa nenhuma.
