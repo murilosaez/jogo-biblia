@@ -76,7 +76,7 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 
 /* barra superior */
 #topo{display:flex;align-items:center;gap:10px;padding:0 12px;background:linear-gradient(var(--couro-600),var(--couro-800));border-bottom:2px solid var(--bronze-700);box-shadow:0 2px 0 #0008;z-index:5;min-width:0}
-.marca{display:flex;align-items:baseline;gap:8px;margin-right:auto;min-width:0}
+.marca{display:flex;align-items:baseline;gap:8px;min-width:0}
 .marca-nome{font:700 var(--fs-16)/1 var(--f-titulo);color:var(--ouro-300);letter-spacing:.12em;text-shadow:1px 1px 0 #1c1210}
 .marca-sub{font:italic 500 var(--fs-14)/1 var(--f-texto);color:var(--texto-2);white-space:nowrap}
 .area-topo{display:none;font:700 var(--fs-14)/1 var(--f-titulo);color:var(--ouro-300);text-shadow:1px 1px 0 #120a06;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -87,9 +87,18 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .pontos:hover{border-color:var(--bronze-400)}
 .pontos[hidden]{display:none}
 .so-celular{display:none!important}
+/* topo apertado: o rótulo "salvo" e os subtítulos saem antes dos botões (o selo verde e o nome ficam) */
+@media (max-width:1599px){ .salvo{font-size:0;gap:0} .marca-sub{display:none} }
+@media (max-width:1439px){ #areaSub{display:none} }
 
 /* layout */
-#layout{min-height:0;display:grid;grid-template-columns:248px minmax(0,1fr) 272px;gap:8px;padding:8px}
+/* As colunas laterais têm a mesma largura (qualquer janela cabe em qualquer lado). Uma coluna sem janela
+   sai do grid (interface.js põe body.sem-col-esq / sem-col-dir) e o mundo ganha a largura. */
+#layout{--larg-col:272px;min-height:0;display:grid;grid-template-columns:var(--larg-col) minmax(0,1fr) var(--larg-col);gap:8px;padding:8px}
+body.sem-col-esq #layout{grid-template-columns:minmax(0,1fr) var(--larg-col)}
+body.sem-col-dir #layout{grid-template-columns:var(--larg-col) minmax(0,1fr)}
+body.sem-col-esq.sem-col-dir #layout{grid-template-columns:minmax(0,1fr)}
+body.sem-col-esq #colEsq,body.sem-col-dir #colDir{display:none}
 .coluna{min-height:0;display:flex;flex-direction:column;gap:8px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent;padding-right:2px}
 #deposito{display:none}
 
@@ -104,6 +113,66 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .painel-cab .seta{width:0;height:0;border:5px solid transparent;border-top-color:var(--ouro-300);margin-top:5px;transition:transform .15s}
 .painel-cab button[aria-expanded="false"] .seta{transform:rotate(-90deg);margin-top:0}
 .painel-corpo{padding:8px}
+/* ---------- janelas laterais (interface.js, "Janelas laterais") ----------
+   O cabeçalho é a alça: arraste para a outra coluna ou para outra posição. À direita, o menu (mover pelo
+   teclado), minimizar (fica só o cabeçalho) e fechar (reabre pelo menu Janelas, no topo). */
+.janela>.painel-cab{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+/* o ícone também é alça: sem isto, o navegador começa a arrastar a imagem e cancela o arraste da janela */
+.janela>.painel-cab img{pointer-events:none;-webkit-user-drag:none}
+body.movendo-janela,body.movendo-janela *{cursor:grabbing!important}
+.janela>.painel-cab{gap:6px}
+.janela>.painel-cab h2{letter-spacing:.04em}
+.janela-ctl{display:flex;align-items:center;gap:2px;margin-left:4px;flex:0 0 auto}
+.painel-cab h2+.janela-ctl,.painel-cab img+.janela-ctl{margin-left:auto}
+.janela-btn{width:20px;height:20px;display:grid;place-items:center;padding:0;border:1px solid var(--tinta);border-radius:var(--raio);
+ background:linear-gradient(var(--bronze-600),var(--bronze-700));box-shadow:var(--relevo);color:var(--ouro-200);cursor:pointer}
+.janela-btn:hover{background:linear-gradient(#9a6530,#6a4420);box-shadow:var(--relevo),0 0 0 1px var(--ouro-300)}
+.janela-btn:focus-visible{outline:2px solid var(--foco);outline-offset:1px}
+.janela-btn img{width:16px;height:16px;pointer-events:none}
+/* o menu da janela (mover pelo teclado) aparece com o ponteiro sobre o cabeçalho ou com o foco nele */
+.janela-btn[data-janela-menu]{width:0;border-width:0;margin-right:-2px;overflow:hidden;opacity:0}
+body:not(.movendo-janela) .painel-cab:hover .janela-btn[data-janela-menu],.painel-cab:focus-within .janela-btn[data-janela-menu],.janela-btn[data-janela-menu][aria-expanded="true"]{width:20px;border-width:1px;margin-right:0;opacity:1}
+/* ícones desenhados no CSS, pixel a pixel: três pontos (menu), traço (minimizar) e moldura (restaurar) */
+.ic-menu{width:2px;height:2px;background:currentColor;box-shadow:0 -4px 0 currentColor,0 4px 0 currentColor}
+.ic-min{width:10px;height:2px;margin-top:6px;background:currentColor}
+.janela[data-min="true"] .ic-min{width:10px;height:8px;margin-top:0;background:none;border:2px solid currentColor;border-top-width:3px}
+.janela[data-min="true"]>:not(.painel-cab){display:none!important}
+.janela.perg[data-min="true"]{padding-bottom:0}
+.janela.arrastada{opacity:.45;outline:2px dashed var(--ouro-300);outline-offset:-2px}
+/* o minimapa ganhou cabeçalho para mover, minimizar e fechar */
+#pMapa .painel-cab h2{font-size:var(--fs-14)}
+/* a seta da Caçada vira o botão de minimizar (o título continua recolhendo); no celular, na folha, fica a seta */
+.coluna #pAnalisador .painel-cab .seta{display:none}
+#folha .janela-ctl{display:none}
+#folha .janela>.painel-cab{cursor:auto;touch-action:auto}
+/* Arrastando: um rótulo segue o ponteiro e um traço de ouro marca onde a janela vai entrar;
+   numa coluna vazia, a faixa da borda do mundo vira o alvo ("Soltar à esquerda"). */
+#fantasmaJanela{position:fixed;z-index:calc(var(--z-modal) + 6);display:flex;align-items:center;gap:6px;padding:6px 10px;pointer-events:none;
+ background:linear-gradient(var(--couro-500),var(--couro-700));border:2px solid var(--ouro-300);box-shadow:0 4px 12px #000a;font:700 var(--fs-14)/1 var(--f-ui);color:#fff6e0;text-shadow:1px 1px 0 #120a06}
+#fantasmaJanela[hidden],#marcaSoltar[hidden]{display:none!important}
+#marcaSoltar{position:fixed;z-index:calc(var(--z-modal) + 5);height:4px;pointer-events:none;background:var(--ouro-300);box-shadow:0 0 0 1px #120a06,0 0 10px 2px #f2d27a80}
+#marcaSoltar.coluna{height:auto;display:grid;place-items:center;border:2px dashed var(--ouro-300);background:#1c1210d9;box-shadow:inset 0 0 18px #f2d27a40}
+#marcaSoltar.coluna::after{content:attr(data-rotulo);writing-mode:vertical-rl;transform:rotate(180deg);font:700 var(--fs-14)/1 var(--f-ui);letter-spacing:.06em;color:var(--ouro-200);text-shadow:1px 1px 0 #120a06}
+/* menus do topo (Janelas) e de cada janela */
+.menu-janelas{position:fixed;z-index:calc(var(--z-modal) + 4);min-width:230px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 56px);overflow-y:auto;padding:6px;
+ background:var(--tex-couro),linear-gradient(var(--couro-600),var(--couro-800));background-blend-mode:soft-light,normal;border:2px solid var(--bronze-500);box-shadow:0 0 0 2px #120a06,0 8px 20px #000c}
+.menu-janelas[hidden]{display:none}
+.menu-janelas h3{margin:2px 6px 6px;font:700 var(--fs-13)/1.2 var(--f-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--ouro-300)}
+.menu-janelas hr{margin:6px 2px;border:0;border-top:1px solid #0009;box-shadow:0 1px 0 #ffe9a815}
+.menu-op{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:0 10px;border:0;border-radius:var(--raio);background:none;color:var(--texto);
+ font:700 var(--fs-14)/1.2 var(--f-ui);text-align:left;text-shadow:1px 1px 0 #120a06;cursor:pointer}
+.menu-op:hover,.menu-op:focus-visible{background:var(--couro-500);outline:none;box-shadow:inset 0 0 0 1px var(--ouro-300)}
+.menu-op[aria-disabled="true"]{color:var(--texto-mudo);cursor:default;background:none;box-shadow:none}
+.menu-op img{width:16px;height:16px}
+.menu-op .dica-op{margin-left:auto;font:500 var(--fs-13)/1 var(--f-texto);color:var(--texto-mudo);text-shadow:none}
+.menu-op .tecla-op{margin-left:auto;min-width:22px;height:22px;text-shadow:none}
+.menu-op .caixa{flex:0 0 16px;width:16px;height:16px;border:2px solid var(--bronze-400);background:#140c08;box-shadow:inset 1px 1px 0 #000}
+.menu-op[aria-checked="true"] .caixa{background:linear-gradient(var(--ouro-300),var(--ouro-300)) center/8px 8px no-repeat,#140c08}
+/* rádio: quadrado como a caixa (sem curva, sem borrão), com o miolo menor */
+.menu-op[role="menuitemradio"][aria-checked="true"] .caixa{background:linear-gradient(var(--ouro-300),var(--ouro-300)) center/6px 6px no-repeat,#140c08}
+@media (pointer:coarse){ .janela-btn{width:32px;height:28px} .menu-op{min-height:44px} }
+/* largo bem baixo (1366×768): as dicas de rodapé da Mochila e da Bolsa saem (a dica do item continua) */
+@media (min-width:1280px) and (max-height:800px){ .coluna #pMochila .nota,.coluna #pBolsa .nota{display:none} }
 .nota{margin:6px 0 0;font:500 var(--fs-13)/1.35 var(--f-texto);color:var(--texto-mudo)}
 
 /* pergaminho */
@@ -168,6 +237,46 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .atributos dt{font:500 var(--fs-14)/1.35 var(--f-texto);color:var(--texto-2)}
 .atributos dd{margin:0;color:var(--texto)}
 .atributos div.largo{grid-column:1/-1}
+/* Janela de habilidades: linhas "nome … nível" com o fio de % até o próximo nível embaixo. O clique (ou toque)
+   abre a dica do que falta; ao subir, a linha pisca em ouro. Capacidade e vigor ficam sempre à vista. */
+.hab-lista{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:1px}
+.hab-lista[hidden],.hab-corpo[hidden]{display:none}
+.hab-linha{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;column-gap:8px;width:100%;padding:1px 4px 3px;border-radius:var(--raio);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hab-linha:hover{background:#ffe9a814}
+.hab-linha:focus-visible{outline:2px solid var(--foco);outline-offset:-2px}
+.hab-linha .nome{font:500 var(--fs-14)/1.15 var(--f-texto);color:var(--texto-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hab-linha .nome small{font:700 var(--fs-13)/1 var(--f-ui);color:var(--cor-faixa,var(--texto-mudo))}
+.hab-linha .valor{font:700 var(--fs-14)/1.15 var(--f-ui);color:var(--texto);text-align:right;white-space:nowrap}
+.hab-linha .fio{grid-column:1/-1;display:block;height:4px;margin-top:2px;background:#120a06;box-shadow:0 0 0 1px var(--bronze-700)}
+.hab-linha .fio i{display:block;height:100%;width:0;background:var(--cor-fio,var(--xp-2));box-shadow:inset 0 1px 0 var(--cor-fio-luz,var(--xp-3))}
+.hab-linha .hab-dica{grid-column:1/-1;margin:4px 0 0;font:500 var(--fs-13)/1.35 var(--f-texto);color:var(--texto-mudo);white-space:normal}
+.hab-linha:not(.aberta) .hab-dica{display:none}
+.hab-linha.bloqueada .valor,.hab-linha.bloqueada .nome{color:var(--texto-mudo)}
+/* capacidade: bronze; acima de 90%, âmbar; cheia, vermelha (como o peso da Mochila) */
+.hab-linha[data-linha="carga"]{--cor-fio:var(--perg-400);--cor-fio-luz:var(--perg-200)}
+.hab-linha[data-linha="carga"].quase{--cor-fio:var(--moeda);--cor-fio-luz:var(--ouro-200)}
+.hab-linha[data-linha="carga"].cheia{--cor-fio:var(--vida-2);--cor-fio-luz:var(--vida-3)}
+.hab-linha[data-linha="carga"].cheia .valor{color:#ff8f75}
+/* vigor: verde descansado, âmbar disposto, vermelho exausto (REGRAS_VIGOR.faixas) */
+.hab-linha[data-faixa="descansado"]{--cor-fio:#5fa83a;--cor-fio-luz:var(--cura);--cor-faixa:var(--cura)}
+.hab-linha[data-faixa="disposto"]{--cor-fio:var(--xp-2);--cor-fio-luz:var(--xp-3);--cor-faixa:var(--xp-3)}
+.hab-linha[data-faixa="exausto"]{--cor-fio:var(--vida-2);--cor-fio-luz:var(--vida-3);--cor-faixa:#ff8f75}
+.hab-linha[data-faixa="exausto"] .valor{color:#ff8f75}
+.hab-linha.ganhou{animation:hab-ganhou 1.4s steps(7) 1}
+@keyframes hab-ganhou{0%,45%{background:#f2d27a3d;box-shadow:inset 0 0 0 1px var(--ouro-300)}100%{background:transparent;box-shadow:none}}
+.hab-secao{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;width:100%;margin-top:6px;padding:5px 4px 3px;border-top:1px solid #0006;box-shadow:inset 0 1px 0 #ffe9a815;
+ font:700 var(--fs-13)/1.2 var(--f-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--ouro-300);text-shadow:1px 1px 0 #120a06;cursor:pointer}
+.hab-secao:hover{color:var(--ouro-200)}
+.hab-secao:focus-visible{outline:2px solid var(--foco);outline-offset:-2px}
+.hab-secao .seta{width:0;height:0;border:5px solid transparent;border-top-color:currentColor;margin-top:5px;transition:transform .15s}
+.hab-secao[aria-expanded="false"] .seta{transform:rotate(-90deg);margin-top:0}
+.hab-secao .resumo{margin-left:auto;font:600 var(--fs-13)/1.2 var(--f-ui);letter-spacing:0;text-transform:none;color:var(--texto-mudo);text-shadow:none}
+.hab-secao.sub{margin-top:8px}
+.hab-secao + .habilidades{margin:2px 0 0;padding:0 4px}
+#btnHabilidades[aria-expanded="true"] + .habilidades{display:none}
+.hab-corpo .atributos{margin-top:4px;padding-left:4px;padding-right:4px}
+@media (prefers-reduced-motion:reduce){ .hab-linha.ganhou{animation:none;background:#f2d27a2e} .hab-secao .seta{transition:none} }
+@media (pointer:coarse){ .hab-linha{padding:4px 4px 6px} .hab-secao{min-height:var(--toque)} }
 
 /* ---------- slots ---------- */
 .grade{display:grid;grid-template-columns:repeat(5,var(--slot));gap:4px;justify-content:start}
@@ -204,33 +313,43 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 @keyframes entra{0%{filter:brightness(2)}100%{filter:none}}
 
 /* equipamento */
-/* Boneco (como nos MMORPGs clássicos): a figura no meio e cada espaço onde ele fica no corpo —
-   arco nas costas (no alto, à esquerda), arma na mão direita, escudo na esquerda, armadura sobre o
-   peito; a munição (as flechas da mochila) no alto, à direita. Cabe na coluna de 272 px e no celular. */
-#gradeEquip{display:grid;grid-template-columns:60px 104px 60px;grid-template-areas:"arco figura municao" "arma figura escudo";justify-content:center;gap:6px 4px;padding:2px 0}
-.equip.e-arco{grid-area:arco} .equip.e-arma{grid-area:arma} .equip.e-escudo{grid-area:escudo}
-.equip.e-municao{grid-area:municao;cursor:default}
-.equip.e-municao.tem .slot{border-color:var(--bronze-500)}
-.boneco-figura,.equip.e-armadura{grid-area:figura}
-.boneco-figura{position:relative;display:flex;justify-content:center;align-items:flex-start;border:1px solid #0007;box-shadow:inset 0 0 14px #000a;pointer-events:none;
- background:radial-gradient(ellipse 34% 4% at 50% 76%,#000b,transparent 75%),radial-gradient(ellipse 60% 48% at 50% 42%,#7a4a3040,transparent 72%),#0003}
-.boneco-figura img{flex:none;width:120px;height:144px;margin-top:-10px} /* retrato inteiro em escala 6 (3 px por pixel de arte) */
-/* a armadura fica por cima do peito da figura; o rótulo, abaixo dos pés */
-.equip.e-armadura{z-index:1;align-self:stretch;justify-content:flex-start;padding-top:49px;gap:47px;background:none;border:0}
-.equip.e-armadura .slot{box-shadow:inset 2px 2px 0 #0008,0 0 0 2px #120a0699}
-.equip.e-armadura.vazio .slot{background:radial-gradient(circle at 35% 30%,#4a2e1fd9,#24150ed9)}
-.equip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:4px 0 3px;border:solid transparent;border-width:2px 0;background:#0003;cursor:pointer;color:var(--texto);text-align:center}
-.equip .slot{flex:0 0 auto;width:44px;height:44px}
+/* Boneco clássico: os espaços formam o corpo — colar, cabeça e mochila; mão da arma, armadura e mão do
+   escudo; anel, pernas e munição; os pés embaixo. À direita, a figura com o que está vestido e o ataque da
+   mão. Sem rótulo nos espaços: a silhueta diz o que vai em cada um, e a dica (ou o toque longo) dá o resto.
+   Cabe na coluna de 272 px e na folha do celular. */
+#gradeEquip{display:grid;grid-template-columns:repeat(3,44px) minmax(84px,104px);grid-template-rows:repeat(4,44px);gap:4px;justify-content:center;padding:2px 0;
+ grid-template-areas:"colar cabeca mochila lado" "arma armadura escudo lado" "anel pernas municao lado" ". pes . lado"}
+.equip.e-colar{grid-area:colar} .equip.e-cabeca{grid-area:cabeca} .equip.e-mochila{grid-area:mochila}
+.equip.e-arma{grid-area:arma} .equip.e-armadura{grid-area:armadura} .equip.e-escudo{grid-area:escudo}
+.equip.e-anel{grid-area:anel} .equip.e-pernas{grid-area:pernas} .equip.e-municao{grid-area:municao} .equip.e-pes{grid-area:pes}
+.equip{position:relative;display:block;width:44px;height:44px;padding:0;border:0;background:none;cursor:pointer;color:var(--texto)}
+.equip .slot{width:44px;height:44px}
 .equip.cheio .slot{border-color:var(--bronze-500)}
-.equip .slot img.silhueta{opacity:.35}
-.equip-txt{min-width:0;max-width:100%;display:flex;flex-direction:column;gap:2px}
-/* "ARMADURA" é o rótulo mais longo: sem espaçamento extra cabe na célula; a
-   reticência só aparece com a fonte de reserva (sem internet) */
-.equip-txt small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto-2);text-transform:uppercase;letter-spacing:.02em}
-.equip-txt em{font:700 var(--fs-13)/1 var(--f-ui);font-style:normal;color:var(--texto);white-space:nowrap}
-.equip.vazio .equip-txt em{color:var(--texto-mudo)}
-.equip.selecionado{outline:2px solid var(--ouro-200);animation:pisca .8s steps(2) infinite}
-.equip.alvo-soltar{outline:2px dashed var(--ouro-300);outline-offset:-2px}
+.equip:hover .slot{border-color:var(--bronze-400)}
+.equip .slot img.silhueta{opacity:.45}
+/* mão do escudo presa pelo arco (duas mãos): o arco aparece apagado sobre o fundo riscado */
+.equip.bloqueado .slot{background:repeating-linear-gradient(135deg,#24150e 0 5px,#3a2418 5px 7px);border-style:dashed}
+.equip.bloqueado .slot img{opacity:.5}
+/* a mochila do boneco abre o painel Mochila; a barrinha mostra a carga */
+.equip.e-mochila .slot{border-color:var(--bronze-600)}
+.equip .carga{position:absolute;left:5px;right:5px;bottom:4px;height:4px;background:#120a06;box-shadow:0 0 0 1px #0008}
+.equip .carga i{display:block;height:100%;background:var(--bronze-400)}
+.equip .carga.cheia i{background:#e8784a}
+.equip:focus-visible{outline:none}
+.equip:focus-visible .slot{outline:2px solid var(--ouro-200);outline-offset:1px}
+.equip.selecionado .slot{outline:2px solid var(--ouro-200);outline-offset:0;animation:pisca .8s steps(2) infinite}
+.equip.alvo-soltar .slot{outline:2px dashed var(--ouro-300);outline-offset:-2px}
+.boneco-lado{grid-area:lado;display:flex;flex-direction:column;gap:4px;min-width:0}
+.boneco-figura{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;border:1px solid #0007;box-shadow:inset 0 0 14px #000a;pointer-events:none;
+ background:radial-gradient(ellipse 34% 5% at 50% 86%,#000b,transparent 75%),radial-gradient(ellipse 60% 48% at 50% 46%,#7a4a3040,transparent 72%),#0003}
+.boneco-figura img{flex:none;width:80px;height:96px} /* corpo inteiro em escala 4 (2 px por pixel de arte) */
+.boneco-modo{margin:0;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--ouro-300);text-align:center;white-space:nowrap}
+.boneco-dados{margin:0;display:grid;grid-template-columns:1fr auto;gap:1px 6px;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--texto-2)}
+.boneco-dados dt{margin:0}
+.boneco-dados dd{margin:0;color:var(--texto);text-align:right}
+/* o espaço da mochila no boneco destaca o painel Mochila por um instante */
+.painel.destaque-mochila{box-shadow:0 0 0 2px var(--ouro-300),0 0 12px 2px #f2d27a66}
+@media (prefers-reduced-motion:no-preference){.painel.destaque-mochila{transition:box-shadow .3s}}
 
 /* mochila / bolsa */
 #pMochila .painel-corpo,#pBolsa .painel-corpo{padding:8px 8px 6px}
@@ -238,10 +357,11 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 
 /* lista de batalha */
 #pBatalha{min-height:110px}
-/* na coluna direita, a Batalha ocupa a altura que sobra e rola por dentro:
-   a moldura de baixo aparece sempre, sem rolar a coluna */
-#colDir #pBatalha{flex:1 1 0;min-height:88px;display:flex;flex-direction:column}
-#colDir #linhasBatalha{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent}
+/* numa coluna, a Batalha ocupa a altura que sobra e rola por dentro:
+   a moldura de baixo aparece sempre, sem rolar a coluna (minimizada, fica só o cabeçalho) */
+.coluna #pBatalha{flex:1 1 0;min-height:88px;display:flex;flex-direction:column}
+.coluna #pBatalha[data-min="true"]{flex:0 0 auto;min-height:0}
+.coluna #linhasBatalha{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent}
 #linhasBatalha{display:flex;flex-direction:column}
 .linha-inimigo{display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 8px 4px 5px;border:0;border-left:3px solid transparent;border-bottom:1px solid #0005;background:none;color:var(--texto);text-align:left;width:100%;font:inherit;cursor:pointer}
 .linha-inimigo:hover{background:#ffe9a80d}
@@ -259,32 +379,33 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .vazio-txt{padding:10px 8px;font:italic 500 var(--fs-14)/1.3 var(--f-texto);color:var(--texto-mudo)}
 
 /* ---------- console: conversa e registro ----------
-   Largo e médio: preso embaixo do mundo (o palco encolhe; --altura-console vem do interface.js e a
-   alça no topo muda a altura). Recolhido, fica só a barra: abas, entrada e o botão. Celular: na folha
-   "Conversa". Couro escuro com texto claro; cada tipo tem a sua cor (todas AA sobre o couro). */
+   Largo e médio: preso no dock de baixo (#rodape), que vai de uma ponta à outra embaixo das colunas e do
+   mundo, com os atalhos à direita; o palco encolhe (--altura-dock vem do interface.js e a alça no topo
+   muda a altura). Nada flutua sobre o mundo. Recolhido, fica só a barra: abas, entrada e o botão.
+   Opção "Conversa sob o mundo" (menu Janelas): o console fica embaixo do mundo, entre as colunas.
+   Celular: na folha "Conversa". Couro escuro com texto claro; cada tipo tem a sua cor (todas AA). */
 .console{display:flex;flex-direction:column;min-height:0;color:var(--texto);
  background:var(--tex-couro),linear-gradient(var(--couro-800),var(--couro-900));background-blend-mode:soft-light,normal}
 #mundo>.console{position:relative;flex:0 0 auto;height:var(--altura-console,150px);border-top:2px solid var(--bronze-700);box-shadow:0 -2px 0 #0008}
 #mundo>.console[data-aberto="false"]{height:auto}
 .console[data-aberto="false"] .console-lista,.console[data-aberto="false"] .console-alca{display:none}
-/* tela baixa: só a barra fica presa; as mensagens ficam sobre a borda de baixo do mundo (o zoom não cai) */
-#mundo>.console.sobre{height:auto}
-.console.sobre .console-lista{position:absolute;left:0;right:0;bottom:100%;z-index:calc(var(--z-toque) + 2);height:calc(var(--altura-console) - 40px);
- background:linear-gradient(#1c1210e0,#1c1210f5);border-top:2px solid var(--bronze-700);box-shadow:0 -2px 0 #0008}
-.console.sobre .console-alca{top:calc(34px - var(--altura-console))}
-body.console-sobre #dpad,body.console-sobre #acoes{bottom:calc(var(--console-sobre,0px) + 12px)}
 .console-alca{position:absolute;left:0;right:0;top:-6px;height:10px;z-index:2;cursor:ns-resize;touch-action:none}
 .console-alca:hover,.console-alca:focus-visible,.console-alca.arrastando{outline:none;background:linear-gradient(transparent 4px,var(--ouro-300) 4px 6px,transparent 6px)}
-.console-lista{flex:1 1 auto;min-height:0;margin:0;padding:4px 10px 6px;list-style:none;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--bronze-600) transparent;
- font:500 var(--fs-14)/1.4 var(--f-texto)}
+/* a pega da alça: uma fileira de pontos de 2 px no meio da borda (acende com o ponteiro ou o foco) */
+.console-alca::before{content:"";position:absolute;left:50%;top:2px;width:30px;height:6px;margin-left:-15px;border:1px solid #120a06;background:var(--couro-700);
+ box-shadow:inset 0 0 0 1px #00000040,inset 0 2px 0 0 transparent;background-image:linear-gradient(90deg,var(--bronze-400) 2px,transparent 2px);background-size:4px 2px;background-position:2px 1px;background-repeat:repeat-x}
+.console-alca:hover::before,.console-alca:focus-visible::before,.console-alca.arrastando::before{background-color:var(--couro-500);background-image:linear-gradient(90deg,var(--ouro-300) 2px,transparent 2px)}
+/* linhas de 15 px com mais respiro; a hora em 13 px */
+.console-lista{flex:1 1 auto;min-height:0;margin:0;padding:4px 12px 6px;list-style:none;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--bronze-600) transparent;
+ font:500 15px/1.55 var(--f-texto)}
 .console-lista:focus-visible{outline:2px solid var(--foco);outline-offset:-2px}
-.console-lista li{padding:1px 0;color:var(--cor-linha,var(--texto-2));overflow-wrap:anywhere}
-.console-lista time{display:inline-block;min-width:40px;margin-right:4px;font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto-mudo)}
-.console-lista .quem{font:700 var(--fs-14)/1 var(--f-ui);letter-spacing:.01em;color:var(--ouro-300)}
+.console-lista li{padding:2px 0;color:var(--cor-linha,var(--texto-2));overflow-wrap:anywhere}
+.console-lista time{display:inline-block;min-width:44px;margin-right:6px;font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto-mudo)}
+.console-lista .quem{font:700 15px/1 var(--f-ui);letter-spacing:.01em;color:var(--ouro-300)}
 .console[data-canal="npcs"] .console-lista li:not(.c-npcs),.console[data-canal="servidor"] .console-lista li:not(.c-servidor){display:none}
 .t-fala{--cor-linha:#b4cdf5} .t-voce{--cor-linha:var(--texto)} .t-voce .quem{color:var(--texto-2)} .t-dica{--cor-linha:var(--texto-mudo);font-style:italic}
 .t-saque{--cor-linha:var(--moeda)} .t-perigo{--cor-linha:#ff8f75} .t-combate{--cor-linha:var(--texto-mudo)} .t-missao{--cor-linha:var(--cura)}
-.t-sistema{--cor-linha:var(--texto-2)} .t-anuncio{--cor-linha:#d9b8f7;font-weight:700}
+.t-sistema{--cor-linha:var(--texto-2)} .t-anuncio{--cor-linha:#d9b8f7;font-weight:700} .t-avanco{--cor-linha:var(--ouro-200);font-weight:700}
 /* palavras-chave: clicáveis, entre colchetes (também na caixa de diálogo) */
 .palavras{display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:baseline}
 .palavra{display:inline-flex;align-items:center;min-height:24px;padding:1px 7px;border:1px solid var(--bronze-500);border-radius:var(--raio);background:var(--couro-700);
@@ -327,14 +448,17 @@ body.console-sobre #dpad,body.console-sobre #acoes{bottom:calc(var(--console-sob
 
 /* ---------- mundo ---------- */
 #mundo{min-width:0;min-height:0;display:flex;flex-direction:column;border:8px solid var(--bronze-600);border-image:var(--moldura-bronze) 8 / 8px round;background:var(--couro-900);box-shadow:var(--sombra-painel)}
-.mundo-cab{position:relative;height:40px;flex:0 0 40px;display:flex;align-items:center;gap:12px;padding:0 10px;background:linear-gradient(var(--couro-600),var(--couro-800));border-bottom:2px solid var(--tinta);box-shadow:var(--relevo)}
-.mundo-cab::after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:2px;background:var(--bioma);opacity:.7}
-.area-bloco{display:flex;flex-direction:column;min-width:0}
+/* nome da região, no topo (largo e médio), com o fio na cor do bioma */
+.area-bloco{display:flex;align-items:center;gap:8px;min-width:0;margin-right:auto;padding:0 10px 0 12px;height:26px;border-left:2px solid var(--bronze-700);box-shadow:inset 2px 0 0 #0006}
+.area-bloco::before{content:"";flex:0 0 8px;height:8px;background:var(--bioma);box-shadow:0 0 0 2px #120a06}
 #areaNome{font:700 var(--fs-16)/1 var(--f-titulo);color:var(--ouro-300);letter-spacing:.06em;text-shadow:1px 1px 0 #120a06,0 0 2px #120a06;white-space:nowrap}
-#areaSub{font:italic 500 var(--fs-13)/1.2 var(--f-texto);color:var(--texto-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cab-acoes{margin-left:auto;display:flex;gap:6px}
+#areaSub{min-width:0;font:italic 500 var(--fs-14)/1 var(--f-texto);color:var(--texto-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* quadro de alvo */
 .quadro-alvo{display:flex;align-items:center;gap:8px;min-width:0;padding:2px 8px 2px 4px;border:2px solid transparent}
+#palco>#quadroAlvo{position:absolute;left:8px;top:8px;z-index:var(--z-hud);max-width:calc(100% - 16px);padding:4px 10px 4px 6px;pointer-events:none}
+#palco>#quadroAlvo.ativo{background:#2c1a12e6;border-color:#4a1416;box-shadow:0 2px 0 #0008}
+/* com alvo, os avisos descem para baixo do quadro dele */
+body.modo-largo.com-alvo #avisos{top:56px}
 .quadro-alvo.ativo{border-color:#4a1416;background:#1c121099}
 .quadro-alvo:not(.ativo){visibility:hidden}
 .quadro-alvo .mini{width:28px;height:24px;display:grid;place-items:end center;overflow:hidden}
@@ -356,6 +480,9 @@ body.console-sobre #dpad,body.console-sobre #acoes{bottom:calc(var(--console-sob
    translúcido com alguém embaixo (classe "encoberto", posta pelo game.js). */
 #mapaSobre{position:absolute;top:8px;right:8px;z-index:var(--z-hud);line-height:0;pointer-events:none;transition:opacity .15s}
 #mapaSobre.encoberto{opacity:.3}
+/* clicar (ou tocar) no minimapa anda até lá; translúcido (alguém embaixo), o clique passa ao mundo */
+#miniMap{cursor:crosshair;touch-action:manipulation}
+#mapaSobre:not(.encoberto) #miniMap{pointer-events:auto}
 #mapaSobre .mapa-margem{padding:4px;background:#2c1a12d9;border:2px solid var(--bronze-700);border-left:0}
 #mapaSobre:empty{display:none}
 body.mapa-oculto #mapaSobre,body.mapa-oculto #pMapa{display:none}
@@ -365,6 +492,8 @@ body.mapa-oculto #mapaSobre,body.mapa-oculto #pMapa{display:none}
 /* largo em tela baixa: o minimapa fica sobre o mundo, no canto direito; os
    avisos usam a faixa à esquerda dele */
 body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;max-width:560px;margin:0 auto;transform:none}
+/* mundo estreito (interface.js, posicionarAvisos): os avisos descem para baixo do HUD e do minimapa */
+#palco.avisos-abaixo #avisos{top:var(--avisos-topo,8px);left:8px;right:8px;width:auto;max-width:none;margin:0;transform:none}
 .aviso{pointer-events:auto;display:flex;align-items:center;gap:8px;max-width:100%;padding:6px 12px 6px 8px;color:var(--tinta);font:600 var(--fs-14)/1.3 var(--f-texto);
  background:linear-gradient(#fbf1dc66,#fbf1dc66),var(--tex-perg),var(--perg-200);background-blend-mode:normal,multiply,normal;border:2px solid var(--tinta);border-left:4px solid var(--cor,var(--tinta-suave));box-shadow:0 2px 0 #0009,0 4px 10px #0006;animation:aviso-entra .2s steps(3)}
 .aviso img{width:16px;height:16px;flex:0 0 16px}
@@ -412,6 +541,39 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .atalho::after{content:"";position:absolute;inset:0;background:linear-gradient(#000a 0 var(--recarga,0%),transparent var(--recarga,0%));pointer-events:none}
 .atalho.usado{animation:entra .3s steps(3)}
 #abasCel{display:none}
+.atalhos-rotulo{display:none}
+
+/* ---------- dock de baixo (largo e médio) ----------
+   Uma faixa de uma ponta à outra: o console (lista e barra) à esquerda e os atalhos à direita, empilhados
+   (habilidades em cima, itens embaixo). A alça do console fica na borda de cima do dock inteiro.
+   --altura-dock vem do interface.js (padrão que mantém o mundo em 2×; arrastar não deixa o zoom cair). */
+@media (min-width:761px){
+ :root{--rodape:auto}
+ #layout{padding-bottom:6px}
+ #rodape{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;height:var(--altura-dock,168px);min-height:0;
+  border-top:2px solid var(--bronze-600);box-shadow:0 -2px 0 #0008,inset 0 1px 0 #ffe9a822}
+ #rodape.recolhido,body.chat-sob-mundo #rodape{height:auto}
+ #rodape>.console{position:static;min-width:0;min-height:0}
+ #rodape .console-alca{top:-7px}
+ #rodape .console-barra{border-top:2px solid #0009}
+ #rodape .atalhos-faixa{flex-direction:column;justify-content:center;align-items:flex-end;gap:4px;padding:4px 10px;border-left:2px solid var(--tinta);box-shadow:inset 2px 0 0 #ffe9a815;
+  background:linear-gradient(var(--couro-700),var(--couro-900))}
+ /* atalhos no dock: rótulo em cima, a dica embaixo (some quando a barra de habilidades aparece) */
+ #rodape .atalhos-rotulo{display:block;align-self:center;font:700 var(--fs-13)/1 var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--ouro-300);text-shadow:1px 1px 0 #120a06}
+ body:not(.chat-sob-mundo) #rodape .atalhos-faixa{align-items:center}
+ body:not(.chat-sob-mundo) #atalhos-dica{order:3;max-width:330px;margin:0;text-align:center;color:var(--texto-mudo)}
+ body:not(.chat-sob-mundo) .atalhos-faixa:has(#barraHab:not([hidden])) #atalhos-dica{display:none}
+ body.chat-sob-mundo #rodape .atalhos-rotulo{display:none}
+ /* conversa recolhida no dock: fica só a barra de entrada, no pé, e os atalhos numa fileira (sem rótulo nem
+    dica), para a altura voltar ao mundo em vez de sobrar uma faixa vazia */
+ body:not(.chat-sob-mundo) #rodape.recolhido{align-items:end}
+ body:not(.chat-sob-mundo) #rodape.recolhido .atalhos-faixa{flex-direction:row;align-self:stretch}
+ body:not(.chat-sob-mundo) #rodape.recolhido .atalhos-rotulo,body:not(.chat-sob-mundo) #rodape.recolhido #atalhos-dica{display:none}
+ #rodape .barra-hab .hab,#rodape .atalho{width:46px;height:46px}
+ /* conversa sob o mundo: o dock é só a faixa dos atalhos, como antes */
+ body.chat-sob-mundo #rodape{display:flex;flex-direction:column;justify-content:center}
+ body.chat-sob-mundo #rodape .atalhos-faixa{flex-direction:row;justify-content:center;align-items:center;border-left:0;box-shadow:none;background:none}
+}
 
 /* ---------- abas (médio e estreito) ---------- */
 .abas{display:flex;gap:4px;padding:0 0 0 2px;flex:0 0 auto}
@@ -431,6 +593,29 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 #dicaItem p{margin:0;font:500 var(--fs-14)/1.35 var(--f-texto);color:var(--tinta)}
 #dicaItem .atr-item li{display:list-item}
 #dicaItem .acao{margin-top:4px;font:500 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+
+/* ---------- menu do item (botão direito ou toque longo na mochila/bolsa): usar e jogar no chão ---------- */
+#menuItem{position:fixed;z-index:calc(var(--z-modal) + 4);width:min(284px,calc(100vw - 16px));padding:8px 10px 10px;display:none}
+#menuItem.aberto{display:block}
+#menuItem .menu-cab{display:flex;align-items:center;gap:8px}
+#menuItem .menu-cab .slot{flex:0 0 auto}
+#menuItem .menu-nome{min-width:0;flex:1}
+#menuItem h4{margin:0;font:700 var(--fs-14)/1.2 var(--f-titulo);color:var(--tinta)}
+#menuItem h4.rar{border-left:4px solid var(--rar);padding-left:6px}
+#menuItem .menu-nome p{margin:2px 0 0;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--tinta-suave)}
+#menuItem .menu-fechar{flex:0 0 auto;align-self:flex-start;width:32px;height:32px;display:grid;place-items:center;padding:0;border:2px solid var(--tinta);background:linear-gradient(var(--bronze-600),var(--bronze-700));box-shadow:var(--relevo)}
+#menuItem .menu-info{margin:6px 0 0;font:500 var(--fs-14)/1.35 var(--f-texto);color:var(--tinta)}
+#menuItem .menu-reserva{margin:6px 0 0;font:italic 500 var(--fs-14)/1.35 var(--f-texto);color:var(--tinta-perigo)}
+#menuItem .menu-grupo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--perg-400)}
+#menuItem .menu-rotulo{flex:1 0 100%;font:700 var(--fs-13)/1 var(--f-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--tinta-suave)}
+#menuItem .menu-x{display:flex;align-items:center;gap:6px;flex:1 0 100%}
+@media (pointer:coarse){#menuItem .menu-fechar{width:44px;height:44px} #menuItem .btn{min-height:44px}}
+/* Arrastar um item da mochila para o mundo: jogar no chão. */
+#palco.alvo-chao::before{content:"";position:absolute;inset:4px;z-index:12;border:2px dashed var(--ouro-300);pointer-events:none}
+#palco.alvo-chao::after{content:"Solte para jogar no chão";position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:12;padding:8px 14px;border:2px solid var(--ouro-300);background:#1c1210eb;font:700 var(--fs-16)/1 var(--f-ui);color:var(--texto);white-space:nowrap;pointer-events:none}
+/* Carga da mochila: âmbar acima de 90%, vermelha cheia. */
+#pesoTexto.quase-cheia{color:#f6a84a}
+#pesoTexto.cheia{color:var(--recebido)}
 
 /* ---------- modais (componente único) ---------- */
 .modal{position:fixed;inset:0;z-index:var(--z-modal);display:none;align-items:center;justify-content:center;padding:16px;background:var(--veu)}
@@ -468,6 +653,19 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja.cosmetico .preco{font-style:italic}
 .item-loja.cosmetico > span:nth-child(2) > span{display:block}
 .item-loja.cosmetico.em-uso{border-color:var(--ouro-500,#e8b94a);box-shadow:inset 0 0 0 1px #e8b94a}
+/* Quantidade (loja e menu do item): − número +, e o botão "Vender X / Comprar X / Jogar X" ao lado. */
+.qtd-sel{display:inline-flex;align-items:stretch;flex:0 0 auto;height:36px;border:2px solid var(--tinta);background:var(--perg-100);box-shadow:inset 1px 1px 0 #0003}
+.qtd-sel input{width:52px;min-width:0;padding:0 2px;border:0;border-inline:1px solid var(--perg-400);background:#fffaf0;text-align:center;font:700 var(--fs-16)/1 var(--f-ui);color:var(--tinta);-moz-appearance:textfield;appearance:textfield}
+.qtd-sel input::-webkit-inner-spin-button,.qtd-sel input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.qtd-sel input:focus-visible{outline:2px solid var(--bronze-600);outline-offset:-2px}
+.qtd-passo{width:30px;padding:0;border:0;background:linear-gradient(var(--perg-200),var(--perg-300));color:var(--tinta);font:700 var(--fs-20)/1 var(--f-ui);text-shadow:none}
+.qtd-passo:hover:not([disabled]){background:var(--perg-100)}
+.qtd-passo[disabled]{color:#1e120c59;cursor:not-allowed}
+@media (pointer:coarse){.qtd-sel{height:44px}.qtd-passo{width:40px}}
+#modalLoja .modal-caixa{width:min(600px,100%)} /* cabe "− n +", "Vender X" e "Vender tudo" numa linha */
+.item-loja.com-qtd{row-gap:6px}
+.item-loja .linha-qtd{grid-column:2/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px}
+.item-loja .linha-qtd .btn{min-width:0}
 /* Visual: cores do boneco (JGB-49) — prévia de frente, de lado e de costas e uma fileira de amostras por parte */
 .cores-visual{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--e-4);align-items:start}
 .previa-cores{display:flex;flex-direction:column;gap:6px;padding:8px;border:2px solid var(--bronze-700);background:radial-gradient(circle at 40% 30%,#8fa34e,#5d7234)}
@@ -732,13 +930,10 @@ body.dialogo-aberto #toque{visibility:hidden}
 #folha{display:none}
 
 /* ======================================================================
-   MÉDIO: 761–1279 px — mundo + coluna direita com abas
+   MÉDIO: 761–1279 px — mundo + uma coluna de janelas à direita
    ====================================================================== */
 @media (max-width:1279px){
  :root{--slot:36px}
- #layout{grid-template-columns:minmax(0,1fr) 288px}
- #colEsq{display:none}
- #colDir{order:2}
  /* a barra do topo não cabe inteira: sai o subtítulo e o rótulo "salvo" (o selo verde fica) */
  .marca-sub{display:none}
  .salvo{font-size:0;gap:0}
@@ -746,8 +941,9 @@ body.dialogo-aberto #toque{visibility:hidden}
  .btn-icone{padding:0 8px;white-space:nowrap}
  #atalhos-dica{max-width:200px}
 }
-/* médio estreito: os rótulos não cabem e se sobrepunham; os botões ficam só com o ícone (têm aria-label/title) */
-@media (min-width:761px) and (max-width:1023px){
+/* médio: com o nome da região e o botão Janelas no topo, os rótulos não cabem; os botões ficam só com o ícone
+   (têm aria-label/title) */
+@media (min-width:761px) and (max-width:1279px){
  .btn-icone .rotulo{display:none}
  .btn-icone{min-width:34px;justify-content:center}
 }
@@ -760,7 +956,12 @@ body.dialogo-aberto #toque{visibility:hidden}
  #hud .barra{height:8px;border-width:1px}
  #hud .barra>b{display:none}
  #hud .val{min-width:52px;font:700 var(--fs-13)/1 var(--f-ui);color:#fff6e0;text-shadow:1px 1px 0 #120a06;text-align:right}
- #hud .quadro-alvo{display:none}
+ /* o quadro do alvo fica no HUD (o canto de cima do mundo é do HUD) */
+ #palco>#quadroAlvo{display:none}
+ #hud .quadro-alvo{padding:2px 0 0;margin-top:2px;border:0;border-top:1px solid #0008;background:none}
+ #hud .quadro-alvo:not(.ativo){display:none}
+ #hud .quadro-alvo strong{max-width:110px}
+ #hud .alvo-barra,#hud .alvo-recarga{width:72px}
  /* avisos entre o HUD (esquerda) e o minimapa com a margem (direita) */
  #avisos{left:200px;right:240px;width:auto;max-width:560px;margin:0 auto;transform:none}
  #pMochila .nota,#pBolsa .nota{display:none}
@@ -773,7 +974,7 @@ body.dialogo-aberto #toque{visibility:hidden}
  body{font-size:var(--fs-14)}
  #app{grid-template-rows:44px minmax(0,1fr) auto}
  #topo{gap:6px;padding:0 6px 0 4px}
- .marca{display:none}
+ .marca,.area-bloco{display:none}
  .area-topo{display:block;margin-right:auto}
  .so-celular{display:inline-flex!important}
  .so-largo{display:none!important}
@@ -871,8 +1072,6 @@ body.dialogo-aberto #toque{visibility:hidden}
 @media (max-width:760px) and (pointer:fine){ #dpad{display:none} }
 body.toque-forcado #dpad{display:block}
 
-/* largo: oculta mochila/bolsa com a tecla I */
-@media (min-width:1280px){ body.hideBags #pMochila, body.hideBags #pBolsa{display:none} }
 
 @media (prefers-reduced-motion:reduce){
  *,*::before,*::after{animation:none!important;transition:none!important}
@@ -884,6 +1083,8 @@ body.toque-forcado #dpad{display:block}
   <header id="topo">
     <button class="btn-icone so-celular" id="btnMenu" type="button" aria-label="Menu: ajuda e opções"><img class="px g16" data-glifo="ui_menu" alt=""></button>
     <div class="marca"><span class="marca-nome">JORNADA</span><span class="marca-sub">RPG Bíblico</span></div>
+    <!-- nome da região (largo e médio; o mundo não tem mais a faixa de título: o palco ganha a altura) -->
+    <div class="area-bloco" id="areaBloco"><strong id="areaNome">Canaã</strong><span id="areaSub"></span></div>
     <strong class="area-topo" id="areaTopo">Canaã</strong>
     <span class="salvo" id="salvoTexto" title="O progresso é salvo neste navegador">Salvo no navegador</span>
     <span class="moedas" id="moedas" title="Moedas"><img class="px g16" data-glifo="ui_moeda" alt=""><b id="moedasValor">0</b><span class="sr"> moedas</span></span>
@@ -895,6 +1096,7 @@ body.toque-forcado #dpad{display:block}
     <button class="btn-icone mana-btn" id="btnMana" type="button" aria-label="Maná e descanso (N)" title="Maná e descanso (N)"><img class="px g16" data-glifo="ui_mana" alt=""><span class="rotulo">Maná</span><b class="mana-qtd" id="manaQtd" hidden></b></button>
     <button class="btn-icone" id="btnBestiario" type="button" aria-label="Bestiário (B)" title="Bestiário (B)"><img class="px g16" data-glifo="ui_bestiario" alt=""><span class="rotulo">Bestiário</span></button>
     <button class="btn-icone" id="btnMapa" type="button" aria-label="Mostrar ou ocultar o mapa (M)" aria-pressed="true"><img class="px g16" data-glifo="ui_rosa" alt=""><span class="rotulo">Mapa</span></button>
+    <button class="btn-icone so-largo" id="btnJanelas" type="button" aria-label="Janelas: mostrar, ocultar e restaurar o layout" aria-haspopup="menu" aria-expanded="false" aria-controls="menuJanelas" title="Janelas: mostrar, ocultar e restaurar o layout"><img class="px g16" data-glifo="ui_menu" alt=""><span class="rotulo">Janelas</span></button>
     <button class="btn-icone so-largo" id="btnTelaCheia" type="button" aria-label="Tela cheia"><img class="px g16" data-glifo="ui_tela_cheia" alt=""><span class="rotulo">Tela cheia</span></button>
     <button class="btn-icone so-largo" id="btnAjuda" type="button" aria-label="Controles e ajuda (?)"><img class="px g16" data-glifo="ui_ajuda" alt=""><span class="rotulo">Controles</span></button>
   </header>
@@ -903,13 +1105,9 @@ body.toque-forcado #dpad{display:block}
     <aside class="coluna" id="colEsq" aria-label="Missão e bagagem"></aside>
 
     <section id="mundo" aria-label="Mundo do jogo">
-      <div class="mundo-cab">
-        <div class="area-bloco"><strong id="areaNome">Canaã</strong><span id="areaSub"></span></div>
-        <div class="quadro-alvo" id="quadroAlvo" aria-live="polite"></div>
-        <div class="cab-acoes"></div>
-      </div>
       <div class="palco" id="palco">
         <div id="game-root"></div>
+        <div class="quadro-alvo" id="quadroAlvo" aria-live="polite"></div>
         <div id="mapaSobre"></div>
         <button id="missaoLinha" type="button" aria-expanded="false" aria-label="Missão atual (toque para expandir)"><img class="px g16" data-glifo="ui_pergaminho" alt=""><span class="txt" id="missaoLinhaTxt">Carregando…</span><span class="prog" id="missaoLinhaProg"></span></button>
         <div id="hud" aria-label="Estado do personagem">
@@ -929,7 +1127,7 @@ body.toque-forcado #dpad{display:block}
           <div id="dpad" class="joystick" role="group" aria-label="Joystick: arraste para andar"><span class="joy-pino"></span></div>
           <div id="acoes">
             <button class="btn-toque" id="tAtacar" type="button" data-acao="atacar" aria-label="Atacar"><img class="px" data-glifo="ui_atacar" alt=""></button>
-            <button class="btn-toque" id="tFlecha" type="button" data-acao="flecha" aria-label="Disparar flecha"><img class="px" data-glifo="ui_flecha" alt=""></button>
+            <button class="btn-toque" id="tFlecha" type="button" data-acao="flecha" aria-label="Ataque à distância (arco ou funda)"><img class="px" data-glifo="ui_flecha" alt=""></button>
             <button class="btn-toque" id="tPocao" type="button" data-acao="pocao" aria-label="Usar poção de vida"><img class="px" data-item="pocao" alt=""></button>
             <button class="btn-toque" id="tOrar" type="button" data-acao="orar" aria-label="Orar" hidden><img class="px" data-glifo="ui_orar" alt=""></button>
             <button class="btn-toque" id="tInteragir" type="button" data-acao="interagir" aria-label="Interagir" hidden><img class="px" data-glifo="ui_falar" alt=""><span class="rot"></span></button>
@@ -943,6 +1141,7 @@ body.toque-forcado #dpad{display:block}
 
   <footer id="rodape">
     <div class="atalhos-faixa">
+      <span class="atalhos-rotulo" aria-hidden="true">Atalhos</span>
       <p id="atalhos-dica">Arraste uma poção para uma tecla (ou toque nela e depois na tecla). Clique no inimigo para atacar.</p>
       <div id="barraHab" class="barra-hab" role="toolbar" aria-label="Habilidades (teclas 1 a 8)" hidden></div>
       <div id="atalhos" role="toolbar" aria-label="Barra de atalhos (teclas 1 a 6)"></div>
@@ -973,12 +1172,12 @@ body.toque-forcado #dpad{display:block}
 
   <section class="painel" id="pMochila" aria-labelledby="tMochila">
     <div class="painel-cab"><img class="px g16" data-glifo="ui_mochila" alt=""><h2 id="tMochila">MOCHILA</h2><span class="extra" id="pesoTexto" title="Carga">0 / 0 kg</span></div>
-    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeMochila" role="list" aria-label="Equipamentos e munição"></div><p class="nota">Armas, escudos, armaduras e flechas.</p></div>
+    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeMochila" role="list" aria-label="Equipamentos e munição"></div><p class="nota">Equipamentos e flechas. Arraste para o mundo para jogar no chão.</p></div>
   </section>
 
   <section class="painel" id="pBolsa" aria-labelledby="tBolsa">
     <div class="painel-cab"><img class="px g16" data-glifo="ui_bolsa" alt=""><h2 id="tBolsa">BOLSA</h2><span class="extra">consumíveis</span></div>
-    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeBolsa" role="list" aria-label="Consumíveis e recursos"></div><p class="nota">Duplo clique usa a poção.</p></div>
+    <div class="painel-corpo zona-soltar" data-zona="mochila"><div class="grade" id="gradeBolsa" role="list" aria-label="Consumíveis e recursos"></div><p class="nota">Duplo clique bebe a poção. Botão direito ou toque longo: mais ações.</p></div>
   </section>
 
   <section class="perg" id="pAnalisador" data-aberto="true" aria-labelledby="tAnalisador">
@@ -1021,12 +1220,21 @@ body.toque-forcado #dpad{display:block}
           <div class="ficha-nome"><strong>Viajante</strong><span id="fichaNivel">Nível 1</span></div>
           <div class="linha-barra"><img class="px g16" data-glifo="ui_coracao" alt="Vida"><div class="barra vida" id="barraVida" role="meter" aria-label="Vida"><i></i><b></b></div></div>
           <div class="linha-barra"><img class="px g16" data-glifo="ui_candeia" alt="Fé"><div class="barra fe" id="barraFe" role="meter" aria-label="Fé"><i></i><b></b></div></div>
-          <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="barraXp" role="meter" aria-label="Experiência"><i></i><b></b></div></div>
+          <div class="linha-barra"><img class="px g16" data-glifo="ui_louro" alt="Experiência"><div class="barra xp" id="barraXp" role="meter" aria-label="Experiência: % até o próximo nível (clique para ver os números)"><i></i><b></b></div></div>
           <div class="status-chips" id="statusFicha" aria-live="polite"></div>
         </div>
       </div>
+      <!-- Janela de habilidades (fichaDeHabilidades, logica.js): capacidade e vigor sempre à vista; habilidades
+           e ofícios recolhíveis (a escolha fica no navegador). Cada linha abre a dica do que falta. -->
+      <ul class="hab-lista hab-medidas" id="listaMedidas" aria-label="Capacidade e vigor"></ul>
+      <button class="hab-secao" type="button" id="btnHabilidades" aria-expanded="true" aria-controls="corpoHabilidades"><span class="seta"></span>Habilidades</button>
       <p class="habilidades" id="habilidades"></p>
-      <dl class="atributos" id="atributos"></dl>
+      <div class="hab-corpo" id="corpoHabilidades">
+        <ul class="hab-lista" id="listaHabilidades" aria-label="Habilidades de combate"></ul>
+        <dl class="atributos" id="atributos"></dl>
+        <button class="hab-secao sub" type="button" id="btnOficiosFicha" aria-expanded="false" aria-controls="listaOficiosFicha"><span class="seta"></span>Ofícios<span class="resumo" id="resumoOficios"></span></button>
+        <ul class="hab-lista" id="listaOficiosFicha" aria-label="Ofícios" hidden></ul>
+      </div>
     </div>
   </section>
 
@@ -1043,6 +1251,14 @@ body.toque-forcado #dpad{display:block}
 
 <!-- dica de item -->
 <div id="dicaItem" class="perg" role="tooltip"></div>
+<!-- menu do item da mochila/bolsa (interface.js, abrirMenuItem) -->
+<div id="menuItem" class="perg" role="dialog" aria-label="Ações do item"></div>
+<!-- Janelas (interface.js, "Janelas laterais"): o menu do topo (mostrar/ocultar cada janela, restaurar o
+     layout) e o menu de cada janela (mover, minimizar, fechar: a alternativa de teclado ao arrastar). -->
+<div id="menuJanelas" class="menu-janelas" role="menu" aria-labelledby="btnJanelas" hidden></div>
+<div id="menuJanela" class="menu-janelas" role="menu" hidden></div>
+<div id="fantasmaJanela" aria-hidden="true" hidden></div>
+<div id="marcaSoltar" aria-hidden="true" hidden></div>
 
 <!-- modais: um componente só -->
 <div class="modal" id="modalAjuda" aria-hidden="true">

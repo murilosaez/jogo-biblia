@@ -317,17 +317,14 @@
   // Descrição de itens (dica, loja)
   // ------------------------------------------------------------------
   const NOME_TIPO = {
-    consumivel: "Consumível", recurso: "Recurso", arma: "Arma corpo a corpo", arma_distancia: "Arco",
-    escudo: "Escudo", armadura: "Armadura", municao: "Munição",
+    consumivel: "Consumível", recurso: "Recurso", arma: "Arma corpo a corpo", arma_distancia: "Arma à distância",
+    escudo: "Escudo", armadura: "Armadura", cabeca: "Cabeça", colar: "Colar", pernas: "Pernas", pes: "Pés", anel: "Anel",
+    municao: "Munição",
   };
-  const ROTULO_SLOT = { arma: "Arma", arco: "Arco", escudo: "Escudo", armadura: "Armadura" };
-  const SILHUETA_SLOT = { arma: "espada_ferro", arco: "arco_madeira", escudo: "escudo_madeira", armadura: "armadura_couro" };
-  // Onde cada espaço fica no boneco do painel Equipamento (o arco vai às costas, como uma aljava).
-  const LUGAR_SLOT = { arma: "na mão direita", arco: "nas costas", escudo: "na mão esquerda", armadura: "no peito" };
-  const slotDoTipo = (tipo) => {
-    const mapa = typeof SLOTS_EQUIPAMENTO !== "undefined" ? SLOTS_EQUIPAMENTO : { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
-    return Object.keys(mapa).find((s) => mapa[s] === tipo) || null;
-  };
+  // Espaços do boneco (dados/itens.js: nome, lugar e silhueta) e o espaço de cada item (logica.js).
+  const ESPACOS = typeof ESPACOS_BONECO !== "undefined" ? ESPACOS_BONECO : {};
+  const nomeEspaco = (slot) => ESPACOS[slot]?.nome || slot;
+  const slotDe = (id) => (typeof slotDoItem === "function" ? slotDoItem(id) : null);
 
   // Item com raridade e atributos (logica.js); a loja usa "flechas", que não é item.
   const info = (id) => (typeof infoItem === "function" ? infoItem(id) : typeof ITENS !== "undefined" ? ITENS[id] : null);
@@ -345,6 +342,9 @@
     if (!d) return "";
     if (d.bonus) return `+${d.bonus} de dano`;
     if (d.defesa) return `+${d.defesa} de defesa`;
+    // Peça do boneco só com atributos (colar de contas, anel de selo): o primeiro deles.
+    const fixo = slotDe(id) && typeof efeitosDoItem === "function" ? efeitosDoItem(id)[0] : "";
+    if (fixo) return fixo;
     if (id === "pocao") return `cura ${p && typeof curaPocao === "function" ? curaPocao(p) : 30} de vida`;
     if (id === "pocao_fe") return `+${typeof CURA_POCAO_FE !== "undefined" ? CURA_POCAO_FE : 40} de fé`;
     if (d.tipo === "municao") return "munição para o arco";
@@ -352,28 +352,41 @@
     return NOME_TIPO[d.tipo] || "";
   }
 
-  function atributoCurto(id) {
-    const d = info(id);
-    if (!d) return "";
-    if (d.bonus) return `+${d.bonus} dano`;
-    if (d.defesa) return `+${d.defesa} def`;
-    return "";
+  // Onde a peça vai no boneco (e a regra das duas mãos); no espaço de munição, quantas há na pilha.
+  function linhaBoneco(id, origem) {
+    const slot = slotDe(id);
+    if (!slot) return "";
+    const p = jogador();
+    if (origem === "equip" && slot === "municao" && p) {
+      const n = typeof municaoNoEspaco === "function" ? municaoNoEspaco(p) : 0;
+      const kg = String(Math.round(n * (typeof pesoItem === "function" ? pesoItem(id) : 0) * 10) / 10).replace(".", ",");
+      return `${n} no espaço de munição (${kg} kg)`;
+    }
+    const duas = typeof maosDoItem === "function" && maosDoItem(id) === 2 ? " · usa as duas mãos (sem escudo)" : "";
+    return `Vai ${ESPACOS[slot]?.lugar || "no boneco"}${duas}`;
   }
 
   function htmlDica(id, origem) {
     const d = info(id);
     if (!d) return "";
-    const partes = [NOME_TIPO[d.tipo] || "Item", atributoItem(id), `${typeof pesoItem === "function" ? pesoItem(id) : d.peso} kg`].filter(Boolean);
+    // Peso em kg com vírgula; na mochila, com o total da pilha.
+    const pesoUm = typeof pesoItem === "function" ? pesoItem(id) : d.peso;
+    const naPilha = origem === "mochila" ? contarNaMochila(id) : 0;
+    const pesoTxt = naPilha > 1 ? `${kg(pesoUm)} kg cada (${kg(pesoUm * naPilha)} kg)` : `${kg(pesoUm)} kg`;
+    const partes = [NOME_TIPO[d.tipo] || "Item", atributoItem(id), pesoTxt].filter(Boolean);
     const r = raridadeDe(id);
     const nomeR = typeof RARIDADES !== "undefined" ? RARIDADES[r]?.nome : "";
     const linhaRaridade = r !== "comum" && nomeR ? `<p class="raridade" style="--rar:${corRaridade(r)}">${esc(nomeR)}</p>` : "";
-    const atributos = typeof textoAtributos === "function" ? textoAtributos(id) : [];
+    const principal = atributoItem(id);
+    const atributos = (typeof textoAtributos === "function" ? textoAtributos(id) : []).filter((t) => t !== principal);
     const linhaAtributos = atributos.length ? `<ul class="atr-item">${atributos.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "";
-    let acao = "";
-    if (origem === "equip") acao = "Arraste para a mochila, ou dê duplo clique, para guardar.";
-    else if (slotDoTipo(d.tipo)) acao = "Duplo clique equipa. Também pode arrastar ou tocar e escolher o espaço.";
-    else if (d.tipo === "consumivel") acao = "Duplo clique usa. Arraste para uma tecla de atalho.";
+    const boneco = linhaBoneco(id, origem);
+    let acao = boneco ? `${boneco}. ` : "";
+    if (origem === "equip") acao += "Arraste para a mochila, ou dê duplo clique, para guardar.";
+    else if (slotDe(id)) acao += "Duplo clique equipa. Também pode arrastar ou tocar e escolher o espaço.";
+    else if (d.tipo === "consumivel") acao = "Duplo clique bebe (mesmo sem precisar, para liberar espaço). Arraste para uma tecla de atalho.";
     else if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) acao = "Venda a qualquer mercador (há um em cada cidade).";
+    if (origem === "mochila") acao += " Botão direito ou toque longo: jogar no chão.";
     const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
     return `<h4${titulo}>${esc(nomeDoItem(id))}</h4>${linhaRaridade}<p>${esc([...new Set(partes)].join(" · "))}</p>${linhaAtributos}${acao ? `<p class="acao">${esc(acao)}</p>` : ""}`;
   }
@@ -401,6 +414,7 @@
     return { atual: Math.max(0, (p.xp || 0) - base), total: Math.max(1, topo - base) };
   }
 
+  let xpEmNumeros = false; // um clique na barra de XP troca o % pelos números
   function atualizarBarras(p) {
     const max = typeof vidaMaxima === "function" ? vidaMaxima(p) : 100;
     const baixa = p.vida / max < 0.25;
@@ -409,14 +423,21 @@
     const travada = !p.oracaoDesbloqueada;
     const vidaTxt = `${p.vida}/${max}`;
     const feTxt = travada ? "aprenda na Galileia" : `${p.fe || 0}/${feMax}`;
-    const xpTxt = `${xp.atual}/${xp.total} XP`;
+    // XP em % até o próximo nível (para baixo, como na janela de habilidades); os números ficam na dica e,
+    // com um clique na barra, no lugar do %.
+    const maximo = typeof NIVEL_MAXIMO !== "undefined" && p.nivel >= NIVEL_MAXIMO;
+    const pctXp = maximo ? 100 : Math.min(99, Math.floor((100 * xp.atual) / xp.total));
+    const numerosXp = `${fmt(xp.atual)}/${fmt(xp.total)} XP`;
+    const xpTxt = maximo ? "nível máximo" : xpEmNumeros ? numerosXp : `${pctXp}%`;
     definirBarra($("#barraVida"), p.vida, max, vidaTxt, { baixa });
     definirBarra($("#barraFe"), travada ? 0 : p.fe || 0, feMax, feTxt, { travada });
     // Reserva de descanso do Sábado: a barra ganha contorno azul e o título explica o XP em dobro.
     const descanso = Math.floor(p.descanso?.xp || 0);
-    const tituloXp = descanso ? `Reserva de descanso: ${descanso} XP (abates com XP em dobro)` : "";
+    const tituloXp = (maximo ? "Nível máximo." : `${numerosXp}: faltam ${fmt(xp.total - xp.atual)} para o nível ${p.nivel + 1}.`) +
+      (descanso ? ` Reserva de descanso: ${fmt(descanso)} XP (abates com XP em dobro).` : "");
     for (const id of ["#barraXp", "#hudXp"]) if ($(id) && $(id).title !== tituloXp) $(id).title = tituloXp;
     definirBarra($("#barraXp"), xp.atual, xp.total, xpTxt, { descanso });
+    $("#barraXp")?.setAttribute("aria-valuetext", `${pctXp}%, ${numerosXp}`);
     definirBarra($("#hudVida"), p.vida, max, vidaTxt, { baixa });
     definirBarra($("#hudFe"), travada ? 0 : p.fe || 0, feMax, feTxt, { travada });
     definirBarra($("#hudXp"), xp.atual, xp.total, xpTxt, { descanso });
@@ -466,34 +487,168 @@
       const url = retratoURL(chave, { escala: 3, recorte: "busto" }) || retratoURL("pj_jogador", { escala: 3 });
       if (url) $("#retratoJogador").src = url;
       // Boneco do painel Equipamento: o corpo inteiro, de frente, com o que está vestido.
-      urlBoneco = retratoURL(chave, { escala: 6, recorte: "inteiro" }) || retratoURL("pj_jogador", { escala: 6, recorte: "inteiro" });
+      urlBoneco = retratoURL(chave, { escala: 4, recorte: "inteiro" }) || retratoURL("pj_jogador", { escala: 4, recorte: "inteiro" });
       const fig = $("#gradeEquip .boneco-figura");
       if (fig && urlBoneco) fig.innerHTML = `<img class="px" src="${urlBoneco}" alt="">`;
     }
+    atualizarFicha(p);
     if (typeof estatisticasCombate !== "function") return;
     const s = estatisticasCombate(p);
-    const h = s.habilidades || {};
-    const nh = (k, rot) => {
-      const x = h[k];
-      return x ? `<span title="${esc(x.nome)}: ${x.maximo ? "máximo" : `${x.xp}/${x.necessario} XP para o próximo nível`}">${rot} ${x.nivel}</span>` : "";
-    };
-    const hab = [nh("corpo", "Corpo"), nh("distancia", "Arco"), nh("defesa", "Defesa"), nh("oracao", "Oração")].filter(Boolean).join(" · ");
-    const el = $("#habilidades");
-    if (el.innerHTML !== hab) el.innerHTML = hab;
-    const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
-    const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
+    // Carga (linha Capacidade), flechas (espaço Munição do Equipamento) e pontos de tarefa (topo) já aparecem em
+    // outro lugar: aqui ficam os números do combate.
     const linhas = [
       ["Dano corpo", s.danoCorpo],
       ["Dano arco", s.temArco ? s.danoDistancia : "—"],
       ["Defesa", `${s.defesa} (−${s.reducaoDano}%)`],
-      ["Crítico", `${s.critico}%`],
-      ["Flechas", s.flechas],
-      ["Carga", `${peso}/${cap}`],
-      ["Pontos de tarefa", p.pontosTarefa || 0, "largo"], // nas duas colunas: numa só, quebrava em 2 linhas
+      ["Crítico", `${String(s.critico).replace(".", ",")}%`],
     ];
     const html = linhas.map(([k, v, cls]) => `<div${cls ? ` class="${cls}"` : ""}><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
     const dl = $("#atributos");
     if (dl.innerHTML !== html) dl.innerHTML = html;
+  }
+
+  // ------------------------------------------------------------------
+  // Janela de habilidades (painel Personagem). Só lê fichaDeHabilidades(p, agora) (logica.js). As linhas são
+  // criadas uma vez e depois só mudam texto, largura e classe (a 4 Hz, para o vigor correr): o foco, o hover e
+  // o destaque de quem subiu não se perdem. Habilidades e Ofícios recolhem; a escolha fica neste navegador.
+  // ------------------------------------------------------------------
+  const CHAVE_FICHA = "jornada_ficha";
+  let prefFicha = {};
+  try { prefFicha = JSON.parse(localStorage.getItem(CHAVE_FICHA) || "{}") || {}; } catch (e) { prefFicha = {}; }
+  const salvarFicha = () => { try { localStorage.setItem(CHAVE_FICHA, JSON.stringify(prefFicha)); } catch (e) { /* sem armazenamento */ } };
+  let niveisFicha = null; // último nível visto de cada linha (para o destaque e o aviso de avanço)
+
+  function linhasDa(ul, chaves) {
+    if (ul.dataset.chaves === chaves.join(" ")) return;
+    ul.dataset.chaves = chaves.join(" ");
+    ul.innerHTML = chaves.map((k) => `<li><button type="button" class="hab-linha" data-linha="${esc(k)}" aria-expanded="false"><span class="nome"></span><b class="valor"></b>` +
+      `<span class="fio" aria-hidden="true"><i></i></span><span class="hab-dica"></span></button></li>`).join("");
+  }
+  // l: { nome (HTML), valor, pct, dica, classes: { classe: ligada }, dados: { atributo: valor } }
+  function preencherLinha(ul, chave, l) {
+    const b = ul.querySelector(`[data-linha="${chave}"]`);
+    if (!b) return;
+    const nome = b.querySelector(".nome"), valor = b.querySelector(".valor"), fio = b.querySelector(".fio i"), dica = b.querySelector(".hab-dica");
+    if (nome.innerHTML !== l.nome) nome.innerHTML = l.nome;
+    if (valor.textContent !== l.valor) valor.textContent = l.valor;
+    const w = `${Math.max(0, Math.min(100, l.pct)).toFixed(1)}%`;
+    if (fio.style.width !== w) fio.style.width = w;
+    if (dica.textContent !== l.dica) dica.textContent = l.dica;
+    if (b.title !== l.dica) b.title = l.dica;
+    const rotulo = `${l.rotulo || nome.textContent}: ${l.valor}. ${l.dica}`;
+    if (b.getAttribute("aria-label") !== rotulo) b.setAttribute("aria-label", rotulo);
+    for (const [k, v] of Object.entries(l.classes || {})) b.classList.toggle(k, !!v);
+    for (const [k, v] of Object.entries(l.dados || {})) if (b.dataset[k] !== v) b.dataset[k] = v;
+  }
+  function destacarLinha(ul, chave) {
+    const b = ul?.querySelector(`[data-linha="${chave}"]`);
+    if (!b) return;
+    b.classList.remove("ganhou");
+    void b.offsetWidth; // recomeça a animação
+    b.classList.add("ganhou");
+    clearTimeout(b._ganhou);
+    b._ganhou = setTimeout(() => b.classList.remove("ganhou"), 1500);
+  }
+
+  function atualizarFicha(p) {
+    if (typeof fichaDeHabilidades !== "function") return;
+    const f = fichaDeHabilidades(p, Date.now());
+    // Capacidade e vigor (sempre à vista).
+    const med = $("#listaMedidas");
+    if (med) {
+      linhasDa(med, ["carga", "vigor"]);
+      const c = f.carga, v = f.vigor;
+      const livre = Math.max(0, c.maximo - c.atual);
+      preencherLinha(med, "carga", {
+        nome: "Capacidade", valor: c.texto, pct: c.pct,
+        dica: c.pct >= 100 ? "Mochila cheia: venda, largue ou guarde algo para pegar mais." : `Livre: ${kg(livre)} kg. Sobe ${kg(typeof CARGA_POR_NIVEL !== "undefined" ? CARGA_POR_NIVEL : 3)} kg por nível e com os alforjes.`,
+        classes: { quase: c.pct >= 90 && c.pct < 100, cheia: c.pct >= 100 },
+      });
+      const cair = v.proxima ? ` Cai para ${v.proxima.nome.toLowerCase()} (${v.proxima.texto}) em ${typeof textoVigor === "function" ? textoVigor(v.ateCair) : ""} de caçada.` : "";
+      preencherLinha(med, "vigor", {
+        nome: `Vigor <small>${esc(v.faixa.nome.toLowerCase())}</small>`, rotulo: `Vigor, ${v.faixa.nome.toLowerCase()}`,
+        valor: v.texto, pct: v.pct,
+        dica: `${v.faixa.nome}: ${v.faixa.texto}.${cair} Gasta só caçando; volta longe do jogo (1 minuto a cada ${typeof REGRAS_VIGOR !== "undefined" ? REGRAS_VIGOR.regenCadaMinutos : 3}) e enche no descanso do Sábado.`,
+        dados: { faixa: v.faixa.id },
+      });
+    }
+    // Habilidades de combate.
+    const ul = $("#listaHabilidades");
+    if (ul) {
+      linhasDa(ul, f.combate.map((h) => h.chave));
+      for (const h of f.combate) {
+        preencherLinha(ul, h.chave, {
+          nome: esc(h.nome), valor: String(h.nivel), pct: h.bloqueada ? 0 : h.pct,
+          dica: h.bloqueada ? h.dica : `${h.pct}% · ${h.dica} Agora: ${h.efeito}.`,
+          classes: { bloqueada: h.bloqueada },
+        });
+      }
+    }
+    const curto = { corpo: "Corpo", distancia: "Distância", defesa: "Defesa", oracao: "Oração" };
+    const resumo = f.combate.map((h) => `${curto[h.chave] || h.nome} ${h.nivel}`).join(" · ");
+    const el = $("#habilidades");
+    if (el && el.textContent !== resumo) el.textContent = resumo;
+    // Ofícios.
+    const uo = $("#listaOficiosFicha");
+    if (uo) {
+      linhasDa(uo, f.oficios.map((o) => o.id));
+      for (const o of f.oficios) {
+        preencherLinha(uo, o.id, { nome: esc(o.nome), valor: String(o.nivel), pct: o.pct, dica: `${o.pct}% · ${o.dica} Janela Ofícios: tecla O.` });
+      }
+      const melhor = f.oficios.reduce((a, o) => (o.nivel > a.nivel ? o : a), f.oficios[0]);
+      const r = melhor && melhor.nivel > 1 ? `${melhor.nome} ${melhor.nivel}` : "todos no 1";
+      const ro = $("#resumoOficios");
+      if (ro && ro.textContent !== r) ro.textContent = r;
+    }
+    // Quem subiu pisca. O aviso no registro já vem na mensagem do golpe ("Corpo a corpo: nível N."), então
+    // aqui não se registra de novo (antes cada avanço aparecia duas vezes).
+    const agoraNiveis = {};
+    for (const h of f.combate) agoraNiveis[h.chave] = h.nivel;
+    for (const o of f.oficios) agoraNiveis[`of:${o.id}`] = o.nivel;
+    if (niveisFicha && niveisFicha._id === p.id) {
+      for (const h of f.combate) {
+        if (h.nivel > (niveisFicha[h.chave] ?? h.nivel)) {
+          destacarLinha(ul, h.chave);
+        }
+      }
+      for (const o of f.oficios) if (o.nivel > (niveisFicha[`of:${o.id}`] ?? o.nivel)) destacarLinha(uo, o.id);
+    }
+    niveisFicha = { ...agoraNiveis, _id: p.id };
+  }
+
+  function abrirSecaoFicha(qual, aberta) {
+    const botao = qual === "oficios" ? $("#btnOficiosFicha") : $("#btnHabilidades");
+    const corpo = qual === "oficios" ? $("#listaOficiosFicha") : $("#corpoHabilidades");
+    if (!botao || !corpo) return;
+    botao.setAttribute("aria-expanded", String(aberta));
+    corpo.hidden = !aberta;
+  }
+  function ligarFicha() {
+    // Sem escolha guardada, as habilidades começam abertas, menos no largo com a tela baixa (até 1000 px), onde
+    // a coluna direita não teria espaço para a Batalha; no médio e no celular o painel tem aba ou folha própria.
+    // No largo, habilidadesPeloEspaco revê a escolha pelo espaço da coluna depois do 1º desenho (dock de baixo).
+    const padrao = !(calcModo() === "largo" && innerHeight < 1000);
+    abrirSecaoFicha("habilidades", typeof prefFicha.habilidades === "boolean" ? prefFicha.habilidades : padrao);
+    abrirSecaoFicha("oficios", prefFicha.oficios === true);
+    for (const [id, qual] of [["#btnHabilidades", "habilidades"], ["#btnOficiosFicha", "oficios"]]) {
+      $(id)?.addEventListener("click", () => {
+        const aberta = $(id).getAttribute("aria-expanded") !== "true";
+        abrirSecaoFicha(qual, aberta);
+        prefFicha[qual] = aberta;
+        salvarFicha();
+        ajustarFichaAoEspaco(aberta);
+      });
+    }
+    // Uma linha abre (ou fecha) a dica do que falta: no toque não há o title do mouse.
+    $("#pPersonagem")?.addEventListener("click", (e) => {
+      const b = e.target.closest(".hab-linha");
+      if (!b) return;
+      const aberta = !b.classList.contains("aberta");
+      b.classList.toggle("aberta", aberta);
+      b.setAttribute("aria-expanded", String(aberta));
+    });
+    // XP em % (o costume do gênero); um clique na barra mostra os números, outro volta.
+    $("#barraXp")?.addEventListener("click", () => { xpEmNumeros = !xpEmNumeros; const p = jogador(); if (p) atualizarBarras(p); });
   }
 
   // ------------------------------------------------------------------
@@ -566,7 +721,84 @@
   // ------------------------------------------------------------------
   let selecao = null; // {origem:"item", id} | {origem:"equip", slot}
   let assinaturaItens = "";
-  const ehMochila = (tipo) => ["arma", "arma_distancia", "escudo", "armadura", "municao"].includes(tipo);
+  const ehMochila = (tipo) => ["arma", "arma_distancia", "escudo", "armadura", "cabeca", "colar", "pernas", "pes", "anel", "municao"].includes(tipo);
+
+  // ------------------------------------------------------------------
+  // Boneco do painel Equipamento (como nos MMORPGs clássicos): colar, cabeça e mochila; mão da arma,
+  // armadura e mão do escudo; anel, pernas e munição; pés. Cada espaço vazio mostra a silhueta do que vai
+  // nele; o da mochila abre o painel Mochila (e recebe o que for guardado). Ao lado, a figura com o que está
+  // vestido e o ataque da mão. Arrastar, duplo clique e tocar-e-escolher usam data-equip-slot.
+  // ------------------------------------------------------------------
+  const ORDEM_BONECO = ["colar", "cabeca", "mochila", "arma", "armadura", "escudo", "anel", "pernas", "municao", "pes"];
+  // O que vai num espaço, pela 1ª palavra dos itens dele: "espada, arco ou funda", "turbante, capacete ou elmo".
+  const exemplosDoEspaco = (slot) => {
+    const tipos = typeof tiposDoSlot === "function" ? tiposDoSlot(slot) : [];
+    const todos = typeof ITENS !== "undefined" ? Object.values(ITENS) : [];
+    const nomes = [...new Set(todos.filter((d) => tipos.includes(d.tipo)).map((d) => d.nome.split(" ")[0].toLowerCase()))];
+    return nomes.length > 1 ? `${nomes.slice(0, -1).join(", ")} ou ${nomes[nomes.length - 1]}` : nomes[0] || "";
+  };
+  const imgSilhueta = (chave) => {
+    const s = silhuetaURL(chave);
+    return s ? `<img class="px silhueta" src="${s}" width="32" height="32" alt="">` : "";
+  };
+  function htmlEspacoBoneco(p, slot) {
+    const eq = p.equipamento || {};
+    const nome = nomeEspaco(slot);
+    const sel = selecao && selecao.origem === "equip" && selecao.slot === slot ? " selecionado" : "";
+    const id = eq[slot];
+    if (id && info(id)) {
+      const n = slot === "municao" && typeof municaoNoEspaco === "function" ? municaoNoEspaco(p) : 0;
+      const efeito = typeof efeitosDoItem === "function" ? efeitosDoItem(id).join(", ") : "";
+      const rotulo = slot === "municao" ? `${nome}: ${n} ${n === 1 ? "unidade" : "unidades"} de ${nomeDoItem(id)}` : `${nome}: ${nomeDoItem(id)}${efeito ? `, ${efeito}` : ""}`;
+      return `<button type="button" class="equip e-${slot} cheio${sel}" draggable="true" data-equip-slot="${slot}" data-dica="${esc(id)}" data-dica-origem="equip" aria-label="${esc(rotulo)}">
+        <span class="slot"${attrRaridade(id)}>${htmlItem(id)}${n ? `<span class="qtd">${n}</span>` : ""}</span></button>`;
+    }
+    // Mão do escudo presa por uma arma de duas mãos: mostra o arco apagado e diz por quê.
+    const naMao = eq.arma;
+    if (slot === "escudo" && naMao && typeof maosDoItem === "function" && maosDoItem(naMao) === 2) {
+      const motivo = typeof textoDuasMaos === "function" ? textoDuasMaos(naMao) : "Arma de duas mãos.";
+      return `<button type="button" class="equip e-escudo vazio bloqueado${sel}" data-equip-slot="escudo" aria-label="${esc(`${nome}: ocupada. ${motivo}`)}" title="${esc(motivo)}">
+        <span class="slot">${htmlItem(naMao)}</span></button>`;
+    }
+    const semMunicao = slot === "municao" && eq.arma && info(eq.arma)?.semMunicao;
+    const exemplos = exemplosDoEspaco(slot);
+    const dica = semMunicao ? `${nome}: vazio (a ${nomeDoItem(eq.arma).toLowerCase()} não usa munição)` : `${nome}: vazio${exemplos ? ` (${exemplos})` : ""}`;
+    return `<button type="button" class="equip e-${slot} vazio${sel}" data-equip-slot="${slot}" aria-label="${esc(dica)}" title="${esc(dica)}">
+      <span class="slot">${imgSilhueta(ESPACOS[slot]?.silhueta)}</span></button>`;
+  }
+  function htmlMochilaBoneco(peso, cap) {
+    const pct = cap > 0 ? Math.max(0, Math.min(100, (100 * peso) / cap)) : 0;
+    const kg = (v) => String(Math.round(v * 10) / 10).replace(".", ",");
+    const rotulo = `Mochila: ${kg(peso)} de ${kg(cap)} kg. Abre o painel Mochila; solte aqui um equipamento para guardá-lo.`;
+    const url = itemURL("mochila", 2);
+    return `<button type="button" class="equip e-mochila zona-soltar" data-abrir-mochila data-zona="mochila" aria-label="${esc(rotulo)}" title="${esc(rotulo)}">
+      <span class="slot">${url ? `<img class="px" src="${url}" width="32" height="32" alt="">` : ""}<span class="carga${pct >= 90 ? " cheia" : ""}" aria-hidden="true"><i style="width:${pct.toFixed(0)}%"></i></span></span></button>`;
+  }
+  function htmlLadoBoneco(p) {
+    const s = typeof estatisticasCombate === "function" ? estatisticasCombate(p) : null;
+    const dados = s
+      ? `<p class="boneco-modo">${s.modoAtaque === "distancia" ? "À distância" : "Corpo a corpo"}</p>
+          <dl class="boneco-dados"><dt>Ataque</dt><dd>${esc(s.danoAtaque)}</dd><dt>Defesa</dt><dd>${esc(s.defesa)}</dd></dl>`
+      : "";
+    return `<div class="boneco-lado"><div class="boneco-figura" aria-hidden="true">${urlBoneco ? `<img class="px" src="${urlBoneco}" alt="">` : ""}</div>${dados}</div>`;
+  }
+  function atualizarBoneco(p, peso, cap) {
+    $("#gradeEquip").innerHTML = ORDEM_BONECO.map((slot) => (slot === "mochila" ? htmlMochilaBoneco(peso, cap) : htmlEspacoBoneco(p, slot))).join("") + htmlLadoBoneco(p);
+  }
+  // O espaço da mochila no boneco: mostra o painel Mochila (no largo e no médio, reabre ou restaura a janela,
+  // mesmo fechada pela tecla I; no celular, na folha Mochila) e o destaca por um instante.
+  function abrirMochila() {
+    if (modo === "estreito" && folhaAtual !== "mochila") abrirFolha("mochila");
+    // Largo e médio: a janela Mochila reabre (fechada) ou volta a crescer (minimizada); "Janelas laterais".
+    else if (modo !== "estreito" && (janelaFechada("pMochila") || janelaMinimizada("pMochila"))) mostrarJanela("pMochila");
+    const m = $("#pMochila");
+    if (!m) return;
+    m.scrollIntoView?.({ block: "nearest", behavior: reduzMovimento() ? "auto" : "smooth" });
+    m.classList.remove("destaque-mochila");
+    void m.offsetWidth;
+    m.classList.add("destaque-mochila");
+    setTimeout(() => m.classList.remove("destaque-mochila"), 1200);
+  }
 
   function contar(lista) {
     const g = new Map();
@@ -577,7 +809,7 @@
   function htmlSlotItem(id, qtd) {
     const nome = nomeDoItem(id);
     const sel = selecao && selecao.origem === "item" && selecao.id === id ? " selecionado" : "";
-    return `<button type="button" class="slot cheio${sel}" role="listitem" draggable="true" data-item="${esc(id)}" data-dica="${esc(id)}"${attrRaridade(id)} aria-label="${esc(nome)}${qtd > 1 ? `, ${qtd} unidades` : ""}">${htmlItem(id)}${qtd > 1 ? `<span class="qtd">${qtd}</span>` : ""}</button>`;
+    return `<button type="button" class="slot cheio${sel}" role="listitem" draggable="true" data-item="${esc(id)}" data-dica="${esc(id)}" data-dica-origem="mochila"${attrRaridade(id)} aria-label="${esc(nome)}${qtd > 1 ? `, ${qtd} unidades` : ""}">${htmlItem(id)}${qtd > 1 ? `<span class="qtd">${qtd}</span>` : ""}</button>`;
   }
 
   function atualizarItens(p, forcar) {
@@ -586,7 +818,9 @@
     // os dois cliques impedia o navegador de reconhecer o duplo clique.
     // A capacidade entra: um alforje da troca muda o "x / 170 kg" sem mexer na mochila.
     const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
-    const ass = JSON.stringify([p.inventario, p.equipamento, p.hotkeys, cap]);
+    // O boneco mostra também a pilha de munição e o ataque e a defesa (que sobem com o nível e as habilidades).
+    const s = typeof estatisticasCombate === "function" ? estatisticasCombate(p) : {};
+    const ass = JSON.stringify([p.inventario, p.equipamento, p.hotkeys, cap, p.quantidadeMunicao, s.danoAtaque, s.defesa]);
     if (!forcar && ass === assinaturaItens) return;
     assinaturaItens = ass;
     const g = contar(p.inventario);
@@ -601,31 +835,14 @@
     $("#gradeMochila").innerHTML = encher(mochila, 15);
     $("#gradeBolsa").innerHTML = encher(bolsa, 15);
     const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
-    $("#pesoTexto").textContent = `${Number(peso).toFixed(1)} / ${cap} kg`;
+    // Carga em kg com vírgula; acima de 90% fica âmbar e, cheia, vermelha (é hora de vender ou jogar no chão).
+    const pesoEl = $("#pesoTexto");
+    pesoEl.textContent = `${kg(peso)} / ${kg(cap)} kg`;
+    pesoEl.classList.toggle("quase-cheia", cap > 0 && peso >= cap * 0.9 && peso < cap);
+    pesoEl.classList.toggle("cheia", cap > 0 && peso >= cap);
+    pesoEl.title = `Carga: ${kg(peso)} de ${kg(cap)} kg${cap > peso ? ` (livres: ${kg(cap - peso)} kg)` : ""}`;
 
-    // Equipamento: boneco com cada espaço no lugar do corpo (arco nas costas, arma e escudo nas
-    // mãos, armadura no peito) e a munição ao lado, só mostrando as flechas da mochila (não é espaço).
-    const eq = p.equipamento || {};
-    const htmlSlot = (slot) => {
-      const id = eq[slot];
-      const sel = selecao && selecao.origem === "equip" && selecao.slot === slot ? " selecionado" : "";
-      const lugar = `${ROTULO_SLOT[slot]} (${LUGAR_SLOT[slot]})`;
-      if (id && info(id)) {
-        return `<button type="button" class="equip e-${slot} cheio${sel}" draggable="true" data-equip-slot="${slot}" data-dica="${esc(id)}" data-dica-origem="equip" aria-label="${lugar}: ${esc(nomeDoItem(id))}">
-          <span class="slot"${attrRaridade(id)}>${htmlItem(id)}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>${esc(atributoCurto(id))}</em></span></button>`;
-      }
-      const sil = silhuetaURL(SILHUETA_SLOT[slot]);
-      return `<button type="button" class="equip e-${slot} vazio${sel}" data-equip-slot="${slot}" aria-label="${lugar}: vazio" title="${ROTULO_SLOT[slot]} ${LUGAR_SLOT[slot]}">
-        <span class="slot">${sil ? `<img class="px silhueta" src="${sil}" width="32" height="32" alt="">` : ""}</span><span class="equip-txt"><small>${ROTULO_SLOT[slot]}</small><em>vazio</em></span></button>`;
-    };
-    const flechas = g.get("flecha") || 0;
-    const semMunicao = !!(eq.arco && info(eq.arco)?.semMunicao);
-    const textoMunicao = semMunicao ? "não usa" : flechas === 1 ? "1 flecha" : `${flechas} flechas`;
-    const municao = `<div class="equip e-municao${flechas ? " tem" : " vazio"}" role="img" data-dica="flecha" aria-label="Munição: ${flechas} flechas na mochila${semMunicao ? " (a arma à distância equipada não usa flechas)" : ""}">
-        <span class="slot">${flechas ? htmlItem("flecha") : (() => { const s = silhuetaURL("flecha"); return s ? `<img class="px silhueta" src="${s}" width="32" height="32" alt="">` : ""; })()}${flechas ? `<span class="qtd">${flechas}</span>` : ""}</span>
-        <span class="equip-txt"><small>Munição</small><em>${esc(textoMunicao)}</em></span></div>`;
-    $("#gradeEquip").innerHTML = `<div class="boneco-figura" aria-hidden="true">${urlBoneco ? `<img class="px" src="${urlBoneco}" alt="">` : ""}</div>
-      ${htmlSlot("arco")}${htmlSlot("arma")}${htmlSlot("armadura")}${htmlSlot("escudo")}${municao}`;
+    atualizarBoneco(p, peso, cap);
 
     // Atalhos (com vocação, as teclas 1 a 8 são das habilidades e os itens ficam em Shift + 1 a 6)
     const hk = p.hotkeys || [];
@@ -767,6 +984,7 @@
     sistema: { cor: "var(--tinta-suave)", glifo: "ui_losango", nome: "sistema" },
     fala: { cor: "var(--bronze-500)", glifo: "ui_falar", nome: "fala" },
     anuncio: { cor: "#b46be0", glifo: "ui_louro", nome: "saque raro" },
+    avanco: { cor: "var(--xp-2)", glifo: "ui_louro", nome: "avanço" },
   };
   // "Nome: fala" só é fala quando o nome é de um personagem conhecido.
   function ehFala(t) {
@@ -858,16 +1076,32 @@
   // missão e o minimapa) e a borda da folha. Se não couber ali, como com a
   // Mochila aberta, ele fica oculto em vez de cobrir o HUD; o texto continua
   // no Registro.
+  // Mundo estreito (largo ou médio com as duas colunas de janelas): entre o HUD e o minimapa não cabe um
+  // aviso legível; os avisos descem para baixo dos dois, na largura do mundo (#palco.avisos-abaixo).
+  const LARGURA_MIN_AVISO = 240;
   function posicionarAvisos() {
     const caixa = $("#avisos"), palco = $("#palco");
     if (!caixa || !palco) return;
-    if (!document.body.classList.contains("folha-aberta")) { caixa.classList.remove("sem-espaco"); return; }
-    const base = palco.getBoundingClientRect().top;
-    let topo = 0;
-    for (const sel of ["#hud", "#missaoLinha", "#mapaSobre"]) {
+    const pr = palco.getBoundingClientRect();
+    const fundoDe = (sels) => sels.reduce((t, sel) => {
       const el = $(sel);
-      if (el && el.offsetParent) topo = Math.max(topo, el.getBoundingClientRect().bottom - base);
+      return el && el.offsetParent && el.offsetHeight ? Math.max(t, el.getBoundingClientRect().bottom - pr.top) : t;
+    }, 0);
+    if (!document.body.classList.contains("folha-aberta")) {
+      caixa.classList.remove("sem-espaco");
+      let abaixo = false;
+      if (modo && modo !== "estreito" && pr.width) {
+        const hud = $("#hud"), mapa = $("#mapaSobre");
+        const esq = hud?.offsetParent ? hud.getBoundingClientRect().right - pr.left : 0;
+        const dir = mapa?.offsetParent && mapa.offsetHeight ? pr.right - mapa.getBoundingClientRect().left : 0;
+        abaixo = pr.width - esq - dir - 16 < LARGURA_MIN_AVISO;
+        if (abaixo) palco.style.setProperty("--avisos-topo", `${Math.round(fundoDe(["#hud", "#quadroAlvo", "#mapaSobre"]) + 8)}px`);
+      }
+      palco.classList.toggle("avisos-abaixo", abaixo);
+      return;
     }
+    palco.classList.remove("avisos-abaixo");
+    const topo = fundoDe(["#hud", "#missaoLinha", "#mapaSobre"]);
     palco.style.setProperty("--avisos-topo", `${Math.round(topo + 8)}px`);
     const ultimo = caixa.lastElementChild;
     caixa.classList.toggle("sem-espaco", !!ultimo && ultimo.offsetHeight > caixa.clientHeight);
@@ -1052,7 +1286,7 @@
     const c = painel("pRegistro");
     if (!c) return false;
     if (modo === "estreito") return folhaAtual === "registro";
-    return c.dataset.aberto === "true" && c.parentElement?.id === "mundo";
+    return c.dataset.aberto === "true" && (c.parentElement?.id === "rodape" || c.parentElement?.id === "mundo");
   }
   function marcarNaoLida(canal) {
     if (consoleVisivel() && (canalAtual === "geral" || canalAtual === canal)) return;
@@ -1079,60 +1313,81 @@
   }
   function abrirConsole(aberto, salvar = true) {
     const c = painel("pRegistro");
+    const antes = c.dataset.aberto === "true";
     c.dataset.aberto = String(aberto);
     const b = $("#btnRegistro");
     const rot = aberto ? "Recolher o console" : "Abrir o console";
     b.setAttribute("aria-expanded", String(aberto));
     b.setAttribute("aria-label", rot);
     b.title = rot;
-    encaixarConsole();
-    if (aberto) { limparNaoLidas(); rolarConsole(); }
+    $("#rodape")?.classList.toggle("recolhido", !aberto && modo !== "estreito");
     if (salvar) { prefConsole.aberto = aberto; salvarConsole(); }
+    if (aberto && modo !== "estreito") definirAlturaConsole(prefConsole.altura || ALTURA_CONSOLE.padrao);
+    // Só ao abrir: mudar a altura (janela, layout) não tira o jogador do ponto do histórico em que está lendo.
+    if (aberto && !antes) { limparNaoLidas(); rolarConsole(); }
   }
-  // Altura do console embaixo do mundo. O zoom do mapa (game.js) é inteiro e arredondado: com o
-  // palco abaixo de 1,5 × as 11 casas de altura, ele cai para 1 px de tela por pixel de arte (tudo
-  // pela metade). Por isso o console fica PRESO embaixo do mundo (o palco encolhe) quando ainda
-  // sobram pelo menos 2 px de tela por pixel de arte; senão, em telas baixas (1366 × 768), só a barra
-  // fica presa e as mensagens ficam SOBRE a borda de baixo do mundo, com o mesmo couro. Sem altura
-  // escolhida, ele pega a maior (até 168 px) que cabe presa, ou 112 px sobre o mundo.
-  const ALTURA_MIN_CONSOLE = 112, ALTURA_MAX_CONSOLE = 168;
-  function palcoMinimo() {
+  // ----- Altura do console (dock de baixo) -----
+  // O zoom do mundo (game.js, pixelsPorPixelDeArte) é um número inteiro de pixels de tela por pixel de arte,
+  // arredondado a partir do tamanho do palco: com o palco baixo demais ele cai de 2 para 1 (tudo pela
+  // metade). O console fica sempre preso (nada flutua sobre o mundo) e a altura dele não derruba o zoom: o
+  // padrão é ALTURA_CONSOLE.padrao, encolhido até o mundo caber em 2× (quando 2× cabe com o console mínimo), e
+  // a alça vai do mínimo até a maior altura que ainda mantém esse zoom (no máximo metade da janela).
+  // 1366 × 768: dock de ~170 px (6 linhas) e o mundo em 2×, ~12 × 8 casas à vista.
+  // 1920 × 1080: dock de 176 px e o mundo em 2×, ~20 × 13 casas; com o dock em ~130 px ou menos (ou com a
+  // tecla +) o mundo vai a 3×, ~14 × 9 casas.
+  // Opção "Conversa sob o mundo" (menu Janelas): o console fica embaixo do mundo, entre as colunas, e o
+  // dock é só a faixa dos atalhos (como antes); a altura segue a mesma regra.
+  // minSobMundo: sob o mundo a barra dos atalhos já tira altura do palco; com 2 linhas o mundo ainda fica em
+  // 2× em 1366 × 768.
+  const ALTURA_CONSOLE = { min: 112, minSobMundo: 88, padrao: 176, fracaoMax: 0.5 };
+  const chatSobMundo = () => prefConsole.lugar === "mundo";
+  // O que encolhe o palco quando o console cresce: o dock inteiro ou só o console (sob o mundo).
+  const caixaDoConsole = () => (chatSobMundo() ? painel("pRegistro") : $("#rodape"));
+  // Pixels de tela por pixel de arte que o mundo teria num palco de w × h px de CSS (sem o ajuste + e −).
+  function zoomDoPalco(w, h) {
     const dpr = typeof dprAtual === "function" ? dprAtual() : window.devicePixelRatio || 1;
-    const casas = (typeof VISAO !== "undefined" ? VISAO.deitada[1] : 11) * (typeof PIXELS_ARTE_POR_CASA !== "undefined" ? PIXELS_ARTE_POR_CASA : 32);
-    return Math.ceil((casas * (Math.ceil(2 * dpr) - 0.5)) / dpr) + 2;
+    const s = window.gameScene;
+    if (s?.pixelsPorPixelDeArte) return s.pixelsPorPixelDeArte(Math.round(w * dpr), Math.round(h * dpr), 0);
+    const [cw, ch] = h > w * 1.15 ? [9, 13] : [15, 11];
+    return Math.max(Math.ceil(dpr), Math.round(Math.min((w * dpr) / (cw * 32), (h * dpr) / (ch * 32))));
   }
-  // Altura do palco com o console recolhido (só a barra presa).
-  function espacoDoConsole() {
-    const c = painel("pRegistro"), barra = $(".console-barra", c);
-    const preso = c.parentElement?.id === "mundo" ? c.offsetHeight - (barra?.offsetHeight || 0) : 0;
-    return $("#palco").clientHeight + (c.classList.contains("sobre") ? 0 : preso);
+  // Altura mínima do dock: a pilha dos atalhos (e a barra de habilidades, com vocação) tem de caber.
+  function minimoDoDock() {
+    const f = $("#rodape .atalhos-faixa");
+    if (!f || chatSobMundo()) return 0;
+    const filhos = Array.from(f.children).filter((el) => el.offsetParent !== null);
+    const gap = parseFloat(getComputedStyle(f).rowGap) || 0;
+    const cs = getComputedStyle(f), borda = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + 4;
+    return Math.ceil(filhos.reduce((t, el) => t + el.offsetHeight, 0) + gap * Math.max(0, filhos.length - 1) + borda);
   }
-  const alturaConsole = () => parseInt(painel("pRegistro").style.getPropertyValue("--altura-console"), 10) || ALTURA_MAX_CONSOLE;
-  function encaixarConsole() {
-    const c = painel("pRegistro");
-    const noMundo = c.parentElement?.id === "mundo";
-    const sobre = noMundo && c.dataset.aberto === "true" && espacoDoConsole() - alturaConsole() + 40 < palcoMinimo();
-    c.classList.toggle("sobre", sobre);
-    document.body.classList.toggle("console-sobre", sobre);
-    document.documentElement.style.setProperty("--console-sobre", sobre ? `${alturaConsole() - ($(".console-barra", c)?.offsetHeight || 40)}px` : "0px");
+  function limitesDoConsole() {
+    const caixa = caixaDoConsole(), palco = $("#palco");
+    const min = Math.max(chatSobMundo() ? ALTURA_CONSOLE.minSobMundo : ALTURA_CONSOLE.min, minimoDoDock());
+    if (!caixa || !palco || !palco.clientWidth) return { min, max: Math.max(min, ALTURA_CONSOLE.padrao) };
+    const w = palco.clientWidth, total = palco.clientHeight + caixa.offsetHeight; // o palco mais a caixa
+    const teto = Math.max(min, Math.round(innerHeight * ALTURA_CONSOLE.fracaoMax));
+    const dpr = typeof dprAtual === "function" ? dprAtual() : window.devicePixelRatio || 1;
+    const alvo = Math.min(zoomDoPalco(w, total - min), Math.ceil(2 * dpr));
+    let max = teto;
+    while (max > min && zoomDoPalco(w, total - max) < alvo) max--;
+    return { min, max };
   }
   function definirAlturaConsole(h) {
-    const max = Math.max(ALTURA_MIN_CONSOLE, Math.round(espacoDoConsole() * 0.6));
-    h = Math.max(ALTURA_MIN_CONSOLE, Math.min(max, Math.round(h)));
-    painel("pRegistro").style.setProperty("--altura-console", `${h}px`);
-    encaixarConsole();
+    const { min, max } = limitesDoConsole();
+    h = Math.max(min, Math.min(max, Math.round(h)));
+    if (chatSobMundo()) painel("pRegistro").style.setProperty("--altura-console", `${h}px`);
+    else document.documentElement.style.setProperty("--altura-dock", `${h}px`);
     return h;
   }
+  // Põe o console no lugar escolhido (dock ou sob o mundo) e acerta a altura. Chamado ao montar o layout,
+  // ao mudar o tamanho da janela, ao mover janelas (o mundo muda de largura) e ao mudar a barra de habilidades.
   function ajustarConsole() {
     const c = painel("pRegistro");
-    if (modo === "estreito") { abrirConsole(true, false); return; }
-    if (c.parentElement?.id !== "mundo") return;
-    let h = prefConsole.altura;
-    if (!h) {
-      const sobra = espacoDoConsole() - palcoMinimo() + 40;
-      h = sobra >= ALTURA_MIN_CONSOLE ? Math.min(ALTURA_MAX_CONSOLE, sobra) : ALTURA_MIN_CONSOLE;
-    }
-    definirAlturaConsole(h);
+    if (!c) return;
+    document.body.classList.toggle("chat-sob-mundo", modo !== "estreito" && chatSobMundo());
+    if (modo === "estreito") { $("#rodape")?.classList.remove("recolhido"); abrirConsole(true, false); return; }
+    if (chatSobMundo()) { if (c.parentElement?.id !== "mundo") $("#mundo").appendChild(c); }
+    else if (c.parentElement?.id !== "rodape") $("#rodape").insertBefore(c, $("#rodape .atalhos-faixa"));
     abrirConsole(prefConsole.aberto !== false, false);
   }
   function focarConsole() {
@@ -1175,13 +1430,13 @@
       e.preventDefault();
       falarNoConsole(b.dataset.palavra, b.dataset.npc);
     });
-    // Alça: arrastar (ou ↑ e ↓ com o foco nela) muda a altura, que fica salva.
+    // Alça (na borda de cima do dock): arrastar (ou ↑ e ↓ com o foco nela) muda a altura, que fica salva.
     const alca = $("#consoleAlca");
     alca.tabIndex = 0;
     let y0 = null, h0 = 0;
     alca.addEventListener("pointerdown", (e) => {
       y0 = e.clientY;
-      h0 = c.offsetHeight;
+      h0 = caixaDoConsole().offsetHeight;
       alca.classList.add("arrastando");
       try { alca.setPointerCapture(e.pointerId); } catch (erro) { /* ignora */ }
       e.preventDefault();
@@ -1191,7 +1446,7 @@
       if (y0 === null) return;
       y0 = null;
       alca.classList.remove("arrastando");
-      prefConsole.altura = c.offsetHeight;
+      prefConsole.altura = caixaDoConsole().offsetHeight;
       prefConsole.aberto = true;
       salvarConsole();
     };
@@ -1200,7 +1455,7 @@
     alca.addEventListener("keydown", (e) => {
       if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
       e.preventDefault();
-      prefConsole.altura = definirAlturaConsole(c.offsetHeight + (e.key === "ArrowUp" ? 16 : -16));
+      prefConsole.altura = definirAlturaConsole(caixaDoConsole().offsetHeight + (e.key === "ArrowUp" ? 16 : -16));
       prefConsole.aberto = true;
       salvarConsole();
     });
@@ -1282,30 +1537,80 @@
     falaLoja = falaRecente(merc?.id);
     if (aba === "comprar" || aba === "vender") abaLoja = aba;
     if (dlg.id === merc?.id) fecharDialogo();
-    desenharLoja();
+    desenharLoja(true);
     abrirModal("modalLoja");
   }
-  function desenharLoja() {
+  // Redesenha só quando o que a loja mostra muda (moedas, mochila, carga, aba): a interface se atualiza a cada
+  // passo de criatura, e redesenhar apagaria o número que o jogador está digitando no seletor de quantidade.
+  let assinaturaLoja = "";
+  function desenharLoja(forcar = false) {
     const p = jogador();
     if (!p) return;
     const corpo = $("#lojaCorpo");
     const g = contar(p.inventario);
+    const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
+    const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
+    const vendaveis = Object.entries(typeof VALORES_VENDA !== "undefined" ? VALORES_VENDA : {}).filter(([id]) => g.get(id));
+    const livres = vendaveis.map(([id]) => Math.min(g.get(id), livreParaSair(id)));
+    const ass = JSON.stringify([abaLoja, lojaAtual, falaLoja, p.moedas, p.inventario.length, vendaveis.map(([id]) => g.get(id)), livres, peso, cap]);
+    if (!forcar && ass === assinaturaLoja && corpo.innerHTML) return;
+    assinaturaLoja = ass;
+    // Foco: o mesmo botão (ou seletor) depois de redesenhar.
+    const ativo = document.activeElement;
+    const focoAntes = corpo.contains(ativo)
+      ? ativo.closest(".qtd-sel")?.dataset.qtd ? `.qtd-sel[data-qtd="${ativo.closest(".qtd-sel").dataset.qtd}"] input`
+        : ativo.dataset.qtdAcao ? `[data-qtd-acao="${ativo.dataset.qtdAcao}"]`
+          : ativo.dataset.comprar ? `[data-comprar="${ativo.dataset.comprar}"]:not([data-qtd-acao])`
+            : ativo.dataset.vender ? `[data-vender="${ativo.dataset.vender}"][data-quantidade="${ativo.dataset.quantidade}"]` : null
+      : null;
     const moeda = imgGlifo("ui_moeda", "px g16");
     let lista = "";
     if (abaLoja === "comprar") {
       const catalogo = typeof catalogoDaLoja === "function" && lojaAtual ? catalogoDaLoja(lojaAtual) : [];
+      const maxCompra = typeof QUANTIDADE_MAXIMA_COMPRA !== "undefined" ? QUANTIDADE_MAXIMA_COMPRA : 100;
       for (const { item: id, preco } of catalogo) {
         const falta = preco - p.moedas;
-        lista += `<li class="item-loja"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>${esc(atributoItem(id, p))}</span></span>
-          <button type="button" class="btn primario" data-comprar="${esc(id)}" ${falta > 0 ? `disabled title="Faltam ${falta} moedas"` : ""} aria-label="Comprar ${esc(nomeDoItem(id))} por ${preco} moedas${falta > 0 ? `; faltam ${falta}` : ""}">${falta > 0 ? `faltam ${falta}` : `${preco} ${moeda}`}</button></li>`;
+        // Provisões (poções e lotes de flechas): seletor de quantidade até o que as moedas e a carga permitem.
+        const flechas = id === "flechas";
+        const porLote = flechas ? (typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5) : 1;
+        const pesoLote = (typeof pesoItem === "function" ? pesoItem(flechas ? "flecha" : id) : 0) * porLote;
+        const empilha = flechas || ["consumivel", "municao"].includes(info(id)?.tipo);
+        const max = Math.min(maxCompra, Math.floor(p.moedas / preco), pesoLote > 0 ? Math.floor((cap - peso + 0.0001) / pesoLote) : maxCompra);
+        const chave = `comprar:${id}`;
+        const x = qtdEscolhida(chave, Math.max(1, max), Math.min(5, max));
+        const linhaQtd = empilha && max >= 2
+          ? `<div class="linha-qtd">${htmlQtd(chave, x, max, flechas ? "Lotes de 5 flechas a comprar" : `Quantidade a comprar: ${nomeDoItem(id)}`)}${htmlAcaoQtd(chave, x, "", ` data-comprar="${esc(id)}"`)}</div>`
+          : "";
+        const pesoTxt = pesoLote ? ` · ${kg(pesoLote)} kg${flechas ? " o lote" : ""}` : "";
+        const efeitos = slotDe(id) && typeof efeitosDoItem === "function" ? efeitosDoItem(id).join(", ") : "";
+        lista += `<li class="item-loja${linhaQtd ? " com-qtd" : ""}"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>${esc((efeitos || atributoItem(id, p)) + pesoTxt)}</span></span>
+          <button type="button" class="btn primario" data-comprar="${esc(id)}" ${falta > 0 ? `disabled title="Faltam ${falta} moedas"` : ""} aria-label="Comprar ${esc(nomeDoItem(id))} por ${preco} moedas${falta > 0 ? `; faltam ${falta}` : ""}">${falta > 0 ? `faltam ${falta}` : `${preco} ${moeda}`}</button>${linhaQtd}</li>`;
       }
     } else {
-      for (const [id, valor] of Object.entries(typeof VALORES_VENDA !== "undefined" ? VALORES_VENDA : {})) {
-        const n = g.get(id) || 0;
-        if (!n) continue;
-        lista += `<li class="item-loja"><span class="icone">${htmlItem(id)}</span><span><strong>${esc(nomeDoItem(id))}</strong><span>Você tem ${n}</span></span>
-          <button type="button" class="btn primario" data-vender="${esc(id)}" aria-label="Vender um ${esc(nomeDoItem(id))} por ${valor} moedas">+${valor} ${moeda}</button></li>`;
-      }
+      vendaveis.forEach(([id, valor], i) => {
+        const n = g.get(id);
+        const livre = livres[i];
+        const reserva = n - livre;
+        const nome = esc(nomeDoItem(id));
+        const temTxt = `Você tem ${n}${reserva ? ` (${reserva} para a missão)` : ""} · ${valor} cada`;
+        let botao, linhaQtd = "";
+        if (!livre) {
+          const res = Mundo.reservaDeMissao?.(p, id);
+          botao = `<button type="button" class="btn primario" disabled title="A missão “${esc(res?.missao || "")}” pede este item">Guardado</button>`;
+        } else if (livre === 1) {
+          botao = `<button type="button" class="btn primario" data-vender="${esc(id)}" data-quantidade="1" aria-label="Vender um ${nome} por ${valor} moedas">+${valor} ${moeda}</button>`;
+        } else {
+          // Vender 1, Vender X (seletor até o que se pode vender) ou Vender tudo; o total aparece no botão.
+          botao = `<button type="button" class="btn primario" data-vender="${esc(id)}" data-quantidade="1" aria-label="Vender um ${nome} por ${valor} moedas">Vender 1 · +${valor} ${moeda}</button>`;
+          const chave = `vender:${id}`;
+          const x = qtdEscolhida(chave, livre, Math.max(2, Math.floor(livre / 2)));
+          const tudo = reserva ? `Vender as livres (${livre})` : `Vender tudo (${livre})`;
+          linhaQtd = `<div class="linha-qtd">${livre > 2 ? htmlQtd(chave, x, livre, `Quantidade a vender: ${nomeDoItem(id)}`) + htmlAcaoQtd(chave, x, "secundario", ` data-vender="${esc(id)}"`) : ""}`
+            + `<button type="button" class="btn secundario" data-vender="${esc(id)}" data-quantidade="${livre}" aria-label="${esc(tudo)}: ${nome} por ${valor * livre} moedas">${tudo} · +${valor * livre} ${moeda}</button></div>`;
+        }
+        lista += `<li class="item-loja${linhaQtd ? " com-qtd" : ""}"><span class="icone">${htmlItem(id)}</span><span><strong>${nome}</strong><span>${esc(temTxt)}</span></span>
+          ${botao}${linhaQtd}</li>`;
+      });
       if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">Você não tem nada que o mercador compre. Ele aceita recursos: peles, presas, ferrões, linho, ervas, odres, peixe e as pedras preciosas.</li>';
     }
     corpo.innerHTML = `${falaLoja ? `<p class="fala-modal">${esc(falaLoja)}</p>` : ""}
@@ -1315,7 +1620,8 @@
         <button type="button" class="aba-modal" role="tab" data-aba-loja="vender" aria-selected="${abaLoja === "vender"}">Vender</button>
       </div>
       <ul class="lista-loja" role="tabpanel">${lista}</ul>
-      <p class="nota" style="color:var(--tinta-suave)">Flechas são vendidas em lotes de ${typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5}. Fique ao lado do mercador para negociar.</p>`;
+      <p class="nota" style="color:var(--tinta-suave)">Carga: ${kg(peso)} / ${kg(cap)} kg. Flechas são vendidas em lotes de ${typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5}. Fique ao lado do mercador para negociar.</p>`;
+    if (focoAntes) (corpo.querySelector(focoAntes) || corpo.querySelector(`[data-aba-loja=${abaLoja}]`))?.focus({ preventScroll: true });
   }
 
   // ----- Mural de caçadas (atalaia) -----
@@ -1552,7 +1858,10 @@
     const caixa = $("#barraHab");
     if (!caixa) return;
     const barra = temVocacao(p) ? barraHabilidades(p, Date.now()) : [];
-    caixa.hidden = !barra.length;
+    if (caixa.hidden !== !barra.length) {
+      caixa.hidden = !barra.length;
+      if (modo && modo !== "estreito") ajustarConsole(); // a pilha de atalhos do dock mudou de altura
+    }
     const html = barra.map((h, i) => {
       const seg = Math.ceil(h.restanteMs / 1000);
       const r = h.recarga ? Math.min(1, h.restanteMs / h.recarga) : 0;
@@ -1977,7 +2286,8 @@
         <p>${esc(descanso + agoraSabado)}</p></section>
       <p class="nota">O maná cai todo dia ao amanhecer (dobrado na sexta, nada no sábado); colha uma vez e coma quando
         precisar. O que sobra estraga no amanhecer seguinte, e perder um dia não tira nada. O tempo em que você fica longe do jogo
-        de sexta às 18 h a sábado às 18 h vira reserva de XP (um Sábado inteiro vale o XP de um nível; ela não expira).</p>`;
+        de sexta às 18 h a sábado às 18 h vira reserva de XP (um Sábado inteiro vale o XP de um nível; ela não expira); uma hora
+        dele já enche o vigor.</p>`;
   }
   function acaoMana(botao) {
     const tipo = botao.dataset.acaoMana === "colher" ? "colherMana" : "comerMana";
@@ -2102,27 +2412,31 @@
   }
 
   // ----- Analisador de caçada (JGB-10) -----
-  // Lê Mundo.analisador(ID) (contas puras em logica.js); zerar passa por executar(). Painel recolhível
-  // (tecla X); a escolha fica no navegador.
+  // Lê Mundo.analisador(ID) (contas puras em logica.js); zerar passa por executar(). Recolher o painel é
+  // minimizar a janela (tecla X, o título ou o botão de minimizar; "Janelas laterais"), e a escolha fica no
+  // layout salvo. CHAVE_ANALISADOR é a escolha antiga (só lida uma vez, para quem já tinha recolhido).
   const CHAVE_ANALISADOR = "jornada_analisador_aberto";
   let htmlAnalisador = "";
-  function analisadorAberto() {
-    try { return localStorage.getItem(CHAVE_ANALISADOR) !== "0"; } catch (e) { return true; }
-  }
   function abrirAnalisador(aberto) {
+    minimizarJanela("pAnalisador", !aberto);
+  }
+  // Mostra o estado de minimizado no painel (data-aberto, seta e aria-expanded do título).
+  function marcarAnalisador() {
     const p = painel("pAnalisador");
     if (!p) return;
+    const aberto = p.dataset.min !== "true";
+    if (p.dataset.aberto === String(aberto)) return;
     p.dataset.aberto = String(aberto);
-    $("#btnAnalisador").setAttribute("aria-expanded", String(aberto));
-    try { localStorage.setItem(CHAVE_ANALISADOR, aberto ? "1" : "0"); } catch (e) { /* sem armazenamento */ }
+    $("#btnAnalisador")?.setAttribute("aria-expanded", String(aberto));
     if (aberto) atualizarAnalisador(true);
   }
   function alternarAnalisador() {
-    const aberto = painel("pAnalisador")?.dataset.aberto !== "true";
+    if (modo !== "estreito" && janelaFechada("pAnalisador")) { mostrarJanela("pAnalisador"); return; }
+    const aberto = painel("pAnalisador")?.dataset.min === "true";
     abrirAnalisador(aberto);
-    // No celular e no médio o painel fica dentro de Batalha: a tecla abre o lugar dele.
+    // No celular o painel fica na folha Batalha: a tecla abre o lugar dele.
     if (aberto && modo === "estreito" && folhaAtual !== "batalha") abrirFolha("batalha");
-    if (aberto && modo === "medio" && abaMedia !== "batalha") mostrarAbaMedia("batalha");
+    if (aberto && modo !== "estreito") rolarAteJanela("pAnalisador");
   }
   // Só os números se redesenham (4 vezes por segundo, com o relógio); o botão Zerar fica fixo no HTML,
   // para o clique não se perder entre o mousedown e o mouseup.
@@ -2280,9 +2594,10 @@
       [k("F"), "Ação ao lado: falar, embarcar, desembarcar ou seguir a rota"],
       [k("Enter"), "Escrever no console: diga oi, comprar, vender, viajar, caçadas, embarcar, preço, missão ou tchau a quem está perto (ou clique nas palavras entre colchetes); Esc volta ao jogo"],
       ["Clique no chão", "Anda até lá (contorna obstáculos); num personagem ou saque, vai até ele"],
+      ["Clique no minimapa", "Anda até aquele ponto, por longe que seja (a cruz de ouro marca o destino)"],
       ["Clique no inimigo", "Escolhe o alvo, vai até ele e ataca sozinho a cada 2 s"],
-      [k("Espaço"), "Golpe corpo a corpo no alvo (também na diagonal)"],
-      [k("R"), "Flecha no alvo, se houver arco equipado e flechas"],
+      [k("Espaço"), "Ataque com o que está na mão da arma: golpe (também na diagonal) ou, com arco ou funda, tiro"],
+      [k("R"), "Ataque à distância (arco com flechas ou funda na mão); ao lado do alvo, golpeia"],
       [k("H"), "Usar poção de vida"],
       [k("1", "–", "6"), "Usar o atalho"],
       [k("P"), "Pescar (no mar, ao lado do ponto de pesca)"],
@@ -2295,7 +2610,7 @@
       [k("O"), "Ofícios: nível de cada ofício e receitas para fabricar com os materiais da mochila"],
       [`${k("+")} ${k("−")}`, "Aproximar ou afastar o mapa (também com a roda do mouse); a escolha fica salva"],
       [k("1", "–", "8"), "Habilidades da vocação (com vocação; os itens passam para Shift + 1 a 6)"],
-      [k("X"), "Mostrar ou ocultar o analisador de caçada (XP/h, saque/h, lucro)"],
+      [k("X"), "Minimizar ou mostrar o analisador de caçada (XP/h, saque/h, lucro)"],
       [k("I"), "Mostrar ou ocultar mochila e bolsa"],
       [k("M"), "Mostrar ou ocultar o mapa"],
       [k("Alt"), "Segure para ver o nome de todos"],
@@ -2306,17 +2621,28 @@
     const secTeclado = `
       <h3>Teclado e mouse</h3>
       <table class="teclas"><tbody>${linhas.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")}</tbody></table>`;
-    const secItens = `
+    const secJanelas = mm("(min-width: 761px)") ? `
+      <h3>Janelas</h3>
+      <p>Arraste o cabeçalho de uma janela para a outra coluna ou outra posição. Os botões do cabeçalho minimizam (ou dois cliques no título) e fecham; o menu de três pontos move pelo teclado. O menu Janelas, no topo, reabre as janelas fechadas, escolhe o lugar da conversa e restaura o layout. A alça na borda de cima da conversa muda a altura dela.</p>` : "";
+    const secItens = `${secJanelas}
       <h3>Itens</h3>
-      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa armas e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele. Botão direito numa tecla de atalho a esvazia. Espada e arco ocupam as mãos: equipar um guarda o outro.</p>`;
+      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele (ou botão direito nele: Guardar na mochila). Botão direito num item da mochila ou da bolsa (Shift + F10 no teclado) abre o menu dele: a descrição, beber ou equipar e jogar no chão um, alguns ou todos. Arrastar um item para o mundo também o joga no chão; o que você jogou não volta ao pisar em cima: clique nele para buscá-lo. Botão direito numa tecla de atalho a esvazia. O equipamento é um boneco: cabeça, colar, mão da arma, armadura, mão do escudo, pernas, pés, anel e munição. A mão da arma leva a espada, o arco ou a funda; o arco usa as duas mãos (guarda o escudo). As flechas ficam empilhadas no espaço de munição. Clique na mochila do boneco para abrir o painel Mochila.</p>`;
     const secToque = `
       <h3>Toque</h3>
-      <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho; toque longo mostra a descrição.</p>`;
+      <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho. Toque longo num item da mochila ou da bolsa abre o menu dele (descrição, beber ou equipar, jogar no chão) e numa peça vestida, o menu com Guardar; nos outros, mostra a descrição.</p>`;
     // No toque, a seção de toque vem primeiro.
     const toque = comToque || mm("(pointer: coarse)");
+    // Vigor: as faixas e a volta saem de REGRAS_VIGOR (dados/mundo.js).
+    const textoAjudaVigor = () => {
+      if (typeof REGRAS_VIGOR === "undefined" || typeof textoVigor !== "function") return "";
+      const R = REGRAS_VIGOR, F = R.faixas;
+      const faixas = F.map((f, i) => `${f.nome} (${i < F.length - 1 ? `a partir de ${textoVigor(f.desde)}` : `abaixo de ${textoVigor(F[i - 1].desde)}`}): ${f.texto}`).join("; ");
+      return `<p>${esc(`Vigor (painel Personagem, até ${textoVigor(R.maximoMinutos)}): gasta só caçando e volta longe do jogo (1 minuto a cada ${R.regenCadaMinutos}); o descanso do Sábado o enche. ${faixas}.`)}</p>`;
+    };
     $("#ajudaCorpo").innerHTML = `${toque ? secToque + secItens + secTeclado : secTeclado + secItens + secToque}
       <h3>Regras</h3>
       <p>As habilidades (corpo, arco, defesa e oração) melhoram com o uso. Fora de combate, a vida volta aos poucos. ${esc(regra)}</p>
+      ${textoAjudaVigor()}
       <p>Caçadas: depois da missão principal de cada região, o atalaia oferece rondas (voltam 20 h depois da entrega) e grandes caçadas
         (voltam 6 d 20 h depois). Até 3 ao mesmo tempo; cada abate conta para todas as que pedem aquela criatura. Entregue a qualquer
         atalaia e troque os pontos de tarefa por melhorias.</p>
@@ -2357,94 +2683,604 @@
   // ------------------------------------------------------------------
   // Minimapa (o MUNDO desenha no #miniMap; a UI decide onde ele fica)
   // ------------------------------------------------------------------
+  // No largo é a janela Mapa (fechar e reabrir como as outras); no médio e em tela baixa ele fica sobre o
+  // mundo, e a mesma escolha o mostra ou esconde. No celular, M mostra ou esconde o minimapa sobre o mundo.
   function alternarMinimapa() {
     if (modo === "estreito") document.body.classList.toggle("mapa-visivel-cel");
-    else document.body.classList.toggle("mapa-oculto");
+    else if (janelaFechada("pMapa")) mostrarJanela("pMapa");
+    else fecharJanela("pMapa", false);
+    marcarBotaoMapa();
+  }
+  function marcarBotaoMapa() {
     const visivel = modo === "estreito" ? document.body.classList.contains("mapa-visivel-cel") : !document.body.classList.contains("mapa-oculto");
     $("#btnMapa").setAttribute("aria-pressed", String(visivel));
   }
 
   // ------------------------------------------------------------------
-  // Layout responsivo: distribui os painéis (largo / médio / estreito)
+  // Layout responsivo: largo (≥ 1280 px), médio e estreito (celular, ≤ 760 px)
   // ------------------------------------------------------------------
-  let modo = null, abaMedia = "mochila", folhaAtual = null;
-  const ABAS_MEDIO = {
-    personagem: { rotulo: "Personagem", glifo: "ui_personagem", paineis: ["pPersonagem"] },
-    // Equipamento junto da mochila: dá para arrastar de um para o outro.
-    mochila: { rotulo: "Mochila", glifo: "ui_mochila", paineis: ["pEquip", "pMochila", "pBolsa"] },
-    batalha: { rotulo: "Batalha", glifo: "ui_espadas", paineis: ["pAnalisador", "pBatalha"] },
-  };
+  let modo = null, folhaAtual = null;
   const FOLHAS = {
     mochila: { titulo: "Mochila e bolsa", paineis: ["pEquip", "pMochila", "pBolsa"] },
     equip: { titulo: "Personagem", paineis: ["pPersonagem", "pEquip"] },
     // O analisador vem antes: a lista de Batalha pode ser longa.
     batalha: { titulo: "Batalha e caçada", paineis: ["pAnalisador", "pBatalha"] },
     missao: { titulo: "Missão", paineis: ["pMissao"] },
-    // O console (conversa e registro): no largo e no médio ele fica preso embaixo do mundo.
+    // O console (conversa e registro): no largo e no médio ele fica no dock de baixo.
     registro: { titulo: "Conversa e registro", paineis: ["pRegistro"] },
   };
   const calcModo = () => (mm("(min-width: 1280px)") ? "largo" : mm("(max-width: 760px)") ? "estreito" : "medio");
-  // Largo em tela baixa (até 760 px de altura, ex.: 1280×720): o minimapa vai
-  // para cima do mundo, como no médio, e a coluna direita fica com
-  // Personagem, Equipamento e Batalha inteiros.
-  const TELA_BAIXA = "(max-height: 760px)";
-  let chaveLayout = null;
+  // Largo em tela baixa (até 1000 px de altura, ex.: 1600×900, 1366×768 e o 1920×969 do navegador num monitor
+  // 1080p): o minimapa vai para cima do mundo, como no médio, e a coluna direita fica com Personagem,
+  // Equipamento e a Batalha à vista (colunasPeloEspaco minimiza as janelas secundárias que não couberem).
+  const TELA_BAIXA = "(max-height: 1000px)";
+  // Largo bem baixo (até 800 px de altura, ex.: 1366×768, 1280×720, ou 1920×1080 a 125% com a barra do
+  // navegador): o layout padrão é outro (LAYOUT_PADRAO.baixo) e fica guardado à parte.
+  const TELA_MUITO_BAIXA = "(max-height: 800px)";
+  let chaveLayout = null, telaBaixa = false, telaMuitoBaixa = false;
   const painel = (id) => document.getElementById(id);
 
   function montar() {
     const novo = calcModo();
-    const baixa = novo === "largo" && mm(TELA_BAIXA);
-    const chave = `${novo}${baixa ? ":baixa" : ""}`;
+    const baixa = novo === "largo" && mm(TELA_BAIXA), muitoBaixa = baixa && mm(TELA_MUITO_BAIXA);
+    const chave = `${novo}${baixa ? ":baixa" : ""}${muitoBaixa ? ":muito" : ""}`;
     if (chave === chaveLayout) return;
     chaveLayout = chave;
     modo = novo;
+    telaBaixa = baixa;
+    telaMuitoBaixa = muitoBaixa;
+    for (const m of ["largo", "medio", "estreito"]) document.body.classList.toggle(`modo-${m}`, m === modo);
     document.body.classList.toggle("mapa-sobre-mundo", baixa);
-    const dep = $("#deposito");
-    for (const id of ["pMissao", "pMochila", "pBolsa", "pAnalisador", "pRegistro", "pMapa", "pPersonagem", "pEquip", "pBatalha"]) dep.appendChild(painel(id));
-    $("#colEsq").innerHTML = "";
-    $("#colDir").innerHTML = "";
+    fecharMenuJanelas();
     fecharFolha();
-    const moldura = $("#mapaMoldura");
-    if (modo === "largo") {
-      for (const id of ["pMissao", "pMochila", "pBolsa", "pAnalisador"]) $("#colEsq").appendChild(painel(id));
-      for (const id of [...(baixa ? [] : ["pMapa"]), "pPersonagem", "pEquip", "pBatalha"]) $("#colDir").appendChild(painel(id));
-      (baixa ? $("#mapaSobre") : $("#mapaCasa")).appendChild(moldura);
-      $("#mundo").appendChild(painel("pRegistro"));
-    } else if (modo === "medio") {
-      $("#colDir").appendChild(painel("pMissao"));
-      const nav = document.createElement("div");
-      nav.className = "abas";
-      nav.setAttribute("role", "tablist");
-      nav.setAttribute("aria-label", "Painéis");
-      nav.innerHTML = Object.entries(ABAS_MEDIO).map(([k, a]) =>
-        `<button type="button" class="aba" role="tab" id="aba-${k}" data-aba="${k}" aria-controls="painelAba" aria-selected="${k === abaMedia}" title="${a.rotulo}">${imgGlifo(a.glifo)}<span>${a.rotulo}</span></button>`).join("");
-      $("#colDir").appendChild(nav);
-      const caixa = document.createElement("div");
-      caixa.className = "painel-aba";
-      caixa.id = "painelAba";
-      caixa.setAttribute("role", "tabpanel");
-      $("#colDir").appendChild(caixa);
-      mostrarAbaMedia(abaMedia);
-      $("#mapaSobre").appendChild(moldura);
-      $("#mundo").appendChild(painel("pRegistro"));
-    } else {
-      $("#mapaSobre").appendChild(moldura);
+    if (modo === "estreito") {
+      const dep = $("#deposito");
+      for (const id of [...Object.keys(JANELAS), "pRegistro"]) dep.appendChild(painel(id));
+      document.body.classList.remove("sem-col-esq", "sem-col-dir", "mapa-oculto");
+      $("#mapaSobre").appendChild($("#mapaMoldura"));
     }
+    aplicarJanelas();
     ajustarConsole();
-    const visivel = modo === "estreito" ? document.body.classList.contains("mapa-visivel-cel") : !document.body.classList.contains("mapa-oculto");
-    $("#btnMapa").setAttribute("aria-pressed", String(visivel));
+    marcarBotaoMapa();
     medirRodape();
   }
 
-  function mostrarAbaMedia(k) {
-    abaMedia = k;
-    const caixa = $("#painelAba");
-    if (!caixa) return;
+  // ------------------------------------------------------------------
+  // Janelas laterais (largo e médio)
+  // ------------------------------------------------------------------
+  // Como nos MMORPGs clássicos: cada janela das colunas se move inteira (arrastando o cabeçalho, ou pelo menu
+  // dela, no teclado) para a outra coluna ou outra posição, minimiza (fica só o cabeçalho) e fecha (reabre
+  // pelo menu Janelas, no topo, que também restaura o layout). Uma coluna sem janelas sai e o mundo cresce.
+  // O layout fica neste navegador, um por modo de tela; o conteúdo e os ids das janelas não mudam.
+  const JANELAS = {
+    pMissao: { nome: "Missão", glifo: "ui_pergaminho" },
+    pMochila: { nome: "Mochila", glifo: "ui_mochila", tecla: "I" },
+    pBolsa: { nome: "Bolsa", glifo: "ui_bolsa", tecla: "I" },
+    pAnalisador: { nome: "Caçada", glifo: "ui_ampulheta", tecla: "X" },
+    pMapa: { nome: "Mapa", glifo: "ui_rosa", tecla: "M" },
+    pPersonagem: { nome: "Personagem", glifo: "ui_personagem" },
+    pEquip: { nome: "Equipamento", glifo: "ui_escudo_bloq" },
+    pBatalha: { nome: "Batalha", glifo: "ui_espadas" },
+  };
+  const LAYOUT_PADRAO = {
+    largo: { esq: ["pMissao", "pMochila", "pBolsa", "pAnalisador"], dir: ["pMapa", "pPersonagem", "pEquip", "pBatalha"], min: [], fechadas: [] },
+    // Largo bem baixo (1366×768): com o dock de baixo, cada coluna tem ~540 px. Personagem e Equipamento enchem
+    // a direita, então a Batalha vai para a esquerda, sob a Missão, com a Mochila; Bolsa e Caçada começam
+    // minimizadas (as poções também estão nos atalhos). Assim tudo cabe sem rolar e a Batalha mostra 2 linhas.
+    baixo: { esq: ["pMissao", "pBatalha", "pMochila", "pBolsa", "pAnalisador"], dir: ["pMapa", "pPersonagem", "pEquip"], min: ["pBolsa", "pAnalisador"], fechadas: [] },
+    // Médio: uma coluna só, à direita (o Mapa fica sobre o mundo); vida, fé e XP já estão no HUD, então
+    // Personagem e Caçada começam minimizadas.
+    medio: { esq: [], dir: ["pMissao", "pBatalha", "pEquip", "pMochila", "pBolsa", "pPersonagem", "pAnalisador", "pMapa"], min: ["pPersonagem", "pAnalisador"], fechadas: [] },
+    // Celular: as janelas ficam nas folhas; só vale o recolher do analisador.
+    estreito: { esq: [], dir: ["pMissao", "pMochila", "pBolsa", "pAnalisador", "pMapa", "pPersonagem", "pEquip", "pBatalha"], min: [], fechadas: [] },
+  };
+  const CHAVE_JANELAS = "jornada_janelas";
+  const copiaLayout = (l) => ({ esq: [...l.esq], dir: [...l.dir], min: [...l.min], fechadas: [...l.fechadas] });
+  // Layout salvo → layout válido: só ids conhecidos, cada janela numa coluna só (as que faltam entram no lado
+  // padrão), listas de minimizadas e fechadas limpas. Um layout estragado ou de outra versão não quebra nada.
+  function normalizarLayout(salvo, padrao) {
+    const ids = Object.keys(JANELAS);
+    const limpa = (l) => (Array.isArray(l) ? l.filter((id, i) => ids.includes(id) && l.indexOf(id) === i) : null);
+    let esq = limpa(salvo?.esq), dir = limpa(salvo?.dir);
+    if (!esq || !dir) { esq = [...padrao.esq]; dir = [...padrao.dir]; }
+    dir = dir.filter((id) => !esq.includes(id));
+    for (const id of ids) if (!esq.includes(id) && !dir.includes(id)) (padrao.esq.includes(id) ? esq : dir).push(id);
+    return { esq, dir, min: limpa(salvo?.min) || [...padrao.min], fechadas: limpa(salvo?.fechadas) || [...padrao.fechadas] };
+  }
+  function carregarJanelas() {
+    let salvo = null, analisadorRecolhido = false;
+    try { salvo = JSON.parse(localStorage.getItem(CHAVE_JANELAS) || "null"); } catch (e) { salvo = null; }
+    try { analisadorRecolhido = localStorage.getItem(CHAVE_ANALISADOR) === "0"; } catch (e) { /* sem armazenamento */ }
+    if (!salvo || typeof salvo !== "object") salvo = null;
+    const r = {};
+    for (const m of Object.keys(LAYOUT_PADRAO)) {
+      r[m] = normalizarLayout(salvo?.[m], LAYOUT_PADRAO[m]);
+      if (!salvo && analisadorRecolhido && !r[m].min.includes("pAnalisador")) r[m].min.push("pAnalisador");
+    }
+    return r;
+  }
+  // Havia layout guardado ao abrir? Sem ele, colunasPeloEspaco ajusta o padrão ao espaço no 1º desenho.
+  const layoutGuardado = (() => { try { return !!localStorage.getItem(CHAVE_JANELAS); } catch (e) { return false; } })();
+  let janelas = carregarJanelas();
+  const salvarJanelas = () => { try { localStorage.setItem(CHAVE_JANELAS, JSON.stringify(janelas)); } catch (e) { /* sem armazenamento */ } };
+  // Qual layout guardado vale agora: o do modo de tela (o largo bem baixo tem o seu).
+  const chaveJanelas = () => (modo === "largo" && telaMuitoBaixa ? "baixo" : modo);
+  const layout = () => janelas[chaveJanelas()] || janelas.largo;
+  const janelaFechada = (id) => modo !== "estreito" && layout().fechadas.includes(id);
+  const janelaMinimizada = (id) => layout().min.includes(id);
+  // O Mapa fica sobre o mundo no médio e em tela baixa (ali a janela dele não entra na coluna).
+  const mapaSobreMundo = () => modo !== "largo" || telaBaixa;
+  function marcarEm(lista, id, sim) {
+    const i = lista.indexOf(id);
+    if (sim && i < 0) lista.push(id);
+    if (!sim && i >= 0) lista.splice(i, 1);
+  }
+  // Cabeçalho de cada janela: menu (mover pelo teclado), minimizar e fechar. O Mapa ganha um cabeçalho.
+  function prepararJanelas() {
+    for (const [id, j] of Object.entries(JANELAS)) {
+      const sec = painel(id);
+      if (!sec || sec.classList.contains("janela")) continue;
+      sec.classList.add("janela");
+      let cab = sec.querySelector(":scope > .painel-cab");
+      if (!cab) {
+        cab = document.createElement("div");
+        cab.className = "painel-cab";
+        cab.innerHTML = imgGlifo(j.glifo);
+        const h2 = sec.querySelector(":scope > h2");
+        if (h2) { h2.classList.remove("sr"); h2.textContent = j.nome.toUpperCase(); cab.appendChild(h2); }
+        sec.prepend(cab);
+      }
+      const ctl = document.createElement("div");
+      ctl.className = "janela-ctl";
+      ctl.innerHTML = `<button type="button" class="janela-btn" data-janela-menu="${id}" aria-haspopup="menu" aria-expanded="false" aria-controls="menuJanela" aria-label="Mover ${esc(j.nome)}: menu da janela" title="Mover (menu)"><span class="ic-menu"></span></button>`
+        + `<button type="button" class="janela-btn" data-janela-min="${id}" aria-pressed="false" aria-label="Minimizar ${esc(j.nome)}" title="Minimizar"><span class="ic-min"></span></button>`
+        + `<button type="button" class="janela-btn" data-janela-fechar="${id}" aria-label="Fechar ${esc(j.nome)}" title="Fechar (reabre pelo menu Janelas)">${imgGlifo("ui_fechar")}</button>`;
+      cab.appendChild(ctl);
+    }
+  }
+  // Põe cada janela na coluna e na posição do layout, sem mexer nas que já estão no lugar (mover um
+  // elemento no DOM zera a rolagem dele e da lista de dentro).
+  function aplicarJanelas() {
+    if (!modo) return;
+    const lay = layout();
+    for (const id of Object.keys(JANELAS)) {
+      const el = painel(id);
+      if (!el) continue;
+      const min = lay.min.includes(id);
+      el.dataset.min = String(min);
+      const b = el.querySelector("[data-janela-min]");
+      if (b) {
+        b.setAttribute("aria-pressed", String(min));
+        b.setAttribute("aria-label", `${min ? "Restaurar" : "Minimizar"} ${JANELAS[id].nome}`);
+        b.title = min ? "Restaurar" : "Minimizar";
+      }
+    }
+    marcarAnalisador();
+    if (modo === "estreito") return;
     const dep = $("#deposito");
-    for (const el of Array.from(caixa.children)) dep.appendChild(el);
-    for (const id of ABAS_MEDIO[k].paineis) caixa.appendChild(painel(id));
-    caixa.setAttribute("aria-labelledby", `aba-${k}`);
-    for (const b of $$("[data-aba]")) b.setAttribute("aria-selected", String(b.dataset.aba === k));
+    for (const [lado, col] of [["esq", $("#colEsq")], ["dir", $("#colDir")]]) {
+      let ref = col.firstElementChild, n = 0;
+      for (const id of lay[lado]) {
+        const el = painel(id);
+        if (!el || lay.fechadas.includes(id) || (id === "pMapa" && mapaSobreMundo())) continue;
+        if (el === ref) ref = ref.nextElementSibling;
+        else col.insertBefore(el, ref);
+        n++;
+      }
+      while (ref) { const prox = ref.nextElementSibling; dep.appendChild(ref); ref = prox; }
+      document.body.classList.toggle(`sem-col-${lado}`, n === 0);
+    }
+    for (const id of Object.keys(JANELAS)) {
+      const el = painel(id);
+      if (el && !el.closest(".coluna") && el.parentElement !== dep) dep.appendChild(el);
+    }
+    (mapaSobreMundo() ? $("#mapaSobre") : $("#mapaCasa")).appendChild($("#mapaMoldura"));
+    document.body.classList.toggle("mapa-oculto", lay.fechadas.includes("pMapa"));
+    marcarBotaoMapa();
+    sincronizarHideBags();
+    if (menuJanelas.aberto?.id === "menuJanelas") desenharMenuJanelas();
+  }
+  // Depois de mover, minimizar ou fechar: grava, e o console revê a altura (o mundo pode ter mudado de largura).
+  function mudouLayout() {
+    aplicarJanelas();
+    salvarJanelas();
+    if (modo !== "estreito") ajustarConsole();
+    ajustarFichaAoEspaco();
+  }
+  function minimizarJanela(id, sim) {
+    marcarEm(layout().min, id, sim);
+    mudouLayout();
+  }
+  function fecharJanela(id, avisar = true) {
+    const tinhaFoco = painel(id)?.contains(document.activeElement);
+    marcarEm(layout().fechadas, id, true);
+    mudouLayout();
+    if (tinhaFoco) $("#btnJanelas")?.focus();
+    if (avisar) aviso(`${JANELAS[id].nome}: janela fechada. Reabra pelo menu Janelas, no topo.`, "sistema");
+  }
+  // Reabre (e restaura) a janela e a traz à vista.
+  function mostrarJanela(id) {
+    if (modo === "estreito") return;
+    marcarEm(layout().fechadas, id, false);
+    marcarEm(layout().min, id, false);
+    mudouLayout();
+    rolarAteJanela(id);
+  }
+  function rolarAteJanela(id) {
+    const el = painel(id);
+    if (el?.closest(".coluna")) el.scrollIntoView?.({ block: "nearest", behavior: reduzMovimento() ? "auto" : "smooth" });
+  }
+  // Mover pelo teclado (menu da janela): para a outra coluna (no fim) ou uma posição acima/abaixo entre as
+  // janelas à vista na mesma coluna.
+  function moverJanela(id, para) {
+    const lay = layout();
+    const lado = lay.esq.includes(id) ? "esq" : "dir";
+    if (para === "esq" || para === "dir") {
+      if (para === lado) return;
+      marcarEm(lay[lado], id, false);
+      lay[para].push(id);
+    } else {
+      const lista = lay[lado];
+      const visiveis = lista.filter((x) => painel(x)?.closest(".coluna"));
+      const i = visiveis.indexOf(id), vizinho = visiveis[i + (para === "subir" ? -1 : 1)];
+      if (i < 0 || !vizinho) return;
+      lista.splice(lista.indexOf(id), 1);
+      lista.splice(lista.indexOf(vizinho) + (para === "subir" ? 0 : 1), 0, id);
+    }
+    mudouLayout();
+    rolarAteJanela(id);
+  }
+  function restaurarLayout() {
+    janelas = {};
+    for (const [m, l] of Object.entries(LAYOUT_PADRAO)) janelas[m] = copiaLayout(l);
+    delete prefConsole.altura;
+    delete prefConsole.lugar;
+    prefConsole.aberto = true;
+    salvarConsole();
+    mudouLayout();
+    colunasPeloEspaco(true);
+    aviso("Layout das janelas restaurado.", "sistema");
+  }
+  // A tecla I (game.js alterna body.hideBags) mostra ou esconde Mochila e Bolsa juntas; o espaço da mochila
+  // no boneco tira a classe para mostrar. body.hideBags acompanha "Mochila fechada".
+  let hideBagsAntes = false;
+  function sincronizarHideBags() {
+    const sim = modo !== "estreito" && janelaFechada("pMochila");
+    hideBagsAntes = sim;
+    document.body.classList.toggle("hideBags", sim);
+  }
+  function observarMochila() {
+    hideBagsAntes = document.body.classList.contains("hideBags");
+    new MutationObserver(() => {
+      const agora = document.body.classList.contains("hideBags");
+      if (agora === hideBagsAntes) return;
+      hideBagsAntes = agora;
+      if (modo === "estreito") { abrirFolha("mochila"); return; }
+      for (const id of ["pMochila", "pBolsa"]) {
+        marcarEm(layout().fechadas, id, agora);
+        if (!agora) marcarEm(layout().min, id, false);
+      }
+      mudouLayout();
+      if (!agora) rolarAteJanela("pMochila");
+    }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  }
+  // Sem escolha guardada, a seção Habilidades do Personagem (ligarFicha) só fica aberta no largo se a coluna
+  // dela ainda comportar tudo: nada rola e a Batalha, se divide a coluna, fica com 3 linhas à vista. Medido
+  // depois do 1º desenho, com o dock de baixo já no lugar (1920 × 1080: recolhida; 2560 × 1440: aberta).
+  const ALTURA_MIN_BATALHA = 164;
+  let habilidadesMedidas = false; // uma vez só, no 1º desenho com o personagem (atualizar)
+  function habilidadesPeloEspaco() {
+    if (habilidadesMedidas) return;
+    habilidadesMedidas = true;
+    if (modo !== "largo" || typeof prefFicha.habilidades === "boolean") return;
+    const col = painel("pPersonagem")?.closest(".coluna"), bat = painel("pBatalha");
+    if (!col || !$("#btnHabilidades")) return;
+    abrirSecaoFicha("habilidades", true);
+    const apertaBatalha = bat?.closest(".coluna") === col && bat.dataset.min !== "true" && bat.offsetHeight < ALTURA_MIN_BATALHA;
+    if (col.scrollHeight > col.clientHeight + 1 || apertaBatalha) abrirSecaoFicha("habilidades", false);
+  }
+  // Abrir Habilidades (ou Ofícios, que fica dentro dela) no largo não pode empurrar a Batalha para fora da
+  // coluna: se a coluna passar a rolar, ou a Batalha que divide a coluna ficar com menos de ALTURA_MIN_BATALHA,
+  // a seção ganha altura máxima e rola por dentro. Se nem assim couber com a Batalha à vista (ex.: 1600 × 900),
+  // ao abrir pelo botão o Equipamento da mesma coluna é minimizado, com aviso. Revisto ao abrir, ao mudar o
+  // layout e ao redimensionar.
+  const ALTURA_MIN_FICHA = 120;
+  function ajustarFichaAoEspaco(abrindo = false) {
+    const corpo = $("#corpoHabilidades");
+    if (!corpo) return;
+    corpo.style.maxHeight = "";
+    corpo.style.overflowY = "";
+    if (modo !== "largo" || corpo.hidden) return;
+    const col = corpo.closest(".coluna"), bat = painel("pBatalha");
+    if (!col || painel("pPersonagem")?.dataset.min === "true") return;
+    const batNaColuna = bat && bat.closest(".coluna") === col && bat.dataset.min !== "true" && !bat.hidden;
+    const sobra = Math.max(0, col.scrollHeight - col.clientHeight);
+    const falta = batNaColuna ? Math.max(0, ALTURA_MIN_BATALHA - bat.offsetHeight) : 0;
+    if (sobra + falta <= 1) return;
+    const altura = corpo.offsetHeight;
+    if (abrindo && batNaColuna && altura - sobra - falta < ALTURA_MIN_FICHA) {
+      const eq = painel("pEquip");
+      if (eq && eq.closest(".coluna") === col && !janelaMinimizada("pEquip")) {
+        marcarEm(layout().min, "pEquip", true);
+        mudouLayout(); // aplica e chama de novo (sem abrindo) para ajustar a altura com o espaço novo
+        aviso("Equipamento minimizado para as habilidades caberem sem esconder a Batalha. Clique no título dele para abrir.", "sistema");
+        return;
+      }
+    }
+    // Com a Batalha em ALTURA_MIN_BATALHA se der; senão só sem rolar a coluna (a Batalha fica no mínimo do CSS).
+    const alvo = altura - sobra - falta >= ALTURA_MIN_FICHA ? altura - sobra - falta : altura - sobra;
+    corpo.style.maxHeight = `${Math.max(ALTURA_MIN_FICHA, alvo)}px`;
+    corpo.style.overflowY = "auto";
+  }
+  // Primeira vez no largo (nada guardado no navegador): se uma coluna não couber (ou apertar a Batalha abaixo de
+  // ALTURA_MIN_BATALHA), as janelas secundárias começam minimizadas, nesta ordem (Caçada, depois Bolsa; as
+  // poções também estão nos atalhos), até caber.
+  // Ex.: 1600 × 900 e 1920 × 1080, onde a Caçada ficava cortada no pé da coluna esquerda.
+  let colunasMedidas = false;
+  function colunasPeloEspaco(forcar = false) {
+    if (colunasMedidas && !forcar) return;
+    colunasMedidas = true;
+    if (modo !== "largo" || (layoutGuardado && !forcar)) return;
+    let mudou = false;
+    for (const col of [$("#colEsq"), $("#colDir")]) {
+      const bat = painel("pBatalha");
+      const aperta = () => col.scrollHeight > col.clientHeight + 1
+        || (bat && bat.closest(".coluna") === col && bat.dataset.min !== "true" && bat.offsetHeight < ALTURA_MIN_BATALHA);
+      for (const id of ["pAnalisador", "pBolsa"]) {
+        if (!col || !aperta()) break;
+        const el = painel(id);
+        if (!el || el.closest(".coluna") !== col || janelaMinimizada(id) || janelaFechada(id)) continue;
+        marcarEm(layout().min, id, true);
+        aplicarJanelas();
+        mudou = true;
+      }
+    }
+    if (mudou) mudouLayout();
+  }
+  // ----- Arrastar janelas -----
+  // O cabeçalho é a alça (com o mouse, a caneta ou o dedo). Passou de 6 px, vira arraste: a janela fica
+  // apagada, um rótulo segue o ponteiro e um traço de ouro mostra onde ela vai entrar. A metade da tela
+  // escolhe a coluna (esquerda ou direita); a altura escolhe a posição. Numa coluna vazia, a borda do mundo
+  // vira o alvo. Esc cancela.
+  let arraste = null;
+  function alvoDoArraste(x, y) {
+    const m = $("#mundo").getBoundingClientRect();
+    const lado = x < m.left + m.width / 2 ? "esq" : "dir";
+    const col = lado === "esq" ? $("#colEsq") : $("#colDir");
+    const visivel = !document.body.classList.contains(`sem-col-${lado}`);
+    const outras = visivel ? Array.from(col.children).filter((el) => el.classList.contains("janela") && el.id !== arraste.id) : [];
+    let antes = null;
+    for (const el of outras) {
+      const r = el.getBoundingClientRect();
+      if (y < r.top + r.height / 2) { antes = el; break; }
+    }
+    return { lado, col, visivel, outras, antes };
+  }
+  function desenharArraste(x, y) {
+    const f = $("#fantasmaJanela"), marca = $("#marcaSoltar");
+    f.style.left = `${Math.min(innerWidth - f.offsetWidth - 4, x + 14)}px`;
+    f.style.top = `${Math.min(innerHeight - f.offsetHeight - 4, y + 14)}px`;
+    const a = alvoDoArraste(x, y);
+    arraste.alvo = a;
+    marca.hidden = false;
+    if (!a.visivel) {
+      const m = $("#mundo").getBoundingClientRect();
+      marca.className = "coluna";
+      marca.dataset.rotulo = a.lado === "esq" ? "Soltar à esquerda" : "Soltar à direita";
+      Object.assign(marca.style, { left: `${a.lado === "esq" ? m.left : m.right - 56}px`, top: `${m.top}px`, width: "56px", height: `${m.height}px` });
+      return;
+    }
+    marca.className = "";
+    const c = a.col.getBoundingClientRect();
+    let topo;
+    if (a.antes) topo = a.antes.getBoundingClientRect().top - 6;
+    else if (a.outras.length) topo = a.outras[a.outras.length - 1].getBoundingClientRect().bottom + 2;
+    else topo = c.top + 2;
+    Object.assign(marca.style, { left: `${c.left}px`, top: `${Math.max(c.top, Math.min(c.bottom - 4, topo))}px`, width: `${c.width}px`, height: "" });
+  }
+  function comecarArraste() {
+    arraste.ativo = true;
+    fecharMenuJanelas();
+    painel(arraste.id).classList.add("arrastada");
+    document.body.classList.add("movendo-janela");
+    const f = $("#fantasmaJanela");
+    f.innerHTML = `${imgGlifo(JANELAS[arraste.id].glifo)}<span>${esc(JANELAS[arraste.id].nome)}</span>`;
+    f.hidden = false;
+  }
+  function terminarArraste(soltar) {
+    const a = arraste;
+    arraste = null;
+    if (!a?.ativo) return;
+    painel(a.id).classList.remove("arrastada");
+    document.body.classList.remove("movendo-janela");
+    $("#fantasmaJanela").hidden = true;
+    $("#marcaSoltar").hidden = true;
+    $("#marcaSoltar").className = "";
+    // O clique que vem logo depois do arraste não conta (no título da Caçada, ele minimizaria a janela).
+    const engolir = (e) => { e.stopPropagation(); e.preventDefault(); };
+    addEventListener("click", engolir, { capture: true, once: true });
+    setTimeout(() => removeEventListener("click", engolir, { capture: true }), 0);
+    if (!soltar || !a.alvo) return;
+    const lay = layout();
+    marcarEm(lay.esq, a.id, false);
+    marcarEm(lay.dir, a.id, false);
+    const lista = lay[a.alvo.lado], i = a.alvo.antes ? lista.indexOf(a.alvo.antes.id) : -1;
+    if (i >= 0) lista.splice(i, 0, a.id);
+    else lista.push(a.id);
+    mudouLayout();
+  }
+  function ligarJanelas() {
+    document.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || modo === "estreito") return;
+      const cab = e.target.closest?.(".janela > .painel-cab");
+      if (!cab || e.target.closest(".janela-ctl") || !cab.parentElement.closest(".coluna")) return;
+      arraste = { id: cab.parentElement.id, x0: e.clientX, y0: e.clientY, ponteiro: e.pointerId, ativo: false };
+    });
+    document.addEventListener("pointermove", (e) => {
+      if (!arraste || e.pointerId !== arraste.ponteiro) return;
+      if (!arraste.ativo) {
+        if (Math.hypot(e.clientX - arraste.x0, e.clientY - arraste.y0) < 6) return;
+        comecarArraste();
+      }
+      e.preventDefault();
+      desenharArraste(e.clientX, e.clientY);
+    });
+    document.addEventListener("pointerup", (e) => { if (arraste && e.pointerId === arraste.ponteiro) terminarArraste(true); });
+    document.addEventListener("pointercancel", () => terminarArraste(false));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && arraste?.ativo) { e.preventDefault(); e.stopPropagation(); terminarArraste(false); }
+    }, true);
+    // Botões do cabeçalho
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest?.("[data-janela-min],[data-janela-fechar],[data-janela-menu]");
+      if (!b) return;
+      if (b.dataset.janelaMin) minimizarJanela(b.dataset.janelaMin, !janelaMinimizada(b.dataset.janelaMin));
+      else if (b.dataset.janelaFechar) fecharJanela(b.dataset.janelaFechar);
+      else if (menuJanelas.aberto?.botao === b) fecharMenuJanelas();
+      else abrirMenuJanela(b.dataset.janelaMenu, b);
+    });
+    // Duplo clique no cabeçalho minimiza ou restaura (como nos clientes clássicos).
+    document.addEventListener("dblclick", (e) => {
+      const cab = e.target.closest?.(".janela > .painel-cab");
+      if (!cab || modo === "estreito" || e.target.closest(".janela-ctl, button.recolher") || !cab.parentElement.closest(".coluna")) return;
+      minimizarJanela(cab.parentElement.id, !janelaMinimizada(cab.parentElement.id));
+    });
+    ligarMenusJanelas();
+  }
+
+  // ----- Menus: Janelas (topo) e o de cada janela -----
+  // Um menu por vez; ↑ e ↓ andam entre as opções, Esc fecha e devolve o foco ao botão, clicar fora fecha.
+  // Aberto, o menu fica com o teclado (como o menu do item e os modais): Espaço e Enter ativam a opção, e
+  // nem as setas nem WASD andam com o personagem.
+  const menuJanelas = { aberto: null };
+  function abrirMenu(el, botao, html) {
+    fecharMenuJanelas();
+    el.innerHTML = html;
+    el.hidden = false;
+    menuJanelas.aberto = { id: el.id, el, botao };
+    botao.setAttribute("aria-expanded", "true");
+    teclado(false);
+    posicionarMenu();
+    el.querySelector(".menu-op:not([aria-disabled='true'])")?.focus();
+  }
+  function posicionarMenu() {
+    const m = menuJanelas.aberto;
+    if (!m) return;
+    const r = m.botao.getBoundingClientRect(), w = m.el.offsetWidth, h = m.el.offsetHeight;
+    const x = Math.max(8, Math.min(innerWidth - w - 8, r.right - w));
+    const y = r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - h - 4) : r.bottom + 4;
+    m.el.style.left = `${x}px`;
+    m.el.style.top = `${y}px`;
+  }
+  function fecharMenuJanelas(devolverFoco = false) {
+    const m = menuJanelas.aberto;
+    if (!m) return;
+    menuJanelas.aberto = null;
+    m.el.hidden = true;
+    m.el.innerHTML = "";
+    m.botao.setAttribute("aria-expanded", "false");
+    // O teclado volta ao jogo, a menos que outro dono o segure (modal, menu do item, caixa de conversa).
+    if (!modalAberto && !menuItem && document.activeElement?.id !== "entradaConversa") teclado(true);
+    if (devolverFoco && document.contains(m.botao)) m.botao.focus();
+  }
+  const opMenu = (acao, rotulo, { desab = false, dica = "", papel = "menuitem", marcado = null, id = "" } = {}) =>
+    `<button type="button" class="menu-op" role="${papel}" data-op="${acao}"${id ? ` data-id="${id}"` : ""}${marcado === null ? "" : ` aria-checked="${marcado}"`}${desab ? ' aria-disabled="true" tabindex="-1"' : ""}>`
+    + `${marcado === null ? "" : '<span class="caixa" aria-hidden="true"></span>'}<span>${esc(rotulo)}</span>${!dica ? "" : dica.length === 1 ? `<kbd class="tecla-op" title="Tecla ${esc(dica)}">${esc(dica)}</kbd>` : `<span class="dica-op">${esc(dica)}</span>`}</button>`;
+  function htmlMenuJanelas() {
+    const lay = layout();
+    let html = "<h3>Janelas</h3>";
+    html += Object.keys(JANELAS).map((id) => opMenu("alternar", JANELAS[id].nome, { papel: "menuitemcheckbox", marcado: !lay.fechadas.includes(id), id, dica: JANELAS[id].tecla || "" })).join("");
+    html += "<hr><h3>Conversa</h3>";
+    html += opMenu("chat-dock", "Na faixa de baixo", { papel: "menuitemradio", marcado: !chatSobMundo() });
+    html += opMenu("chat-mundo", "Sob o mapa, entre as colunas", { papel: "menuitemradio", marcado: chatSobMundo() });
+    html += "<hr>" + opMenu("restaurar", "Restaurar layout");
+    return html;
+  }
+  function desenharMenuJanelas() {
+    const m = menuJanelas.aberto;
+    if (!m || m.id !== "menuJanelas") return;
+    const foco = document.activeElement?.closest?.(".menu-op");
+    const chave = foco ? `${foco.dataset.op}|${foco.dataset.id || ""}` : null;
+    m.el.innerHTML = htmlMenuJanelas();
+    if (chave) $$(".menu-op", m.el).find((b) => `${b.dataset.op}|${b.dataset.id || ""}` === chave)?.focus();
+  }
+  function abrirMenuJanela(id, botao) {
+    const lay = layout(), lado = lay.esq.includes(id) ? "esq" : "dir";
+    const visiveis = lay[lado].filter((x) => painel(x)?.closest(".coluna"));
+    const i = visiveis.indexOf(id), min = lay.min.includes(id);
+    const html = `<h3>${esc(JANELAS[id].nome)}</h3>`
+      + opMenu(lado === "esq" ? "dir" : "esq", lado === "esq" ? "Mover para a direita" : "Mover para a esquerda", { id })
+      + opMenu("subir", "Subir", { id, desab: i <= 0 })
+      + opMenu("descer", "Descer", { id, desab: i < 0 || i >= visiveis.length - 1 })
+      + "<hr>" + opMenu("min", min ? "Restaurar" : "Minimizar", { id, dica: "2 cliques no título" })
+      + opMenu("fechar", "Fechar", { id });
+    const el = $("#menuJanela");
+    el.setAttribute("aria-label", `Janela ${JANELAS[id].nome}`);
+    abrirMenu(el, botao, html);
+  }
+  function acaoDoMenu(b) {
+    if (b.getAttribute("aria-disabled") === "true") return;
+    const op = b.dataset.op, id = b.dataset.id;
+    if (op === "alternar") { if (janelaFechada(id)) mostrarJanela(id); else fecharJanela(id, false); return; }
+    if (op === "chat-dock" || op === "chat-mundo") {
+      prefConsole.lugar = op === "chat-mundo" ? "mundo" : "dock";
+      salvarConsole();
+      ajustarConsole();
+      desenharMenuJanelas();
+      return;
+    }
+    if (op === "restaurar") { fecharMenuJanelas(true); restaurarLayout(); return; }
+    fecharMenuJanelas(op !== "fechar");
+    if (op === "min") minimizarJanela(id, !janelaMinimizada(id));
+    else if (op === "fechar") fecharJanela(id);
+    else moverJanela(id, op);
+    // Mover pelo teclado: o foco fica no botão do menu da janela, já no lugar novo.
+    if (op !== "fechar") painel(id)?.querySelector("[data-janela-menu]")?.focus();
+  }
+  function ligarMenusJanelas() {
+    $("#btnJanelas")?.addEventListener("click", (e) => {
+      if (menuJanelas.aberto?.id === "menuJanelas") { fecharMenuJanelas(); return; }
+      abrirMenu($("#menuJanelas"), e.currentTarget, htmlMenuJanelas());
+    });
+    for (const el of [$("#menuJanelas"), $("#menuJanela")]) {
+      el.addEventListener("click", (e) => { const b = e.target.closest(".menu-op"); if (b) acaoDoMenu(b); });
+      el.addEventListener("keydown", (e) => {
+        const ops = $$(".menu-op:not([aria-disabled='true'])", el);
+        const i = ops.indexOf(document.activeElement);
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fecharMenuJanelas(true); return; }
+        if (e.key === "Tab") { fecharMenuJanelas(); return; }
+        // Espaço ativa a opção como Enter; ← e → não fazem nada aqui (nem rolam a coluna). O stopPropagation
+        // vale mesmo se uma cena nova religar o teclado do Phaser com o menu aberto (ele ouve na window).
+        if (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.key === " " && !e.repeat && ops.includes(document.activeElement)) acaoDoMenu(document.activeElement);
+          return;
+        }
+        const passo = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+        if (passo) { e.preventDefault(); ops[(i + passo + ops.length) % ops.length]?.focus(); }
+        if (e.key === "Home" || e.key === "End") { e.preventDefault(); ops[e.key === "Home" ? 0 : ops.length - 1]?.focus(); }
+      });
+    }
+    document.addEventListener("pointerdown", (e) => {
+      const m = menuJanelas.aberto;
+      if (m && !m.el.contains(e.target) && !m.botao.contains(e.target)) fecharMenuJanelas();
+    }, true);
+    addEventListener("resize", () => fecharMenuJanelas());
+    // Botões do cabeçalho das janelas e o botão Janelas, alcançados pelo teclado (Tab): Espaço os ativa como
+    // Enter, em vez de chegar ao jogo (ataque). Depois de um clique, o foco fica no botão, mas aí Espaço
+    // continua sendo o ataque, como antes; o Tab é que marca a navegação pelo teclado.
+    let navegandoPorTab = false;
+    document.addEventListener("pointerdown", () => { navegandoPorTab = false; }, true);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Tab") { navegandoPorTab = true; return; }
+      if (e.key !== " " || !navegandoPorTab || e.ctrlKey || e.metaKey || e.altKey) return;
+      const b = e.target.closest?.(".janela-btn, #btnJanelas");
+      if (!b) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) b.click();
+    }, true);
   }
 
   function abrirFolha(k) {
@@ -2488,19 +3324,7 @@
       posicionarAvisos();
     }).observe(f);
     const ro = new ResizeObserver(() => posicionarAvisos());
-    for (const sel of ["#hud", "#missaoLinha", "#mapaSobre"]) if ($(sel)) ro.observe($(sel));
-  }
-
-  // A tecla I do MUNDO alterna body.hideBags; no médio/estreito isso abre a mochila.
-  function observarMochila() {
-    let antes = document.body.classList.contains("hideBags");
-    new MutationObserver(() => {
-      const agora = document.body.classList.contains("hideBags");
-      if (agora === antes) return;
-      antes = agora;
-      if (modo === "medio") mostrarAbaMedia(abaMedia === "mochila" ? "personagem" : "mochila");
-      else if (modo === "estreito") abrirFolha("mochila");
-    }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    for (const sel of ["#hud", "#missaoLinha", "#mapaSobre", "#palco"]) if ($(sel)) ro.observe($(sel));
   }
 
   // ------------------------------------------------------------------
@@ -2522,15 +3346,9 @@
   }
 
   function equipar(id, slot) {
-    // A lógica guarda a espada ao equipar o arco (e vice-versa): avisar.
-    const p = jogador();
-    const outro = slot === "arma" ? "arco" : slot === "arco" ? "arma" : null;
-    const guardado = p && outro ? p.equipamento[outro] : null;
+    // A lógica diz o que voltou para a mochila (o arco usa as duas mãos e guarda o escudo).
     const r = Mundo.equiparItem(ID, id, slot);
-    if (r && r.mensagem) {
-      const extra = r.ok && guardado ? ` ${nomeDoItem(guardado)} voltou para a mochila (espada e arco não ficam juntos).` : "";
-      mensagem(r.mensagem + extra, r.ok ? "sistema" : "perigo");
-    }
+    if (r && r.mensagem) mensagem(r.mensagem, r.ok ? "sistema" : "perigo");
     window.gameScene?.atualizarVisualJogador?.();
     selecao = null;
     atualizar();
@@ -2553,9 +3371,10 @@
   function usarItem(id) {
     const d = info(id);
     if (!d) return;
-    if (id === "pocao") return window.Jogo ? Jogo.acao("pocao") : executar({ tipo: "usarPocao" });
-    if (id === "pocao_fe") return window.Jogo ? Jogo.acao("pocaoFe") : executar({ tipo: "usarPocaoFe" });
-    const slot = slotDoTipo(d.tipo);
+    // Pela bolsa, a poção é bebida mesmo com a vida (ou a fé) cheia: serve para liberar espaço.
+    if (id === "pocao") return executar({ tipo: "usarPocao", mesmoCheio: true });
+    if (id === "pocao_fe") return executar({ tipo: "usarPocaoFe", mesmoCheio: true });
+    const slot = slotDe(id);
     if (slot) return equipar(id, slot);
     mensagem(`${nomeDoItem(id)}: ${atributoItem(id) || "recurso"}.`, "sistema");
   }
@@ -2611,7 +3430,7 @@
         const id = it.dataset.item;
         if (selecao && selecao.origem === "item" && selecao.id === id) return selecionar(null);
         const d = info(id);
-        const dica = mouse ? null : slotDoTipo(d.tipo) ? "Toque num espaço de equipamento para equipar." : d.tipo === "consumivel" ? "Toque numa tecla de atalho para guardar ali." : `${nomeDoItem(id)} selecionado.`;
+        const dica = mouse ? null : slotDe(id) ? "Toque num espaço de equipamento para equipar." : d.tipo === "consumivel" ? "Toque numa tecla de atalho para guardar ali." : `${nomeDoItem(id)} selecionado.`;
         return selecionar({ origem: "item", id }, dica);
       }
       if (eq) {
@@ -2628,6 +3447,7 @@
         return window.Jogo ? Jogo.usarAtalho(i) : null;
       }
       if (zona && selecao && selecao.origem === "equip") return desequipar(selecao.slot);
+      if (t.closest("[data-abrir-mochila]")) return abrirMochila();
       // Trocar de aba/folha mantém a seleção (tocar-para-equipar entre painéis).
       if (selecao && !t.closest(".modal, #dicaItem, [data-folha], [data-aba], #folhaFechar, #folhaAlca, .painel-cab")) selecionar(null);
     });
@@ -2646,7 +3466,14 @@
       const d = e.target.closest?.("[data-dica]");
       if (!d || e.pointerType === "mouse") return;
       const x0 = e.clientX, y0 = e.clientY;
-      toqueLongo = { t: setTimeout(() => { mostrarDica(d); suprimirClique = true; }, 450), x0, y0 };
+      // Item da mochila/bolsa: o toque longo abre o menu do item (descrição, usar e jogar no chão).
+      // Peça vestida no boneco: o toque longo abre o menu dela (o que dá e Guardar).
+      toqueLongo = { t: setTimeout(() => {
+        if (d.matches(".slot[data-item]")) abrirMenuItem(d.dataset.item, d);
+        else if (d.matches(".equip.cheio")) abrirMenuEquip(d.dataset.equipSlot, d);
+        else mostrarDica(d);
+        suprimirClique = true;
+      }, 450), x0, y0 };
     });
     const cancelar = (e) => {
       if (!toqueLongo) return;
@@ -2662,6 +3489,7 @@
   let suprimirClique = false;
 
   function mostrarDica(el) {
+    if (menuItem) return; // com o menu do item aberto, a dica não cobre os botões dele
     const id = el.dataset.dica;
     const html = htmlDica(id, el.dataset.dicaOrigem);
     if (!html) return;
@@ -2678,6 +3506,305 @@
     d.style.top = `${Math.round(Math.max(8, y))}px`;
   }
   function esconderDica() { $("#dicaItem").classList.remove("visivel"); }
+
+  // ------------------------------------------------------------------
+  // Quantidades (seletor − n +) e menu do item: usar e jogar no chão
+  // ------------------------------------------------------------------
+  // Valor de cada seletor entre um redesenho e outro, pela chave "<ação>:<item>" (vender, comprar, largar).
+  const quantidades = new Map();
+  const kg = (n) => (typeof textoKg === "function" ? textoKg(n) : String(n));
+  const contarNaMochila = (id, p = jogador()) => (p?.inventario || []).filter((x) => x === id).length;
+  const livreParaSair = (id) => (typeof Mundo !== "undefined" && Mundo.quantidadeLivre ? Mundo.quantidadeLivre(ID, id) : contarNaMochila(id));
+  function qtdEscolhida(chave, max, padrao) {
+    const v = quantidades.has(chave) ? quantidades.get(chave) : padrao;
+    return Math.max(1, Math.min(max, Math.floor(v) || 1));
+  }
+  // Seletor de quantidade; o botão com data-qtd-acao="<chave>" usa o valor e mostra o total (rotuloQtd).
+  function htmlQtd(chave, valor, max, rotulo) {
+    return `<span class="qtd-sel" data-qtd="${esc(chave)}"><button type="button" class="qtd-passo" data-passo="-1" aria-label="Um a menos"${valor <= 1 ? " disabled" : ""}>−</button>`
+      + `<input type="number" inputmode="numeric" min="1" max="${max}" step="1" value="${valor}" aria-label="${esc(rotulo)}">`
+      + `<button type="button" class="qtd-passo" data-passo="1" aria-label="Um a mais"${valor >= max ? " disabled" : ""}>+</button></span>`;
+  }
+  // Texto do botão de cada ação com a quantidade n (o total em moedas aparece antes de confirmar).
+  function rotuloQtd(chave, n) {
+    const [acao, id] = chave.split(/:(.*)/s);
+    const moeda = imgGlifo("ui_moeda", "px g16");
+    if (acao === "vender") {
+      const total = (typeof VALORES_VENDA !== "undefined" ? VALORES_VENDA[id] || 0 : 0) * n;
+      return { html: `Vender ${n} · +${total} ${moeda}`, texto: `Vender ${n} ${nomeDoItem(id)} por ${total} moedas` };
+    }
+    if (acao === "comprar") {
+      const preco = (typeof catalogoDaLoja === "function" && lojaAtual ? catalogoDaLoja(lojaAtual).find((x) => x.item === id)?.preco : 0) || 0;
+      const lote = id === "flechas" ? `${n * (typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5)} flechas` : `${n}`;
+      return { html: `Comprar ${lote} · ${preco * n} ${moeda}`, texto: `Comprar ${id === "flechas" ? lote : `${n} ${nomeDoItem(id)}`} por ${preco * n} moedas` };
+    }
+    return { html: `Jogar ${n}`, texto: `Jogar ${n} ${nomeDoItem(id)} no chão` };
+  }
+  function htmlAcaoQtd(chave, n, classe, extra = "") {
+    const r = rotuloQtd(chave, n);
+    return `<button type="button" class="btn ${classe}" data-qtd-acao="${esc(chave)}" aria-label="${esc(r.texto)}"${extra}>${r.html}</button>`;
+  }
+  // Muda o valor de um seletor (passo ou digitação) e o texto dos botões dele, sem redesenhar a lista.
+  function definirQtd(sel, valor, escrever = true) {
+    const input = sel.querySelector("input");
+    const max = Math.max(1, Number(input.max) || 1);
+    const n = Math.max(1, Math.min(max, Math.floor(Number(valor)) || 1));
+    const chave = sel.dataset.qtd;
+    quantidades.set(chave, n);
+    if (escrever && input.value !== String(n)) input.value = String(n);
+    sel.querySelector('[data-passo="-1"]').disabled = n <= 1;
+    sel.querySelector('[data-passo="1"]').disabled = n >= max;
+    for (const b of $$("[data-qtd-acao]")) {
+      if (b.dataset.qtdAcao !== chave) continue;
+      const r = rotuloQtd(chave, n);
+      b.innerHTML = r.html;
+      b.setAttribute("aria-label", r.texto);
+    }
+    return n;
+  }
+  // Quantidade escolhida para a ação (lida do seletor na tela, limitada ao máximo dele).
+  function quantidadeDe(chave) {
+    const sel = $$(".qtd-sel").find((s) => s.dataset.qtd === chave);
+    return sel ? definirQtd(sel, sel.querySelector("input").value) : quantidades.get(chave) || 1;
+  }
+  function ligarQuantidades() {
+    document.addEventListener("click", (e) => {
+      const passo = e.target.closest?.(".qtd-passo");
+      if (!passo || passo.disabled) return;
+      const sel = passo.closest(".qtd-sel");
+      definirQtd(sel, (Number(sel.querySelector("input").value) || 1) + Number(passo.dataset.passo));
+    });
+    document.addEventListener("input", (e) => {
+      const sel = e.target.closest?.(".qtd-sel");
+      // Digitando: o texto só é corrigido quando passa do máximo (vazio ou 0 esperam o resto do número).
+      if (sel && e.target.value !== "") definirQtd(sel, e.target.value, Number(e.target.value) > Number(e.target.max));
+    });
+    document.addEventListener("change", (e) => {
+      const sel = e.target.closest?.(".qtd-sel");
+      if (sel) definirQtd(sel, e.target.value);
+    });
+    // Enter no número: faz a ação do seletor (vender, comprar ou jogar essa quantidade).
+    document.addEventListener("keydown", (e) => {
+      const sel = e.key === "Enter" && e.target.closest?.(".qtd-sel");
+      if (!sel) return;
+      e.preventDefault();
+      definirQtd(sel, e.target.value);
+      $$("[data-qtd-acao]").find((b) => b.dataset.qtdAcao === sel.dataset.qtd)?.click();
+    });
+  }
+
+  // Menu do item (botão direito, toque longo ou Shift+F10 num item da mochila/bolsa; ou ao soltar uma pilha no
+  // mundo): descrição, usar (beber mesmo com a vida cheia, equipar) e jogar no chão 1, X ou tudo.
+  let menuItem = null; // { id, ancora (elemento ou {x, y} da tela), casa (casa do mundo onde soltar) }
+  function abrirMenuItem(id, ancora, casa = null) {
+    if (!info(id) || !contarNaMochila(id)) return;
+    esconderDica();
+    if (selecao) selecionar(null);
+    const reabrir = menuItem?.id === id;
+    // rect: onde o menu nasceu (o espaço da mochila é recriado quando ela muda; o menu fica no lugar).
+    const rect = ancora instanceof Element ? ancora.getBoundingClientRect() : { left: ancora.x, right: ancora.x, top: ancora.y, bottom: ancora.y };
+    menuItem = { id, ancora, casa, rect };
+    if (!reabrir) quantidades.delete(`largar:${id}`);
+    desenharMenuItem(true);
+    teclado(false);
+  }
+  // Menu de uma peça vestida (botão direito, toque longo ou Shift+F10 num espaço cheio do boneco): o que ela dá,
+  // o peso e Guardar na mochila (a munição volta inteira).
+  function abrirMenuEquip(slot, ancora) {
+    const id = jogador()?.equipamento?.[slot];
+    if (!id || !info(id)) return;
+    esconderDica();
+    if (selecao) selecionar(null);
+    menuItem = { id, slot, ancora, rect: ancora.getBoundingClientRect() };
+    desenharMenuItem(true);
+    teclado(false);
+  }
+  function fecharMenuItem(devolverFoco = false) {
+    if (!menuItem) return;
+    const { ancora, id, slot } = menuItem;
+    menuItem = null;
+    const m = $("#menuItem");
+    m.classList.remove("aberto");
+    m.innerHTML = "";
+    if (!modalAberto) teclado(true);
+    if (!devolverFoco || !(ancora instanceof Element)) return;
+    // O espaço pode ter sido recriado (a mochila mudou): volta ao do mesmo item.
+    const alvo = document.contains(ancora) ? ancora
+      : $$(".slot[data-item]").find((b) => b.dataset.item === id) || (slot ? $(`.equip[data-equip-slot="${slot}"]`) : null);
+    alvo?.focus?.({ preventScroll: true });
+  }
+  function desenharMenuEquip(focar) {
+    const p = jogador();
+    const { slot, id } = menuItem;
+    if (!p || p.equipamento?.[slot] !== id || !info(id)) return fecharMenuItem();
+    const n = slot === "municao" && typeof municaoNoEspaco === "function" ? municaoNoEspaco(p) : 1;
+    const peso = (typeof pesoItem === "function" ? pesoItem(id) : info(id).peso) * n;
+    const efeitos = typeof efeitosDoItem === "function" ? efeitosDoItem(id) : [];
+    const duas = typeof maosDoItem === "function" && maosDoItem(id) === 2 ? "usa as duas mãos" : "";
+    const r = raridadeDe(id);
+    const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
+    const guardar = n > 1 ? `Guardar as ${n} na mochila` : "Guardar na mochila";
+    const m = $("#menuItem");
+    m.innerHTML = `<div class="menu-cab"><span class="slot"${attrRaridade(id)}>${htmlItem(id)}${n > 1 ? `<span class="qtd">${n}</span>` : ""}</span>`
+      + `<div class="menu-nome"><h4${titulo}>${esc(nomeDoItem(id))}</h4><p>${esc(nomeEspaco(slot))}${n > 1 ? ` · ${n} unidades` : ""}</p></div>`
+      + `<button type="button" class="menu-fechar" data-menu-fechar aria-label="Fechar o menu"><img class="px g16" src="${glifoURL("ui_fechar", 2)}" alt=""></button></div>`
+      + `<p class="menu-info">${esc([...efeitos, duas, `${kg(peso)} kg`].filter(Boolean).join(" · "))}</p>`
+      + `<div class="menu-grupo"><button type="button" class="btn primario" data-menu-guardar>${esc(guardar)}</button></div>`;
+    m.setAttribute("aria-label", `Ações: ${nomeDoItem(id)} (${nomeEspaco(slot)})`);
+    m.classList.add("aberto");
+    posicionarMenuItem();
+    if (focar) setTimeout(() => m.querySelector("[data-menu-guardar]")?.focus({ preventScroll: true }), 0);
+  }
+  function desenharMenuItem(focar) {
+    if (menuItem?.slot) return desenharMenuEquip(focar);
+    const p = jogador();
+    const id = menuItem?.id;
+    const d = id && info(id);
+    const n = d ? contarNaMochila(id, p) : 0;
+    if (!n) return fecharMenuItem();
+    const livre = Math.min(n, livreParaSair(id));
+    const reserva = n - livre;
+    const peso = typeof pesoItem === "function" ? pesoItem(id) : d.peso;
+    const tipo = NOME_TIPO[d.tipo] || "Item";
+    const pesoTxt = n > 1 ? `${kg(peso)} kg cada · ${kg(peso * n)} kg ao todo` : `${kg(peso)} kg`;
+    const r = raridadeDe(id);
+    const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
+    let usar = "";
+    if (id === "pocao" || id === "pocao_fe") usar = `<button type="button" class="btn primario" data-menu-usar>Beber</button>`;
+    else if (slotDe(id)) usar = `<button type="button" class="btn primario" data-menu-usar>Equipar</button>`;
+    const chave = `largar:${id}`;
+    let largar;
+    if (!livre) largar = "";
+    else if (livre === 1) largar = `<button type="button" class="btn" data-menu-largar="1">Jogar no chão</button>`;
+    else {
+      const x = qtdEscolhida(chave, livre, Math.max(2, Math.floor(livre / 2)));
+      largar = `<button type="button" class="btn secundario" data-menu-largar="1">Jogar 1</button>`
+        + `<button type="button" class="btn secundario" data-menu-largar="${livre}">Jogar ${reserva ? "as livres" : "tudo"} (${livre})</button>`
+        + (livre > 2 ? `<span class="menu-x">${htmlQtd(chave, x, livre, `Quantidade a jogar no chão: ${nomeDoItem(id)}`)}${htmlAcaoQtd(chave, x, "")}</span>` : "");
+    }
+    const reservaTxt = reserva
+      ? (() => { const res = Mundo.reservaDeMissao?.(p, id); return `<p class="menu-reserva">${reserva === n ? "Todos guardados" : `${reserva} guardados`} para a missão “${esc(res?.missao || "")}” (entrega a ${esc(res?.npc || "")}).</p>`; })()
+      : "";
+    const m = $("#menuItem");
+    m.innerHTML = `<div class="menu-cab"><span class="slot"${attrRaridade(id)}>${htmlItem(id)}${n > 1 ? `<span class="qtd">${n}</span>` : ""}</span>`
+      + `<div class="menu-nome"><h4${titulo}>${esc(nomeDoItem(id))}</h4><p>${esc(tipo)}${n > 1 ? ` · ${n} unidades` : ""}</p></div>`
+      + `<button type="button" class="menu-fechar" data-menu-fechar aria-label="Fechar o menu"><img class="px g16" src="${glifoURL("ui_fechar", 2)}" alt=""></button></div>`
+      + `<p class="menu-info">${esc([atributoItem(id, p), pesoTxt].filter(Boolean).join(" · "))}</p>${reservaTxt}`
+      + (usar ? `<div class="menu-grupo">${usar}</div>` : "")
+      + (largar ? `<div class="menu-grupo" role="group" aria-label="Jogar no chão"><span class="menu-rotulo">Jogar no chão${menuItem.casa ? " (onde você soltou)" : " (ao seu lado)"}</span>${largar}</div>` : "");
+    m.setAttribute("aria-label", `Ações: ${nomeDoItem(id)}`);
+    m.classList.add("aberto");
+    posicionarMenuItem();
+    if (focar) setTimeout(() => (m.querySelector("[data-menu-largar], [data-menu-usar]") || m.querySelector("button"))?.focus({ preventScroll: true }), 0);
+  }
+  function posicionarMenuItem() {
+    const m = $("#menuItem"), a = menuItem.ancora;
+    const r = a instanceof Element && document.contains(a) ? a.getBoundingClientRect() : menuItem.rect;
+    const w = m.offsetWidth, h = m.offsetHeight;
+    let x = r.right + 8, y = r.top;
+    if (x + w > innerWidth - 8) x = r.left - w - 8;
+    if (x < 8) x = Math.max(8, Math.min(innerWidth - w - 8, r.left));
+    if (y + h > innerHeight - 8) y = innerHeight - h - 8;
+    m.style.left = `${Math.round(x)}px`;
+    m.style.top = `${Math.round(Math.max(8, y))}px`;
+  }
+  // Joga no chão: na casa onde o item foi solto no mundo (se for ao lado), senão aos pés do personagem.
+  function largarItem(id, quantidade, casa) {
+    const cmd = { tipo: "largarItem", item: id, quantidade };
+    if (casa) Object.assign(cmd, { x: casa.x, y: casa.y });
+    const r = executar(cmd);
+    if (r?.ok) fecharMenuItem();
+    else if (menuItem) desenharMenuItem(false);
+    atualizar();
+    return r;
+  }
+  function ligarMenuItem() {
+    const m = $("#menuItem");
+    m.addEventListener("click", (e) => {
+      if (!menuItem) return;
+      const id = menuItem.id;
+      if (e.target.closest("[data-menu-fechar]")) return fecharMenuItem(true);
+      if (e.target.closest("[data-menu-guardar]")) {
+        const slot = menuItem.slot;
+        fecharMenuItem();
+        desequipar(slot);
+        $$(".slot[data-item]").find((b) => b.dataset.item === id)?.focus?.({ preventScroll: true });
+        return;
+      }
+      if (e.target.closest("[data-menu-usar]")) {
+        usarItem(id);
+        // Beber deixa o menu aberto (para beber mais de uma); equipar o fecha.
+        if (slotDe(id) || !contarNaMochila(id)) fecharMenuItem();
+        else desenharMenuItem(false);
+        return;
+      }
+      const b = e.target.closest("[data-menu-largar], [data-qtd-acao]");
+      if (!b || b.disabled) return;
+      const q = b.dataset.qtdAcao ? quantidadeDe(b.dataset.qtdAcao) : Number(b.dataset.menuLargar) || 1;
+      largarItem(id, q, menuItem.casa);
+    });
+    m.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fecharMenuItem(true); }
+    });
+    // Tab para fora do menu também o fecha.
+    m.addEventListener("focusout", (e) => { if (menuItem && e.relatedTarget && !m.contains(e.relatedTarget)) fecharMenuItem(); });
+    // Fecha ao clicar fora (no próprio item, o botão direito reabre), ao rolar a coluna do item (o menu ficaria
+    // solto) ou ao mudar a janela. A rolagem do console (mensagem nova) não fecha.
+    document.addEventListener("pointerdown", (e) => {
+      if (menuItem && !e.target.closest?.("#menuItem")) fecharMenuItem();
+    }, true);
+    document.addEventListener("scroll", (e) => {
+      const a = menuItem?.ancora;
+      if (a instanceof Element && e.target instanceof Node && e.target !== a && e.target.contains(a)) fecharMenuItem();
+    }, true);
+    addEventListener("resize", () => fecharMenuItem());
+    document.addEventListener("contextmenu", (e) => {
+      const it = e.target.closest?.(".slot[data-item]");
+      const eq = !it && e.target.closest?.(".equip.cheio[data-equip-slot]");
+      if (!it && !eq) return;
+      e.preventDefault();
+      // Teclado (Shift+F10, tecla de menu): ancora no espaço; mouse: também.
+      if (eq) abrirMenuEquip(eq.dataset.equipSlot, eq);
+      else abrirMenuItem(it.dataset.item, it);
+    });
+  }
+
+  // Arrastar um item da mochila ou da bolsa para o mundo joga no chão (na casa solta, se for ao lado; senão
+  // aos pés do personagem). Pilha: abre o menu para escolher 1, X ou tudo. Equipamento vestido: guardar antes.
+  function ligarChao() {
+    const palco = $("#palco");
+    const arrastandoItem = (e) => Array.from(e.dataTransfer?.types || []).some((t) => t === "text/item" || t === "text/equip");
+    // O mundo: o mapa e o que flutua sobre ele, menos painéis, janelas e alvos de soltar (equipamento, atalho, mochila).
+    const noMundo = (e) => !!e.target.closest?.("#game-root")
+      || !e.target.closest?.(".painel, .perg, .console, #folha, [data-equip-slot], [data-atalho], .zona-soltar");
+    palco.addEventListener("dragover", (e) => {
+      if (!arrastandoItem(e) || !noMundo(e)) return palco.classList.remove("alvo-chao");
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      palco.classList.add("alvo-chao");
+    });
+    palco.addEventListener("dragleave", (e) => { if (!palco.contains(e.relatedTarget)) palco.classList.remove("alvo-chao"); });
+    document.addEventListener("dragend", () => palco.classList.remove("alvo-chao"));
+    palco.addEventListener("drop", (e) => {
+      palco.classList.remove("alvo-chao");
+      if (!arrastandoItem(e) || !noMundo(e)) return;
+      e.preventDefault();
+      const item = e.dataTransfer.getData("text/item"), slotEq = e.dataTransfer.getData("text/equip");
+      if (slotEq) {
+        const vestido = jogador()?.equipamento?.[slotEq];
+        mensagem(`Tire do corpo antes de jogar no chão: arraste ${vestido ? nomeDoItem(vestido) : "a peça"} para a mochila.`, "perigo");
+        return;
+      }
+      if (!item || !contarNaMochila(item)) return;
+      // Só vale a casa onde soltou se estiver ao alcance (a lógica põe o item ao lado do jogador se não estiver),
+      // para o menu não prometer "onde você soltou" e o item cair em outro lugar.
+      const sob = window.Jogo?.casaNaTela?.(e.clientX, e.clientY) || null;
+      const eu = jogador();
+      const casa = sob && eu && Math.max(Math.abs(sob.x - eu.x), Math.abs(sob.y - eu.y)) <= ALCANCE_INTERACAO ? sob : null;
+      if (livreParaSair(item) > 1) abrirMenuItem(item, { x: e.clientX, y: e.clientY }, casa);
+      else largarItem(item, 1, casa);
+    });
+  }
 
   // ------------------------------------------------------------------
   // Controles de toque (direcional + ações)
@@ -2807,6 +3934,9 @@
     if (modalAberto?.id === "modalVocacao") desenharVocacao();
     if (modalAberto?.id === "modalOficios") desenharOficios();
     if (modalAberto?.id === "modalVisual") desenharVisual();
+    colunasPeloEspaco();
+    habilidadesPeloEspaco();
+    ajustarFichaAoEspaco();
   }
 
   function areaMudou(area) {
@@ -2822,8 +3952,8 @@
     // O mural de um atalaia também; a consulta (T) pode continuar aberta.
     if (modalAberto?.id === "modalMural" && muralNpc !== null) fecharModal(false);
     // A cena nova (área, morte, viagem) liga o teclado e a captura de Espaço e setas de novo; com um
-    // modal ainda aberto, desliga outra vez (sem isto, Espaço não ativa o botão focado do modal).
-    if (modalAberto) teclado(false);
+    // modal ou menu ainda aberto, desliga outra vez (sem isto, Espaço não ativa o botão focado e WASD anda).
+    if (modalAberto || menuJanelas.aberto || menuItem) teclado(false);
     alvoDesenhado = undefined;
     assinaturaBatalha = "";
     atualizar();
@@ -2834,6 +3964,7 @@
     const p = jogador();
     if (!p) return;
     atualizarBarras(p);
+    atualizarFicha(p); // o vigor corre caçando e volta parado
     atualizarToque(p);
     atualizarBatalha(p);
     atualizarAnalisador(); // relógio e taxas por hora correm sem precisar de abate
@@ -2883,15 +4014,13 @@
       }
       atualizarBarraHab(jogador());
     });
-    $("#btnAnalisador").addEventListener("click", () => abrirAnalisador(painel("pAnalisador").dataset.aberto !== "true"));
+    $("#btnAnalisador").addEventListener("click", () => abrirAnalisador(painel("pAnalisador").dataset.min === "true"));
     $("#missaoLinha").addEventListener("click", () => {
       const b = $("#missaoLinha");
       b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"));
     });
-    // Abas do médio e folhas do celular
+    // Folhas do celular
     document.addEventListener("click", (e) => {
-      const aba = e.target.closest("[data-aba]");
-      if (aba) mostrarAbaMedia(aba.dataset.aba);
       const folha = e.target.closest("[data-folha]");
       if (folha) abrirFolha(folha.dataset.folha);
       if (e.target.closest("[data-abrir-cacadas]")) abrirMural(null);
@@ -2916,12 +4045,14 @@
     for (const m of $$(".modal")) {
       m.addEventListener("click", (e) => {
         if (e.target === m || e.target.closest("[data-fechar]")) { fecharModal(); return; }
+        // Loja: 1 unidade, a do seletor (data-qtd-acao) ou a do botão (data-quantidade, "Vender tudo").
+        const qtdLoja = (b) => (b.dataset.qtdAcao ? quantidadeDe(b.dataset.qtdAcao) : Number(b.dataset.quantidade) || 1);
         const comprar = e.target.closest("[data-comprar]");
-        if (comprar && !comprar.disabled) { executar({ tipo: "comprar", item: comprar.dataset.comprar }); desenharLoja(); return; }
+        if (comprar && !comprar.disabled) { executar({ tipo: "comprar", item: comprar.dataset.comprar, quantidade: qtdLoja(comprar) }); desenharLoja(); return; }
         const vender = e.target.closest("[data-vender]");
-        if (vender) { executar({ tipo: "vender", item: vender.dataset.vender }); desenharLoja(); $("#lojaCorpo [data-aba-loja=vender]")?.focus(); return; }
+        if (vender && !vender.disabled) { executar({ tipo: "vender", item: vender.dataset.vender, quantidade: qtdLoja(vender) }); desenharLoja(); return; }
         const abaL = e.target.closest("[data-aba-loja]");
-        if (abaL) { abaLoja = abaL.dataset.abaLoja; desenharLoja(); $(`#lojaCorpo [data-aba-loja=${abaLoja}]`)?.focus(); return; }
+        if (abaL) { abaLoja = abaL.dataset.abaLoja; desenharLoja(true); $(`#lojaCorpo [data-aba-loja=${abaLoja}]`)?.focus(); return; }
         // Mural: aba, aceitar/retomar, guardar (sem confirmação: nada se perde) e trocar pontos.
         const abaM = e.target.closest("[data-aba-mural]");
         if (abaM) {
@@ -3002,6 +4133,8 @@
       prenderFoco(e);
       if (e.key === "Escape") {
         if (modalAberto) { e.preventDefault(); fecharModal(); return; }
+        if (menuJanelas.aberto) { e.preventDefault(); fecharMenuJanelas(true); return; }
+        if (menuItem) { e.preventDefault(); fecharMenuItem(true); return; }
         if ($("#dicaItem").classList.contains("visivel")) { esconderDica(); return; }
         if (selecao) { selecionar(null); return; }
         if (dlg.id) { fecharDialogo(); return; }
@@ -3083,22 +4216,27 @@
   // ------------------------------------------------------------------
   function iniciar() {
     aplicarTexturas();
+    prepararJanelas();
     preencherGlifos();
     montar();
     ligarBotoes();
     ligarItens();
+    ligarQuantidades();
+    ligarMenuItem();
+    ligarChao();
     ligarConsole();
     ligarToque();
+    ligarFicha();
     observarMochila();
     observarFolha();
-    abrirAnalisador(analisadorAberto());
+    ligarJanelas();
     const re = () => { montar(); medirRodape(); };
-    for (const q of ["(min-width: 1280px)", "(max-width: 760px)", TELA_BAIXA]) {
+    for (const q of ["(min-width: 1280px)", "(max-width: 760px)", TELA_BAIXA, TELA_MUITO_BAIXA]) {
       const mq = matchMedia(q);
       (mq.addEventListener ? mq.addEventListener("change", re) : mq.addListener(re));
     }
-    // O console acompanha o tamanho da janela (preso embaixo do mundo ou sobre a borda dele).
-    addEventListener("resize", () => { medirRodape(); ajustarConsole(); });
+    // O console acompanha o tamanho da janela (a altura dele não deixa o zoom do mundo cair).
+    addEventListener("resize", () => { if (modo !== "estreito") ajustarConsole(); medirRodape(); ajustarFichaAoEspaco(); });
     setInterval(tique, 250);
     requestAnimationFrame(laçoRecarga);
     atualizar();

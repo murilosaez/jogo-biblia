@@ -3,19 +3,25 @@ JORNADA — RPG BÍBLICO
 Conteúdo do jogo (pasta dados/)
 - dados/itens.js: itens, raridades (cor, brilho, som, melhoria e quantos atributos aleatórios), atributos
   aleatórios com as faixas de cada raridade, sorteio de raridade, chances nomeadas das tabelas de saque,
-  preços da loja, o que cada mercador vende (LOJAS) e valores de venda.
+  preços da loja, o que cada mercador vende (LOJAS) e valores de venda; as peças do boneco (cabeça, colar,
+  pernas, pés e anel), com maos (2 = usa as duas mãos, como os arcos) e atributosFixos ({ critico, vida,
+  carga } somados aos da raridade), e os espaços do boneco no painel Equipamento (ESPACOS_BONECO: nome,
+  lugar no corpo e silhueta do espaço vazio).
 - dados/mapas.js: tamanho dos mapas (160×120 casas) e o desenho de cada região: terreno de fundo,
   regiões (bosques, pedregais, clareiras, com o tipo de obstáculo), águas (lagos e rios), vilas (com
   muro opcional), caminhos (estradas e ruas; dentro das vilas viram ruas de pedra), estruturas (casas e
   lojas onde se entra, tendas, bancas e poços; ver DADOS_ESTRUTURAS: tamanho, porta, móveis e balcão),
-  marcos (fogueira, estandarte, barcos, jarros), decoração do chão e zonas de coleta. Nenhuma
+  marcos (fogueira, estandarte, barcos, jarros e os props das vilas: barril, caixotes, carroça, jarros, lenha,
+  cocho e cerca, que bloqueiam a casa), decoração do chão, vegetação rasteira (vegetacao: densidade, tipos das
+  moitas e o que nasce na beira da água; só aparência, não bloqueia) e zonas de coleta. Nenhuma
   coordenada fica no código: o gerador (gerarMapa, em logica.js) monta o mapa a partir daqui, e as
   casas livres que não se alcançam a partir do início da área viram obstáculo.
 - dados/mundo.js: áreas (início, trilha, cais, chegada da viagem e os portos do mar, um por cidade),
   regiões dos capítulos, preços da viagem rápida (REGRAS_VIAGEM) e da passagem do barco (REGRAS_BARCO),
   ervas, odres, pontos de pesca e portais; o maná diário (REGRAS_MANA: amanhecer, porções, sexta e sábado,
   cura) e o descanso do Sábado (REGRAS_DESCANSO: janela, ausência mínima, XP por Sábado, limite e
-  multiplicador).
+  multiplicador); o vigor (REGRAS_VIGOR: máximo, janela de combate, carência, ritmo da volta, Sábado mínimo
+  e as faixas com o multiplicador de XP).
 - dados/npcs.js: personagens, posições, papéis e falas próprias. O mercador atende atrás do balcão da
   loja (conversa-se e compra-se do outro lado do balcão, a 2 casas); guias e atalaias atendem à frente
   de uma tenda ou banca (estruturas com npc em dados/mapas.js); o barqueiro fica ao lado do cais, diz o
@@ -53,11 +59,19 @@ Conteúdo do jogo (pasta dados/)
 O progresso fica no save (save versão 16): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
-mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte } e status[tipo] =
+mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte }, vigor = { minutos, vistoEm }
+(minutos com fração; sem o campo, o personagem começa cheio — não mudou a versão do save) e status[tipo] =
 { ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
 vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica pronta) e talentos[id] = graus
 (só os da vocação atual; os pontos saem do nível), oficios[id] = { xp } (o nível sai do XP) e
-extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje). Saves antigos são convertidos sozinhos, sem perder o que já foi feito.
+extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje).
+equipamento = { cabeca, colar, arma, armadura, escudo, pernas, pes, anel, municao } (o boneco; null = vazio) e
+quantidadeMunicao (quantas unidades há na pilha do espaço de munição). Saves antigos são convertidos sozinhos,
+sem perder o que já foi feito. O boneco não pediu versão nova: a carga de todo save (normalizarEquipamento, em
+logica.js) cria os espaços que faltam e, nos saves com a mão dividida em "arma" e "arco", deixa na mão a arma de
+corpo a corpo (a de distância só se a mão estava vazia ou se a vocação luta à distância, o Fundibulário) e
+guarda a outra na mochila; arco com escudo: o arco fica e o escudo volta para a mochila; peça no espaço errado
+volta para a mochila; na 1ª carga, as flechas da mochila vão para o espaço de munição.
 Para criar conteúdo novo, edite só esses arquivos (não contêm regras) e rode node tests/logica.test.js:
 o teste 27 confere se todo item, área, NPC, criatura, missão e caçada citado existe, o teste 39 mede
 o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 46 conferem os mapas
@@ -65,7 +79,10 @@ o ritmo de cada caçada (minutos de caça e pontos por minuto) e os testes 43 a 
 das vilas, coleta nas zonas e migração das posições antigas); o teste 69 confere as casas e lojas onde
 se entra (porta, balcão, mercador atrás dele) e o barqueiro; o teste 70 confere as palavras-chave de
 cada papel (palavrasChaveDoNpc e palavraChaveDoTexto, em logica.js: um NPC de papel novo ganha [oi],
-[tchau] e as palavras de PALAVRAS_DO_PAPEL).
+[tchau] e as palavras de PALAVRAS_DO_PAPEL); o teste 73 confere o boneco (toda peça nova precisa de espaço,
+peso de verdade, ícone em sprites.js e estar à venda ou num saque); o teste 76 confere os props das vilas
+(dentro da vila, fora das ruas, da frente das portas e da volta dos personagens, sem fechar casa nenhuma, com
+desenho da região) e os tipos da vegetação rasteira.
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
@@ -91,21 +108,29 @@ Controles — teclado e mouse
 - F: ação ao lado — conversar com o NPC, embarcar/desembarcar no cais ou seguir a rota do portal
   (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo; ao lado
   de um atalaia ele mostra "F · Caçadas" e abre o mural (o clique no atalaia faz o mesmo).
-- Enter: escrever no console, embaixo do mundo. Com alguém por perto, as palavras-chave conversam
+- Enter: escrever no console, no dock de baixo. Com alguém por perto, as palavras-chave conversam
   como nos MMORPGs clássicos: oi e tchau (todos), comprar e vender (mercador), viajar (guia),
   caçadas (atalaia), embarcar e preço (barqueiro), vocação (Jetro), conversar (moradores) e missão
   (quem dá missões, ou quem uma missão manda procurar). Valem sem acento, no meio de uma frase
   ("quanto custa a passagem?") e com alguns sinônimos (olá, loja, trade, barco…); as palavras de cada
   fala também aparecem entre colchetes, clicáveis. ↑ e ↓ trazem as últimas falas; Esc volta ao jogo.
-- Clique no chão: anda até a casa clicada pelo caminho mais curto, contornando obstáculos (a rota não
-  passa por cais, trilha ou portal no meio do caminho). Clique num personagem, num saque ou num ponto de
-  pesca: vai até ele e conversa, recolhe ou pesca. Qualquer tecla de movimento cancela a caminhada.
+- Clique no chão: anda até a casa clicada pelo caminho mais rápido, contornando obstáculos (a rota não
+  passa por cais, trilha ou portal no meio do caminho). Casa bloqueada ou fora de alcance (uma árvore, a
+  água, uma área cercada): vai até a casa alcançável mais perto dela. Clique num personagem, num saque ou num
+  ponto de pesca: vai até ele e conversa, recolhe ou pesca. Qualquer tecla de movimento cancela a caminhada.
+- Clique (ou toque) no minimapa: anda até aquele ponto, por longe que seja (a rota cobre o mapa inteiro). O
+  destino fica marcado com uma cruz de ouro no minimapa (na borda, se estiver fora do recorte) e com o
+  quadrado de ouro no chão. Um clique novo troca a rota; andar com as teclas ou o joystick cancela. Sobre o
+  mundo (médio, tela baixa e celular), o minimapa fica translúcido quando alguém passa por baixo dele, e
+  então o clique vai para o mundo.
 - Clique num inimigo (no mundo ou na lista Batalha): seleciona, vai até ele (até ficar ao lado, ou ao
-  alcance do arco com o caminho livre) e ativa o autoataque a cada 2 segundos (usa o arco se ele estiver
-  equipado, houver flechas e o alvo estiver no alcance com o caminho livre). Andar com as teclas para a
-  perseguição; o alvo continua escolhido.
-- Espaço: golpe corpo a corpo. R: flecha. Os dois compartilham uma recarga de 0,8 s. O anel em
-  volta do alvo mostra o tempo até o próximo autoataque (2 s).
+  alcance do arco com o caminho livre) e ativa o autoataque a cada 2 segundos com o que está na mão da arma
+  (arco com flechas ou funda: atira, se o alvo estiver no alcance com o caminho livre; espada ou mão vazia:
+  golpeia ao lado). Andar com as teclas para a perseguição; o alvo continua escolhido.
+- Espaço: ataque com o que está na mão da arma — golpe (espada ou sem arma) ou tiro (arco ou funda). Com o
+  arco sem flechas, o golpe ao lado sai sem arma. R: ataque à distância (com a espada na mão, golpeia se o
+  alvo estiver ao lado). Os dois compartilham uma recarga de 0,8 s. O anel em volta do alvo mostra o tempo
+  até o próximo autoataque (2 s).
 - H: poção de vida. 1–6: atalhos (com vocação, Shift + 1–6). Botão direito num atalho o esvazia.
 - 1–8 (com vocação): habilidades da barra, usadas no alvo escolhido (ou na criatura mais perto ao
   alcance). V: janela Vocação (escolher no nível 8, especialização no 50, habilidades de cada vocação e,
@@ -129,11 +154,26 @@ Controles — teclado e mouse
 - N: maná e descanso (colher o maná do dia, comer uma porção e ver a reserva de descanso; também pelo
   botão Maná, no topo, que acende quando o maná do dia caiu e mostra quantas porções há no jarro).
 - F1: Oração na hora (cura; do nível 25 de Oração em diante também tira veneno e sangramento).
-  Shift + F1: Milagre (Oração nível 100). M: mostrar/ocultar o minimapa. I: mostrar/ocultar mochila e
-  bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas e conversas.
+  Shift + F1: Milagre (Oração nível 100). M: mostrar/ocultar o minimapa (no largo, a janela Mapa). I:
+  mostrar/ocultar mochila e bolsa. Alt (segurado): mostra o nome de todos. ?: ajuda. Esc: fecha janelas,
+  menus e conversas (e cancela o arraste de uma janela).
 - Itens: arraste da mochila para os espaços de equipamento ou para um atalho; arraste o equipamento
-  de volta para a mochila para guardar. Duplo clique equipa armas e usa poções. Também funciona
-  clicar/tocar no item e depois no destino. Espada e arco ocupam as mãos: equipar um guarda o outro.
+  de volta para a mochila (ou para a mochila do boneco) para guardar. Duplo clique equipa e bebe poções
+  (pela bolsa, mesmo com a vida ou a fé cheia, para liberar espaço); duplo clique numa peça vestida a guarda.
+  Também funciona clicar/tocar no item e depois no destino. Botão direito (ou toque longo) numa peça vestida:
+  o que ela dá e Guardar na mochila.
+- Equipamento (boneco, como nos MMORPGs clássicos): cabeça, colar, mochila (abre o painel Mochila), mão da
+  arma, armadura, mão do escudo, pernas, pés, anel e munição. Uma mão só para a arma: espada, arco ou funda.
+  O arco usa as duas mãos: equipá-lo guarda o escudo, e com ele na mão o escudo não entra ("O arco usa as
+  duas mãos."); a funda usa uma. A munição é uma pilha (as flechas compradas, recolhidas, recebidas ou
+  feitas vão para ela quando está vazia ou já tem flechas; elas pesam); o arco gasta primeiro as do espaço de
+  munição e depois as da mochila. Colar e anel dão vida ou crítico; as botas de viagem, carga.
+- Jogar no chão: arraste um item da mochila ou da bolsa para o mundo (cai na casa solta, se for ao lado do
+  personagem; senão, ao lado dele, e o menu e a mensagem dizem isso), ou abra o menu do item com o botão direito (Shift + F10 no teclado; toque
+  longo no celular): Beber/Equipar e Jogar 1, Jogar X (− número +) ou Jogar tudo. Uma pilha solta no mundo
+  também abre o menu. O que você jogou fica no chão por 10 minutos e não volta ao pisar em cima: clique no
+  item para buscá-lo (com a mochila cheia, leva o que couber). Equipamento vestido volta à mochila antes; as
+  unidades que uma missão em andamento pede na entrega (ervas, odres, venenos, insígnia) ficam guardadas.
 
 Controles — toque (celular e tablet)
 - Aparecem sozinhos em telas de toque (ou pelo botão "Mostrar controles de toque" na ajuda).
@@ -145,48 +185,95 @@ Controles — toque (celular e tablet)
   retos e diagonais para seguir a linha do dedo (a 20°, por exemplo, reto-diagonal-reto…), com a mesma
   velocidade em qualquer ângulo, e contorna sozinho a quina de um obstáculo. Solto, ele volta ao canto,
   apagado, só como lembrete. Mexer o joystick cancela a caminhada e a perseguição.
-- À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado
+- À direita: atacar (com o que está na mão da arma), flecha (ataque à distância), poção, oração e o botão de
+  ação, que muda conforme o que está ao lado
   (falar, caçadas, cais, pesca, rota). Os vãos entre os botões deixam o toque chegar ao mundo, e os
   avisos no topo são menores e não seguram o dedo.
 - Barra inferior: Mochila, Equipamento, Batalha, Missão e Conversa abrem em folhas recolhíveis (o
   analisador de caçada fica na folha Batalha; a folha Conversa é o console, com as abas e a entrada).
-  Toque num item e depois no espaço de equipamento ou no atalho; toque longo mostra a descrição.
+  Toque num item e depois no espaço de equipamento ou no atalho; toque longo num item da mochila ou da
+  bolsa abre o menu dele (descrição, beber ou equipar, jogar no chão), e numa peça vestida, o menu Guardar;
+  nos outros, mostra a descrição.
 
 Interface e visual
 - Toda a arte (personagens, itens, ícones, cenário) é pixel art original gerada em código por
   sprites.js; não há imagens externas nem emojis. Desde a versão 16 a arte é desenhada em 32 px por casa
   (1 px de arte por px de mundo); personagens têm 3 vistas (de lado, de frente e de costas) e mostram a
-  arma, o escudo, o arco e a armadura vestidos. As regras de desenho e as paletas de cada região estão
+  arma (espada, arco ou funda na mão), o escudo, a armadura e as peças da cabeça, das pernas e dos pés. As regras de desenho e as paletas de cada região estão
   em docs/GUIA-DE-ARTE.md. Os ícones da mochila, bolsa, equipamento, atalhos,
   loja e lista de batalha usam os mesmos desenhos do mundo.
+- Mundo no estilo dos MMORPGs clássicos em 2D (visto de cima, em casas, paleta curta, bordas nítidas): árvores
+  maiores que a casa (a copa transborda para cima; o tronco fica na casa que bloqueia), arbustos e rochas
+  facetadas com contorno e sombra, chão com poucos tons por região e as beiras definidas (relva, terra,
+  areia; a água com espuma e areia molhada), vegetação rasteira em moitas que não bloqueia (capim, flores,
+  arbustos baixos, pedras; juncos, papiro e algas na beira da água) e props nas vilas (barris, caixotes,
+  carroças, jarros, lenha, cochos e cercas). A câmera e quem anda ficam em pixels inteiros do mundo: 1 pixel
+  de arte é sempre 1 pixel do mundo, sem meio pixel entre o chão e os personagens.
 - Estilo "iluminura viva": couro, pergaminho e bronze; fontes Cinzel (títulos), Alegreya Sans
   (textos) e Pixelify Sans (números, rótulos e textos do mundo). Os dígitos 0–9 da Pixelify são
   substituídos por dígitos em pixel 5×7 gerados pelo interface.js (a Pixelify desenha o 2 como Z e o
   5 como S); as teclas usam Alegreya Sans negrito.
 - Painéis: Missão (texto de textoMissaoAtual e as caçadas em andamento, com "27/40"), Personagem
-  (barras de vida, fé e XP com números, habilidades, estatísticas de estatisticasCombate e pontos de
-  tarefa), Equipamento (boneco: a figura no meio, com o arco nas costas, a arma na mão direita, o
-  escudo na esquerda, a armadura sobre o peito e, ao lado, a munição com as flechas da mochila; arrastar,
-  duplo clique e tocar-e-escolher funcionam como antes), Mochila, Bolsa, Batalha (inimigos da área, alvo
-  destacado; o glifo de contagem marca quem conta para uma caçada ativa), Caçada (analisador, recolhível)
-  e minimapa. No médio, o analisador fica na aba Batalha.
-- Console (o histórico, embaixo do mundo): abas Geral (tudo), NPCs (falas, o que você disse e as
-  palavras-chave) e Servidor (saque, XP, níveis, avisos e anúncios), até 200 linhas com a hora (HH:MM) e a
-  cor de cada tipo; a aba com novidade ganha um ponto. A alça no topo muda a altura e a seta recolhe o
-  console (fica só a barra); a escolha fica neste navegador. Ele fica preso embaixo do mundo enquanto o
-  mapa ainda cabe com 2 px de tela por pixel de arte; em telas baixas (1366 × 768) só a barra fica presa e
-  as mensagens ficam sobre a borda de baixo do mundo, para o zoom não cair pela metade.
+  (a janela de habilidades: barras de vida, fé e XP — o XP em % até o próximo nível, com os números na dica
+  ou num clique na barra —, capacidade e vigor sempre à vista; a seção Habilidades, recolhível, com Corpo a
+  corpo, Distância, Defesa (treina com os golpes recebidos) e Oração em linhas "nome … nível" com o fio de % até o próximo nível, os
+  números do combate de estatisticasCombate e a seção Ofícios, também recolhível, com os 6 ofícios. Um clique
+  ou toque na linha abre a dica do que falta. Quem sobe pisca em ouro, e a mensagem do golpe já diz o nível
+  novo (uma linha só no registro: "... Corpo a corpo: nível 15."). As seções lembram a escolha neste
+  navegador; sem escolha, no largo Habilidades só começa aberta se a coluna dela comportar a seção sem rolar e
+  com 3 linhas da Batalha à vista — recolhida em 1920 × 1080, aberta em 2560 × 1440. Aberta numa coluna
+  apertada, a seção rola por dentro para a Batalha não sair da tela; se nem assim couber, abrir pelo botão
+  minimiza o Equipamento da mesma coluna, com aviso),
+  Equipamento (boneco clássico: colar, cabeça e mochila em cima; mão da arma, armadura e mão do
+  escudo; anel, pernas e munição; pés embaixo; o espaço vazio mostra o contorno do que vai nele e a dica dá os
+  efeitos; ao lado, a figura com o que está vestido, o jeito de atacar da mão e o ataque e a defesa),
+  Mochila, Bolsa, Batalha (inimigos da área, alvo destacado; o glifo de contagem marca quem conta
+  para uma caçada ativa), Caçada (analisador, recolhível) e Mapa (o minimapa). O nome da região fica no topo, ao lado do nome do jogo, e o quadro do alvo (retrato, vida e
+  a recarga do autoataque) no canto de cima do mundo (no médio e no celular, no HUD).
+- Janelas laterais (largo e médio), como nos MMORPGs clássicos: o cabeçalho de cada janela é a alça.
+  Arraste-o para a outra coluna ou outra posição (a metade da tela escolhe o lado; um traço de ouro mostra
+  onde ela entra; numa coluna vazia, a borda do mundo vira o alvo "Soltar à esquerda/direita"; Esc
+  cancela). Os botões do cabeçalho minimizam (fica só o cabeçalho; dois cliques no título fazem o mesmo) e
+  fecham; o menu da janela (os três pontos, que aparecem com o ponteiro ou o foco no cabeçalho) move pelo
+  teclado: para a outra coluna, subir, descer, minimizar e fechar. O menu Janelas, no topo, lista todas as
+  janelas para reabrir ou fechar, escolhe o lugar da conversa e tem "Restaurar layout". Uma coluna sem
+  janelas sai e o mundo fica mais largo. A Caçada recolhe pelo título ou pela tecla X (é o minimizar dela).
+  O espaço da mochila no boneco reabre a janela Mochila (fechada ou minimizada). Em telas de até 800 px de
+  altura (1366 × 768, 1280 × 720) o padrão é outro: com o dock de baixo cada coluna tem ~540 px, então a
+  Batalha fica à esquerda, sob a Missão, com a Mochila, e Bolsa e Caçada começam minimizadas; à direita,
+  Personagem e Equipamento inteiros. Na primeira vez no largo, se uma coluna não couber (1600 × 900,
+  1920 × 1080), Caçada e depois Bolsa começam minimizadas até caber. O layout fica neste navegador (localStorage "jornada_janelas"), um para
+  o largo, outro para o largo de até 800 px de altura e outro para o médio; um layout salvo estragado ou de
+  outra versão volta ao padrão sem erro. Com as duas colunas no médio, o mundo fica estreito e o zoom pode
+  cair para 1× (cada pixel da arte em 1 px de tela, ainda nítido).
+- Console (o histórico): abas Geral (tudo), NPCs (falas, o que você disse e as palavras-chave) e Servidor
+  (saque, XP, níveis, avisos e anúncios), até 200 linhas com a hora (HH:MM) e a cor de cada tipo, em letra
+  de 15 px (a hora em 13 px) com mais espaço entre as linhas; a aba com novidade ganha um ponto. No largo e no
+  médio ele fica no dock de baixo, uma faixa de uma ponta à outra embaixo das colunas e do mundo, com os
+  atalhos (e a barra de habilidades) à direita. Nada flutua sobre o mundo. A alça na borda de cima do dock
+  muda a altura (↑ e ↓ com o foco nela) e a seta recolhe o console (fica só a barra); a escolha fica neste
+  navegador. O zoom do mundo é inteiro (2 px de tela por pixel de arte ou mais), então a altura do dock é
+  escolhida para não derrubá-lo: o padrão é 176 px, encolhido até o mundo caber em 2×, e a alça para na
+  maior altura que ainda mantém o zoom. Em 1366 × 768: dock de ~170 px (6 linhas) e o mundo em 2×, com
+  ~12 × 8 casas à vista. Em 1920 × 1080: dock de 176 px e o mundo em 2×, com ~20 × 13 casas; com o dock em
+  ~130 px ou menos (ou com a tecla +) o mundo vai a 3×, com ~14 × 9 casas. Pelo menu Janelas a conversa
+  também pode ficar sob o mapa ("Sob o mapa, entre as colunas", como antes), com a barra de atalhos
+  embaixo: as colunas ganham a altura toda (em 1366 × 768 a Batalha mostra 4 linhas) e a conversa desce até
+  2 linhas para o mundo seguir em 2×. A pega (a fileira de pontos no meio da borda) marca a alça.
 - Mural de caçadas (atalaia): fala do atalaia, saldo, abas Caçadas (cartões com progresso, espera
   "Volta em 19 h 59 min" e Aceitar, Retomar ou Guardar) e Troca de pontos. Cada abate que conta mostra
   "27/40" sobre a criatura, e a caçada cumprida mostra o cartão "CAÇADA CUMPRIDA". O atalaia tem um
   visual só, igual em todas as regiões, com o balão de riscos de contagem depois da 1ª caçada aceita.
-- Avisos curtos aparecem no topo do mundo e também ficam no console (aba Servidor). As falas dos
+- Avisos curtos aparecem no topo do mundo (com o mundo estreito, logo abaixo do HUD e do minimapa) e também
+  ficam no console (aba Servidor). As falas dos
   personagens vão para a aba NPCs, com as palavras-chave. O quadro de diálogo com o retrato (e as
   palavras-chave, do tamanho do dedo) só abre quando o console não está à vista: no celular com a folha
   Conversa fechada, ou com o console recolhido. Clique na caixa ou aperte F (perto do personagem) para
   completar o texto; de novo, para fechar. F só volta a falar com ele depois de a caixa fechar.
-- Layouts: largo (1280 px ou mais, painéis dos dois lados), médio (painel direito com abas) e
-  celular (até 760 px, painéis em folhas pela barra inferior). Foco visível no teclado, rótulos de
+- Layouts: largo (1280 px ou mais, janelas dos dois lados; com até 1000 px de altura o minimapa fica sobre
+  o mundo, no canto de cima), médio (uma coluna de janelas à direita, Personagem e Caçada minimizadas no
+  começo, vida/fé/XP no HUD e o minimapa sobre o mundo; pode-se abrir a coluna da esquerda arrastando uma
+  janela para lá) e celular (até 760 px, painéis em folhas pela barra inferior). Foco visível no teclado, rótulos de
   acessibilidade nos botões e respeito a "reduzir movimento".
 
 Campanha
@@ -209,7 +296,7 @@ Acampamento à beira-mar, Refidim e Cafarnaum), estradas, áreas de caça, lagos
 um mercador numa banca, um guia de caravanas e um atalaia em tendas, e um cais ao norte (no Egito, na
 margem do Nilo; na Galileia, no lago). As bancas vazias de Canaã e do Deserto estão reservadas para o
 ferreiro. Cada vila tem moradores para conversar.
-O minimapa mostra 80×60 casas em volta do jogador.
+O minimapa mostra 80×60 casas em volta do jogador; clicar nele anda até lá (veja Controles).
 
 Combate
 - Dano corpo a corpo = 6 + 3 × (nível − 1) + bônus da arma + ⌊habilidade corpo ÷ 4⌋.
@@ -322,8 +409,19 @@ Níveis e XP
 Vida, poções e veneno
 - Vida máxima = 100 + 10 por nível acima do 1º.
 - Poção de vida: recupera 25% da vida máxima (mínimo 30). Poção de fé: +40 de fé.
+- Com a vida (ou a fé) cheia, a tecla H, os atalhos e o botão de toque não gastam a poção. Pela bolsa
+  (duplo clique ou o menu do item), ela é bebida assim mesmo, para liberar espaço ("Você bebeu a poção,
+  mas já estava com a vida cheia.").
 - Fora de combate (8 s sem golpes), a vida regenera 2% da vida máxima a cada 3 s.
 - Veneno do escorpião: 3 de dano a cada 3 s por 15 s (5 vezes, 15 de dano). Cada nova picada recomeça os 15 s.
+
+Peso e carga
+- Os itens pesam o que pesariam de verdade (kg; referências em dados/itens.js): túnica de linho 0,5, armadura
+  de couro 5, couraça de escamas 12, espada de ferro 1,3, escudo de madeira 3 e de bronze 5,5, arco 0,7,
+  flecha 0,03, poção 0,3, odre cheio 2,5, pele de lobo 1,5, couro grosso 3, pedra preciosa 0,01.
+- Carga máxima = 35 kg + 3 kg por nível acima do 1º + alforjes (+5 kg cada) + atributo de carga do
+  equipamento (+1 a +5). O equipamento inicial pesa 5,2 kg: sobram 30 kg no nível 1. Nível 10: 62 kg.
+- A carga aparece em "x / y kg" (com vírgula) no painel Mochila: âmbar acima de 90%, vermelha cheia.
 
 Habilidades
 Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
@@ -331,6 +429,8 @@ Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
 - XP para passar do nível n ao n+1 = 6 + ⌊1,5 × n⌋.
   Exemplos: Oração 25 ≈ 200 orações; Oração 50 ≈ 710 orações; nível 100 ≈ 8.000 XP (meta de longo prazo).
   Corpo a corpo chega ao nível 5 em cerca de 20 golpes.
+- A janela de habilidades (painel Personagem) mostra o nível de cada uma, o fio de % até o próximo e, na
+  dica, o XP que falta, quantos usos isso dá e o que a habilidade soma agora (dano e crítico, defesa ou cura).
 
 Oração e fé
 - Aprendida com Jesus, na Galileia, depois de concluir a missão de Pedro. A fé vai de 0 a 100 e
@@ -359,6 +459,10 @@ variam: escudo de madeira 35 (todos menos o do Egito), armadura de couro 65 e ar
 menos a de Canaã); Hadassa (Canaã) vende também a funda (60). Todos compram pele de lobo (5), erva (2), odre (3), peixe (6), veneno de escorpião (4),
 insígnia do bando (6), presa de lobo (10), ferrão de escorpião (12), linho egípcio (8), ponta de lança (9),
 bracelete de cobre (16) e as pedras do peitoral (150 a 200).
+- Vender: com mais de uma unidade, Vender 1, Vender X (− número +, até o que você tem) ou Vender tudo; o
+  total em moedas aparece no botão antes de confirmar. Só a mochila conta (o vestido não é vendido) e cada
+  raridade de um equipamento é um item à parte. Unidades que uma missão pede na entrega ficam guardadas.
+- Comprar: poções e flechas têm o mesmo seletor (até 100 de uma vez, ou o que as moedas e a carga permitem).
 
 Viagem rápida, barco e mar
 - Guias de caravanas: Micael (Canaã), Tamar (Deserto), Natanael (Egito), Abigail (Mar Vermelho), Hobabe
@@ -390,9 +494,9 @@ quando a missão principal da região é concluída.
     Ronda ........... 20 h (dá para jogar mais cedo no dia seguinte)
     Grande caçada ... 164 h = 6 d 20 h (uma por semana, com folga)
 - Troca de pontos de tarefa, em qualquer atalaia com o mural aberto:
-    Alforje de couro (+10 kg de carga, para sempre; uma vez) ......... 60 pontos
+    Alforje de couro (+5 kg de carga, para sempre; uma vez) .......... 60 pontos
     Escudo de ferro (defesa 7; requer a missão do Egito) ............. 150 pontos
-    Alforje de viagem (+10 kg de carga; requer o Alforje de couro) ... 180 pontos
+    Alforje de viagem (+5 kg de carga; requer o Alforje de couro) .... 180 pontos
     Couraça de escamas (defesa 8; requer a missão do Monte Sinai) .... 300 pontos
   Os pontos não expiram nem se perdem na morte; pontos e moedas nunca se convertem, e os mercadores não
   compra itens da troca. Trocar de novo um item que você já tem (na mochila ou equipado) pede
@@ -493,20 +597,36 @@ Tecla N ou o botão Maná, no topo. Nada aqui exige entrar todo dia: perder um d
   (18 h valem 75%). Enquanto houver reserva, cada abate rende XP em dobro e o extra sai dela; missões e
   caçadas entregues não gastam a reserva. A reserva não expira e para de crescer em 1,5 × o XP do nível.
   Ao voltar, um aviso mostra quanto entrou; a barra de XP ganha contorno azul enquanto houver reserva.
+  O mesmo descanso enche o vigor (ver Vigor, abaixo).
 - O relógio é o do navegador até existir o servidor (v0.5). Para que mexer nele não renda mais: o maná
   guardado nunca dura mais que 2,5 dias, a colheita do dia não volta ao atrasar o relógio e o mesmo trecho
   de Sábado nunca vira reserva duas vezes.
 
+Vigor
+O fôlego para caçar, de 0:00 a 40:00 (horas:minutos; todo personagem começa cheio). Aparece no painel
+Personagem, com a barra na cor da faixa. Números em REGRAS_VIGOR (dados/mundo.js).
+- Gasta só caçando: enquanto houve golpe dado ou recebido no último minuto, o vigor cai em tempo real
+  (1 minuto por minuto de caçada). Andar, conversar, comprar, fabricar ou ficar parado não gastam.
+- Volta longe da caçada: o tempo longe do jogo (página fechada, ou nenhuma ação por 10 min ou mais) devolve
+  1 minuto a cada 3 minutos, sem contar os 10 primeiros (8 h fora devolvem 2:36). Uma ausência com pelo
+  menos 1 h dentro do Sábado (sexta 18 h a sábado 18 h, a janela do descanso) enche o vigor, com um aviso.
+- Faixas: Descansado (de 38:00 a 40:00) dá +10% de XP das criaturas; Disposto (de 12:00 a 37:59), XP normal;
+  Exausto (abaixo de 12:00), metade do XP das criaturas. Missões e caçadas entregues não mudam.
+- Ordem do XP de um abate: XP da criatura (menor se ela for fraca para o seu nível) × campeão (×3) × vigor,
+  arredondado; a reserva do descanso do Sábado dobra esse resultado. Vocação e talentos não mudam o XP. A
+  mensagem do abate mostra a parte do vigor: "+44 XP (4 do vigor)" ou "+20 XP (exausto: 50% do XP)".
+
 Analisador de caçada
-Painel "Caçada" (coluna da esquerda no largo; aba ou folha Batalha no médio e no celular). Tecla X mostra ou
-oculta; a escolha fica no navegador.
+Janela "Caçada" (coluna da esquerda no largo; coluna da direita, minimizada no começo, no médio; folha
+Batalha no celular). Tecla X minimiza ou restaura (e reabre a janela, se ela estiver fechada); a escolha fica
+no navegador.
 - O relógio começa no seu primeiro golpe e corre até você zerar (botão Zerar) ou recarregar a página;
   trocar de área, viajar ou morrer não zeram.
 - Por sessão e por hora: XP (dos abates), saque (moedas recolhidas + valor de venda dos itens recolhidos,
   pelo preço dos mercadores; equipamento não tem preço de venda e só é contado), lucro (saque − poções e
   flechas gastas, pelo preço da loja, − moedas perdidas na morte) e abates; também as mortes, as espécies
   mais caçadas e o tempo até o próximo nível no ritmo atual. As taxas por hora aparecem depois de 1 minuto.
-- O item que você deixou cair ao morrer não conta como saque quando você o recolhe.
+- O item que você deixou cair ao morrer, ou que jogou no chão, não conta como saque quando você o recolhe.
 
 Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
@@ -517,10 +637,25 @@ Para desenvolvedores
   atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
-  estadoDescanso(p, agora), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
+  estadoDescanso(p, agora), estadoVigor(p, agora) (minutos com a volta da ausência em curso, texto "40:00",
+  %, faixa, minutos até cair de faixa), textoVigor(minutos), faixaVigor(minutos), fichaDeHabilidades(p, agora)
+  (a janela de habilidades: nível e XP em %, vida, fé, carga, vigor, as 4 habilidades e os 6 ofícios, cada
+  um com nível, XP, falta, % para baixo e a dica), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
   visaoTalentos(p), pontosTalentoLivres(p), visaoOficios(p), cosmeticosDoJogador(p), visualDoJogador(p), extracoesDaArea(areaId), Mundo.extracaoDisponivel(id, area, pontoId),
-  Mundo.aliados(id), infoItem(id) (item com raridade,
+  Mundo.aliados(id), textoKg(kg) ("12,35"), Mundo.quantidadeLivre(id, item) (unidades que podem ser vendidas
+  ou jogadas no chão), Mundo.reservaDeMissao(p, item) ({ quantidade, missao, npc }), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
+- Inventário: comandos { tipo: "largarItem", item, quantidade, x?, y? } (vira um saque com largado: true e
+  quantidade, se mais de 1, em p.saqueNoChao; devolve saqueId), { tipo: "vender", item, quantidade },
+  { tipo: "comprar", item, quantidade } e { tipo: "usarPocao" | "usarPocaoFe", mesmoCheio } de Mundo.executar.
+  coletarSaque de uma pilha devolve quantidade e, se a mochila encheu no meio, restante. Os campos largado
+  e quantidade são limpos na carga do save (sem versão nova). O teste 72 confere pesos, carga, chão, reserva
+  de missão, poções e quantidades.
+- Janela de habilidades e vigor: fichaDeHabilidades(p, agora) e estadoVigor(p, agora) são puras (o painel só
+  lê). O vigor gasta no laço de tempo (Mundo.atualizar, passoVigor) e volta em Mundo.salvar (creditarVigor, a
+  mesma presença do descanso); composicaoXpAbate(p, e, campeao, agora) dá { xp, semVigor, fatorVigor, faixa }
+  e os ataques que derrotam devolvem também xpVigor (a parte do vigor, positiva ou negativa). O teste 74
+  confere a janela, o gasto, a volta e o Sábado, as faixas com o XP (campeão, descanso, vocação) e o save.
 - Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
   som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
   são puras; o teste 49 simula 60 mil abates por criatura e confere a frequência de cada linha da tabela.
@@ -582,8 +717,17 @@ Para desenvolvedores
   devolve abrirLoja (o id dele) e com um guia, abrirViagem (o id dele); viajar devolve precoViagem e o
   embarque, passagemPaga. O teste 58 confere mercador, guia e cais em toda cidade e os catálogos; o 59, a
   viagem de todas para todas, os preços, as recusas e o barco ligando todos os cais.
-- Andar por toque/clique (game.js): rota em 8 direções por busca em largura sobre Mundo.casaLivre, sem
-  atravessar casas de transição que não sejam o destino; a perseguição do alvo refaz a rota a cada passo.
+- Andar por toque/clique (game.js): o clique no chão e no minimapa usam rotaNaGrade(livre, origem, destino)
+  (logica.js, pura): A* em 8 direções com custo pelo tempo do passo (REGRAS_ROTA em dados/mundo.js: reto 7,
+  diagonal 9, como 140 e 180 ms), que devolve { passos, chegada, exato } e, sem caminho até o destino, vai até
+  a casa alcançada mais perto dele. A grade vem de Mundo.gradeDePassagem(p) (a regra de casaLivre montada de
+  uma vez); as casas de transição só entram como destino. O mapa inteiro (160 × 120) leva poucos ms (~3 ms
+  numa rota de 125 passos). Bloqueada no meio (uma criatura entrou), a rota refaz o A* até o mesmo destino.
+  NPCs, saques, pesca e a perseguição do alvo seguem com a busca em largura curta (calcularRota). O teste 75
+  confere o caminho mais rápido contra uma busca completa, a casa mais perto quando o destino é bloqueado ou
+  cercado, a grade de passagem, uma rota de ponta a ponta de Canaã andada com o comando mover, o clique no
+  minimapa ligado à rota longa e os layouts padrão das janelas laterais (LAYOUT_PADRAO, em interface.js: toda
+  janela numa coluna uma vez só; uma janela nova entra em JANELAS e em cada layout).
 - Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
   interface.js (window.UI: painéis, modais, atalhos, toque; window.UI.abrirMural(npcId) abre o mural de
   um atalaia, ou a consulta com null; window.UI.abrirBestiario() abre o bestiário). Os nomes antigos continuam

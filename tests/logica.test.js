@@ -538,7 +538,7 @@ teste("2b. a fórmula usa nível, arma e habilidade; defesa mitiga sem zerar", (
   const bandido = j.g("inimigos").bandido1;
   assert.ok(mitigarDano(danoBruto(q, "corpo"), bandido.defesa) >= 15, "o golpe precisa tirar um dano relevante");
   // Arco não pode ficar em 1 de dano nos capítulos novos.
-  const arqueiro = { nivel: 6, equipamento: { arco: "arco_madeira" }, habilidades: { distancia: 5 } };
+  const arqueiro = { nivel: 6, equipamento: { arma: "arco_madeira" }, habilidades: { distancia: 5 } };
   for (const id of ["soldadoEgito1", "perseguidorMar1", "guardiaoSinai1", "ameaçaGalileia1"]) {
     const e = j.g("inimigos")[id];
     assert.ok(mitigarDano(danoBruto(arqueiro, "distancia"), e.defesa) >= 10, `arco contra ${id}`);
@@ -601,8 +601,7 @@ teste("4. ataque manual tem recarga compartilhada (corpo e distância)", () => {
   j.avancar(recarga);
   assert.ok(j.exec({ tipo: "atacar", alvoId: "lobo1" }).danoAplicado);
   // Arco compartilha a recarga.
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   p.inventario.push("flecha", "flecha");
   const tiro = j.exec({ tipo: "atacarDistancia", alvoId: "lobo1" });
   assert.strictEqual(tiro.emRecarga, true);
@@ -792,8 +791,7 @@ teste("8. alcance Chebyshev para todos e ALCANCE_ARCO único", () => {
   // Arco: exatamente ALCANCE_ARCO.
   const alcance = j.g("ALCANCE_ARCO");
   assert.ok(Number.isInteger(alcance) && alcance >= 5 && alcance <= 8);
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   p.inventario.push(...Array(5).fill("flecha"));
   p.area = "deserto";
   p.vidaInimigos.escorpiao1 = 999;
@@ -1061,9 +1059,15 @@ teste("17. migração: save v5 carrega sem perder itens, moedas e progresso", ()
   assert.strictEqual(p.mortes, original.mortes);
   const contar = (lista) => lista.reduce((m, i) => ((m[i] = (m[i] || 0) + 1), m), {});
   const antes = contar(original.inventario.concat(Object.values(original.equipamento).filter(Boolean)));
-  const depois = contar(p.inventario.concat(Object.values(p.equipamento).filter(Boolean)));
+  // Boneco: a pilha do espaço de munição conta como as flechas que ela tem.
+  const vestidos = Object.entries(p.equipamento).flatMap(([s, x]) => (!x ? [] : s === "municao" ? Array(p.quantidadeMunicao).fill(x) : [x]));
+  const depois = contar(p.inventario.concat(vestidos));
   for (const [item, n] of Object.entries(antes)) assert.ok((depois[item] || 0) >= n, `perdeu ${item}`);
-  igual(p.equipamento, original.equipamento);
+  // O que estava vestido continua; a mão da arma é uma só (sem o espaço "arco") e as flechas da mochila foram
+  // para o espaço de munição.
+  for (const slot of ["arma", "escudo", "armadura"]) assert.strictEqual(p.equipamento[slot], original.equipamento[slot], slot);
+  assert.ok(!("arco" in p.equipamento), "sem o espaço antigo do arco");
+  igual([p.equipamento.municao, p.quantidadeMunicao], ["flecha", original.inventario.filter((x) => x === "flecha").length]);
   igual(p.missoes.lobo, { status: "concluida", etapa: 0, progresso: [1] });
   igual(p.missoes.ervas.status, "concluida");
   assert.strictEqual(p.missoes.deserto.status, "concluida");
@@ -1248,7 +1252,7 @@ teste("18. API usada por game.js continua disponível", () => {
 teste("19. personagem novo começa com o equipamento inicial vestido e vence o lobo sem ajustes", () => {
   const j = carregarJogo({ semente: 11 });
   const p = j.entrar();
-  igual(p.equipamento, { arma: "espada_madeira", arco: null, escudo: "escudo_madeira", armadura: "tunica_pano" });
+  igual(p.equipamento, { cabeca: null, colar: null, arma: "espada_madeira", armadura: "tunica_pano", escudo: "escudo_madeira", pernas: null, pes: null, anel: null, municao: null });
   assert.strictEqual(j.M.contarItem(ID, "pocao"), 3);
   assert.ok(!p.inventario.includes("espada_madeira"), "não duplica o item na mochila");
   falar(j, "viajante1");
@@ -1303,7 +1307,8 @@ teste("22. mochila cheia: o passo sobre o saque vale e a mensagem chega à UI", 
     { id: "s_moedas", area: "deserto", ...casa, moedas: 5, criadoEm: j.agora },
   );
   posicionarAoLado(j, "deserto", casa);
-  while (j.g("pesoCarregado")(p) + 10 <= j.g("capacidadeCarga")(p)) p.inventario.push("espada_ferro");
+  const espada = j.g("pesoItem")("espada_ferro");
+  while (j.g("pesoCarregado")(p) + espada <= j.g("capacidadeCarga")(p)) p.inventario.push("espada_ferro");
   const r = j.exec({ tipo: "mover", dx: casa.x - p.x, dy: casa.y - p.y });
   assert.ok(r.ok, "o movimento não é recusado");
   assert.deepStrictEqual([p.x, p.y], [casa.x, casa.y]);
@@ -1389,8 +1394,7 @@ teste("26. com o arco nas mãos, o tiro a 1 casa vale e bate mais que o soco", (
   const p = j.p;
   const e = j.g("inimigos").lobo1;
   p.vidaInimigos.lobo1 = 10_000;
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   p.inventario.push("flecha", "flecha");
   posicionarAoLado(j, "canaan", e);
   assert.ok(j.M.linhaDeTiroLivre(p, e), "alvo ao lado está na linha de tiro");
@@ -1596,6 +1600,7 @@ function carregarComMissaoDeTeste() {
 teste("28. motor: falar, chegar, derrotar, coletar e entregar, com variáveis e recompensa", () => {
   const j = carregarComMissaoDeTeste();
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const balao = (npcId) => j.g("estadoMissaoNpc")(p, npcId);
   const m = () => p.missoes.teste;
   igual(m(), { status: "nao_iniciada", etapa: 0, progresso: [0] }, "missão registrada entra no save");
@@ -1667,10 +1672,15 @@ teste("28. motor: falar, chegar, derrotar, coletar e entregar, com variáveis e 
   // recompensa bloqueada pela mochila cheia (as peles entregues já contam como espaço livre).
   const peso = j.g("pesoCarregado");
   const cap = j.g("capacidadeCarga");
-  while (peso(p) + 12 - 4 <= cap(p)) p.inventario.push("pocao"); // espada 10 + 2 poções − 2 peles
+  const kg = j.g("textoKg");
+  const pesoDe = j.g("pesoItem");
+  // Peso líquido da entrega: espada + 2 poções − 2 peles (com os pesos reais, negativo: a mochila precisa
+  // passar da carga para a recompensa não caber).
+  const liquido = pesoDe("espada_ferro") + 2 * pesoDe("pocao") - 2 * pesoDe("pele_lobo");
+  while (peso(p) + liquido <= cap(p)) p.inventario.push("pocao");
   const antes = json(p.inventario);
   const cheia = falar(j, "anciaoTeste");
-  assert.strictEqual(cheia.mensagem, `Ancião: Mochila cheia (${peso(p)}/${cap(p)} kg).`);
+  assert.strictEqual(cheia.mensagem, `Ancião: Mochila cheia (${kg(peso(p))}/${kg(cap(p))} kg).`);
   igual(p.inventario, antes, "nada muda com a mochila cheia");
   assert.strictEqual(m().status, "em_andamento");
   j.M.removerItens(p, "pocao", 3);
@@ -2039,6 +2049,7 @@ teste("34. caçadas: cada abate conta para todas as ativas que casam (golpe, fle
   j.entrar();
   concluirMissoes(j);
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   for (const id of ["deserto_ferroes", "deserto_rotas", "deserto_bando"]) assert.ok(aceitarCacada(j, id).ok, id);
   // 1 escorpião: as duas caçadas de escorpião avançam; a do bando, não. Sem "Caçada" na mensagem.
   const r1 = abater(j, "escorpiao1");
@@ -2053,8 +2064,7 @@ teste("34. caçadas: cada abate conta para todas as ativas que casam (golpe, fle
   igual(r2.tarefas.map((t) => [t.id, t.progresso]), [["deserto_bando", 1]]);
   assert.strictEqual(progressoCacada(j, "deserto_ferroes"), 1);
   // Flecha também conta.
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   p.inventario.push("flecha", "flecha");
   const r3 = abater(j, "escorpiao1", "atacarDistancia");
   assert.strictEqual(r3.tipoAtaque, "distancia");
@@ -2239,6 +2249,7 @@ teste("36. caçadas: entrega em qualquer atalaia, espera contada da entrega e a 
   j.entrar();
   concluirMissoes(j);
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const limiar = j.g("limiarNivel");
   p.nivel = 20;
   p.xp = limiar(19); // os 420 XP (abate + entrega) não sobem de nível
@@ -2345,22 +2356,22 @@ teste("37. troca de pontos: recusas sem mudar nada, itens, alforjes e estados da
   recusa("alforje_viagem", "Para trocar, é preciso ter Alforje de couro.");
   p.missoes.deserto.status = "concluida";
   p.missoes.egito.status = "concluida";
-  while (j.g("pesoCarregado")(p) + 8 <= carga()) p.inventario.push("pocao");
-  recusa("escudo_ferro", /^Mochila cheia \([\d.]+\/\d+ kg\)\. Libere espaço para receber Escudo de ferro\.$/);
+  while (j.g("pesoCarregado")(p) + j.g("pesoItem")("escudo_ferro") <= carga()) p.inventario.push("pocao");
+  recusa("escudo_ferro", /^Mochila cheia \([\d,]+\/[\d,]+ kg\)\. Libere espaço para receber Escudo de ferro\.$/);
   j.M.removerItens(p, "pocao", 999);
   // Item: desconta o saldo (o total da vida não muda) e entra na mochila; pode repetir.
   igual(trocar("escudo_ferro"), { ok: true, ofertaId: "escudo_ferro", pontos: 350, mensagem: "Troca feita: Escudo de ferro por 150 pontos de tarefa. Saldo: 350." });
   assert.strictEqual(j.M.contarItem(ID, "escudo_ferro"), 1);
   assert.strictEqual(p.pontosTarefaTotal, 800);
   igual(p.trocas, { escudo_ferro: 1 });
-  // Alforjes: +10 kg cada, uma vez; o de viagem exige o de couro.
+  // Alforjes: +5 kg cada (na escala da carga com os pesos reais), uma vez; o de viagem exige o de couro.
   const cargaAntes = carga();
   const couro = trocar("alforje_couro");
-  assert.strictEqual(couro.mensagem, "Troca feita: Alforje de couro (+10 kg de carga) por 60 pontos de tarefa. Saldo: 290.");
-  assert.strictEqual(carga(), cargaAntes + 10);
+  assert.strictEqual(couro.mensagem, "Troca feita: Alforje de couro (+5 kg de carga) por 60 pontos de tarefa. Saldo: 290.");
+  assert.strictEqual(carga(), cargaAntes + 5);
   recusa("alforje_couro", "Você já tem Alforje de couro.");
   assert.ok(trocar("alforje_viagem").ok);
-  assert.strictEqual(carga(), cargaAntes + 20);
+  assert.strictEqual(carga(), cargaAntes + 10);
   assert.strictEqual(p.pontosTarefa, 110);
   // O Azarias não compra (nem vende) itens da troca.
   posicionarAoLado(j, "deserto", npcs.mercador1);
@@ -2384,7 +2395,7 @@ teste("37. troca de pontos: recusas sem mudar nada, itens, alforjes e estados da
     falta: 40,
     possui: 1,
   });
-  assert.deepStrictEqual([alforje.icone, alforje.item, alforje.efeito], ["ui_alforje", null, "+10 kg de carga, para sempre"]);
+  assert.deepStrictEqual([alforje.icone, alforje.item, alforje.efeito], ["ui_alforje", null, "+5 kg de carga, para sempre"]);
   assert.strictEqual(couraca.motivo, "concluir a missão “A batalha de Refidim”");
   p.pontosTarefa = 150;
   igual(estados()[1], ["escudo_ferro", "disponivel"]);
@@ -3061,7 +3072,7 @@ teste("47. raridades: item com raridade se descreve sozinho, só a forma canôni
   assert.strictEqual(d.raridade, "epico");
   assert.strictEqual(nome(id), "Espada de ferro (Épico)");
   igual(textoAtr(id), ["+4 de dano", "+3% de chance de crítico"]);
-  assert.strictEqual(j.g("pesoItem")(id), 10);
+  assert.strictEqual(j.g("pesoItem")(id), j.g("ITENS").espada_ferro.peso, "a raridade não muda o peso");
   assert.strictEqual(info("escudo_bronze@raro.defesa2.vida8").defesa, 5 + 2);
   // Recusas: ordem errada, atributo que o tipo não tem, valor fora do teto, raridade inválida,
   // raridade em item que não é equipamento, atributos demais, sobras.
@@ -3124,7 +3135,7 @@ teste("48. raridades: atributos valem no combate, na vida, na carga e sobrevivem
   assert.ok(j.M.equiparItem(ID, espada, "arma").ok);
   const r = j.M.equiparItem(ID, couraca, "armadura");
   assert.ok(r.ok);
-  assert.match(r.mensagem, /Armadura de couro \(Épico\) equipado \(\+8 de defesa, \+5 kg de carga\)/);
+  assert.match(r.mensagem, /Equipou: Armadura de couro \(Épico\) \(\+8 de defesa, \+5 kg de carga\)/);
   const baseArma = arma0 ? j.g("infoItem")(arma0).bonus : 0;
   assert.strictEqual(danoBruto(p, "corpo"), dano0 - baseArma + 12 + 5);
   assert.strictEqual(vidaMaxima(p), vida0 + 25);
@@ -3443,8 +3454,7 @@ teste("52. comportamentos e status: matilha, fuga, distância, investida, fúria
     const { j, p, e } = cenaComportamento("chacal1", { manterVizinhos: true });
     const bando = Object.values(j.g("inimigos")).filter((x) => x.especie === "chacal" && x !== e && Math.max(Math.abs(x.x - e.x), Math.abs(x.y - e.y)) <= 12);
     assert.ok(bando.length, "há chacais por perto");
-    p.equipamento.arma = null;
-    p.equipamento.arco = "arco_madeira";
+    Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
     p.inventario.push("flecha", "flecha");
     aDistancia(j, e, 4);
     const r = j.exec({ tipo: "atacarDistancia", alvoId: e.id });
@@ -3557,6 +3567,7 @@ teste("53. campeões (JGB-6): 5% ao renascer, modificadores no nome, mais fortes
   const j = carregarJogo({ semente: 21 });
   j.entrar();
   const p = j.p;
+  vigorNeutro(j); // o XP do vigor fica no teste 74
   const [CAMPEAO, MODS, atributos, nomeDe] = ["CAMPEAO", "MODIFICADORES_CAMPEAO", "atributosInimigo", "nomeInimigo"].map(j.g);
   // Frequência: em muitos renascimentos, perto de 5%, com 1 ou 2 modificadores diferentes.
   const e = j.g("inimigos").hiena1;
@@ -4145,8 +4156,7 @@ teste("57. analisador de caçada (JGB-10): XP/h, saque/h, lucro, abates, mortes 
   p.vida = 10;
   p.inventario.push("pocao");
   assert.ok(j.exec({ tipo: "usarPocao" }).ok);
-  p.equipamento.arma = null;
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null }); // o arco usa as duas mãos
   for (let i = 0; i < 5; i++) p.inventario.push("flecha");
   const r2 = abater(j, "lobo1", "atacarDistancia");
   a = A();
@@ -4507,6 +4517,7 @@ teste("61. descanso do Sábado (JGB-11): a ausência no Sábado vira reserva e o
   j.g("Storage").flush();
   const j2 = carregarJogo({ store: j.store, inicio: local(14, 12) });
   const p2 = j2.entrar();
+  vigorNeutro(j2); // o XP do vigor (e o descanso junto) fica no teste 74
   assert.strictEqual(p2.descanso.xp, Math.round(0.75 * custo));
   const aviso = p2.avisosPendentes.find((a) => a.id === "descanso");
   assert.ok(aviso && /\+75 XP de descanso/.test(aviso.texto) && /dobro/.test(aviso.texto), "aviso do descanso");
@@ -4877,8 +4888,7 @@ teste("63c. habilidades: recarga própria e global, alcance, funda sem flechas, 
   const { j, p, e } = cenaComportamento("urso1");
   const g = (n) => j.g(n);
   comVocacao(j, "fundibulario", 25);
-  p.equipamento.arma = null;
-  p.equipamento.arco = "funda";
+  p.equipamento.arma = "funda"; // a funda usa uma mão só
   p.vidaInimigos[e.id] = 10_000;
   aDistancia(j, e, 4);
   j.definirAleatorio(() => 0.99); // sem crítico pela sorte
@@ -4906,7 +4916,7 @@ teste("63c. habilidades: recarga própria e global, alcance, funda sem flechas, 
   r = usar(j, "pedra_afiada", e.id);
   assert.ok(!r.ok && !p.recargas.pedra_afiada, "fora do alcance");
   // Arco gasta flechas.
-  p.equipamento.arco = "arco_madeira";
+  Object.assign(p.equipamento, { arma: "arco_madeira", escudo: null });
   aDistancia(j, e, 4);
   p.inventario.push("flecha", "flecha");
   const antes = p.inventario.filter((i) => i === "flecha").length;
@@ -5047,8 +5057,7 @@ function lutaComVocacao(inimigoId, vocacao, { semente = 7, nivelExtra = 0, ramo 
   if (vocacao) comVocacao(j, vocacao, nivel);
   if (vocacao && ramo !== null) montarBuild(j, vocacao, ramo);
   else Object.assign(p, { nivel, xp: j.g("limiarNivel")(nivel - 1) });
-  p.equipamento = { arma: perfil.arma, arco: vocacao === "fundibulario" ? "funda" : null, escudo: perfil.escudo, armadura: perfil.armadura };
-  if (vocacao === "fundibulario") p.equipamento.arma = null;
+  p.equipamento = { arma: vocacao === "fundibulario" ? "funda" : perfil.arma, escudo: perfil.escudo, armadura: perfil.armadura };
   p.habilidades = { corpo: perfil.corpo, distancia: perfil.corpo, defesa: perfil.defesa, oracao: 0 };
   p.vida = j.g("vidaMaxima")(p);
   p.inventario = Array(6).fill("pocao");
@@ -5653,12 +5662,15 @@ teste("65c. fabricar: nível, materiais, todos, mochila cheia, qualidade dos equ
   darItens(j, "madeira", 2);
   darItens(j, "pena_ave", 2);
   r = fab("flechas", 2);
-  assert.ok(r.ok && r.feitos === 2 && p.inventario.filter((i) => i === "flecha").length === 10, r.mensagem);
-  // Mochila cheia: a túnica (4 kg) pesa mais que os 2 tecidos (2 kg); sem espaço, nada é gasto.
+  // (as flechas vão para o espaço de munição do boneco)
+  assert.ok(r.ok && r.feitos === 2 && p.equipamento.municao === "flecha" && p.quantidadeMunicao === 10, r.mensagem);
+  // Mochila cheia: com os pesos reais a túnica (0,5 kg) pesa menos que os 2 tecidos (2 kg), então só recusa com a
+  // mochila acima da carga mesmo depois da troca; sem espaço, nada é gasto.
   p.inventario = [];
   darItens(j, "tecido_linho", 2);
   p.oficios.tecelao.xp = g("xpTotalOficio")(3);
-  while (j.M.adicionarItem(p, "flecha"));
+  const liquido = g("pesoItem")("tunica_pano") - 2 * g("pesoItem")("tecido_linho");
+  while (g("pesoCarregado")(p) + liquido <= g("capacidadeCarga")(p)) p.inventario.push("pocao");
   r = fab("tunica_pano");
   assert.ok(!r.ok && /Mochila cheia/.test(r.mensagem) && p.inventario.filter((i) => i === "tecido_linho").length === 2, r.mensagem);
   // Subir de nível: oficioSubiu no resultado.
@@ -5883,7 +5895,7 @@ teste("68. arte em 32 px por casa (JGB-48): humanos em 3 vistas com equipamento 
   // Equipamento visível: arma, escudo e armadura mudam o desenho do jogador.
   const jog = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
   const nu = jog({});
-  for (const eq of [{ arma: "espada_ferro" }, { escudo: "escudo_bronze" }, { armadura: "armadura_couro" }, { armadura: "couraca_escamas" }, { arco: "arco_madeira" }, { arma: "espada_ferro@raro.dano2" }])
+  for (const eq of [{ arma: "espada_ferro" }, { escudo: "escudo_bronze" }, { armadura: "armadura_couro" }, { armadura: "couraca_escamas" }, { arma: "arco_madeira" }, { arma: "espada_ferro@raro.dano2" }])
     assert.notStrictEqual(jog(eq), nu, JSON.stringify(eq));
   // Montarias e trajes geram sprite; montado tem as 3 vistas.
   for (const m of ["jumento", "camelo", "cavalo", "carro"]) {
@@ -6081,6 +6093,1209 @@ teste("71. cores do visual (JGB-49): paleta fixa, comando definirCores validado,
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
   assert.match(ui, /tipo: "definirCores"/);
   assert.doesNotMatch(ui, /\.cosmeticos\.cores\s*(\[|\.\w+\s*=|=)/, "a interface não escreve em p.cosmeticos.cores");
+});
+
+// ---------------------------------------------------------------------
+// 72. Inventário: pesos reais, carga, jogar no chão, beber sem precisar e vender/comprar em quantidade
+// ---------------------------------------------------------------------
+teste("72. inventário (a): pesos reais em kg, carga ajustada e textos com vírgula", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, g = (n) => j.g(n);
+  const ITENS = g("ITENS"), peso = (id) => ITENS[id].peso;
+  // Todo item tem peso positivo, de até 2 casas decimais (10 g), e nenhum passa de 15 kg.
+  for (const [id, d] of Object.entries(ITENS)) {
+    assert.ok(Number.isFinite(d.peso) && d.peso > 0 && d.peso <= 15, `${id}: ${d.peso} kg`);
+    assert.strictEqual(Math.round(d.peso * 100) / 100, d.peso, `${id}: no máximo 2 casas`);
+  }
+  // Referências (faixas de massa real).
+  const faixas = {
+    tunica_pano: [0.4, 0.6], armadura_couro: [4, 6], couraca_escamas: [10, 15], espada_madeira: [0.6, 1],
+    espada_ferro: [1, 1.5], espada_temperada: [1, 1.5], escudo_madeira: [2.5, 3.5], escudo_bronze: [5, 6], escudo_ferro: [5.5, 7.5],
+    arco_madeira: [0.6, 0.8], arco_composto: [0.6, 1.2], flecha: [0.02, 0.05], funda: [0.05, 0.2], pocao: [0.2, 0.4], pocao_fe: [0.2, 0.4],
+    pele_lobo: [1, 2], erva: [0.05, 0.1], odre_agua: [2, 3], peixe: [0.5, 1], minerio_cobre: [1.5, 3], pedra_onix: [0.01, 0.05],
+  };
+  for (const [id, [min, max]] of Object.entries(faixas)) assert.ok(peso(id) >= min && peso(id) <= max, `${id}: ${peso(id)} kg fora de ${min}–${max}`);
+  // A raridade não muda o peso.
+  assert.strictEqual(g("pesoItem")("armadura_couro@epico.defesa3.carga5"), peso("armadura_couro"));
+  // Carga: o kit inicial (vestido + 3 poções) cabe com folga no nível 1, como antes dos pesos reais.
+  const cap = g("capacidadeCarga"), carregado = g("pesoCarregado");
+  igual([g("CARGA_BASE"), g("CARGA_POR_NIVEL")], [35, 3]);
+  assert.strictEqual(carregado(p), 5.2, "espada de madeira + escudo de madeira + túnica + 3 poções");
+  assert.strictEqual(cap(p), 35);
+  assert.ok(cap(p) - carregado(p) >= 25, "sobram 25 kg ou mais para a caçada no nível 1");
+  p.nivel = 10;
+  assert.strictEqual(cap(p), 62);
+  // Um caçador de nível 15 com espada temperada, escudo de bronze, armadura de couro, arco composto, 100 flechas
+  // e 20 poções ainda leva mais de 15 peles grossas de urso ou leão.
+  p.nivel = 15;
+  Object.assign(p.equipamento, { arma: "espada_temperada", escudo: "escudo_bronze", armadura: "armadura_couro" });
+  p.inventario = ["arco_composto", ...Array(100).fill("flecha"), ...Array(20).fill("pocao")];
+  assert.ok(carregado(p) < 25, `equipamento de caça: ${carregado(p)} kg`);
+  assert.ok((cap(p) - carregado(p)) / peso("couro_grosso") > 15, "não fica cheio na hora");
+  // Peso arredondado a 10 g (as flechas de 0,03 kg contam) e texto com vírgula.
+  p.inventario = ["flecha", "flecha", "flecha"];
+  p.equipamento = { arma: null, arco: null, escudo: null, armadura: null };
+  assert.strictEqual(carregado(p), 0.09);
+  const kg = g("textoKg");
+  igual([kg(0.09), kg(12.35), kg(5), kg(5.2), kg(0.1 + 0.2)], ["0,09", "12,35", "5", "5,2", "0,3"]);
+  // Mochila cheia: mensagem com vírgula.
+  p.nivel = 1;
+  p.inventario = Array(116).fill("pocao"); // 34,8 kg
+  assert.strictEqual(j.M.mensagemMochilaCheia(p, "Libere espaço."), "Mochila cheia (34,8/35 kg). Libere espaço.");
+  // Alforjes da troca: +5 kg cada (na escala da carga nova); atributo de carga: até +5 na relíquia, teto 8 (saves antigos valem).
+  for (const o of g("DADOS_TROCA_PONTOS").filter((x) => x.melhoria)) assert.strictEqual(o.melhoria.carga, 5, o.id);
+  igual(g("ATRIBUTOS_ITEM").carga.faixas, { raro: [1, 2], epico: [2, 3], reliquia: [3, 5] });
+  assert.ok(g("itemValido")("armadura_couro@reliquia.defesa3.critico3.vida20.carga8"), "carga +8 de um save antigo continua válida");
+});
+
+teste("72. inventário (b): jogar no chão 1, X ou tudo; o que foi jogado volta só clicando", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, M = j.M, g = (n) => j.g(n);
+  const largar = (item, quantidade, x, y) => j.exec({ tipo: "largarItem", item, quantidade, x, y });
+  const conta = (id) => M.contarItem(ID, id);
+  p.inventario.push(...Array(10).fill("pele_lobo"), ...Array(30).fill("flecha"), "erva");
+  // Recusas sem mudar nada: quantidade inválida, mais do que tem, item que não tem ou inválido.
+  const antes = json(p);
+  for (const [item, q] of [["pele_lobo", 0], ["pele_lobo", -2], ["pele_lobo", 1.5], ["pele_lobo", "abc"], ["pele_lobo", 11], ["pele_lobo", Infinity],
+    ["presa_lobo", 1], ["nada", 1], ["constructor", 1], ["__proto__", 1], [undefined, 1], [null, 1]]) {
+    const r = largar(item, q);
+    assert.ok(!r.ok && r.mensagem, `${item} × ${q}`);
+  }
+  assert.match(largar("pele_lobo", 11).mensagem, /^Você só tem 10× Pele de lobo\.$/);
+  assert.match(largar("pele_lobo", 0).mensagem, /Quantidade inválida/);
+  // Equipamento vestido: precisa voltar à mochila antes.
+  assert.match(largar("espada_madeira", 1).mensagem, /^Tire do corpo antes de jogar no chão: guarde Espada de madeira na mochila\.$/);
+  igual(p, antes, "as recusas não mudam o save");
+
+  // 1 unidade, sem casa pedida: cai numa vizinha reta livre (à vista, não sob o personagem).
+  let r = largar("erva");
+  assert.ok(r.ok, r.mensagem);
+  assert.match(r.mensagem, /^Você jogou no chão: Erva medicinal\. Para pegar de volta, clique no item \(ele some em 10 minutos\)\.$/);
+  let s = p.saqueNoChao.find((x) => x.id === r.saqueId);
+  igual([s.item, s.largado, "quantidade" in s, g("distanciaChebyshev")(p, s), conta("erva")], ["erva", true, false, 1, 0]);
+  assert.ok(s.x === p.x || s.y === p.y, "vizinha reta");
+  // X unidades numa casa vizinha pedida (a do arrastar para o mundo); de novo na mesma casa, a pilha cresce.
+  const casa = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy })).find((c) => M.casaParaFicar(p.area, c.x, c.y));
+  r = largar("pele_lobo", 4, casa.x, casa.y);
+  assert.ok(r.ok && r.quantidade === 4 && /4× Pele de lobo/.test(r.mensagem), r.mensagem);
+  s = p.saqueNoChao.find((x) => x.id === r.saqueId);
+  igual([s.x, s.y, s.quantidade, conta("pele_lobo")], [casa.x, casa.y, 4, 6]);
+  r = largar("pele_lobo", 2, casa.x, casa.y);
+  igual([r.saqueId, s.quantidade, conta("pele_lobo"), p.saqueNoChao.filter((x) => x.item === "pele_lobo").length], [s.id, 6, 4, 1], "a pilha cresce");
+  // Tudo (30 flechas), pedindo uma casa longe demais: cai ao lado do personagem.
+  r = largar("flecha", 30, p.x + 5, p.y);
+  const fl = p.saqueNoChao.find((x) => x.id === r.saqueId);
+  igual([r.ok, conta("flecha"), fl.quantidade, g("distanciaChebyshev")(p, fl) <= 1], [true, 0, 30, true]);
+  // Casa de transição (trilha, cais, portal) nunca recebe o item.
+  const trilha = g("areas").canaan.passagem;
+  assert.ok(M.casaDeTransicao("canaan", trilha.x, trilha.y));
+  posicionarAoLado(j, "canaan", trilha);
+  r = largar("pele_lobo", 1, trilha.x, trilha.y);
+  s = p.saqueNoChao.find((x) => x.id === r.saqueId);
+  assert.ok(r.ok && !(s.x === trilha.x && s.y === trilha.y), "não cai na trilha");
+  const portal = g("PORTAIS").find((t) => t.area === "deserto");
+  assert.ok(M.casaDeTransicao("deserto", portal.x, portal.y) && !M.casaDeTransicao("deserto", portal.x - 1, portal.y));
+  // No barco não há chão.
+  const area = p.area;
+  p.area = "mar";
+  assert.ok(!largar("pele_lobo", 1).ok);
+  p.area = area;
+
+  // Pisar em cima não recolhe o que foi jogado; clicar ao lado recolhe (coletarSaque), sem contar como saque novo.
+  const pilha = p.saqueNoChao.find((x) => x.item === "flecha");
+  const a = M.estado[ID].analisador;
+  a.inicio = j.agora;
+  const ao = posicionarAoLado(j, p.area, pilha);
+  const passo = j.exec({ tipo: "mover", dx: pilha.x - ao.x, dy: pilha.y - ao.y });
+  assert.ok(passo.ok && !passo.itensColetados, "o passo não recolhe o largado");
+  igual([p.x, p.y, conta("flecha")], [pilha.x, pilha.y, 0]);
+  r = j.exec({ tipo: "coletarSaque", saqueId: pilha.id });
+  // (boneco, teste 73: as flechas recolhidas voltam à pilha do espaço de munição, vazio aqui)
+  igual([r.ok, r.itemColetado, r.quantidade, g("flechasDoJogador")(p), p.quantidadeMunicao, r.mensagem], [true, pilha.id, 30, 30, 30, "Você pegou: 30× Flecha."]);
+  igual([a.itens, a.valorItens], [0, 0], "o analisador não conta o que o jogador jogou fora");
+  // Pilha maior que a folga: leva o que couber e o resto fica no chão.
+  const peles = p.saqueNoChao.find((x) => x.item === "pele_lobo" && x.quantidade === 6);
+  posicionarAoLado(j, p.area, peles);
+  while (g("pesoCarregado")(p) + 3 * g("pesoItem")("pele_lobo") <= g("capacidadeCarga")(p)) p.inventario.push("pocao");
+  r = j.exec({ tipo: "coletarSaque", saqueId: peles.id });
+  assert.ok(r.ok && r.quantidade >= 1 && r.restante === 6 - r.quantidade && /no chão/.test(r.mensagem), r.mensagem);
+  assert.strictEqual(peles.quantidade > 1 ? peles.quantidade : 1, r.restante);
+  assert.ok(p.saqueNoChao.includes(peles), "o resto continua no chão");
+
+  // Save: o largado e a pilha voltam iguais; campos corrompidos são limpos na carga (sem versão nova).
+  g("Storage").flush();
+  const q = carregarJogo({ store: j.store, inicio: j.agora }).entrar();
+  igual(q.saqueNoChao.find((x) => x.id === peles.id), json(peles));
+  const chave = Object.keys(j.store).find((c) => c.startsWith("save_"));
+  const dados = JSON.parse(j.store[chave]);
+  dados.saqueNoChao.push(
+    { id: "x1", area: "canaan", x: 25, y: 22, item: "erva", criadoEm: j.agora, largado: "sim", quantidade: 0 },
+    { id: "x2", area: "canaan", x: 25, y: 22, moedas: 5, criadoEm: j.agora, largado: true, quantidade: 7 },
+    { id: "x3", area: "canaan", x: 25, y: 22, item: "erva", criadoEm: j.agora, largado: true, quantidade: 2.5 },
+  );
+  j.store[chave] = JSON.stringify(dados);
+  const r2 = carregarJogo({ store: j.store, inicio: j.agora }).entrar().saqueNoChao.filter((x) => x.id.startsWith("x"));
+  igual(r2.map((x) => [x.id, x.largado, x.quantidade]), [["x1", undefined, undefined], ["x2", undefined, undefined], ["x3", true, undefined]]);
+  assert.strictEqual(g("VERSAO_SAVE"), 16, "sem versão nova do save");
+  // Some em 10 minutos, como os outros saques.
+  j.avancar(10 * 60 * 1000 + 6000);
+  j.atualizar();
+  assert.ok(!p.saqueNoChao.some((x) => x.largado), "o largado expira");
+});
+
+teste("72. inventário (c): itens que a missão pede não saem pela venda nem pelo chão (o excedente sai)", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, M = j.M;
+  p.missoes.lobo.status = "concluida";
+  p.missoes.ervas = { status: "em_andamento", etapa: 0, progresso: [["erva1", "erva2", "erva3"], 0] };
+  p.inventario.push(...Array(5).fill("erva"));
+  igual(M.reservaDeMissao(p, "erva"), { quantidade: 3, missao: j.g("MISSOES").ervas.nome, npc: "Eliabe" });
+  assert.strictEqual(M.quantidadeLivre(ID, "erva"), 2);
+  assert.strictEqual(M.quantidadeLivre(ID, "pele_lobo"), 0);
+  let r = j.exec({ tipo: "largarItem", item: "erva", quantidade: 3 });
+  assert.ok(!r.ok && r.reservado, r.mensagem);
+  assert.strictEqual(r.mensagem, `A missão “${j.g("MISSOES").ervas.nome}” pede 3× Erva medicinal na entrega a Eliabe. Você pode jogar no chão até 2.`);
+  assert.ok(j.exec({ tipo: "largarItem", item: "erva", quantidade: 2 }).ok);
+  r = j.exec({ tipo: "largarItem", item: "erva" });
+  assert.ok(!r.ok && /Guarde para entregar\.$/.test(r.mensagem), r.mensagem);
+  // Venda: mesma reserva.
+  posicionarAoLado(j, "canaan", j.g("npcs").mercador_canaa);
+  p.inventario.push("erva");
+  r = j.exec({ tipo: "vender", item: "erva", quantidade: 2 });
+  assert.ok(!r.ok && /Você pode vender até 1\./.test(r.mensagem), r.mensagem);
+  assert.ok(j.exec({ tipo: "vender", item: "erva" }).ok);
+  assert.strictEqual(M.contarItem(ID, "erva"), 3);
+  // Entregue a missão, nada mais fica guardado.
+  p.missoes.ervas.status = "concluida";
+  assert.strictEqual(M.quantidadeLivre(ID, "erva"), 3);
+  assert.ok(j.exec({ tipo: "vender", item: "erva", quantidade: 3 }).ok);
+});
+
+teste("72. inventário (d): beber a poção sem precisar (pela bolsa) e as teclas que continuam protegendo", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, M = j.M;
+  const vidaMax = j.g("vidaMaxima")(p);
+  M.estado[ID].analisador.inicio = j.agora;
+  // Tecla H, atalhos e botão de toque: sem mesmoCheio, a vida cheia recusa e explica como beber assim mesmo.
+  let r = j.exec({ tipo: "usarPocao" });
+  assert.ok(!r.ok && /use-a pela bolsa/.test(r.mensagem), r.mensagem);
+  assert.strictEqual(M.contarItem(ID, "pocao"), 3);
+  // Pela bolsa (mesmoCheio): bebe, avisa e libera o espaço; a poção conta como gasto no analisador.
+  r = j.exec({ tipo: "usarPocao", mesmoCheio: true });
+  igual([r.ok, r.cura, r.mensagem, p.vida, M.contarItem(ID, "pocao")], [true, 0, "Você bebeu a poção, mas já estava com a vida cheia.", vidaMax, 2]);
+  assert.strictEqual(M.estado[ID].analisador.gastos, j.g("PRECOS_LOJA").pocao);
+  // Só true vale (um objeto de evento ou texto não bebe sem querer).
+  assert.ok(!j.exec({ tipo: "usarPocao", mesmoCheio: "sim" }).ok);
+  // Ferido: cura como sempre, com ou sem mesmoCheio.
+  p.vida = 10;
+  r = j.exec({ tipo: "usarPocao", mesmoCheio: true });
+  assert.ok(r.ok && r.cura > 0 && /recuperou/.test(r.mensagem), r.mensagem);
+  // Poção de fé: o mesmo.
+  p.inventario.push("pocao_fe", "pocao_fe");
+  p.fe = 100;
+  r = j.exec({ tipo: "usarPocaoFe" });
+  assert.ok(!r.ok && /use-a pela bolsa/.test(r.mensagem) && M.contarItem(ID, "pocao_fe") === 2, r.mensagem);
+  r = j.exec({ tipo: "usarPocaoFe", mesmoCheio: true });
+  igual([r.ok, r.feCurada, r.mensagem, M.contarItem(ID, "pocao_fe")], [true, 0, "Você bebeu a poção de fé, mas a sua fé já estava cheia.", 1]);
+  p.inventario = p.inventario.filter((x) => x !== "pocao");
+  assert.strictEqual(j.exec({ tipo: "usarPocao", mesmoCheio: true }).mensagem, "Você não tem poções.");
+  // A interface: duplo clique e menu da bolsa pedem mesmoCheio; a tecla H e os atalhos não.
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  const jogo = fs.readFileSync(path.join(RAIZ, "game.js"), "utf8");
+  assert.match(ui, /tipo: "usarPocao", mesmoCheio: true/);
+  assert.match(jogo, /if \(JD\(t\.h\)\) this\.usarPocao\(\);/);
+  assert.match(jogo, /if \(id === "pocao"\) return this\.usarPocao\(\);/);
+});
+
+teste("72. inventário (e): vender 1, X ou tudo e comprar provisões em quantidade", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, M = j.M;
+  posicionarAoLado(j, "canaan", j.g("npcs").mercador_canaa);
+  p.inventario.push(...Array(12).fill("pele_lobo"));
+  const valor = j.g("VALORES_VENDA").pele_lobo;
+  p.moedas = 0;
+  // Recusas sem mudar nada.
+  const antes = json(p);
+  for (const q of [0, -1, 2.5, "x", 13, Infinity]) assert.ok(!j.exec({ tipo: "vender", item: "pele_lobo", quantidade: q }).ok, `vender ${q}`);
+  igual(p, antes);
+  // 1 (sem quantidade, como antes), X e tudo.
+  let r = j.exec({ tipo: "vender", item: "pele_lobo" });
+  igual([r.ok, r.quantidade, r.mensagem, p.moedas], [true, 1, `Você vendeu Pele de lobo por ${valor} moedas.`, valor]);
+  r = j.exec({ tipo: "vender", item: "pele_lobo", quantidade: 5 });
+  igual([r.moedas, r.mensagem, M.contarItem(ID, "pele_lobo")], [5 * valor, `Você vendeu 5× Pele de lobo por ${5 * valor} moedas (${valor} cada).`, 6]);
+  r = j.exec({ tipo: "vender", item: "pele_lobo", quantidade: M.contarItem(ID, "pele_lobo") });
+  igual([r.ok, M.contarItem(ID, "pele_lobo"), p.moedas], [true, 0, 12 * valor]);
+  // O vestido não é vendido (só o da mochila) e cada raridade é um item à parte.
+  j.g("VALORES_VENDA").escudo_madeira = 7; // só neste teste: equipamento com preço de venda
+  p.inventario.push("escudo_madeira", "escudo_madeira@incomum.defesa1");
+  r = j.exec({ tipo: "vender", item: "escudo_madeira", quantidade: 2 });
+  assert.ok(!r.ok && /Você só tem 1×/.test(r.mensagem), "o escudo vestido não conta");
+  assert.ok(j.exec({ tipo: "vender", item: "escudo_madeira", quantidade: 1 }).ok);
+  igual([p.equipamento.escudo, p.inventario.includes("escudo_madeira@incomum.defesa1")], ["escudo_madeira", true]);
+  assert.ok(!j.exec({ tipo: "vender", item: "escudo_madeira@incomum.defesa1" }).ok, "a variante incomum não tem o preço do comum");
+  delete j.g("VALORES_VENDA").escudo_madeira;
+
+  // Comprar em quantidade: poções e lotes de flechas; sem moedas ou sem carga para tudo, recusa sem mudar nada.
+  p.moedas = 200;
+  const preco = j.g("PRECOS_LOJA");
+  r = j.exec({ tipo: "comprar", item: "pocao", quantidade: 5 });
+  igual([r.ok, r.mensagem, p.moedas, M.contarItem(ID, "pocao")], [true, `Compra realizada: 5× Poção de vida por ${5 * preco.pocao} moedas.`, 200 - 5 * preco.pocao, 8]);
+  r = j.exec({ tipo: "comprar", item: "flechas", quantidade: 4 });
+  // (boneco, teste 73: as flechas compradas vão para o espaço de munição)
+  igual([r.mensagem, j.g("flechasDoJogador")(p), p.quantidadeMunicao], [`Compra realizada: 20 flechas por ${4 * preco.flechas} moedas. Estão no espaço de munição.`, 20, 20]);
+  r = j.exec({ tipo: "comprar", item: "pocao" });
+  assert.strictEqual(r.mensagem, `Compra realizada: Poção de vida por ${preco.pocao} moedas.`, "1 continua como antes");
+  const antes2 = json(p);
+  r = j.exec({ tipo: "comprar", item: "pocao", quantidade: 50 });
+  assert.ok(!r.ok && /Você precisa de \d+ moedas para 50× Poção de vida \(tem \d+\)\./.test(r.mensagem), r.mensagem);
+  for (const q of [0, 2.5, "x", j.g("QUANTIDADE_MAXIMA_COMPRA") + 1]) assert.ok(!j.exec({ tipo: "comprar", item: "pocao", quantidade: q }).ok, `comprar ${q}`);
+  p.moedas = 5000;
+  while (j.g("pesoCarregado")(p) + 3 <= j.g("capacidadeCarga")(p)) p.inventario.push("pele_lobo");
+  const cheia = json(p);
+  r = j.exec({ tipo: "comprar", item: "pocao", quantidade: 20 });
+  assert.ok(!r.ok && /^A mochila não comporta tudo: cabem mais \d+\.$/.test(r.mensagem), r.mensagem);
+  igual(p, cheia, "a recusa por peso não muda nada");
+  igual(antes2.moedas, 200 - 5 * preco.pocao - 4 * preco.flechas - preco.pocao);
+});
+
+teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, munição em pilha e save antigo sem perder item", () => {
+  const { j, p, e } = cenaComportamento("urso1");
+  const g = (n) => j.g(n);
+  const [ITENS, SLOTS, ESPACOS, PRECOS, LOJAS, VENDA] = ["ITENS", "SLOTS_EQUIPAMENTO", "ESPACOS_BONECO", "PRECOS_LOJA", "LOJAS", "VALORES_VENDA"].map(g);
+  const info = g("infoItem");
+  const contarTudo = (q) => {
+    const m = {};
+    const lista = q.inventario.concat(Object.entries(q.equipamento).flatMap(([s, x]) => (!x ? [] : s === "municao" ? Array(q.quantidadeMunicao).fill(x) : [x])));
+    for (const x of lista) m[x] = (m[x] || 0) + 1;
+    return m;
+  };
+
+  // 1. Dados: os espaços do boneco (a mochila só abre o painel), uma mão para a arma e as peças novas.
+  igual(Object.keys(SLOTS).sort(), ["anel", "arma", "armadura", "cabeca", "colar", "escudo", "municao", "pernas", "pes"]);
+  for (const s of [...Object.keys(SLOTS), "mochila"]) assert.ok(ESPACOS[s]?.nome && ESPACOS[s].lugar && ESPACOS[s].silhueta, `ESPACOS_BONECO.${s}`);
+  igual(SLOTS.arma, ["arma", "arma_distancia"], "a mão da arma aceita corpo a corpo ou distância");
+  for (const id of ["arco_madeira", "arco_composto"]) assert.strictEqual(g("maosDoItem")(id), 2, `${id}: duas mãos (dado maos: 2)`);
+  for (const id of ["funda", "espada_ferro", "escudo_bronze"]) assert.strictEqual(g("maosDoItem")(id), 1, `${id}: uma mão`);
+  const vendidos = new Set(Object.values(LOJAS).flat());
+  const caem = new Set(Object.values(g("inimigos")).flatMap((x) => x.saque.itens.map((l) => l.item)));
+  for (const tipo of ["cabeca", "colar", "pernas", "pes", "anel"]) {
+    const pecas = Object.keys(ITENS).filter((id) => ITENS[id].tipo === tipo);
+    assert.ok(pecas.length, `${tipo}: há peças`);
+    for (const id of pecas) {
+      const d = ITENS[id];
+      assert.strictEqual(g("slotDoItem")(id), tipo, `${id}: espaço`);
+      assert.ok(d.peso > 0 && d.peso <= 2, `${id}: peso de verdade (${d.peso} kg)`);
+      assert.ok((d.defesa || 0) <= 2 && (d.defesa || d.atributosFixos), `${id}: defesa pequena ou um atributo modesto`);
+      for (const [k, v] of Object.entries(d.atributosFixos || {})) assert.ok(g("ATRIBUTOS_ITEM")[k] && v > 0 && v <= 10, `${id}: atributo ${k}`);
+      assert.ok(vendidos.has(id) || caem.has(id), `${id}: à venda ou no saque`);
+      if (vendidos.has(id)) assert.ok(PRECOS[id] > 0, `${id}: preço`);
+    }
+  }
+  assert.ok(ITENS.amuleto_faianca.tipo === "colar" && VENDA.amuleto_faianca > 0, "o amuleto de faiança vai no colar e os mercadores ainda o compram");
+  assert.strictEqual(g("sortearSaque")({ saque: { itens: [{ item: "amuleto_faianca", chance: 1 }] } }, () => 0.999)[0].item, "amuleto_faianca", "raridade fixa: cai sempre igual");
+
+  // 2. Peças do corpo: cada uma no seu espaço, com defesa e atributos que contam; o peso não muda ao vestir.
+  p.inventario.push("elmo_bronze", "colar_contas", "anel_selo_bronze", "botas_viagem", "grevas_bronze", "arco_madeira", "funda", "escudo_bronze");
+  const peso0 = g("pesoCarregado")(p), def0 = g("defesaEquipamento")(p), vida0 = g("vidaMaxima")(p);
+  const crit0 = g("chanceCritico")(p, "corpo"), carga0 = g("capacidadeCarga")(p);
+  let r = j.M.equiparItem(ID, "elmo_bronze", "pernas");
+  assert.ok(!r.ok && /vai na cabeça/.test(r.mensagem), `peça no espaço errado diz onde vai: ${r.mensagem}`);
+  for (const [item, slot] of [["elmo_bronze", "cabeca"], ["colar_contas", "colar"], ["anel_selo_bronze", "anel"], ["botas_viagem", "pes"], ["grevas_bronze", "pernas"]]) {
+    r = j.M.equiparItem(ID, item, slot);
+    assert.ok(r.ok && p.equipamento[slot] === item && !p.inventario.includes(item), r.mensagem);
+  }
+  assert.strictEqual(g("defesaEquipamento")(p), def0 + 2 + 1 + 2, "elmo, botas e grevas somam defesa");
+  assert.strictEqual(g("vidaMaxima")(p), vida0 + 10, "colar de contas: +10 de vida");
+  assert.strictEqual(g("chanceCritico")(p, "corpo"), crit0 + 2, "anel de selo: +2% de crítico");
+  assert.strictEqual(g("capacidadeCarga")(p), carga0 + ITENS.botas_viagem.atributosFixos.carga, "botas de viagem: carga a mais");
+  assert.strictEqual(g("pesoCarregado")(p), peso0, "vestir não muda o peso");
+  for (const s of ["arco", "mochila", "constructor"]) assert.ok(!j.M.equiparItem(ID, "arco_madeira", s).ok && !j.M.desequiparItem(ID, s).ok, `"${s}" não é espaço`);
+
+  // 3. O arco usa as duas mãos: equipá-lo guarda o escudo (e a espada); com ele na mão, o escudo não entra.
+  assert.ok(p.equipamento.escudo && p.equipamento.arma === "espada_madeira");
+  r = j.M.equiparItem(ID, "arco_madeira", "arma");
+  assert.ok(r.ok && p.equipamento.arma === "arco_madeira" && p.equipamento.escudo === null, r.mensagem);
+  assert.match(r.mensagem, /O arco usa as duas mãos\. Espada de madeira e Escudo de madeira voltaram para a mochila\.$/);
+  assert.ok(p.inventario.includes("escudo_madeira") && p.inventario.includes("espada_madeira") && r.guardados.length === 2);
+  const antes = json(p);
+  r = j.M.equiparItem(ID, "escudo_bronze", "escudo");
+  assert.ok(!r.ok && r.mensagem.startsWith("O arco usa as duas mãos."), r.mensagem);
+  igual(p, antes, "a recusa não muda nada");
+  assert.ok(!j.exec({ tipo: "alternarEquipamento", slot: "escudo" }).ok, "nem pelo alternar");
+  // A funda usa uma mão: o escudo volta.
+  assert.ok(j.M.equiparItem(ID, "funda", "arma").ok && p.inventario.includes("arco_madeira"));
+  assert.ok(j.M.equiparItem(ID, "escudo_bronze", "escudo").ok && p.equipamento.escudo === "escudo_bronze");
+
+  // 4. Um ataque só: o da mão. Funda: Espaço e R atiram (pedra, sem gastar nada); espada: R ao lado golpeia.
+  p.vidaInimigos[e.id] = 100_000;
+  aDistancia(j, e, 3);
+  r = j.exec({ tipo: "atacar", alvoId: e.id });
+  assert.ok(r.ok && r.tipoAtaque === "distancia" && r.projetil === "pedra", `Espaço com a funda atira: ${r.mensagem}`);
+  j.avancar(1000);
+  assert.ok(j.exec({ tipo: "atacarDistancia", alvoId: e.id }).tipoAtaque === "distancia");
+  j.avancar(1000);
+  assert.ok(j.M.equiparItem(ID, "espada_madeira", "arma").ok);
+  r = j.exec({ tipo: "atacarDistancia", alvoId: e.id });
+  assert.ok(!r.ok && /Equipe um arco ou a funda na mão da arma/.test(r.mensagem), `R de longe com a espada: ${r.mensagem}`);
+  posicionarAoLado(j, e.area, e);
+  r = j.exec({ tipo: "atacarDistancia", alvoId: e.id });
+  assert.ok(r.ok && r.tipoAtaque === "corpo" && r.projetil === null, `R ao lado com a espada golpeia: ${r.mensagem}`);
+  j.avancar(1000);
+  // Arco sem flechas: de longe, não atira; ao lado, o golpe sai sem arma (e avisa).
+  assert.ok(j.M.equiparItem(ID, "arco_madeira", "arma").ok && !p.equipamento.escudo);
+  igual([p.equipamento.municao, g("flechasDoJogador")(p), g("podeAtirar")(p)], [null, 0, false]);
+  const s0 = g("estatisticasCombate")(p);
+  assert.ok(s0.temArco && s0.modoAtaque === "distancia" && s0.danoCorpo < s0.danoDistancia, "com o arco na mão, o corpo a corpo é sem arma");
+  r = j.exec({ tipo: "atacar", alvoId: e.id });
+  assert.ok(r.ok && r.tipoAtaque === "corpo" && /Sem flechas: golpe sem arma/.test(r.mensagem), r.mensagem);
+  j.avancar(1000);
+  aDistancia(j, e, 3);
+  assert.strictEqual(j.exec({ tipo: "atacar", alvoId: e.id }).mensagem, "Você não tem flechas.");
+
+  // 5. Munição: comprada, cai na pilha do espaço de munição (que pesa); o tiro gasta dela antes da mochila.
+  const m = g("npcs").mercador_canaa;
+  posicionarAoLado(j, m.area, m);
+  p.moedas = 100;
+  const pesoAntes = g("pesoCarregado")(p), mochilaAntes = p.inventario.length;
+  assert.ok(j.exec({ tipo: "comprar", item: "flechas" }).ok && j.exec({ tipo: "comprar", item: "flechas" }).ok);
+  igual([p.equipamento.municao, p.quantidadeMunicao, p.inventario.length], ["flecha", 10, mochilaAntes], "as flechas compradas vão para o espaço de munição");
+  assert.strictEqual(g("pesoCarregado")(p), Math.round((pesoAntes + 10 * ITENS.flecha.peso) * 100) / 100, "a pilha pesa");
+  p.inventario.push("flecha", "flecha");
+  assert.strictEqual(g("estatisticasCombate")(p).flechas, 12, "flechas: espaço de munição e mochila");
+  p.area = e.area;
+  aDistancia(j, e, 3);
+  r = j.exec({ tipo: "atacar", alvoId: e.id });
+  assert.ok(r.ok && r.tipoAtaque === "distancia" && r.projetil === "flecha", r.mensagem);
+  igual([p.quantidadeMunicao, j.M.contarItem(ID, "flecha")], [9, 2], "gasta do espaço de munição primeiro");
+  // Guardar a munição leva a pilha inteira; equipar de novo junta tudo; o peso não muda.
+  const peso1 = g("pesoCarregado")(p);
+  r = j.M.desequiparItem(ID, "municao");
+  assert.ok(r.ok && /^9 flechas voltaram para a mochila/.test(r.mensagem) && p.equipamento.municao === null && p.quantidadeMunicao === 0, r.mensagem);
+  r = j.M.equiparItem(ID, "flecha", "municao");
+  igual([r.ok, p.quantidadeMunicao, j.M.contarItem(ID, "flecha"), g("pesoCarregado")(p)], [true, 11, 0, peso1], r.mensagem);
+  assert.ok(j.exec({ tipo: "alternarEquipamento", slot: "municao" }).ok && j.M.contarItem(ID, "flecha") === 11, "alternar guarda a pilha");
+  assert.ok(j.exec({ tipo: "alternarEquipamento", slot: "municao" }).ok && p.quantidadeMunicao === 11, "e equipa de novo");
+  assert.strictEqual(g("unidadesDoItem")(p, "flecha"), 11, "a pilha do espaço de munição conta inteira (troca de pontos)");
+  // Habilidade à distância (Fundibulário) com o arco gasta as flechas do espaço; sem arma à distância, recusa.
+  comVocacao(j, "fundibulario", 25);
+  j.avancar(2000);
+  r = usar(j, "mao_esquerda", e.id);
+  assert.ok(r.ok && p.quantidadeMunicao === 9, `duas pedras = duas flechas do espaço: ${r.mensagem}`);
+  assert.ok(j.M.equiparItem(ID, "espada_madeira", "arma").ok);
+  j.avancar(20_000);
+  assert.match(usar(j, "pedra_certeira", e.id).mensagem, /na mão da arma/);
+
+  // 6. Save: grava e volta igual; saves antigos (mão dividida em arma e arco) carregam sem perder item.
+  g("Storage").flush();
+  const q = carregarJogo({ store: j.store }).entrar();
+  igual([q.equipamento, q.quantidadeMunicao, q.inventario], [p.equipamento, p.quantidadeMunicao, p.inventario], "recarrega igual");
+  const antigo = (mudar) => {
+    const b = carregarJogo();
+    b.entrar();
+    b.g("Storage").flush();
+    const dados = JSON.parse(b.store.save_jogador1);
+    delete dados.quantidadeMunicao;
+    mudar(dados);
+    const original = contarTudo({ ...dados, equipamento: {}, quantidadeMunicao: 0, inventario: dados.inventario.concat(Object.values(dados.equipamento).filter(Boolean)) });
+    const c = carregarJogo({ store: { save_jogador1: JSON.stringify(dados) } }).entrar();
+    const depois = contarTudo(c);
+    for (const [item, n] of Object.entries(original)) if (info(item)) assert.ok((depois[item] || 0) >= n, `perdeu ${item}`);
+    assert.ok(!("arco" in c.equipamento), "sem o espaço antigo");
+    return c;
+  };
+  // espada e arco juntos: fica a espada; as flechas da mochila vão para o espaço de munição
+  let c = antigo((d) => {
+    d.equipamento = { arma: "espada_ferro", arco: "arco_composto", escudo: "escudo_bronze", armadura: "armadura_couro" };
+    d.inventario.push(...Array(7).fill("flecha"));
+  });
+  igual([c.equipamento.arma, c.equipamento.escudo, c.equipamento.municao, c.quantidadeMunicao, c.equipamento.cabeca], ["espada_ferro", "escudo_bronze", "flecha", 7, null]);
+  assert.ok(c.inventario.includes("arco_composto") && !c.inventario.includes("flecha"));
+  // Fundibulário: fica a arma de distância dele
+  c = antigo((d) => {
+    d.equipamento = { arma: "espada_ferro", arco: "funda", escudo: "escudo_madeira", armadura: null };
+    d.nivel = 10;
+    d.vocacao = { id: "fundibulario", especializacao: null, trocas: 0 };
+  });
+  igual([c.equipamento.arma, c.equipamento.escudo, c.inventario.includes("espada_ferro")], ["funda", "escudo_madeira", true]);
+  // só o arco (mão da espada vazia) com escudo: o arco fica na mão e o escudo volta para a mochila
+  c = antigo((d) => {
+    d.equipamento = { arma: null, arco: "arco_madeira@raro.dano2", escudo: "escudo_madeira", armadura: "tunica_pano" };
+  });
+  igual([c.equipamento.arma, c.equipamento.escudo, c.inventario.includes("escudo_madeira")], ["arco_madeira@raro.dano2", null, true]);
+  // dados estranhos: peça no espaço errado volta, item inválido some, chave que não é espaço devolve o item
+  c = antigo((d) => {
+    d.equipamento = { arma: "espada_ferro", cabeca: "escudo_ferro", anel: "anel@@", mochila: "pocao" };
+  });
+  igual([c.equipamento.cabeca, c.equipamento.anel, c.equipamento.municao, c.quantidadeMunicao, "mochila" in c.equipamento], [null, null, null, 0, false]);
+  assert.ok(c.inventario.includes("escudo_ferro") && c.inventario.includes("pocao"));
+  const normalizar = g("normalizarEquipamento");
+  const n1 = { inventario: [], equipamento: { municao: "flecha" }, quantidadeMunicao: -4 };
+  normalizar(n1);
+  igual([n1.equipamento.municao, n1.quantidadeMunicao], [null, 0], "pilha negativa esvazia o espaço");
+  const n2 = { inventario: ["flecha"], equipamento: { municao: "pocao" }, quantidadeMunicao: 5 };
+  normalizar(n2);
+  igual([n2.equipamento.municao, n2.quantidadeMunicao, n2.inventario], [null, 0, ["flecha", "pocao"]], "o que não é munição volta para a mochila");
+  // Depois da 1ª carga, flechas guardadas na mochila ficam lá (a escolha do jogador vale).
+  const b = carregarJogo();
+  b.entrar();
+  b.p.inventario.push("flecha", "flecha");
+  b.g("Storage").flush();
+  const c2 = carregarJogo({ store: b.store }).entrar();
+  igual([c2.equipamento.municao, c2.quantidadeMunicao, c2.inventario.filter((x) => x === "flecha").length], [null, 0, 2]);
+  assert.strictEqual(g("VERSAO_SAVE"), 16, "o boneco não pede versão nova do save");
+
+  // 7. Arte e interface: ícone para cada peça, peças visíveis no boneco do mundo e o painel lendo os espaços.
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  const Arte = j.ctx.Arte, PP = j.ctx.PIXEL_PATTERNS;
+  for (const id of Object.keys(ITENS).filter((x) => g("slotDoItem")(x))) assert.ok(PP[id], `ícone de ${id}`);
+  for (const s of Object.values(ESPACOS)) assert.ok(PP[s.silhueta], `silhueta ${s.silhueta}`);
+  const quadro = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
+  const nu = quadro({});
+  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }])
+    assert.notStrictEqual(quadro(eq), nu, `${JSON.stringify(eq)} aparece no boneco`);
+  assert.notStrictEqual(quadro({ arma: "arco_madeira" }), quadro({ arma: "espada_ferro" }), "o arco vai na mão");
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  assert.match(ui, /data-abrir-mochila/, "o espaço da mochila abre o painel Mochila");
+  assert.match(ui, /function abrirMenuEquip\(/, "botão direito (ou toque longo) numa peça vestida abre o menu dela");
+  assert.match(ui, /data-menu-guardar/, "o menu da peça vestida tem Guardar na mochila");
+  assert.match(FONTE_GAME, /r\.projetil === "pedra"/, "a funda atira uma pedra, o arco uma flecha");
+  assert.doesNotMatch(ui + FONTE_GAME, /equipamento\.arco\b|eq\.arco\b/, "ninguém lê o espaço antigo do arco");
+  assert.match(FONTE_GAME, /podeAtirar\(/, "o autoataque pergunta à lógica se dá para atirar");
+});
+
+// ---------------------------------------------------------------------
+// Janela de habilidades e vigor (teste 74)
+// ---------------------------------------------------------------------
+// O vigor guarda também creditadoAte (a guarda contra o relógio, teste 77); aqui contam minutos e presença.
+const semCredito = (v) => ({ minutos: v.minutos, vistoEm: v.vistoEm });
+// Põe o vigor no meio da faixa de XP normal (×1): os testes de outras regras de XP (missão, caçadas, campeões,
+// descanso) continuam conferindo só a regra deles. O personagem novo começa cheio, na faixa de +10%.
+function vigorNeutro(j, p = j.p) {
+  const faixas = j.g("REGRAS_VIGOR").faixas;
+  const i = faixas.findIndex((f) => f.xp === 1);
+  const topo = i > 0 ? faixas[i - 1].desde : j.g("REGRAS_VIGOR").maximoMinutos;
+  p.vigor.minutos = (faixas[i].desde + topo) / 2;
+}
+
+teste("74. janela de habilidades (a): fichaDeHabilidades traz nível, vida, fé, carga, vigor, habilidades e ofícios", () => {
+  const j = carregarJogo({ inicio: local(10, 9) }); // terça
+  j.entrar();
+  const p = j.p;
+  const ficha = () => j.g("fichaDeHabilidades")(p, j.agora);
+  const kg = j.g("textoKg");
+  let f = ficha();
+  igual(f.nivel, { nivel: 1, xp: 0, noNivel: 0, custo: 100, falta: 100, pct: 0, maximo: false, descanso: 0 });
+  igual([f.vida, f.fe], [{ atual: 100, maximo: 100 }, { atual: 0, maximo: 100, aprendida: false }]);
+  const peso = j.g("pesoCarregado")(p), cap = j.g("capacidadeCarga")(p);
+  igual(f.carga, { atual: peso, maximo: cap, pct: (100 * peso) / cap, texto: `${kg(peso)} / ${kg(cap)} kg` });
+  igual([f.vigor.texto, f.vigor.textoMaximo, f.vigor.pct, f.vigor.faixa.id], ["40:00", "40:00", 100, "descansado"]);
+  igual(f.combate.map((h) => [h.chave, h.nome, h.nivel, h.pct]), [
+    ["corpo", "Corpo a corpo", 0, 0],
+    ["distancia", "Distância", 0, 0],
+    ["defesa", "Defesa", 0, 0],
+    ["oracao", "Oração", 0, 0],
+  ]);
+  igual(f.oficios.map((o) => o.id), j.g("ORDEM_OFICIOS"));
+  assert.strictEqual(f.oficios.length, 6);
+
+  // Nível 2 com 50 de 150 XP: 33% (para baixo), faltam 100; a reserva de descanso aparece junto.
+  p.xp = 150;
+  p.nivel = 2;
+  p.descanso.xp = 30;
+  igual(ficha().nivel, { nivel: 2, xp: 150, noNivel: 50, custo: 150, falta: 100, pct: 33, maximo: false, descanso: 30 });
+
+  // Habilidade no meio do nível: o que falta, em XP e em usos, e o que ela dá agora.
+  p.skillXp.corpo = 3;
+  const corpo = ficha().combate[0];
+  igual([corpo.xp, corpo.necessario, corpo.falta, corpo.usos, corpo.pct, corpo.maximo, corpo.bloqueada], [3, 6, 3, 2, 50, false, false]);
+  assert.strictEqual(corpo.dica, "Faltam 3 de 6 XP (cerca de 2 golpes corpo a corpo) para o nível 1.");
+  assert.strictEqual(corpo.efeito, "+0 de dano, crítico 5%");
+  p.habilidades.distancia = 8;
+  p.skillXp.distancia = 17; // do 8 ao 9: 18 XP
+  const dist = ficha().combate[1];
+  igual([dist.nivel, dist.falta, dist.usos, dist.pct], [8, 1, 1, 94]);
+  assert.strictEqual(dist.dica, "Faltam 1 de 18 XP (cerca de 1 disparo) para o nível 9.");
+  assert.strictEqual(dist.efeito, "+2 de dano, crítico 6,6%");
+  p.habilidades.defesa = 100;
+  const def = ficha().combate[2];
+  igual([def.nivel, def.pct, def.maximo, def.falta, def.dica, def.efeito], [100, 100, true, 0, "Nível máximo (100).", "+20 de defesa"]);
+
+  // Oração: sem aprender, a dica diz onde; aprendida, o que falta e a cura (e o que vem no 25).
+  let ora = ficha().combate[3];
+  igual([ora.bloqueada, ora.dica], [true, "Aprenda a Oração com Jesus, na Galileia."]);
+  p.oracaoDesbloqueada = true;
+  p.fe = 80;
+  f = ficha();
+  ora = f.combate[3];
+  igual([ora.bloqueada, ora.dica, ora.efeito], [false, "Faltam 6 de 6 XP (cerca de 2 orações) para o nível 1.", "cura 20 (tira veneno e sangramento no nível 25)"]);
+  igual(f.fe, { atual: 80, maximo: 100, aprendida: true });
+  p.habilidades.oracao = 30;
+  assert.strictEqual(ficha().combate[3].efeito, "cura 35 e tira veneno e sangramento");
+
+  // Ofícios: nível, XP no nível e % (pela curva de REGRAS_OFICIOS).
+  p.oficios.pescador.xp = 5;
+  p.oficios.oleiro.xp = j.g("xpTotalOficio")(30);
+  f = ficha();
+  const pesc = f.oficios.find((o) => o.id === "pescador");
+  igual([pesc.nome, pesc.nivel, pesc.xp, pesc.necessario, pesc.falta, pesc.pct, pesc.dica], ["Pescador", 1, 5, 10, 5, 50, "Faltam 5 de 10 XP para o nível 2."]);
+  const oleiro = f.oficios.find((o) => o.id === "oleiro");
+  igual([oleiro.nivel, oleiro.pct, oleiro.maximo, oleiro.dica], [30, 100, true, "Nível máximo (30)."]);
+
+  // Mochila cheia: 100%; a ficha só lê (nada muda no personagem).
+  while (j.g("pesoCarregado")(p) <= j.g("capacidadeCarga")(p)) p.inventario.push("couro_grosso");
+  const antes = json(p);
+  igual(ficha().carga.pct, 100);
+  igual(p, antes, "a ficha é pura");
+});
+
+teste("74. vigor (b): gasta só caçando, em tempo real, e a aba parada não conta", () => {
+  const j = carregarJogo({ inicio: local(10, 9) });
+  j.entrar();
+  const p = j.p;
+  const est = j.M.estado[ID];
+  const R = j.g("REGRAS_VIGOR");
+  igual(semCredito(p.vigor), { minutos: R.maximoMinutos, vistoEm: j.agora }, "personagem novo começa cheio");
+  // Parado (sem golpe): nada gasta.
+  for (let i = 0; i < 120; i++) {
+    j.avancar(1000);
+    j.atualizar();
+  }
+  assert.strictEqual(p.vigor.minutos, R.maximoMinutos);
+  // Caçando (golpe a cada segundo): 10 minutos de caçada gastam 10 minutos de vigor; caçar marca presença.
+  for (let i = 0; i < 600; i++) {
+    est.ultimoCombate = est.ultimoGolpe = j.agora; // um golpe dado ou recebido
+    j.avancar(1000);
+    j.atualizar();
+  }
+  assert.ok(Math.abs(p.vigor.minutos - (R.maximoMinutos - 10)) < 1e-6, String(p.vigor.minutos));
+  assert.strictEqual(p.vigor.vistoEm, j.agora);
+  // Até janelaCombateSegundos depois do último golpe ainda conta (o 1º segundo já contou acima); depois, para.
+  let antes = p.vigor.minutos;
+  for (let i = 0; i < 120; i++) {
+    j.avancar(1000);
+    j.atualizar();
+  }
+  assert.ok(Math.abs(antes - p.vigor.minutos - (R.janelaCombateSegundos - 1) / 60) < 1e-6, "conta só a janela depois do golpe");
+  // Um passo enorme (aba parada) conta no máximo passoMaximoSegundos.
+  antes = p.vigor.minutos;
+  est.ultimoCombate = est.ultimoGolpe = j.agora;
+  j.avancar(1000);
+  j.atualizar();
+  est.ultimoCombate = est.ultimoGolpe = j.agora;
+  j.avancar(40_000);
+  j.atualizar();
+  assert.ok(Math.abs(antes - p.vigor.minutos - (1 + R.passoMaximoSegundos) / 60) < 1e-6);
+  // Uma luta de verdade (autoataque e golpes do lobo) gasta o tempo da luta (o 1º tique pega também a caminhada
+  // de 1,5 s que lutar() simula num salto só, sem tiques).
+  j.avancar(120_000);
+  j.atualizar();
+  antes = p.vigor.minutos;
+  const luta = lutar(j, "lobo1");
+  assert.ok(luta.vitoria);
+  const gasto = (antes - p.vigor.minutos) * 60;
+  assert.ok(gasto >= luta.duracao - 0.2 && gasto <= luta.duracao + 1.6, `${gasto} s de vigor numa luta de ${luta.duracao} s`);
+  // Nunca abaixo de zero.
+  p.vigor.minutos = 0.001;
+  est.ultimoCombate = est.ultimoGolpe = j.agora;
+  j.avancar(1000);
+  j.atualizar();
+  assert.strictEqual(p.vigor.minutos, 0);
+  igual(j.g("estadoVigor")(p, j.agora).faixa.id, "exausto");
+});
+
+teste("74. vigor (c): volta longe do jogo (1 min a cada 3, depois da carência) e o descanso do Sábado enche", () => {
+  const sair = (j) => j.g("Storage").flush();
+  const j = carregarJogo({ inicio: local(10, 9) }); // terça, 9 h
+  j.entrar();
+  j.p.vigor.minutos = 600;
+  j.M.salvar(j.p);
+  sair(j);
+  // 9 minutos fora: abaixo da carência (10), nada.
+  const j2 = carregarJogo({ store: j.store, inicio: local(10, 9, 9) });
+  const p2 = j2.entrar();
+  assert.strictEqual(p2.vigor.minutos, 600);
+  sair(j2);
+  // 70 minutos fora: (70 − 10) ÷ 3 = 20 minutos.
+  const j3 = carregarJogo({ store: j2.store, inicio: local(10, 10, 19) });
+  const p3 = j3.entrar();
+  assert.ok(Math.abs(p3.vigor.minutos - 620) < 1e-6, String(p3.vigor.minutos));
+  assert.ok(!p3.avisosPendentes.some((a) => a.id === "vigor"), "a volta comum não avisa");
+  // Com a página aberta e parada, a visão já mostra o que voltou; o save recebe no próximo salvar.
+  j3.avancar(40 * 60_000);
+  const v = j3.g("estadoVigor")(p3, j3.agora);
+  assert.ok(Math.abs(v.minutos - 630) < 1e-6 && Math.abs(p3.vigor.minutos - 620) < 1e-6);
+  assert.strictEqual(v.texto, "10:30");
+  j3.M.salvar(p3);
+  assert.ok(Math.abs(p3.vigor.minutos - 630) < 1e-6);
+  // Nunca passa do máximo.
+  p3.vigor.minutos = 2399;
+  j3.avancar(60 * 60_000);
+  j3.M.salvar(p3);
+  assert.strictEqual(p3.vigor.minutos, 2400);
+  sair(j3);
+
+  // Sábado: saiu sexta às 17 h e voltou às 19 h 30 (1 h 30 dentro do Sábado): cheio, com aviso.
+  const j4 = carregarJogo({ store: j3.store, inicio: local(13, 17) });
+  const p4 = j4.entrar();
+  p4.vigor.minutos = 600;
+  j4.M.salvar(p4);
+  sair(j4);
+  const j5 = carregarJogo({ store: j4.store, inicio: local(13, 19, 30) });
+  const p5 = j5.entrar();
+  assert.strictEqual(p5.vigor.minutos, 2400, "o Sábado enche");
+  const aviso = p5.avisosPendentes.find((a) => a.id === "vigor");
+  assert.ok(aviso && aviso.texto === "O descanso do Sábado renovou o seu vigor: 40:00.", JSON.stringify(aviso));
+  // Só 30 min dentro do Sábado (abaixo do mínimo de 60): a volta comum, (40 − 10) ÷ 3 = 10.
+  p5.vigor.minutos = 600;
+  p5.avisosPendentes = [];
+  j5.M.salvar(p5);
+  sair(j5);
+  const j6 = carregarJogo({ store: j5.store, inicio: local(13, 20, 10) });
+  const p6 = j6.entrar();
+  assert.ok(Math.abs(p6.vigor.minutos - 610) < 1e-6, String(p6.vigor.minutos));
+  assert.ok(!p6.avisosPendentes.some((a) => a.id === "vigor"));
+
+  // Relógio atrasado: a marca no futuro recomeça de agora, sem tirar nem dar vigor.
+  p6.vigor.minutos = 1000;
+  j6.M.salvar(p6);
+  sair(j6);
+  const j7 = carregarJogo({ store: j6.store, inicio: local(12, 9) });
+  const p7 = j7.entrar();
+  igual(semCredito(p7.vigor), { minutos: 1000, vistoEm: local(12, 9) });
+});
+
+teste("74. vigor (d): faixas e XP da criatura × campeão × vigor; o descanso dobra depois e a vocação não mexe", () => {
+  const j = carregarJogo({ inicio: local(10, 9) });
+  j.entrar();
+  const p = j.p;
+  const R = j.g("REGRAS_VIGOR");
+  const faixa = (m) => j.g("faixaVigor")(m).id;
+  igual(
+    [faixa(2400), faixa(2280), faixa(2279.99), faixa(720), faixa(719.99), faixa(0)],
+    ["descansado", "descansado", "disposto", "disposto", "exausto", "exausto"],
+  );
+  const texto = j.g("textoVigor");
+  igual([texto(2400), texto(2279.99), texto(65), texto(5), texto(0), texto(-3)], ["40:00", "37:59", "1:05", "0:05", "0:00", "0:00"]);
+  igual(R.faixas.map((x) => x.xp), [1.1, 1, 0.5]);
+  let v = j.g("estadoVigor")(p, j.agora);
+  igual([v.faixa.id, v.ateCair, v.proxima.id], ["descansado", 120, "disposto"]);
+  p.vigor.minutos = 700;
+  v = j.g("estadoVigor")(p, j.agora);
+  igual([v.faixa.id, v.texto, v.ateCair, v.proxima], ["exausto", "11:40", null, null]);
+
+  const lobo = j.g("inimigos").lobo1;
+  assert.strictEqual(j.g("xpDoAbate")(p, lobo), 40);
+  // Descansado (cheio): +10%.
+  p.vigor.minutos = R.maximoMinutos;
+  let r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpVigor, r.xpDescanso], [44, 4, 0]);
+  assert.match(r.mensagem, /\+44 XP \(4 do vigor\)\./);
+  // Disposto: XP normal, sem nota.
+  p.vigor.minutos = 1000;
+  r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpVigor], [40, 0]);
+  assert.doesNotMatch(r.mensagem, /vigor|exausto/);
+  // Exausto: metade.
+  p.vigor.minutos = 100;
+  r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpVigor], [20, -20]);
+  assert.match(r.mensagem, /\+20 XP \(exausto: 50% do XP\)\./);
+  // Campeão × vigor: 40 × 3 × 1,1.
+  p.vigor.minutos = R.maximoMinutos;
+  const CAMPEAO = j.g("CAMPEAO");
+  const comCampeao = Math.round(40 * CAMPEAO.xp * 1.1);
+  igual(j.g("composicaoXpAbate")(p, lobo, true, j.agora), {
+    xp: comCampeao,
+    semVigor: 40 * CAMPEAO.xp,
+    fatorVigor: 1.1,
+    faixa: { id: "descansado", nome: "Descansado", xp: 1.1, texto: "+10% de XP das criaturas" },
+  });
+  j.M.reaparecerInimigo(ID, "lobo1");
+  p.campeoes.lobo1 = ["feroz"];
+  p.vidaInimigos.lobo1 = 1;
+  r = abaterSemLimpar(j, "lobo1");
+  igual([r.campeao, r.xpGanho, r.xpVigor], [true, comCampeao, comCampeao - 40 * CAMPEAO.xp]);
+  p.saqueNoChao = [];
+  // Descanso do Sábado: dobra o XP já com o vigor (o extra sai da reserva).
+  p.descanso.xp = 500;
+  r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpDescanso, r.xpVigor, p.descanso.xp], [88, 44, 4, 456]);
+  p.vigor.minutos = 100;
+  r = abater(j, "lobo1");
+  igual([r.xpGanho, r.xpDescanso, r.xpVigor], [40, 20, -20]);
+  // Criatura fraca para o nível: a queda por nível vem antes do vigor.
+  p.descanso.xp = 0;
+  p.nivel = 20;
+  p.vida = 9999;
+  const fraca = j.g("xpDoAbate")(p, lobo);
+  r = abater(j, "lobo1");
+  igual(r.xpGanho, Math.round(fraca * 0.5));
+  // Vocação e talentos não multiplicam XP.
+  p.vigor.minutos = R.maximoMinutos;
+  p.nivel = 12;
+  const escorpiao = j.g("inimigos").escorpiao1;
+  const sem = json(j.g("composicaoXpAbate")(p, escorpiao, false, j.agora));
+  assert.ok(j.exec({ tipo: "escolherVocacao", vocacao: "guerreiro" }).ok);
+  for (const ramo of j.g("visaoTalentos")(p).ramos || []) {
+    for (const t of ramo.talentos || []) if (t.pode) j.exec({ tipo: "aprenderTalento", talento: t.id });
+  }
+  igual(j.g("composicaoXpAbate")(p, escorpiao, false, j.agora), sem);
+});
+
+teste("74. vigor (e): save sem versão nova — quem não tem o campo começa cheio e dados ruins são limpos", () => {
+  const j = carregarJogo({ inicio: local(10, 9) });
+  j.entrar();
+  const R = j.g("REGRAS_VIGOR");
+  const recarregar = (mexer) => {
+    mexer(j.p);
+    j.g("Storage").salvarAgora(j.p);
+    const j2 = carregarJogo({ store: j.store, inicio: local(10, 9) });
+    return j2.entrar();
+  };
+  assert.strictEqual(j.p.versao, j.g("VERSAO_SAVE"));
+  // Save de antes do vigor (sem o campo): cheio, com a ausência contando de agora.
+  let q = recarregar((x) => delete x.vigor);
+  igual(semCredito(q.vigor), { minutos: R.maximoMinutos, vistoEm: local(10, 9) });
+  assert.strictEqual(q.versao, j.g("VERSAO_SAVE"), "sem versão nova");
+  for (const [ruim, minutos] of [
+    ["abc", R.maximoMinutos],
+    [{ minutos: "x", vistoEm: -5 }, R.maximoMinutos],
+    [{ minutos: -10 }, 0],
+    [{ minutos: 99_999 }, R.maximoMinutos],
+    [{ minutos: 123.456789, vistoEm: local(10, 9) }, 123.457],
+    [{ minutos: null }, R.maximoMinutos],
+  ]) {
+    q = recarregar((x) => (x.vigor = json(ruim)));
+    igual(semCredito(q.vigor), { minutos, vistoEm: local(10, 9) }, JSON.stringify(ruim));
+  }
+  // O que foi gasto atravessa o save.
+  q = recarregar((x) => (x.vigor = { minutos: 777.5, vistoEm: local(10, 9) }));
+  igual(semCredito(q.vigor), { minutos: 777.5, vistoEm: local(10, 9) });
+});
+
+teste("75. rota longa (A*): caminho mais rápido, casa alcançável mais perto, o mapa inteiro sem travar, o clique no minimapa e os layouts das janelas", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const M = j.M, p = j.p;
+  const rotaNaGrade = j.g("rotaNaGrade"), REGRAS = j.g("REGRAS_ROTA"), COLS = j.g("COLS"), ROWS = j.g("ROWS");
+  const reto = REGRAS.custoReto, diag = REGRAS.custoDiagonal;
+  const custoDe = (passos) => passos.reduce((t, [dx, dy]) => t + (dx && dy ? diag : reto), 0);
+  // Confere passo a passo: vizinhas (8 direções), todas pisáveis, terminando na chegada.
+  const conferir = (r, origem, livre, msg) => {
+    let x = origem.x, y = origem.y;
+    for (const [dx, dy] of r.passos) {
+      assert.ok(Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx || dy), `${msg}: passo inválido ${dx},${dy}`);
+      x += dx;
+      y += dy;
+      assert.ok(livre(x, y), `${msg}: pisou em ${x},${y}, que não é livre`);
+    }
+    igual({ x, y }, r.chegada, `${msg}: termina na chegada`);
+  };
+
+  // (a) Grade pequena com paredes: o custo é o mesmo de uma busca completa (Dijkstra), em vários pares.
+  const L = 14, A = 10;
+  let semente = 7;
+  const sorteio = () => ((semente = (semente * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const bloqueio = Array.from({ length: L * A }, () => sorteio() < 0.28);
+  const livre = (x, y) => !bloqueio[y * L + x];
+  const dijkstra = (o) => {
+    const dist = new Array(L * A).fill(Infinity), feito = new Array(L * A).fill(false);
+    dist[o.y * L + o.x] = 0;
+    for (;;) {
+      let i = -1;
+      for (let k = 0; k < L * A; k++) if (!feito[k] && dist[k] < Infinity && (i < 0 || dist[k] < dist[i])) i = k;
+      if (i < 0) return dist;
+      feito[i] = true;
+      const x = i % L, y = Math.floor(i / L);
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= L || ny >= A || !livre(nx, ny)) continue;
+          dist[ny * L + nx] = Math.min(dist[ny * L + nx], dist[i] + (dx && dy ? diag : reto));
+        }
+    }
+  };
+  const casasLivres = [];
+  for (let y = 0; y < A; y++) for (let x = 0; x < L; x++) if (livre(x, y)) casasLivres.push({ x, y });
+  let comparados = 0;
+  for (let k = 0; k < 40; k++) {
+    const o = casasLivres[Math.floor(sorteio() * casasLivres.length)], d = casasLivres[Math.floor(sorteio() * casasLivres.length)];
+    const dist = dijkstra(o)[d.y * L + d.x];
+    const r = rotaNaGrade(livre, o, d, { colunas: L, linhas: A });
+    if (dist === Infinity) { assert.ok(!r.exato, "destino fora de alcance não é exato"); continue; }
+    assert.ok(r.exato, `${o.x},${o.y} → ${d.x},${d.y} chega`);
+    conferir(r, o, livre, `${o.x},${o.y} → ${d.x},${d.y}`);
+    assert.strictEqual(custoDe(r.passos), dist, `${o.x},${o.y} → ${d.x},${d.y}: o caminho mais rápido`);
+    comparados++;
+  }
+  assert.ok(comparados >= 20, `pares comparados: ${comparados}`);
+
+  // (b) Destino bloqueado ou cercado: vai até a casa alcançável mais perto; já estar nela = nenhum passo.
+  const parede = (x, y) => !(x === 5 && y >= 1) && !(y === 1 && x >= 5); // parede em L (x = 5 e y = 1)
+  let r = rotaNaGrade(parede, { x: 0, y: 5 }, { x: 8, y: 5 }, { colunas: 10, linhas: 8 });
+  igual([r.exato, r.chegada], [false, { x: 4, y: 5 }], "atrás da parede: para na casa mais perto, do lado de cá");
+  conferir(r, { x: 0, y: 5 }, parede, "parede");
+  r = rotaNaGrade(parede, { x: 4, y: 5 }, { x: 8, y: 5 }, { colunas: 10, linhas: 8 });
+  igual([r.passos, r.exato, r.chegada], [[], false, { x: 4, y: 5 }], "já está o mais perto possível");
+  r = rotaNaGrade(() => true, { x: 3, y: 3 }, { x: 3, y: 3 }, { colunas: 10, linhas: 8 });
+  igual([r.passos, r.exato], [[], true], "origem = destino");
+  r = rotaNaGrade((x, y) => !(x === 6 && y === 2), { x: 0, y: 2 }, { x: 6, y: 2 }, { colunas: 10, linhas: 8 });
+  igual([r.exato, r.chegada, r.passos.length], [false, { x: 5, y: 2 }, 5], "casa do destino é obstáculo: a vizinha");
+  igual(rotaNaGrade(() => true, { x: -1, y: 0 }, { x: 3, y: 3 }), null, "origem fora do mapa");
+  igual(rotaNaGrade(() => true, { x: 1, y: 1 }, { x: 1.5, y: 3 }), null, "destino inválido");
+  r = rotaNaGrade(() => true, { x: 0, y: 0 }, { x: 9999, y: -40 }, { colunas: 10, linhas: 8 });
+  igual([r.exato, r.chegada], [true, { x: 9, y: 0 }], "destino fora do mapa vai para a borda");
+  // cada casa é perguntada uma vez só
+  const perguntas = new Map();
+  rotaNaGrade((x, y) => { const k = `${x},${y}`; perguntas.set(k, (perguntas.get(k) || 0) + 1); return true; }, { x: 0, y: 0 }, { x: 9, y: 7 }, { colunas: 10, linhas: 8 });
+  assert.ok([...perguntas.values()].every((n) => n === 1), "livre(x, y) uma vez por casa");
+
+  // (c) Grade de passagem: obstáculos, NPC e criatura viva bloqueiam; a casa do jogador e a criatura morta, não.
+  p.area = "canaan";
+  const grade = M.gradeDePassagem(p);
+  const mapa = j.g("mapas").canaan;
+  assert.strictEqual(grade.length, COLS * ROWS);
+  for (let y = 0; y < ROWS; y += 7) for (let x = 0; x < COLS; x += 5) if (mapa[y][x] !== 0) assert.strictEqual(grade[y * COLS + x], 0, `obstáculo ${x},${y}`);
+  const npc = Object.values(j.g("npcs")).find((n) => n.area === "canaan");
+  assert.strictEqual(grade[npc.y * COLS + npc.x], 0, "NPC bloqueia");
+  assert.strictEqual(grade[p.y * COLS + p.x], 1, "a casa do jogador conta como livre");
+  const lobo = Object.values(j.g("inimigos")).find((e) => e.area === "canaan" && M.inimigoVivo(p, e.id));
+  assert.strictEqual(M.gradeDePassagem(p)[lobo.y * COLS + lobo.x], 0, "criatura viva bloqueia");
+  for (let y = 0; y < ROWS; y += 3)
+    for (let x = 0; x < COLS; x += 3) assert.strictEqual(grade[y * COLS + x] === 1, M.casaLivre(x, y, p, true), `mesma regra de casaLivre em ${x},${y}`);
+
+  // (d) Do início de Canaã até o canto oposto do mapa: a busca cobre o mapa inteiro em poucos ms, e o
+  // jogador anda a rota com o comando mover até a chegada (sem pisar em cais, trilha ou portal no meio).
+  const a = j.g("areas").canaan;
+  const transicao = new Set([a.passagem, a.cais, ...Object.values(a.portos || {}).map((x) => x.cais), ...j.g("PORTAIS").filter((t) => t.area === "canaan")]
+    .filter(Boolean).map((c) => c.y * COLS + c.x));
+  Object.assign(p, { x: a.inicio.x, y: a.inicio.y });
+  const destino = { x: COLS - 2, y: ROWS - 2 };
+  const pode = (x, y) => grade[y * COLS + x] === 1 && (!transicao.has(y * COLS + x) || (x === destino.x && y === destino.y));
+  const t0 = process.hrtime.bigint();
+  r = rotaNaGrade(pode, p, destino);
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  assert.ok(ms < 150, `A* em todo o mapa: ${ms.toFixed(1)} ms`);
+  assert.ok(r.passos.length > 100, `rota longa: ${r.passos.length} passos`);
+  assert.ok(Math.max(Math.abs(r.chegada.x - destino.x), Math.abs(r.chegada.y - destino.y)) <= 6, `chega perto do canto: ${JSON.stringify(r.chegada)}`);
+  for (const [dx, dy] of r.passos) assert.ok(j.exec({ tipo: "mover", dx, dy }).ok !== false, `passo ${dx},${dy} em ${p.x},${p.y}`);
+  igual([p.area, p.x, p.y], ["canaan", r.chegada.x, r.chegada.y], "andou a rota inteira");
+
+  // (e) A interface: o clique no minimapa anda pela rota longa (que troca a anterior e larga a perseguição) e
+  // a marca o destino; cada layout padrão das janelas laterais (largo, largo baixo, médio, celular) põe toda
+  // janela numa coluna uma vez só, e toda janela existe no index.html; o console tem as letras pedidas.
+  const FONTE_UI = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  const HTML = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  assert.match(FONTE_GAME, /function ligarMinimapa\(\) \{[\s\S]{0,900}\.irAteCasa\(x, y\)/, "o clique no minimapa usa irAteCasa");
+  assert.match(FONTE_GAME, /irAteCasa\(x, y\) \{[\s\S]{0,240}this\.rotaAte\(x, y\);\s*this\.perseguir = false;/, "irAteCasa: rota longa e sem perseguição");
+  assert.match(FONTE_GAME, /rotaAte\(x, y\) \{[\s\S]{0,160}Mundo\.gradeDePassagem\(this\.p\)[\s\S]{0,160}rotaNaGrade\(/, "rotaAte: A* sobre a grade de passagem");
+  assert.match(FONTE_GAME, /const d = this\.rota\?\.destino;/, "o minimapa desenha o destino da rota");
+  const objeto = (nome) => Function(`"use strict"; return (${FONTE_UI.match(new RegExp(`const ${nome} = (\\{[\\s\\S]*?\\n  \\});`))[1]});`)();
+  const JANELAS = objeto("JANELAS"), LAYOUTS = objeto("LAYOUT_PADRAO");
+  const ids = Object.keys(JANELAS).sort();
+  igual(ids.length, 8, "8 janelas laterais");
+  for (const id of ids) assert.match(HTML, new RegExp(`<section class="[^"]*" id="${id}"`), `${id} no index.html`);
+  igual(Object.keys(LAYOUTS).sort(), ["baixo", "estreito", "largo", "medio"]);
+  for (const [m, l] of Object.entries(LAYOUTS)) {
+    igual([...l.esq, ...l.dir].sort(), ids, `layout ${m}: toda janela uma vez`);
+    for (const id of [...l.min, ...l.fechadas]) assert.ok(ids.includes(id), `layout ${m}: ${id} é janela`);
+  }
+  assert.match(HTML, /\.console-lista\{[^}]*font:500 15px\/1\.55/, "linhas do console em 15 px com mais espaço");
+  assert.match(HTML, /\.console-lista time\{[^}]*font:700 var\(--fs-13\)/, "a hora em 13 px");
+});
+
+teste("76. arte do mundo: props das vilas (dados, arte e colisão) e vegetação rasteira em moitas", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const [mapas, pisos, areas, npcs, MAPAS, PISO, estruturasPorArea] = ["mapas", "pisos", "areas", "npcs", "DADOS_MAPAS", "PISO", "estruturasPorArea"].map(j.g);
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "cenario.js"), "utf8"), j.ctx, { filename: "cenario.js" });
+  const Arte = j.ctx.Arte, Cenario = j.ctx.Cenario;
+  const PROPS = ["barril", "caixotes", "carroca", "jarros", "lenha", "cocho", "cerca"];
+  const ehProp = (m) => PROPS.includes(m.tipo);
+  // Alcance a partir do início, andando nas 4 direções (como fecharBolsoes).
+  const alcance = (mapa, inicio) => {
+    const visto = new Set([`${inicio.x},${inicio.y}`]), fila = [[inicio.x, inicio.y]];
+    while (fila.length) {
+      const [x, y] = fila.pop();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const k = `${x + dx},${y + dy}`;
+        if (mapa[y + dy]?.[x + dx] === 0 && !visto.has(k)) { visto.add(k); fila.push([x + dx, y + dy]); }
+      }
+    }
+    return visto;
+  };
+  let total = 0;
+  for (const [area, d] of Object.entries(MAPAS)) {
+    const props = d.marcos.filter(ehProp);
+    if (!d.vilas.length) continue;
+    assert.ok(props.length >= 5, `${area}: a vila tem props (${props.length})`);
+    const ruas = new Set();
+    for (const c of d.caminhos) j.g("casasDoCaminho")(c, (x, y) => ruas.add(`${x},${y}`));
+    const portas = estruturasPorArea[area].filter((e) => e.entrar).map((e) => `${e.porta.x},${e.porta.y + 1}`);
+    const doNpc = Object.values(npcs).filter((n) => n.area === area);
+    for (const m of props) {
+      total++;
+      const k = `${m.x},${m.y}`, nome = `${area}: ${m.tipo} em ${k}`;
+      // dentro de uma vila (fora do muro), bloqueando a casa, fora das ruas e da frente das portas
+      assert.ok(d.vilas.some((v) => m.x > v.x && m.y > v.y && m.x < v.x + v.largura - 1 && m.y < v.y + v.altura - 1), `${nome} fora das vilas`);
+      assert.strictEqual(mapas[area][m.y][m.x], 1, `${nome} sem colisão`);
+      assert.strictEqual(pisos[area][m.y][m.x], PISO.CHAO, `${nome}: piso`);
+      assert.ok(!ruas.has(k), `${nome} em cima de uma rua`);
+      assert.ok(!portas.includes(k), `${nome} na frente de uma porta`);
+      // a clareira de cada personagem (as 8 casas em volta) fica livre
+      for (const n of doNpc) assert.ok(Math.max(Math.abs(n.x - m.x), Math.abs(n.y - m.y)) > 1, `${nome} encostado em ${n.id}`);
+      // a arte da região: ob_<área>_<tipo>, sem deslocamento sorteado, com pixels em todo quadro
+      const t = Arte.tipoObstaculo(area, m.x, m.y), def = Arte.PIXEL_PATTERNS[t.chave];
+      assert.strictEqual(t.chave, `ob_${area}_${m.tipo}`, nome);
+      assert.ok(def && (def.prop || (area === "egito" && m.tipo === "jarros")), `${nome}: desenho de prop`);
+      for (let q = 0; q < def.quadros; q++) assert.ok(Arte.pixels(t.chave, { quadro: q }).data.some(Boolean), `${t.chave} quadro ${q} vazio`);
+    }
+    // Os props não fecham caminho nenhum: sem eles o mapa alcança as mesmas casas (mais as dos próprios props).
+    const comProps = alcance(mapas[area], areas[area].inicio);
+    const original = d.marcos;
+    d.marcos = original.filter((m) => !ehProp(m));
+    const gerar = () => {
+      j.g("gerarMapa")(area);
+      for (const pt of [areas[area].inicio, areas[area].chegada, areas[area].passagem]) if (pt) j.g("abrirCasa")(area, pt.x, pt.y);
+      return alcance(j.g("mapas")[area], areas[area].inicio);
+    };
+    const semProps = gerar();
+    d.marcos = original;
+    const outra = gerar();
+    for (const k of semProps) assert.ok(outra.has(k) || props.some((m) => `${m.x},${m.y}` === k), `${area}: o prop fecha a casa ${k}`);
+    for (const m of props) assert.ok(semProps.has(`${m.x},${m.y}`), `${area}: ${m.tipo} em ${m.x},${m.y} numa casa que já era fechada`);
+    assert.ok(comProps.size > 0);
+  }
+  assert.ok(total >= 40, `props nas vilas: ${total}`);
+  // Vegetação rasteira: tipos conhecidos pelo cenario.js, densidade de 0 a 1, e o chão pinta igual duas vezes.
+  for (const [area, d] of Object.entries(MAPAS)) {
+    const veg = d.vegetacao;
+    if (!veg) continue;
+    assert.ok(veg.densidade > 0 && veg.densidade <= 1, `${area}: densidade da vegetação`);
+    for (const tipo of Object.keys(veg.moitas)) assert.ok(Cenario.TIPOS_MOITA.includes(tipo), `${area}: moita "${tipo}" sem desenho`);
+    for (const [tipo, dens] of Object.entries(veg.beira || {})) assert.ok(Cenario.TIPOS_BEIRA.includes(tipo) && dens > 0 && dens <= 1, `${area}: beira "${tipo}"`);
+  }
+  const a = Cenario.pintarPedacoChao("galileia", 3, 1).buf, b = Cenario.pintarPedacoChao("galileia", 3, 1).buf;
+  assert.ok(a.length === b.length && a.every((v, i) => v === b[i]), "o pedaço do chão é sempre o mesmo");
+});
+
+teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no chão, vigor sem trapaça no relógio e só com golpe", () => {
+  // (a) Save de veterano acima da carga nova: nada some e há um aviso único explicando o que fazer.
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    p.inventario.push(...Array(60).fill("madeira"));
+    p.versao = 15;
+    const j2 = carregarJogo({ store: { save_jogador1: JSON.stringify(p) } });
+    j2.entrar();
+    const pesado = j2.p;
+    assert.strictEqual(pesado.inventario.filter((x) => x === "madeira").length, 60, "nenhuma madeira some");
+    assert.ok(pesado.avisosPendentes.some((a) => a.id === "carga_real" && /peso de verdade/.test(a.texto)), "aviso da carga real");
+  }
+  // (b) Save antigo de arqueiro com arco e escudo: o escudo volta para a mochila com aviso; equipamento em lista não perde nada.
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    p.equipamento = { arma: null, arco: "arco_composto", escudo: "escudo_bronze", armadura: "tunica_pano" };
+    p.versao = 15;
+    const j2 = carregarJogo({ store: { save_jogador1: JSON.stringify(p) } });
+    j2.entrar();
+    igual([j2.p.equipamento.arma, j2.p.equipamento.escudo], ["arco_composto", null]);
+    assert.ok(j2.p.inventario.includes("escudo_bronze"), "o escudo está na mochila");
+    assert.ok(j2.p.avisosPendentes.some((a) => a.id === "boneco_duas_maos" && /Escudo de bronze/.test(a.texto)), "aviso do arco de duas mãos");
+    p.equipamento = ["espada_ferro", "escudo_madeira"];
+    const j3 = carregarJogo({ store: { save_jogador1: JSON.stringify(p) } });
+    j3.entrar();
+    assert.ok(j3.p.inventario.includes("espada_ferro") && j3.p.inventario.includes("escudo_madeira"), "equipamento em lista volta para a mochila");
+  }
+  // (c) Pilha jogada no chão não sai no corte por quantidade (só pelos 10 minutos).
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    p.inventario.push(...Array(20).fill("pele_lobo"));
+    assert.ok(j.exec({ tipo: "largarItem", item: "pele_lobo", quantidade: 20 }).ok);
+    const pilha = p.saqueNoChao.find((s) => s.largado);
+    assert.ok(pilha, "a pilha está no chão");
+    for (let i = 0; i < 70; i++) p.saqueNoChao.push({ id: `extra${i}`, area: p.area, x: 3, y: 3, item: "pele_lobo", criadoEm: j.agora + i });
+    j.M.limparSaques(p, j.agora + 1000);
+    assert.ok(p.saqueNoChao.some((s) => s.id === pilha.id), "a pilha largada continua no chão");
+    j.M.limparSaques(p, j.agora + 11 * 60_000);
+    assert.ok(!p.saqueNoChao.some((s) => s.id === pilha.id), "depois de 10 minutos, some");
+  }
+  // (d) Atrasar e adiantar o relógio não devolve vigor de graça.
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    const agora = j.agora;
+    p.vigor = { minutos: 600, vistoEm: agora, creditadoAte: agora };
+    const credito = j.g("creditarVigor");
+    credito(p, agora - 24 * 3600_000); // relógio atrasado: nada
+    const depois = credito(p, agora + 1000); // relógio de volta: a ausência já contada não conta de novo
+    assert.ok(p.vigor.minutos <= 600.01 && depois.ganho < 0.01, `vigor ${p.vigor.minutos}`);
+  }
+  // (e) Veneno sem golpe não gasta vigor.
+  {
+    const j = carregarJogo();
+    j.entrar();
+    const p = j.p;
+    const estado = j.M.estado[ID];
+    const antes = p.vigor.minutos;
+    const t0 = j.agora;
+    estado.ultimoCombate = t0; // um tique de veneno marca combate, mas não é golpe
+    estado.ultimoGolpe = 0;
+    estado.vigorEm = t0;
+    j.M.passoVigor(p, estado, t0 + 4000);
+    igual(p.vigor.minutos, antes, "sem golpe, o vigor não cai");
+    estado.ultimoGolpe = t0 + 4000;
+    j.M.passoVigor(p, estado, t0 + 8000);
+    assert.ok(p.vigor.minutos < antes, "com golpe, cai");
+  }
+});
+
+teste("78. arte do mundo (revisão): decorações sem prop por cima, moitas longe das estradas, cerca com poste de fecho e escala de 1 px", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const [mapas, MAPAS] = ["mapas", "DADOS_MAPAS"].map(j.g);
+  // (a) cada decoração fica numa casa livre (criarDecoracao só desenha ali) e nenhum marco (prop, barco…)
+  // a até 1 casa: o prop bloquearia a casa ou passaria por cima do enfeite
+  for (const [area, d] of Object.entries(MAPAS)) for (const dc of d.decoracoes || []) {
+    const nome = `${area}: ${dc.chave} em ${dc.x},${dc.y}`;
+    igual(mapas[area][dc.y][dc.x], 0, `${nome} numa casa bloqueada`);
+    const perto = (d.marcos || []).filter((m) => Math.max(Math.abs(m.x - dc.x), Math.abs(m.y - dc.y)) <= 1);
+    igual(perto.map((m) => `${m.tipo} ${m.x},${m.y}`).join("; "), "", `${nome} com marco ao lado`);
+  }
+  // (b) vegetação rasteira: nenhum px de moita (arbusto, pedra, tufo…) em estrada, rua de pedra, prédio, estrutura
+  // ou chão pisado (gasto > 0,45) — a caixa inteira da peça é conferida, não só o pé. Os juncos da beira ficam
+  // de fora (moram na água). Pedaços onde a peça antiga passava da beira: Canaã (estrada e frente da tenda),
+  // Galileia (estrada e rua de pedra) e Sinai (chão pisado).
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8"), j.ctx, { filename: "sprites.js" });
+  vm.runInContext(fs.readFileSync(path.join(RAIZ, "cenario.js"), "utf8"), j.ctx, { filename: "cenario.js" });
+  const Cenario = j.ctx.Cenario, pisos = j.g("pisos"), PISO = j.g("PISO"), COLS = j.g("COLS"), ROWS = j.g("ROWS");
+  const BEIRA = new Set(Cenario.TIPOS_BEIRA);
+  const pedacos = { canaan: [[3, 1], [0, 1]], galileia: [[1, 7], [2, 3], [2, 1]], sinai: [[1, 5], [0, 6]] };
+  for (const [area, lista] of Object.entries(pedacos)) {
+    const { cls, gasto } = Cenario.classesDaArea(area);
+    const CHAO = 1; // classe "chão" de classesDaArea (cenario.js: NADA 0, CHAO 1, TERRA 2, RUA 3, PREDIO 4)
+    let pintados = 0;
+    const ruins = [];
+    const espiao = (wx, wy, peca) => {
+      if (BEIRA.has(peca)) return;
+      pintados++;
+      const cx = wx >> 5, cy = wy >> 5;
+      if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return; // orla
+      const i = cy * COLS + cx;
+      if (cls[i] !== CHAO || pisos[area][cy][cx] !== PISO.CHAO || gasto[i] > 0.45) ruins.push(`${peca}@${wx},${wy}`);
+    };
+    for (const [bx, by] of lista) Cenario.pintarPedacoChao(area, bx, by, espiao);
+    assert.ok(pintados > 1000, `${area}: a vegetação continua lá (${pintados} px)`);
+    igual(ruins.length, 0, `${area}: moita fora do chão livre (${ruins.slice(0, 4).join(", ")})`);
+  }
+  // (c) cerca: só a última peça de cada fileira (sem cerca à direita) pede o fecho, e o quadro de fecho tem um
+  // poste na ponta direita onde o quadro comum só tem as travessas soltas
+  const Arte = j.ctx.Arte;
+  let fileiras = 0;
+  for (const [area, d] of Object.entries(MAPAS)) {
+    const cercas = new Set(d.marcos.filter((m) => m.tipo === "cerca").map((m) => `${m.x},${m.y}`));
+    for (const k of cercas) {
+      const [x, y] = k.split(",").map(Number), t = Arte.tipoObstaculo(area, x, y), fim = !cercas.has(`${x + 1},${y}`);
+      igual(t.fecho, fim, `${area}: cerca em ${k} (fecho)`);
+      if (fim) fileiras++;
+    }
+    if (!cercas.size) continue;
+    const chave = `ob_${area}_cerca`, def = Arte.PIXEL_PATTERNS[chave];
+    assert.ok(def.fecho > 0 && def.quadros === 2 * def.fecho, `${chave}: quadros de fecho`);
+    const comum = Arte.pixels(chave, { quadro: 0 }), fecho = Arte.pixels(chave, { quadro: def.fecho });
+    const W = comum.w, x0 = (W - 32) / 2;
+    // coluna x0 + 30 (dentro do poste de fecho): o poste pinta 20 px de altura, as travessas soltas só as 2 faixas
+    const coluna = (px) => { let n = 0; for (let Y = 0; Y < px.h; Y++) if (px.data[Y * W + x0 + 30]) n++; return n; };
+    assert.ok(coluna(fecho) >= 18 && coluna(comum) <= 12, `${chave}: poste de fecho (${coluna(comum)} → ${coluna(fecho)} px)`);
+  }
+  assert.ok(fileiras >= 3, `fileiras de cerca: ${fileiras}`);
+  // (d) escala de pixel: decorações do chão, ponto de pesca, poço, tenda e banca em px de arte (1 px de arte =
+  // 1 px de mundo), não em blocos de 2 px. Mede a fração das trocas de cor que caem fora da grade de 2 px:
+  // perto de 0 é arte em unidades (blocos de 2 px), perto de 1 é arte de 1 px.
+  for (const chave of ["dc_tapete", "dc_esteira", "dc_rede", "dc_fogo_apagado", "mk_pesca", "es_poco", "es_tenda", "es_banca"]) {
+    const def = Arte.PIXEL_PATTERNS[chave];
+    let naGrade = 0, fora = 0;
+    for (let q = 0; q < def.quadros; q++) {
+      const { w, h, data } = Arte.pixels(chave, { quadro: q }), em = (x, y) => data[y * w + x];
+      for (let y = 0; y < h; y++) for (let x = 0; x + 1 < w; x++) if (em(x, y) !== em(x + 1, y)) x % 2 ? naGrade++ : fora++;
+      for (let y = 0; y + 1 < h; y++) for (let x = 0; x < w; x++) if (em(x, y) !== em(x, y + 1)) y % 2 ? naGrade++ : fora++;
+    }
+    const fracao = (2 * fora) / (naGrade + fora);
+    assert.ok(fracao > 0.6, `${chave}: arte em blocos de 2 px (fração fora da grade ${fracao.toFixed(2)})`);
+  }
+});
+
+teste("79. integração: ajuda e LEIA-ME batem com o menu do item e a janela Caçada; menus de janela tomam o teclado", () => {
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  const html = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  const leia = fs.readFileSync(path.join(RAIZ, "LEIA-ME.txt"), "utf8").replace(/\s+/g, " ");
+  const trecho = (fonte, inicio) => {
+    const i = fonte.indexOf(inicio);
+    assert.ok(i >= 0, `achei ${inicio}`);
+    const fim = fonte.indexOf("\n  function ", i + inicio.length);
+    return fonte.slice(i, fim < 0 ? undefined : fim);
+  };
+  // (a) A ajuda (?) diz o que o toque longo e o botão direito fazem num item e como jogar no chão.
+  const ajuda = trecho(ui, "function abrirAjuda(").replace(/\s+/g, " ");
+  assert.doesNotMatch(ajuda, /toque longo mostra a descrição\./i, "o toque longo num item abre o menu, não só a descrição");
+  assert.match(ajuda, /Toque longo num item da mochila ou da bolsa abre o menu dele/);
+  assert.match(ajuda, /Shift \+ F10/, "o menu do item pelo teclado");
+  assert.match(ajuda, /jogar no chão um, alguns ou todos/i);
+  assert.match(ajuda, /Arrastar um item para o mundo também o joga no chão/);
+  // (b) O LEIA-ME não fala mais em abas no médio: a Caçada é uma janela que minimiza.
+  assert.doesNotMatch(leia, /aba ou folha Batalha no médio/);
+  assert.match(leia, /Janela "Caçada" \(coluna da esquerda no largo; coluna da direita, minimizada no começo, no médio; folha Batalha no celular\)\. Tecla X minimiza ou restaura/);
+  assert.doesNotMatch(html, /coluna direita com abas/);
+  // (c) Os menus Janelas e de cada janela desligam o teclado do Phaser enquanto abertos e o devolvem ao fechar;
+  // Espaço ativa a opção; os botões do cabeçalho alcançados pelo Tab respondem ao Espaço.
+  assert.match(trecho(ui, "function abrirMenu("), /teclado\(false\)/);
+  assert.match(trecho(ui, "function fecharMenuJanelas("), /if \(!modalAberto && !menuItem[^\n]*\) teclado\(true\)/);
+  const menus = trecho(ui, "function ligarMenusJanelas(");
+  assert.match(menus, /e\.key === " " && !e\.repeat[^\n]*acaoDoMenu\(document\.activeElement\)/);
+  assert.match(menus, /"ArrowLeft"[^\n]*"ArrowRight"/);
+  assert.match(menus, /closest\?\.\("\.janela-btn, #btnJanelas"\)/);
+  // (d) O ícone do cabeçalho não começa o arraste nativo da imagem (ele cancelaria o arraste da janela).
+  assert.match(html, /\.janela>\.painel-cab img\{pointer-events:none;-webkit-user-drag:none\}/);
+});
+
+teste("80. revisão de uso: jogar longe cai ao lado e avisa; equipar sem erro de concordância", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, M = j.M;
+  const largar = (item, quantidade, x, y) => j.exec({ tipo: "largarItem", item, quantidade, x, y });
+  p.inventario.push("erva", "erva", "erva", "grevas_bronze");
+  // Casa pedida a 6 casas: cai ao lado e a mensagem diz por quê.
+  let r = largar("erva", 1, p.x - 6, p.y + 4);
+  assert.ok(r.ok, r.mensagem);
+  let s = p.saqueNoChao.find((x) => x.id === r.saqueId);
+  assert.ok(j.g("distanciaChebyshev")(p, s) <= 1, "caiu ao lado do jogador");
+  assert.match(r.mensagem, /^Você jogou no chão: Erva medicinal\. Caiu ao seu lado: só dá para jogar a até 1 casa de você\. Para pegar/);
+  // Casa vizinha livre pedida: cai nela, sem aviso extra.
+  const casa = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+    .find((c) => M.casaParaFicar(p.area, c.x, c.y) && !M.casaDeTransicao(p.area, c.x, c.y));
+  r = largar("erva", 1, casa.x, casa.y);
+  s = p.saqueNoChao.find((x) => x.id === r.saqueId);
+  igual([r.ok, s.x, s.y, /Caiu ao seu lado/.test(r.mensagem)], [true, casa.x, casa.y, false]);
+  // Sem casa pedida (menu do item): sem aviso extra.
+  r = largar("erva", 1);
+  assert.ok(r.ok && !/Caiu ao seu lado/.test(r.mensagem), r.mensagem);
+  // Equipar: forma neutra (antes "Grevas de bronze equipado").
+  r = M.equiparItem(ID, "grevas_bronze", "pernas");
+  assert.ok(r.ok, r.mensagem);
+  assert.match(r.mensagem, /^Equipou: Grevas de bronze \(/);
+  assert.match(largar("grevas_bronze", 1).mensagem, /^Tire do corpo antes de jogar no chão: guarde Grevas de bronze na mochila\.$/);
 });
 
 const filtro = process.argv[2];

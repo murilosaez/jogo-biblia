@@ -150,6 +150,8 @@ const COR = {
 
 const reduzMovimento = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const cheb = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+// Uma mão para a arma: dá para atirar agora (arco com flechas, ou a funda, na mão)? Pergunta à lógica.
+const atiraDaqui = (p) => typeof podeAtirar === "function" && podeAtirar(p);
 const centroX = (x) => x * TAM + TAM / 2;
 const baseY = (y) => y * TAM + TAM - 1;
 const hexNum = (h) => parseInt(h.replace("#", "").slice(0, 6), 16);
@@ -164,6 +166,7 @@ class Cena extends Phaser.Scene {
 
   // ===== criação ======================================================
   create() {
+    const t0Criacao = performance.now();
     this.p = Mundo.entrar(MEU_ID);
     this.areaAtual = this.p.area;
     this.bio = Arte.BIOMAS[this.areaAtual] || Arte.BIOMAS.canaan;
@@ -231,6 +234,7 @@ class Cena extends Phaser.Scene {
     this.criarCamera();
     this.criarAtmosfera();
     this.criarAmbiente();
+    this.msCriacao = performance.now() - t0Criacao; // tempo de montar a cena (medido nas capturas de arte)
 
     window.gameScene = this;
     if (window.Jogo) window.Jogo.pronto = true;
@@ -361,7 +365,7 @@ class Cena extends Phaser.Scene {
         if (!mapa[y][x] || piso[y][x] === PISO.AGUA || piso[y][x] >= PISO.ESTRUTURA) continue;
         if (cais && x === cais.x && y < cais.y) continue; // sob o píer do cais
         const tipo = Arte.tipoObstaculo(this.areaAtual, x, y);
-        if (!tipo || !this.textures.exists(tipo.chave)) continue;
+        if (!tipo || !Arte.garantirTextura(this, tipo.chave)) continue; // a arte dos obstáculos é gerada só para a área atual
         // muro de vila e mureta de pedra: emendam com os vizinhos do mesmo tipo (cenario.js)
         const muro = this.tipoMuro(x, y);
         if (muro) {
@@ -373,9 +377,10 @@ class Cena extends Phaser.Scene {
           }
         }
         const def = PIXEL_PATTERNS[tipo.chave];
-        const variante = tipo.animado ? 0 : Math.floor(Arte.hash2(x, y, 4) * def.quadros);
+        let variante = tipo.animado ? 0 : Math.floor(Arte.hash2(x, y, 4) * (def.fecho || def.quadros));
+        if (tipo.fecho) variante += def.fecho; // a última cerca da fileira: quadro com o poste na ponta direita
         // árvores e pedras fora da grade: deslocamento e espelho sorteados por casa (bosque natural)
-        const solto = !tipo.animado && !muro;
+        const solto = !tipo.animado && !muro && !def.prop; // os props das vilas ficam no lugar (a cerca emenda)
         const desloc = solto ? Math.round((Arte.hash2(x, y, 5) - 0.5) * (tipo.alto ? 14 : 8)) : 0;
         const descer = solto ? Math.round((Arte.hash2(x, y, 7) - 0.5) * 6) : 0;
         const img = this.add.image(centroX(x) + desloc, y * TAM + TAM + (def.obstaculo ? 2 * Arte.PX : 0) + descer, tipo.chave, variante)
@@ -394,11 +399,13 @@ class Cena extends Phaser.Scene {
   criarOrla() {
     if (!window.Cenario) return;
     for (const o of Cenario.obstaculosDaOrla(this.areaAtual)) {
-      if (!this.textures.exists(o.chave)) continue;
+      if (!Arte.garantirTextura(this, o.chave)) continue;
       const def = PIXEL_PATTERNS[o.chave];
       const img = this.add.image(centroX(o.x) + o.dx, o.y * TAM + TAM + o.dy + (def.obstaculo ? 2 * Arte.PX : 0), o.chave, Math.floor(Arte.hash2(o.x, o.y, 4) * def.quadros))
         .setOrigin(0.5, 1).setDepth(PROF.entidade + o.y * TAM + TAM - 2).setFlipX(Arte.hash2(o.x, o.y, 8) < 0.5);
       if (o.escuro) { const c = Math.round(255 * (1 - o.escuro)); img.setTint(Phaser.Display.Color.GetColor(c, c, Math.round(c * 0.95))); }
+      // a copa alta da orla (56–68 px) cobre a fileira andável junto à borda: fica translúcida como as do interior
+      if (def.alto) this.copas.set(`${o.x},${o.y}`, img);
       this.noBloco(img, o.x, o.y);
     }
   }
@@ -707,13 +714,31 @@ class Cena extends Phaser.Scene {
       const textura = s.moedas ? (s.moedas >= 10 ? "moeda_pilha" : "moeda") : s.item;
       const raridade = s.moedas ? "comum" : s.destaque || raridadeItem(s.item);
       const sprite = this.addItemVisual(s.id, s.x, s.y, textura, 0, raridade);
+      // O que o jogador jogou fora fica parado no chão (só o saque novo flutua); a pilha ganha cópias atrás.
+      if (s.largado) { this.tweens.killTweensOf(sprite); sprite.y = s.y * TAM + 24; }
+      if (s.quantidade > 1) this.desenharPilha(sprite, s);
       sprite.setInteractive({ useHandCursor: true });
       sprite.on("pointerdown", () => this.irAteSaque(s.id));
       if (pular && !reduzMovimento()) {
-        sprite.x += (Math.random() - 0.5) * 10;
+        if (!s.largado) sprite.x += (Math.random() - 0.5) * 10;
         this.tweens.add({ targets: sprite, scaleY: 1.15, duration: 120, yoyo: true });
       }
     }
+  }
+  // Pilha de itens jogados no chão (s.quantidade): cópias do mesmo desenho atrás do item, deslocadas em pixels
+  // inteiros (2 a partir de 2 unidades, 3 a partir de 5), como um montinho; somem junto com ele.
+  desenharPilha(sprite, s) {
+    const copias = [[-5, 2], [5, 3]].slice(0, s.quantidade >= 5 ? 2 : 1).map(([dx, dy]) =>
+      this.add.image(sprite.x + dx, sprite.y + dy, sprite.texture.key, 0).setOrigin(0.5, 0.75).setDepth(sprite.depth - 1));
+    const destruir = sprite.destroy.bind(sprite);
+    sprite.destroy = (...args) => { for (const c of copias) c.destroy(); destruir(...args); };
+  }
+  // O saque mudou na lógica (pilha que cresceu ou diminuiu): redesenha só ele.
+  redesenharSaque(id) {
+    this.spritesItens[id]?.destroy();
+    delete this.spritesItens[id];
+    this.p = Mundo.jogadores[MEU_ID];
+    this.criarSaques(true);
   }
   pegarSaque(id) {
     const r = Mundo.executar(MEU_ID, { tipo: "coletarSaque", saqueId: id });
@@ -721,8 +746,11 @@ class Cena extends Phaser.Scene {
     if (r.ok) {
       const s = this.spritesItens[id];
       if (s && r.moedas) this.numero(s.x, s.y - 16, `+${r.moedas}`, "moeda");
-      s?.destroy();
-      delete this.spritesItens[id];
+      if (r.restante) this.redesenharSaque(id); // a mochila encheu no meio da pilha: o resto fica
+      else {
+        s?.destroy();
+        delete this.spritesItens[id];
+      }
       this.p = Mundo.jogadores[MEU_ID];
       window.atualizarInterface?.();
     }
@@ -960,10 +988,27 @@ class Cena extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBackgroundColor("#1c1210");
     cam.setBounds(-MOLDURA * TAM, -MOLDURA * TAM, (COLS + MOLDURA * 2) * TAM, (ROWS + MOLDURA * 2) * TAM);
-    cam.startFollow(this.jogador, true, 1, 1, 0, 16);
+    // A câmera segue um alvo em px inteiros de mundo e, a cada quadro, quem se move pelo mundo (personagens,
+    // barras, nomes, números) vai para px inteiros (pixelsInteiros): 1 px de arte = 1 px de mundo em qualquer
+    // zoom, sem meio pixel de arte entre o chão e quem anda.
+    this.alvoCamera = { x: Math.round(this.jogador.x), y: Math.round(this.jogador.y) };
+    cam.startFollow(this.alvoCamera, true, 1, 1, 0, 16);
     cam.setRoundPixels(true);
+    this.events.on("postupdate", this.pixelsInteiros, this);
+    this.events.once("shutdown", () => this.events.off("postupdate", this.pixelsInteiros, this));
     this.scale.on("resize", this.aoRedimensionar, this);
     this.aoRedimensionar();
+  }
+  // Depois do quadro (tweens e update): tudo o que está visível no mundo fica em px inteiros e a câmera vai junto.
+  pixelsInteiros() {
+    const lista = this.children.list;
+    for (let i = 0; i < lista.length; i++) {
+      const o = lista[i];
+      if (!o.visible || o.scrollFactorX !== 1) continue;
+      if (o.x !== Math.round(o.x)) o.x = Math.round(o.x);
+      if (o.y !== Math.round(o.y)) o.y = Math.round(o.y);
+    }
+    if (this.jogador && this.alvoCamera) { this.alvoCamera.x = this.jogador.x; this.alvoCamera.y = this.jogador.y; }
   }
   // Pixels da tela por pixel de arte (inteiro), para ver cerca de VISAO casas; o ajuste do jogador soma ou
   // tira 1 por vez. w e h em pixels do canvas (já multiplicados pelo devicePixelRatio).
@@ -1265,7 +1310,7 @@ class Cena extends Phaser.Scene {
       return r;
     }
     this.mensagem(r.mensagem, "combate");
-    this.efeitoAtaque(r, r.inimigoId || id, r.tipoAtaque === "distancia" || distancia);
+    this.efeitoAtaque(r, r.inimigoId || id, r.tipoAtaque === "distancia");
     this.aposAtaque(r);
     return r;
   }
@@ -1293,7 +1338,10 @@ class Cena extends Phaser.Scene {
     };
     if (distancia) {
       const ang = Phaser.Math.Angle.Between(this.jogador.x, this.jogador.y - 20, tx, ty);
-      const f = this.add.image(this.jogador.x, this.jogador.y - 20, "flecha").setDepth(PROF.numero - 1).setRotation(ang + Math.PI / 4);
+      // A funda atira uma pedra (r.projetil, da lógica); o arco, a flecha.
+      const f = r.projetil === "pedra"
+        ? this.add.image(this.jogador.x, this.jogador.y - 20, "fx_pixel").setScale(4).setTint(0x9a9184).setDepth(PROF.numero - 1)
+        : this.add.image(this.jogador.x, this.jogador.y - 20, "flecha").setDepth(PROF.numero - 1).setRotation(ang + Math.PI / 4);
       this.tweens.add({ targets: f, x: tx, y: ty, duration: 150, onComplete: () => { f.destroy(); mostrar(); } });
     } else {
       const ang = Phaser.Math.Angle.Between(this.jogador.x, this.jogador.y - 18, tx, ty);
@@ -1309,11 +1357,9 @@ class Cena extends Phaser.Scene {
       return;
     }
     const alinhado = Mundo.linhaDeTiroLivre(this.p, e); // qualquer direção, caminho livre
-    // Também a 1 casa: espada e arco são exclusivos, então com o arco nas
-    // mãos o golpe corpo a corpo sairia sem arma (a lógica aceita o tiro
-    // a partir de 1 casa).
-    const semMunicao = this.p.equipamento.arco && typeof infoItem === "function" && infoItem(this.p.equipamento.arco)?.semMunicao;
-    const podeAtirar = this.p.equipamento.arco && (semMunicao || Mundo.contarItem(MEU_ID, "flecha") > 0) && alinhado;
+    // Uma mão para a arma: com o arco (com flechas) ou a funda na mão, o autoataque atira, também a 1 casa
+    // (a lógica aceita o tiro a partir de 1 casa); sem flechas, golpeia ao lado.
+    const podeAtirar = atiraDaqui(this.p) && alinhado;
     // Ainda a caminho do alvo: espera chegar (sem a mensagem "chegue ao lado" a cada 2 s).
     if (this.perseguir && !this.alcancaAlvo(e)) return;
     this.ultimoAutoAtaque = this.time.now;
@@ -1404,15 +1450,16 @@ class Cena extends Phaser.Scene {
     const alvo = inimigos[id];
     this.mensagem(`${Mundo.nomeInimigo(MEU_ID, id) || alvo.nome} ${alvo.genero === "f" ? "selecionada" : "selecionado"}; autoataque a cada 2 segundos.`);
   }
-  usarPocao() {
-    const r = Mundo.executar(MEU_ID, { tipo: "usarPocao" });
+  // mesmoCheio (pela bolsa): bebe mesmo com a vida ou a fé cheia, para liberar espaço; teclas e atalhos não.
+  usarPocao(mesmoCheio = false) {
+    const r = Mundo.executar(MEU_ID, { tipo: "usarPocao", mesmoCheio });
     this.mensagem(r.mensagem);
     if (r.ok && r.cura) this.efeitoCura(r.cura);
     window.atualizarInterface?.();
     return r;
   }
-  usarPocaoFe() {
-    const r = Mundo.executar(MEU_ID, { tipo: "usarPocaoFe" });
+  usarPocaoFe(mesmoCheio = false) {
+    const r = Mundo.executar(MEU_ID, { tipo: "usarPocaoFe", mesmoCheio });
     this.mensagem(r.mensagem);
     if (r.ok && r.feCurada) this.numero(this.jogador.x, this.jogador.y - 46, `+${r.feCurada} fé`, "fe");
     window.atualizarInterface?.();
@@ -1523,12 +1570,13 @@ class Cena extends Phaser.Scene {
     if (comando.tipo === "atacar") return this.atacarAlvo(false);
     if (comando.tipo === "atacarDistancia") return this.atacarAlvo(true);
     if (comando.tipo === "pescar") { this.pescar(); return { ok: true }; }
-    if (comando.tipo === "usarPocao") return this.usarPocao();
-    if (comando.tipo === "usarPocaoFe") return this.usarPocaoFe();
+    if (comando.tipo === "usarPocao") return this.usarPocao(comando.mesmoCheio === true);
+    if (comando.tipo === "usarPocaoFe") return this.usarPocaoFe(comando.mesmoCheio === true);
     if (comando.tipo === "usarHabilidade") return this.usarHabilidade(comando.habilidade, comando.alvoId);
     const r = Mundo.executar(MEU_ID, comando);
     if (r.mensagem) this.mensagem(r.mensagem);
     if (r.areaAlterada) { this.trocarArea(null); return r; }
+    if (comando.tipo === "largarItem" && r.ok && r.saqueId) this.redesenharSaque(r.saqueId); // o item cai no chão
     if (comando.tipo === "comerMana" && r.ok && r.cura) this.efeitoCura(r.cura);
     this.oficioSubiu(r.oficioSubiu);
     if (comando.tipo === "orar" && r.ok) {
@@ -1701,8 +1749,14 @@ class Cena extends Phaser.Scene {
       if (!r.passos.length) this.concluirRota();
       return;
     }
-    // Algo entrou no caminho (uma criatura andou): refaz a rota uma vez a cada bloqueio.
-    const nova = this.calcularRota(r.objetivo);
+    // Algo entrou no caminho (uma criatura andou): refaz a rota uma vez a cada bloqueio (a rota longa, do
+    // clique no chão ou no minimapa, refaz pelo A* até o mesmo destino).
+    let nova;
+    if (r.longa) {
+      const nr = this.rotaAte(r.longa.x, r.longa.y);
+      nova = nr?.passos;
+      if (nr?.passos.length) { r.destino = nr.chegada; r.objetivo = (cx, cy) => cx === nr.chegada.x && cy === nr.chegada.y; this.marcarDestino(nr.chegada); }
+    } else nova = this.calcularRota(r.objetivo);
     if (!nova || !nova.length) { this.pararRota(); return; }
     r.passos = nova;
     this.proximoPasso = time + 140;
@@ -1725,14 +1779,29 @@ class Cena extends Phaser.Scene {
     }
     this.marcaDestino.setPosition(centroX(c.x), c.y * TAM + TAM / 2).setVisible(true).setAlpha(1);
   }
-  // Destinos do toque: casa do chão (ou a vizinha mais perto, se for obstáculo), NPC (fala ao chegar),
-  // saque (recolhe ao pisar) e ponto de pesca (pesca ao chegar).
+  // Rota longa até (x, y) pelo A* (rotaNaGrade, logica.js), sobre a grade de passagem da área montada de
+  // uma vez: serve para qualquer distância (o mapa inteiro tem 160 × 120 casas e a busca leva poucos ms).
+  // Casas de transição (cais, trilha, portal) só entram como destino. Destino bloqueado ou fora de alcance:
+  // a casa alcançável mais perto dele.
+  rotaAte(x, y) {
+    const grade = Mundo.gradeDePassagem(this.p), transicao = this.casasDeTransicao(), alvo = y * COLS + x;
+    return rotaNaGrade((cx, cy) => {
+      const k = cy * COLS + cx;
+      return grade[k] === 1 && (k === alvo || !transicao.has(k));
+    }, this.p, { x, y });
+  }
+  // Destinos do toque: casa do chão (ou a mais perto dela que dá para alcançar), NPC (fala ao chegar),
+  // saque (recolhe ao pisar) e ponto de pesca (pesca ao chegar). O clique no minimapa também chega aqui.
+  // Um clique novo troca a rota; andar com as teclas ou o joystick cancela.
   irAteCasa(x, y) {
-    if (x < 0 || y < 0 || x >= COLS || y >= ROWS || (x === this.p.x && y === this.p.y)) return;
-    const livre = Mundo.casaLivre(x, y, this.p, true);
-    const objetivo = livre ? (cx, cy) => cx === x && cy === y : (cx, cy) => cheb({ x: cx, y: cy }, { x, y }) <= 1;
-    this.iniciarRota(objetivo, null, { x, y });
+    if (x < 0 || y < 0 || x >= COLS || y >= ROWS || (x === this.p.x && y === this.p.y)) return false;
+    const r = this.rotaAte(x, y);
+    this.perseguir = false;
+    if (!r || !r.passos.length) { this.pararRota(); return false; }
+    this.rota = { passos: r.passos, objetivo: (cx, cy) => cx === r.chegada.x && cy === r.chegada.y, fim: null, destino: r.chegada, longa: { x, y } };
+    this.marcarDestino(r.chegada);
     window.atualizarInterface?.();
+    return true;
   }
   irAteNpc(id) {
     const n = npcs[id];
@@ -1751,16 +1820,21 @@ class Cena extends Phaser.Scene {
     const s = this.p.saqueNoChao.find((x) => x.id === id);
     if (!s) return;
     if (cheb(this.p, s) <= 1) { this.pararRota(); this.pegarSaque(id); return; }
+    // O que o jogador jogou no chão não é recolhido ao pisar: anda até o lado e pega ao chegar.
+    if (s.largado) {
+      this.iniciarRota((x, y) => cheb({ x, y }, s) <= 1, () => { if (this.p.saqueNoChao.some((x) => x.id === id)) this.pegarSaque(id); }, s);
+      return;
+    }
     this.iniciarRota((x, y) => x === s.x && y === s.y, null, s);
   }
   irAtePesca(ponto) {
     if (cheb(this.p, ponto) <= 1) { this.pararRota(); this.pescar(); return; }
     this.iniciarRota((x, y) => cheb({ x, y }, ponto) <= 1, () => this.pescar(), ponto);
   }
-  // O alvo está ao alcance do ataque que o autoataque usaria (arco com flechas e caminho livre, ou ao lado)?
+  // O alvo está ao alcance do ataque que o autoataque usaria (arco com flechas ou funda e caminho livre, ou
+  // ao lado)?
   alcancaAlvo(e) {
-    const arco = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0;
-    return arco ? Mundo.linhaDeTiroLivre(this.p, e) : cheb(this.p, e) <= 1;
+    return atiraDaqui(this.p) ? Mundo.linhaDeTiroLivre(this.p, e) : cheb(this.p, e) <= 1;
   }
   // Persegue o alvo um passo por vez (a criatura anda: a rota é refeita a cada passo). Ao chegar,
   // o autoataque sai na hora.
@@ -1773,8 +1847,7 @@ class Cena extends Phaser.Scene {
       return;
     }
     this.chegouAoAlvo = false;
-    const arco = this.p.equipamento.arco && Mundo.contarItem(MEU_ID, "flecha") > 0;
-    const objetivo = arco
+    const objetivo = atiraDaqui(this.p)
       ? (x, y) => Mundo.linhaDeTiroLivre({ x, y, area: this.areaAtual }, e)
       : (x, y) => cheb({ x, y }, e) <= 1;
     const passos = this.calcularRota(objetivo, 2500);
@@ -1970,8 +2043,9 @@ class Cena extends Phaser.Scene {
       const dx = x - s.x, dy = y - s.y;
       const andando = Math.abs(dx) + Math.abs(dy) > 1;
       if (andando) {
-        s.x += dx * 0.2;
-        s.y += dy * 0.2;
+        // pelo menos 1 px por quadro (as posições do mundo ficam em px inteiros)
+        s.x += Math.abs(dx) > 1 ? Math.sign(dx) * Math.max(1, Math.round(Math.abs(dx) * 0.2)) : dx;
+        s.y += Math.abs(dy) > 1 ? Math.sign(dy) * Math.max(1, Math.round(Math.abs(dy) * 0.2)) : dy;
         if (Math.abs(dx) > 1) s.setFlipX(dx < 0);
       } else s.setPosition(x, y);
       s.setDepth(PROF.entidade + s.y);
@@ -2360,6 +2434,7 @@ class Cena extends Phaser.Scene {
     // janela centrada no jogador, presa às bordas do mapa
     const ox = Math.max(0, Math.min(COLS - jc, this.p.x - (jc >> 1)));
     const oy = Math.max(0, Math.min(ROWS - jl, this.p.y - (jl >> 1)));
+    this.janelaMinimapa = { ox, oy, sx, sy }; // para o clique no minimapa (ligarMinimapa)
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, W, H);
     ctx.drawImage(this.minimapaEstatico, Math.round(ox * sx), Math.round(oy * sy), W, H, 0, 0, W, H);
@@ -2393,6 +2468,15 @@ class Cena extends Phaser.Scene {
     ctx.strokeStyle = "#2a1a14cc";
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round((v.x / TAM - ox) * sx) + 0.5, Math.round((v.y / TAM - oy) * sy) + 0.5, Math.round(v.width * sx / TAM), Math.round(v.height * sy / TAM));
+    // destino da rota: um alvo de ouro (na borda, se estiver fora do recorte)
+    const d = this.rota?.destino;
+    if (d) {
+      const px = Math.round(Math.max(3, Math.min(W - 4, (d.x - ox + 0.5) * sx))), py = Math.round(Math.max(3, Math.min(H - 4, (d.y - oy + 0.5) * sy)));
+      ctx.fillStyle = "#2a1a14";
+      ctx.fillRect(px - 4, py - 1, 9, 3); ctx.fillRect(px - 1, py - 4, 3, 9);
+      ctx.fillStyle = "#ffe9a8";
+      ctx.fillRect(px - 3, py, 7, 1); ctx.fillRect(px, py - 3, 1, 7);
+    }
     if (Math.floor(this.time.now / 400) % 2 === 0 || reduzMovimento()) ponto(this.p.x, this.p.y, "#f3e4c0", 4);
     else ponto(this.p.x, this.p.y, "#3b5a9a", 4);
   }
@@ -2425,6 +2509,16 @@ window.Jogo = {
     }
   },
   usarAtalho(i) { return window.gameScene?.usarHotkey(i); },
+  // Casa do mapa sob um ponto da tela (clientX, clientY), ou null fora do mundo. A interface usa para soltar
+  // um item arrastado da mochila no chão.
+  casaNaTela(cx, cy) {
+    const s = window.gameScene, canvas = s?.game?.canvas;
+    if (!canvas || !s.cameras?.main) return null;
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || cx < r.left || cy < r.top || cx > r.right || cy > r.bottom) return null;
+    const ponto = s.cameras.main.getWorldPoint((cx - r.left) * (canvas.width / r.width), (cy - r.top) * (canvas.height / r.height));
+    return { x: Math.floor(ponto.x / TAM), y: Math.floor(ponto.y / TAM) };
+  },
   usarHabilidade(i) { return window.gameScene?.usarHabilidadeDaBarra(i); },
   alvoAtual() { return window.gameScene?.alvoId || null; },
   podeInteragir() {
@@ -2432,6 +2526,28 @@ window.Jogo = {
     return r ? { tipo: r.tipo, id: r.id, rotulo: r.rotulo } : null;
   },
 };
+
+// Clique (ou toque) no minimapa: anda até a casa clicada pela rota longa (irAteCasa). O minimapa mostra
+// um recorte em volta do jogador; a cena guarda o do último desenho (janelaMinimapa). Vale onde ele
+// estiver: na janela Mapa ou sobre o mundo (ali, translúcido com alguém embaixo, o clique passa ao mundo).
+function ligarMinimapa() {
+  const c = document.getElementById("miniMap");
+  if (!c || c.dataset.ligado) return;
+  c.dataset.ligado = "1";
+  c.addEventListener("click", (e) => {
+    const s = window.gameScene, j = s?.janelaMinimapa;
+    if (!s?.p || !j || s.trocando) return;
+    const r = c.getBoundingClientRect();
+    const px = ((e.clientX - r.left - c.clientLeft) / (c.clientWidth || 1)) * c.width;
+    const py = ((e.clientY - r.top - c.clientTop) / (c.clientHeight || 1)) * c.height;
+    if (px < 0 || py < 0 || px >= c.width || py >= c.height) return;
+    const x = Math.floor(j.ox + px / j.sx), y = Math.floor(j.oy + py / j.sy);
+    if (!s.irAteCasa(x, y) && !(x === s.p.x && y === s.p.y)) s.mensagem?.("Não há caminho até lá.");
+    s.desenharMinimapa();
+  });
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarMinimapa);
+else ligarMinimapa();
 
 // ---------------------------------------------------------------------
 // Boot: espera as fontes (no máximo 1,5 s) e cria o jogo em Scale.RESIZE.
@@ -2470,8 +2586,11 @@ function iniciarJogo() {
         const m = medida(), chave = `${m.w}x${m.h}@${m.dpr}`;
         if (chave === ultima) return;
         ultima = chave;
-        jogo.scale.setZoom(1 / m.dpr);
+        // resize antes de setZoom: com zoom 1 (devicePixelRatio 1) o resize do Phaser não mexe no tamanho CSS
+        // do canvas, e o setZoom o acerta com o tamanho que estiver valendo. Na ordem inversa, o canvas ficava
+        // com o tamanho da medida anterior (uma faixa escura embaixo do mundo ao mudar a altura da conversa).
         jogo.scale.resize(m.w, m.h);
+        jogo.scale.setZoom(1 / m.dpr);
       };
       if (window.ResizeObserver && raiz) new ResizeObserver(redimensionar).observe(raiz);
       window.addEventListener("resize", redimensionar);

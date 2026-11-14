@@ -57,8 +57,7 @@ const CURA_POCAO = 30; // mínimo
 const CURA_POCAO_PERCENTUAL = 0.25; // da vida máxima
 const CURA_POCAO_FE = 40;
 const QUANTIDADE_POCOES_INICIAIS = 3;
-const CARGA_BASE = 50;
-const CARGA_POR_NIVEL = 10;
+// CARGA_BASE e CARGA_POR_NIVEL vêm de dados/itens.js (ajustadas aos pesos reais dos itens).
 
 // Combate: dano bruto = base + 3 por nível acima do 1º + arma + habilidade/4.
 // A defesa mitiga em proporção: dano final = bruto × 20 / (20 + defesa), mínimo 1.
@@ -102,7 +101,24 @@ const REGRAS_MORTE = [
 // ---------------------------------------------------------------------
 // ITENS vem de dados/itens.js.
 // PRECOS_LOJA, FLECHAS_POR_PACOTE e VALORES_VENDA vêm de dados/itens.js.
-const SLOTS_EQUIPAMENTO = { arma: "arma", arco: "arma_distancia", escudo: "escudo", armadura: "armadura" };
+// Espaços do boneco (como nos MMORPGs clássicos) e os tipos de item que cada um aceita. Uma mão só para a
+// arma: a de corpo a corpo ou a de distância (arco, funda); o arco usa as duas mãos (maos: 2 em ITENS) e não
+// deixa o escudo entrar. A munição é uma pilha: equipamento.municao guarda o item e quantidadeMunicao, quantas
+// unidades há nela. A mochila do boneco não é espaço de item (na interface, abre o painel Mochila).
+const SLOTS_EQUIPAMENTO = {
+  cabeca: ["cabeca"],
+  colar: ["colar"],
+  arma: ["arma", "arma_distancia"],
+  armadura: ["armadura"],
+  escudo: ["escudo"],
+  pernas: ["pernas"],
+  pes: ["pes"],
+  anel: ["anel"],
+  municao: ["municao"],
+};
+// Munição que o arco gasta (a funda, com semMunicao, não gasta nada).
+const MUNICAO_DO_ARCO = "flecha";
+const MUNICAO_MAXIMA = 99_999; // teto da pilha no espaço de munição (confere saves)
 
 // Registro de uma tabela (ITENS, PRECOS_LOJA, TAREFAS...) pelo id que vem de fora (comando ou save).
 // Só chaves próprias: "constructor", "toString" ou "__proto__" achariam o que vem de Object.prototype
@@ -122,7 +138,8 @@ function registroDe(tabela, id) {
 // ou do arco, defesa do escudo ou da armadura) já inclui a melhoria da raridade.
 const ORDEM_RARIDADES = Object.keys(RARIDADES);
 const ORDEM_ATRIBUTOS = Object.keys(ATRIBUTOS_ITEM);
-const TIPOS_COM_RARIDADE = new Set(Object.values(SLOTS_EQUIPAMENTO));
+// Todo equipamento tem raridade, menos a munição (flechas são iguais e se empilham).
+const TIPOS_COM_RARIDADE = new Set(Object.values(SLOTS_EQUIPAMENTO).flat().filter((t) => t !== "municao"));
 const CRITICO_EQUIPAMENTO_MAXIMO = 25; // soma dos atributos de crítico do equipamento, em pontos de %
 const cacheItens = new Map();
 
@@ -137,7 +154,7 @@ function indiceRaridade(raridade) {
 
 function atributoPrincipal(tipo) {
   if (tipo === "arma" || tipo === "arma_distancia") return "dano";
-  if (tipo === "escudo" || tipo === "armadura") return "defesa";
+  if (TIPOS_COM_RARIDADE.has(tipo)) return "defesa"; // escudo, armadura e as peças do corpo
   return null;
 }
 
@@ -155,17 +172,29 @@ function codigoItem(base, raridade, atributos = {}) {
   return [`${base}@${raridade}`, ...partes].join(".");
 }
 
+// Soma dois conjuntos de atributos ({ critico: 2 } + { critico: 1, vida: 7 }), na ordem de ATRIBUTOS_ITEM.
+function somarAtributos(fixos, sorteados) {
+  if (!fixos) return sorteados;
+  const soma = {};
+  for (const k of ORDEM_ATRIBUTOS) {
+    const v = (Number(fixos[k]) || 0) + (sorteados[k] || 0);
+    if (v > 0) soma[k] = v;
+  }
+  return soma;
+}
+
 function lerItem(id) {
   if (typeof id !== "string") return null;
   const [base, resto, ...sobra] = id.split("@");
   const d = registroDe(ITENS, base);
   if (!d || sobra.length) return null;
+  // atributos: os da raridade somados aos fixos do item (atributosFixos, as peças do boneco).
   const montar = (raridade, atributos) => ({
     ...d,
     id,
     base,
     raridade,
-    atributos,
+    atributos: somarAtributos(d.atributosFixos, atributos),
     nome: raridade !== (d.raridade || "comum") ? `${d.nome} (${RARIDADES[raridade].nome})` : d.nome,
     bonus: (d.bonus || 0) + (atributos.dano || 0),
     defesa: (d.defesa || 0) + (atributos.defesa || 0),
@@ -174,7 +203,8 @@ function lerItem(id) {
   if (!TIPOS_COM_RARIDADE.has(d.tipo)) return null;
   const [raridade, ...partes] = resto.split(".");
   const r = registroDe(RARIDADES, raridade);
-  if (!r || raridade === "comum") return null;
+  // A raridade do texto fica acima da do item (a fixa, no amuleto de faiança, é a forma sem "@").
+  if (!r || indiceRaridade(raridade) <= indiceRaridade(registroDe(RARIDADES, d.raridade) ? d.raridade : "comum")) return null;
   const atributos = {};
   for (const parte of partes) {
     const m = /^([a-z]+)([1-9]\d{0,2})$/.exec(parte);
@@ -218,6 +248,22 @@ function textoAtributos(id) {
   );
 }
 
+// O que o equipamento dá, para as mensagens e a interface: "+12 de dano", "+2 de defesa", "+10 de vida máxima"…
+function efeitosDoItem(id) {
+  const info = infoItem(id);
+  if (!info) return [];
+  const lista = [];
+  if (info.bonus) lista.push(`+${info.bonus} de dano`);
+  if (info.defesa) lista.push(`+${info.defesa} de defesa`);
+  return lista.concat(textoAtributos(id).filter((t) => !/de dano$|de defesa$/.test(t)));
+}
+
+// "1 flecha", "37 flechas".
+function textoQuantidade(id, n) {
+  const nome = nomeItem(id).toLowerCase();
+  return n === 1 ? `1 ${nome}` : `${n} ${nome}s`;
+}
+
 // Sorteia a raridade (pesos de SORTEIO_RARIDADE), sem as raridades abaixo de "minima".
 function sortearRaridade(minima, aleatorio = Math.random) {
   const corte = Math.max(0, indiceRaridade(minima));
@@ -237,7 +283,8 @@ function sortearRaridade(minima, aleatorio = Math.random) {
 function gerarItem(base, raridade, aleatorio = Math.random) {
   const d = registroDe(ITENS, base);
   const r = registroDe(RARIDADES, raridade);
-  if (!d || !r || raridade === "comum" || !TIPOS_COM_RARIDADE.has(d.tipo)) return base;
+  if (!d || !r || !TIPOS_COM_RARIDADE.has(d.tipo)) return base;
+  if (indiceRaridade(raridade) <= indiceRaridade(registroDe(RARIDADES, d.raridade) ? d.raridade : "comum")) return base;
   const atributos = {};
   const principal = atributoPrincipal(d.tipo);
   if (r.melhoria && principal) atributos[principal] = r.melhoria;
@@ -264,10 +311,11 @@ function tabelaDeSaque(e) {
   return (e?.saque?.itens || []).map((linha) => (typeof linha === "string" ? { item: linha, chance: 1 } : linha));
 }
 
-// Item que uma linha da tabela gera: equipamento sorteia a raridade (ou usa a fixa da linha).
+// Item que uma linha da tabela gera: equipamento sorteia a raridade (ou usa a fixa da linha). O equipamento
+// com raridade fixa nos dados (o amuleto de faiança) cai sempre igual.
 function itemDaLinha(linha, aleatorio = Math.random) {
   const d = registroDe(ITENS, linha.item);
-  if (!d || !TIPOS_COM_RARIDADE.has(d.tipo)) return linha.item;
+  if (!d || !TIPOS_COM_RARIDADE.has(d.tipo) || d.raridade) return linha.item;
   const raridade = registroDe(RARIDADES, linha.raridade) ? linha.raridade : sortearRaridade(linha.raridadeMinima, aleatorio);
   return gerarItem(linha.item, raridade, aleatorio);
 }
@@ -317,16 +365,30 @@ function atributoEquipado(p, chave) {
   return Object.values(p?.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.atributos[chave] || 0 : 0), 0);
 }
 
-// Carga máxima: base + 10 kg por nível acima do 1º + melhorias da troca de pontos (bonusCarga)
+// Carga máxima: base + CARGA_POR_NIVEL por nível acima do 1º + melhorias da troca de pontos (bonusCarga)
 // + atributo de carga do equipamento.
 function capacidadeCarga(p) {
   return CARGA_BASE + Math.max(0, (p.nivel || 1) - 1) * CARGA_POR_NIVEL + bonusCarga(p) + atributoEquipado(p, "carga");
 }
 
+// Peso total (mochila + corpo), arredondado a 10 g: há itens de 0,01 kg (pedras, penas) e 0,03 kg (flecha).
 function pesoCarregado(p) {
   const pesoBolsa = p.inventario.reduce((soma, item) => soma + pesoItem(item), 0);
-  const pesoEquipado = Object.values(p.equipamento || {}).reduce((soma, item) => soma + (item ? pesoItem(item) : 0), 0);
-  return Math.round((pesoBolsa + pesoEquipado) * 10) / 10;
+  return Math.round((pesoBolsa + pesoEquipado(p)) * 100) / 100;
+}
+
+// Peso do que está vestido; a munição pesa a pilha inteira (quantidadeMunicao unidades).
+function pesoEquipado(p) {
+  let soma = 0;
+  for (const [slot, item] of Object.entries(p?.equipamento || {})) {
+    if (item) soma += pesoItem(item) * (slot === "municao" ? municaoNoEspaco(p) : 1);
+  }
+  return soma;
+}
+
+// "12,35", "0,03", "5": quilos com vírgula, até 2 casas (sem zeros sobrando).
+function textoKg(kg) {
+  return String(Math.round((Number(kg) || 0) * 100) / 100).replace(".", ",");
 }
 
 function defesaEquipamento(p) {
@@ -342,14 +404,183 @@ function curaPocao(p) {
   return Math.max(CURA_POCAO, Math.round(vidaMaxima(p) * CURA_POCAO_PERCENTUAL));
 }
 
+// ----- Boneco: mão da arma, duas mãos e munição -----
+// Tipos que um espaço aceita ([] para um espaço que não existe).
+function tiposDoSlot(slot) {
+  return registroDe(SLOTS_EQUIPAMENTO, slot) || [];
+}
+
+// Espaço do boneco onde o item vai (null se não for equipamento).
+function slotDoItem(id) {
+  const tipo = infoItem(id)?.tipo;
+  return Object.keys(SLOTS_EQUIPAMENTO).find((s) => SLOTS_EQUIPAMENTO[s].includes(tipo)) || null;
+}
+
+// Quantas mãos o item ocupa (o arco usa as duas).
+function maosDoItem(id) {
+  return infoItem(id)?.maos === 2 ? 2 : 1;
+}
+
+// O que está na mão da arma, e só se for do tipo pedido.
+function armaNaMao(p) {
+  return p?.equipamento?.arma || null;
+}
+function armaCorpoNaMao(p) {
+  const a = armaNaMao(p);
+  return a && infoItem(a)?.tipo === "arma" ? a : null;
+}
+function armaDistanciaNaMao(p) {
+  const a = armaNaMao(p);
+  return a && infoItem(a)?.tipo === "arma_distancia" ? a : null;
+}
+
+// Ataque da mão da arma: arco ou funda atiram; arma de corpo a corpo, ou mão vazia, golpeiam.
+function modoAtaque(p) {
+  return armaDistanciaNaMao(p) ? "distancia" : "corpo";
+}
+
+// Texto da regra das duas mãos para o item que as ocupa.
+function textoDuasMaos(id) {
+  return infoItem(id)?.tipo === "arma_distancia" ? "O arco usa as duas mãos." : `${nomeItem(id)} usa as duas mãos.`;
+}
+
+// A vocação luta à distância? (a arma dela é de distância: o Fundibulário e a funda)
+function vocacaoADistancia(p) {
+  const v = typeof VOCACOES !== "undefined" ? registroDe(VOCACOES, p?.vocacao?.id) : null;
+  return infoItem(v?.arma)?.tipo === "arma_distancia";
+}
+
+// Unidades na pilha do espaço de munição.
+function municaoNoEspaco(p) {
+  return p?.equipamento?.municao ? Math.max(0, Math.floor(Number(p.quantidadeMunicao) || 0)) : 0;
+}
+
+// Flechas que o jogador tem para atirar: as do espaço de munição e as da mochila.
+function flechasDoJogador(p) {
+  const noEspaco = p?.equipamento?.municao === MUNICAO_DO_ARCO ? municaoNoEspaco(p) : 0;
+  return noEspaco + (p?.inventario || []).filter((x) => x === MUNICAO_DO_ARCO).length;
+}
+
+// A arma da mão gasta munição a cada tiro? (o arco sim; a funda não)
+function gastaMunicao(p) {
+  const a = armaDistanciaNaMao(p);
+  return !!a && !infoItem(a)?.semMunicao;
+}
+
+// Dá para atirar agora: arco ou funda na mão e, no arco, flechas.
+function podeAtirar(p) {
+  return !!armaDistanciaNaMao(p) && (!gastaMunicao(p) || flechasDoJogador(p) > 0);
+}
+
+// Gasta n flechas: primeiro as do espaço de munição, depois as da mochila. Devolve quantas gastou.
+function gastarFlechas(p, n) {
+  let falta = n;
+  if (p.equipamento?.municao === MUNICAO_DO_ARCO) {
+    const tira = Math.min(falta, municaoNoEspaco(p));
+    p.quantidadeMunicao = municaoNoEspaco(p) - tira;
+    if (p.quantidadeMunicao <= 0) {
+      p.equipamento.municao = null;
+      p.quantidadeMunicao = 0;
+    }
+    falta -= tira;
+  }
+  for (let i = p.inventario.length - 1; i >= 0 && falta > 0; i--) {
+    if (p.inventario[i] === MUNICAO_DO_ARCO) {
+      p.inventario.splice(i, 1);
+      falta--;
+    }
+  }
+  return n - falta;
+}
+
+// Guarda um item recebido (compra, saque, recompensa, fabricação): a munição vai para o espaço de munição
+// quando ele está vazio ou já tem a mesma (a pilha cresce); o resto vai para a mochila. Não confere o peso.
+function guardarItem(p, item) {
+  const eq = p.equipamento;
+  if (eq && infoItem(item)?.tipo === "municao" && (!eq.municao || eq.municao === item) && municaoNoEspaco(p) < MUNICAO_MAXIMA) {
+    const antes = municaoNoEspaco(p);
+    eq.municao = item;
+    p.quantidadeMunicao = antes + 1;
+    return "municao";
+  }
+  p.inventario.push(item);
+  return "mochila";
+}
+
 function bonusArma(p) {
-  const item = p.equipamento?.arma;
+  const item = armaCorpoNaMao(p);
   return item ? infoItem(item)?.bonus || 0 : 0;
 }
 
 function bonusArco(p) {
-  const item = p.equipamento?.arco;
+  const item = armaDistanciaNaMao(p);
   return item ? infoItem(item)?.bonus || 0 : 0;
+}
+
+// Save: põe o equipamento no formato do boneco, sem perder item. Roda em toda carga (sem versão nova):
+// - espaços que faltam ficam vazios (null); chaves que não são espaços devolvem o item à mochila;
+// - saves antigos tinham a mão da arma dividida em "arma" (corpo a corpo) e "arco" (distância). Fica na mão a
+//   arma de corpo a corpo; a de distância só se a mão estava vazia ou se a vocação luta à distância
+//   (Fundibulário). A outra volta para a mochila;
+// - item que não serve no espaço volta para a mochila (texto inválido some, como em todo o save);
+// - arco (duas mãos) com escudo: a arma fica e o escudo volta para a mochila;
+// - munição: na 1ª carga com o espaço (sem quantidadeMunicao no save), as flechas da mochila vão para ele.
+// Devolve { duasMaos }: duasMaos lista o que saiu do corpo por causa do arco de duas mãos (para o aviso).
+function normalizarEquipamento(p) {
+  const mudancas = { duasMaos: [] };
+  if (!objetoValido(p.equipamento)) {
+    // Save estranho com o equipamento numa lista: nada se perde, tudo volta para a mochila.
+    if (Array.isArray(p.equipamento)) for (const item of p.equipamento) if (itemValido(item)) p.inventario.push(item);
+    p.equipamento = {};
+  }
+  const eq = p.equipamento;
+  const devolver = (item) => {
+    if (itemValido(item)) p.inventario.push(item);
+  };
+  if (Object.hasOwn(eq, "arco")) {
+    const arco = eq.arco;
+    delete eq.arco;
+    if (infoItem(arco)?.tipo === "arma_distancia") {
+      const corpo = infoItem(eq.arma)?.tipo === "arma";
+      if (!corpo || vocacaoADistancia(p)) {
+        if (eq.arma) { devolver(eq.arma); mudancas.duasMaos.push(eq.arma); }
+        eq.arma = arco;
+      } else { devolver(arco); mudancas.duasMaos.push(arco); }
+    } else if (arco) devolver(arco);
+  }
+  for (const chave of Object.keys(eq)) {
+    if (Object.hasOwn(SLOTS_EQUIPAMENTO, chave)) continue;
+    if (eq[chave]) devolver(eq[chave]);
+    delete eq[chave];
+  }
+  for (const [slot, tipos] of Object.entries(SLOTS_EQUIPAMENTO)) {
+    const item = eq[slot];
+    if (item && !tipos.includes(infoItem(item)?.tipo)) devolver(item);
+    if (!item || !tipos.includes(infoItem(item)?.tipo)) eq[slot] = null;
+  }
+  if (eq.arma && maosDoItem(eq.arma) === 2 && eq.escudo) {
+    devolver(eq.escudo);
+    mudancas.duasMaos.push(eq.escudo);
+    eq.escudo = null;
+  }
+  let qtd = Number.isInteger(p.quantidadeMunicao) ? Math.max(0, Math.min(MUNICAO_MAXIMA, p.quantidadeMunicao)) : null;
+  if (qtd === null) {
+    qtd = eq.municao ? 1 : 0;
+    const municao = eq.municao || p.inventario.find((x) => infoItem(x)?.tipo === "municao") || null;
+    if (municao) {
+      const n = Math.min(MUNICAO_MAXIMA - qtd, p.inventario.filter((x) => x === municao).length);
+      let restam = n;
+      p.inventario = p.inventario.filter((x) => !(x === municao && restam-- > 0));
+      eq.municao = municao;
+      qtd += n;
+    }
+  }
+  if (!eq.municao || qtd <= 0) {
+    eq.municao = null;
+    qtd = 0;
+  }
+  p.quantidadeMunicao = qtd;
+  return mudancas;
 }
 
 // Chance de crítico vinda do equipamento, em pontos de % (no máximo CRITICO_EQUIPAMENTO_MAXIMO).
@@ -493,10 +724,14 @@ function estatisticasCombate(p) {
     nivel: p.nivel || 1,
     vida: p.vida,
     vidaMaxima: vidaMaxima(p),
+    // Uma mão da arma: com o arco (ou a funda) na mão, o corpo a corpo é sem arma.
     danoCorpo: danoBruto(p, "corpo"),
-    danoDistancia: p.equipamento?.arco ? danoBruto(p, "distancia") : 0,
-    temArco: !!p.equipamento?.arco,
-    flechas: (p.inventario || []).filter((x) => x === "flecha").length,
+    danoDistancia: armaDistanciaNaMao(p) ? danoBruto(p, "distancia") : 0,
+    temArco: !!armaDistanciaNaMao(p),
+    modoAtaque: modoAtaque(p),
+    danoAtaque: danoBruto(p, modoAtaque(p)),
+    flechas: flechasDoJogador(p),
+    municao: municaoNoEspaco(p),
     defesa: defEquip + defesaHab,
     defesaEquipamento: defEquip,
     defesaHabilidade: defesaHab,
@@ -509,6 +744,110 @@ function estatisticasCombate(p) {
     recargaAtaque: RECARGA_ATAQUE,
     intervaloAutoAtaque: INTERVALO_AUTO_ATAQUE,
     habilidades,
+  };
+}
+
+// ---------------------------------------------------------------------
+// Janela de habilidades (painel Personagem): tudo o que ela mostra, sem DOM
+// ---------------------------------------------------------------------
+const NOMES_FICHA_HABILIDADES = { corpo: "Corpo a corpo", distancia: "Distância", defesa: "Defesa", oracao: "Oração" };
+// Como cada habilidade treina: [singular, plural] do uso que rende XP_HABILIDADE_POR_USO.
+const USOS_HABILIDADE = {
+  corpo: ["golpe corpo a corpo", "golpes corpo a corpo"],
+  distancia: ["disparo", "disparos"],
+  defesa: ["golpe recebido", "golpes recebidos"],
+  oracao: ["oração", "orações"],
+};
+
+// % até o próximo nível, para baixo (só mostra 100 no máximo).
+function pctProgresso(xp, necessario, maximo) {
+  if (maximo) return 100;
+  return necessario > 0 ? Math.max(0, Math.min(99, Math.floor((100 * xp) / necessario))) : 0;
+}
+
+// O que a habilidade dá agora (texto curto da dica).
+function efeitoHabilidade(p, chave) {
+  const pct = (n) => `${String(Math.round(n * 10) / 10).replace(".", ",")}%`;
+  if (chave === "corpo" || chave === "distancia") return `+${bonusHabilidade(p, chave)} de dano, crítico ${pct(chanceCritico(p, chave))}`;
+  if (chave === "defesa") return `+${bonusHabilidade(p, "defesa")} de defesa`;
+  const purifica = nivelHabilidade(p, "oracao") >= NIVEL_ORACAO.purificar;
+  return `cura ${curaOracao(p)}${purifica ? " e tira veneno e sangramento" : ` (tira veneno e sangramento no nível ${NIVEL_ORACAO.purificar})`}`;
+}
+
+// Janela de habilidades (pura): nível e XP, vida, fé, carga, vigor, as 4 habilidades de combate e os ofícios,
+// cada um com nível, XP no nível, XP para o próximo, falta, % (para baixo) e a dica do que falta.
+function fichaDeHabilidades(p, agora) {
+  const nivel = p.nivel || 1;
+  const nivelMaximo = nivel >= NIVEL_MAXIMO;
+  const base = nivel > 1 ? limiarNivel(nivel - 1) : 0;
+  const custo = nivelMaximo ? 0 : limiarNivel(nivel) - base;
+  const noNivel = nivelMaximo ? 0 : Math.max(0, Math.min(custo, (p.xp || 0) - base));
+  const peso = pesoCarregado(p);
+  const capacidade = capacidadeCarga(p);
+  const combate = HABILIDADES.map((chave) => {
+    const pr = progressoHabilidade(p, chave);
+    const falta = pr.maximo ? 0 : Math.max(0, pr.necessario - pr.xp);
+    const porUso = XP_HABILIDADE_POR_USO[chave] || 1;
+    const usos = Math.ceil(falta / porUso);
+    const [um, varios] = USOS_HABILIDADE[chave];
+    const bloqueada = chave === "oracao" && !p.oracaoDesbloqueada;
+    let dica;
+    if (bloqueada) dica = "Aprenda a Oração com Jesus, na Galileia.";
+    else if (pr.maximo) dica = `Nível máximo (${HABILIDADE_MAXIMA}).`;
+    else dica = `Faltam ${falta} de ${pr.necessario} XP (cerca de ${usos} ${usos === 1 ? um : varios}) para o nível ${pr.nivel + 1}.`;
+    return {
+      chave,
+      nome: NOMES_FICHA_HABILIDADES[chave],
+      nivel: pr.nivel,
+      xp: pr.xp,
+      necessario: pr.necessario,
+      falta,
+      usos,
+      pct: pctProgresso(pr.xp, pr.necessario, pr.maximo),
+      maximo: pr.maximo,
+      bloqueada,
+      efeito: efeitoHabilidade(p, chave),
+      dica,
+    };
+  });
+  const oficios = ORDEM_OFICIOS.map((id) => {
+    const pr = progressoOficio(p, id);
+    const falta = pr.maximo ? 0 : Math.max(0, pr.xpParaProximo - pr.xpNoNivel);
+    return {
+      id,
+      nome: OFICIOS[id].nome,
+      icone: OFICIOS[id].icone,
+      nivel: pr.nivel,
+      xp: pr.xpNoNivel,
+      necessario: pr.xpParaProximo,
+      falta,
+      pct: pctProgresso(pr.xpNoNivel, pr.xpParaProximo, pr.maximo),
+      maximo: pr.maximo,
+      dica: pr.maximo ? `Nível máximo (${REGRAS_OFICIOS.nivelMaximo}).` : `Faltam ${falta} de ${pr.xpParaProximo} XP para o nível ${pr.nivel + 1}.`,
+    };
+  });
+  return {
+    nivel: {
+      nivel,
+      xp: p.xp || 0,
+      noNivel,
+      custo,
+      falta: nivelMaximo ? 0 : custo - noNivel,
+      pct: pctProgresso(noNivel, custo, nivelMaximo),
+      maximo: nivelMaximo,
+      descanso: Math.max(0, Math.floor(p.descanso?.xp || 0)),
+    },
+    vida: { atual: p.vida, maximo: vidaMaxima(p) },
+    fe: { atual: p.oracaoDesbloqueada ? p.fe || 0 : 0, maximo: FE_MAXIMA, aprendida: !!p.oracaoDesbloqueada },
+    carga: {
+      atual: peso,
+      maximo: capacidade,
+      pct: capacidade > 0 ? Math.min(100, (100 * peso) / capacidade) : 100,
+      texto: `${textoKg(peso)} / ${textoKg(capacidade)} kg`,
+    },
+    vigor: estadoVigor(p, agora),
+    combate,
+    oficios,
   };
 }
 
@@ -537,6 +876,94 @@ function distanciaChebyshev(a, b) {
 
 function dentroDoMapa(x, y) {
   return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < COLS && y < ROWS;
+}
+
+// Caminho mais rápido numa grade em 8 direções (A*), da casa "origem" até a casa "destino". livre(x, y) diz
+// se dá para pisar na casa (cada casa é perguntada uma vez só; a de partida não precisa ser livre). O
+// passo reto custa custoReto e o diagonal custoDiagonal (REGRAS_ROTA, dados/mundo.js). Se o destino não
+// puder ser alcançado (obstáculo, área fechada ou o limite de casas), o caminho vai até a casa alcançada
+// mais perto dele (empate: a de caminho mais curto). Devolve { passos: [[dx, dy], …], chegada: { x, y },
+// exato } (passos vazio: ficar onde está já é o melhor); null só com origem ou destino inválidos.
+function rotaNaGrade(livre, origem, destino, opcoes = {}) {
+  const cols = opcoes.colunas ?? COLS, rows = opcoes.linhas ?? ROWS;
+  const reto = opcoes.custoReto ?? REGRAS_ROTA.custoReto, diag = opcoes.custoDiagonal ?? REGRAS_ROTA.custoDiagonal;
+  const limite = opcoes.limite ?? REGRAS_ROTA.limiteCasas;
+  const dentro = (x, y) => Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < cols && y < rows;
+  if (!origem || !destino || !dentro(origem.x, origem.y) || !Number.isInteger(destino.x) || !Number.isInteger(destino.y)) return null;
+  const tx = Math.max(0, Math.min(cols - 1, destino.x)), ty = Math.max(0, Math.min(rows - 1, destino.y));
+  const n = cols * rows, inicio = origem.y * cols + origem.x, alvo = ty * cols + tx;
+  const custo = new Float64Array(n).fill(Infinity), veio = new Int32Array(n).fill(-1);
+  const fechado = new Uint8Array(n), pisavel = new Uint8Array(n); // pisavel: 0 = não perguntado, 1 = livre, 2 = bloqueada
+  // estimativa octil até o destino (nunca passa do custo real: o A* acha o caminho mais rápido)
+  const h = (i) => {
+    const dx = Math.abs((i % cols) - tx), dy = Math.abs(((i / cols) | 0) - ty);
+    return reto * (dx + dy) + (diag - 2 * reto) * Math.min(dx, dy);
+  };
+  // fila de prioridade (heap binário) de [f, casa]
+  const heapF = [], heapI = [];
+  const empurrar = (f, i) => {
+    let k = heapF.length;
+    heapF.push(f); heapI.push(i);
+    while (k > 0) {
+      const pai = (k - 1) >> 1;
+      if (heapF[pai] <= f) break;
+      heapF[k] = heapF[pai]; heapI[k] = heapI[pai];
+      k = pai;
+    }
+    heapF[k] = f; heapI[k] = i;
+  };
+  const tirar = () => {
+    const topo = heapI[0], f = heapF.pop(), i = heapI.pop();
+    if (heapF.length) {
+      let k = 0;
+      for (;;) {
+        const a = 2 * k + 1, b = a + 1;
+        let m = k, fm = f;
+        if (a < heapF.length && heapF[a] < fm) { m = a; fm = heapF[a]; }
+        if (b < heapF.length && heapF[b] < fm) { m = b; fm = heapF[b]; }
+        if (m === k) break;
+        heapF[k] = heapF[m]; heapI[k] = heapI[m];
+        k = m;
+      }
+      heapF[k] = f; heapI[k] = i;
+    }
+    return topo;
+  };
+  custo[inicio] = 0;
+  empurrar(h(inicio), inicio);
+  let melhor = inicio, melhorH = h(inicio), abertas = 0;
+  while (heapF.length && abertas < limite) {
+    const i = tirar();
+    if (fechado[i]) continue;
+    fechado[i] = 1;
+    abertas++;
+    const hi = h(i);
+    if (hi < melhorH || (hi === melhorH && custo[i] < custo[melhor])) { melhor = i; melhorH = hi; }
+    if (i === alvo) break;
+    const x = i % cols, y = (i / cols) | 0;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const j = ny * cols + nx;
+        if (fechado[j]) continue;
+        if (!pisavel[j]) pisavel[j] = livre(nx, ny) ? 1 : 2;
+        if (pisavel[j] !== 1) continue;
+        const c = custo[i] + (dx && dy ? diag : reto);
+        if (c >= custo[j]) continue;
+        custo[j] = c;
+        veio[j] = i;
+        empurrar(c + h(j), j);
+      }
+  }
+  const passos = [];
+  for (let k = melhor; k !== inicio; k = veio[k]) {
+    const de = veio[k];
+    passos.push([(k % cols) - (de % cols), ((k / cols) | 0) - ((de / cols) | 0)]);
+  }
+  passos.reverse();
+  return { passos, chegada: { x: melhor % cols, y: (melhor / cols) | 0 }, exato: melhor === alvo };
 }
 
 // ---------------------------------------------------------------------
@@ -1886,7 +2313,7 @@ function visaoEspecie(p, especie) {
         comportamentos: e.comportamentos.map((c) => COMPORTAMENTOS[c].nome),
         status: e.efeito ? STATUS_CRIATURAS[e.efeito.tipo].nome : null,
         golpeCorpo: golpeContra(p, e, "corpo"),
-        golpeArco: p?.equipamento?.arco ? golpeContra(p, e, "distancia") : null,
+        golpeArco: armaDistanciaNaMao(p) ? golpeContra(p, e, "distancia") : null,
       }
     : null;
   const comChances = estagioRevela(estagio, "chances");
@@ -2113,6 +2540,98 @@ function gastarDescanso(p, xp) {
 }
 
 // ---------------------------------------------------------------------
+// Vigor (REGRAS_VIGOR, dados/mundo.js): gasta caçando, volta longe do jogo, enche no Sábado e muda o XP
+// das criaturas pela faixa. Save: p.vigor = { minutos, vistoEm } (minutos com fração; vistoEm: a última
+// gravação, como a presença do descanso). Sem campo (save antigo ou novo), começa cheio.
+// ---------------------------------------------------------------------
+const MINUTO_MS = 60_000;
+
+// "40:00", "7:05": horas e minutos inteiros (para baixo).
+function textoVigor(minutos) {
+  const m = Math.max(0, Math.floor(Number(minutos) || 0));
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+}
+
+// Faixa do vigor (a primeira de REGRAS_VIGOR.faixas com minutos >= desde).
+function faixaVigor(minutos) {
+  const lista = REGRAS_VIGOR.faixas;
+  return lista.find((f) => (Number(minutos) || 0) >= f.desde) || lista[lista.length - 1];
+}
+
+function normalizarVigor(p, agora) {
+  const v = objetoValido(p.vigor) ? p.vigor : {};
+  const maximo = REGRAS_VIGOR.maximoMinutos;
+  p.vigor = {
+    minutos: Number.isFinite(v.minutos) ? Math.max(0, Math.min(maximo, Math.round(v.minutos * 1000) / 1000)) : maximo,
+    // Sem marca (save sem vigor), a ausência conta de agora; relógio atrasado também recomeça de agora.
+    vistoEm: Number.isFinite(v.vistoEm) && v.vistoEm > 0 ? Math.min(v.vistoEm, agora) : agora,
+    // O maior instante já convertido em vigor: atrasar e adiantar o relógio não devolve a mesma ausência duas vezes.
+    creditadoAte: Number.isFinite(v.creditadoAte) && v.creditadoAte > 0 ? v.creditadoAte : 0,
+  };
+}
+
+// O que a ausência desde v.vistoEm devolve (puro): { minutos, ganho, sabado }. Abaixo da carência, nada;
+// com o Sábado mínimo dentro dela, enche.
+function vigorRecuperado(v, agora) {
+  const R = REGRAS_VIGOR;
+  const antes = Math.max(0, Math.min(R.maximoMinutos, Number(v?.minutos) || 0));
+  const desde = Math.max(Number(v?.vistoEm) || agora, Number(v?.creditadoAte) || 0);
+  const longe = agora - desde;
+  if (!(longe >= R.carenciaMinutos * MINUTO_MS)) return { minutos: antes, ganho: 0, sabado: false };
+  const sabado = tempoNoSabado(desde, agora) >= R.sabadoMinimoMinutos * MINUTO_MS;
+  const minutos = sabado ? R.maximoMinutos : Math.min(R.maximoMinutos, antes + (longe / MINUTO_MS - R.carenciaMinutos) / R.regenCadaMinutos);
+  return { minutos, ganho: minutos - antes, sabado };
+}
+
+// Converte em vigor a ausência desde a última gravação e marca a presença (Mundo.salvar). Devolve
+// { ganho, sabado } (sabado: o descanso do Sábado encheu o vigor).
+function creditarVigor(p, agora) {
+  if (!objetoValido(p.vigor)) normalizarVigor(p, agora);
+  const r = vigorRecuperado(p.vigor, agora);
+  p.vigor.minutos = r.minutos;
+  p.vigor.vistoEm = agora;
+  p.vigor.creditadoAte = Math.max(p.vigor.creditadoAte || 0, agora);
+  return { ganho: r.ganho, sabado: r.sabado };
+}
+
+// Gasta minutos de vigor (caçando). Devolve o que gastou.
+function gastarVigor(p, minutos) {
+  if (!objetoValido(p.vigor) || !(minutos > 0)) return 0;
+  const antes = p.vigor.minutos;
+  p.vigor.minutos = Math.max(0, antes - minutos);
+  return antes - p.vigor.minutos;
+}
+
+// Visão do vigor para a interface (pura; inclui o que a ausência em curso já devolveu).
+function estadoVigor(p, agora) {
+  const R = REGRAS_VIGOR;
+  const r = objetoValido(p?.vigor) ? vigorRecuperado(p.vigor, agora) : { minutos: R.maximoMinutos };
+  const faixa = faixaVigor(r.minutos);
+  const i = R.faixas.indexOf(faixa);
+  const abaixo = R.faixas[i + 1];
+  return {
+    minutos: r.minutos,
+    maximo: R.maximoMinutos,
+    texto: textoVigor(r.minutos),
+    textoMaximo: textoVigor(R.maximoMinutos),
+    pct: Math.max(0, Math.min(100, (100 * r.minutos) / R.maximoMinutos)),
+    faixa: { id: faixa.id, nome: faixa.nome, xp: faixa.xp, texto: faixa.texto },
+    // Minutos de caçada até cair para a faixa de baixo (null na última).
+    ateCair: abaixo ? Math.max(0, r.minutos - faixa.desde) : null,
+    proxima: abaixo ? { id: abaixo.id, nome: abaixo.nome, texto: abaixo.texto } : null,
+  };
+}
+
+// XP de um abate antes do descanso (pura). Ordem: XP da criatura (xpDoAbate, com a queda por nível) × campeão
+// × vigor, arredondado; o descanso do Sábado dobra este resultado depois (gastarDescanso). Vocação e talentos
+// não multiplicam XP (só dano, cura, defesa e recarga). Devolve { xp, semVigor, fatorVigor, faixa }.
+function composicaoXpAbate(p, e, campeao, agora) {
+  const criatura = xpDoAbate(p, e) * (campeao ? CAMPEAO.xp : 1);
+  const faixa = estadoVigor(p, agora).faixa;
+  return { xp: Math.round(criatura * faixa.xp), semVigor: Math.round(criatura), fatorVigor: faixa.xp, faixa };
+}
+
+// ---------------------------------------------------------------------
 // Missões (dados/missoes.js) — motor genérico, sem missões escritas como código
 // ---------------------------------------------------------------------
 // Estado no save: p.missoes[id] = { status, etapa, progresso }.
@@ -2236,8 +2755,8 @@ function variaveisMissao(p, missao, estado) {
     npc: npcs[receptorMissao(missao)]?.nome || "o líder",
     etapa: indice + 1,
     etapas: missao.etapas.length,
-    peso: pesoCarregado(p),
-    capacidade: capacidadeCarga(p),
+    peso: textoKg(pesoCarregado(p)),
+    capacidade: textoKg(capacidadeCarga(p)),
     recompensa: resumoRecompensa(etapa.recompensa),
     proximaArea: proxima ? areas[npcs[proxima.npc]?.area]?.nome || "" : "",
   };
@@ -2653,8 +3172,10 @@ function efeitoOferta(oferta) {
 // Unidades de um item que o jogador tem (mochila e equipamento).
 function unidadesDoItem(p, item) {
   // Conta o item em qualquer raridade ("escudo_ferro@raro.vida8" também é um escudo de ferro).
+  // A munição do boneco conta a pilha inteira (quantidadeMunicao).
   const naMochila = (p?.inventario || []).filter((x) => baseItem(x) === item).length;
-  return naMochila + Object.values(p?.equipamento || {}).filter((x) => x && baseItem(x) === item).length;
+  const noCorpo = Object.entries(p?.equipamento || {}).reduce((n, [slot, x]) => n + (x && baseItem(x) === item ? (slot === "municao" ? municaoNoEspaco(p) : 1) : 0), 0);
+  return naMochila + noCorpo;
 }
 
 // Ofertas da troca de pontos, na ordem dos dados. possui: unidades do item da oferta que o jogador
@@ -2955,6 +3476,8 @@ const Mundo = {
   // Toda gravação marca a presença do jogador: a ausência desde a anterior que caiu no Sábado vira
   // reserva de XP de descanso (JGB-11).
   salvar(p) {
+    const vigor = creditarVigor(p, Date.now()); // a mesma presença devolve o vigor (e o Sábado o enche)
+    if (vigor.sabado && vigor.ganho >= 1) this.adicionarAviso(p, "vigor", `O descanso do Sábado renovou o seu vigor: ${textoVigor(p.vigor.minutos)}.`);
     const descanso = creditarDescanso(p, Date.now());
     if (descanso > 0) this.avisarDescanso(p, descanso);
     this.avisarVocacao(p);
@@ -3017,20 +3540,12 @@ const Mundo = {
       ganharHabilidade(p, chave, 0); // aplica a curva atual ao progresso guardado
     }
 
-    // Equipamento e atalhos.
-    if (!objetoValido(p.equipamento)) p.equipamento = { arma: null, arco: null, escudo: null, armadura: null };
-    for (const slot of Object.keys(SLOTS_EQUIPAMENTO)) if (!(slot in p.equipamento)) p.equipamento[slot] = null;
-    for (const [slot, tipo] of Object.entries(SLOTS_EQUIPAMENTO)) {
-      const item = p.equipamento[slot];
-      if (item && infoItem(item)?.tipo !== tipo) {
-        if (itemValido(item)) p.inventario.push(item);
-        p.equipamento[slot] = null;
-      }
-    }
-    // Espada e arco são exclusivos: mantém a espada e guarda o arco.
-    if (p.equipamento.arma && p.equipamento.arco) {
-      p.inventario.push(p.equipamento.arco);
-      p.equipamento.arco = null;
+    // Equipamento (boneco: uma mão da arma, peças do corpo e munição) e atalhos. O que saiu do corpo por causa
+    // do arco de duas mãos ganha um aviso (o jogador entra com outra defesa e precisa saber por quê).
+    const mudancasEquip = normalizarEquipamento(p);
+    if (!novo && mudancasEquip.duasMaos.length) {
+      const nomes = mudancasEquip.duasMaos.map((item) => nomeItem(item)).join(" e ");
+      this.adicionarAviso(p, "boneco_duas_maos", `O equipamento agora tem uma mão para a arma, e o arco usa as duas: ${nomes} ${mudancasEquip.duasMaos.length > 1 ? "voltaram" : "voltou"} para a mochila.`);
     }
     if (!Array.isArray(p.hotkeys)) p.hotkeys = ["pocao", null, null, null, null, null];
     p.hotkeys = Array.from({ length: 6 }, (_, i) => (ITENS[p.hotkeys[i]] ? p.hotkeys[i] : null));
@@ -3057,6 +3572,9 @@ const Mundo = {
     for (const s of p.saqueNoChao) {
       if (!Number.isFinite(s.criadoEm)) s.criadoEm = agora;
       if ("destaque" in s && (!s.item || !registroDe(RARIDADES, s.destaque))) delete s.destaque;
+      // Itens jogados no chão (largarItem): largado só true; pilha só com 2 ou mais (senão vale 1 unidade).
+      if ("largado" in s && (s.largado !== true || !s.item)) delete s.largado;
+      if ("quantidade" in s && (!s.item || !Number.isSafeInteger(s.quantidade) || s.quantidade < 2)) delete s.quantidade;
     }
 
     // Itens iniciais (uma única vez).
@@ -3071,7 +3589,7 @@ const Mundo = {
         ["escudo_madeira", "escudo"],
         ["tunica_pano", "armadura"],
       ]) {
-        const livre = !p.equipamento[slot] && !(slot === "arma" && p.equipamento.arco);
+        const livre = !p.equipamento[slot] && !(slot === "escudo" && p.equipamento.arma && maosDoItem(p.equipamento.arma) === 2);
         if (livre) p.equipamento[slot] = item;
         else p.inventario.push(item);
       }
@@ -3091,6 +3609,8 @@ const Mundo = {
     // Maná e descanso (save v11). Saves até a v10 começam com o jarro vazio e a ausência contando de agora.
     normalizarMana(p, agora);
     normalizarDescanso(p, agora);
+    // Vigor (sem versão nova): quem não tem o campo começa cheio, com a ausência contando de agora.
+    normalizarVigor(p, agora);
 
     // Fé e Oração.
     p.oracaoDesbloqueada = !!p.oracaoDesbloqueada;
@@ -3116,20 +3636,20 @@ const Mundo = {
       this.adicionarAviso(
         p,
         "recompensa_arco",
-        "Nova recompensa: Arco de madeira e flechas. Arraste o arco até o espaço Arco do equipamento e use R para atirar.",
+        "Nova recompensa: Arco de madeira e flechas. Arraste o arco até a mão da arma do equipamento e ataque com Espaço ou R.",
       );
     }
     delete p.avisoAtualizacao;
 
     // Saves antigos que já concluíram o Deserto recebem o arco uma única vez.
     if (missaoConcluida(p, "deserto") && !p.atualizacaoDistanciaEntregue) {
-      if (!p.equipamento.arco && !p.inventario.includes("arco_madeira")) this.adicionarItem(p, "arco_madeira");
+      if (!armaDistanciaNaMao(p) && !p.inventario.includes("arco_madeira")) this.adicionarItem(p, "arco_madeira");
       for (let i = 0; i < 8; i++) if (!this.adicionarItem(p, "flecha")) break;
       p.atualizacaoDistanciaEntregue = true;
       this.adicionarAviso(
         p,
         "recompensa_arco",
-        "Nova recompensa: Arco de madeira e flechas. Arraste o arco até o espaço Arco do equipamento e use R para atirar.",
+        "Nova recompensa: Arco de madeira e flechas. Arraste o arco até a mão da arma do equipamento e ataque com Espaço ou R.",
       );
     }
     if (!novo && versaoAnterior < 6) {
@@ -3258,6 +3778,14 @@ const Mundo = {
       if (p.inimigosDerrotados.includes(e.id)) p.vidaInimigos[e.id] = 0;
       else if (vidaAntiga || !Number.isFinite(hp) || hp <= 0) p.vidaInimigos[e.id] = atributosInimigo(p, e).vidaMaxima;
       else p.vidaInimigos[e.id] = Math.min(hp, atributosInimigo(p, e).vidaMaxima);
+    }
+    // Pesos reais (kg): quem já carregava muito pode ter ficado acima da carga. Nada se perde, mas o saque e as
+    // recompensas em item só entram depois de aliviar a mochila — o aviso explica como.
+    if (!novo && pesoCarregado(p) > capacidadeCarga(p) + 0.0001) {
+      const carga = `${textoKg(pesoCarregado(p))} de ${textoKg(capacidadeCarga(p))} kg`;
+      this.adicionarAviso(p, "carga_real", `Os itens agora têm o peso de verdade, em kg: você carrega ${carga}. Nada se perdeu, ` +
+        "mas para pegar saques e receber recompensas em item venda ao mercador (vender 1, X ou tudo) ou jogue no chão " +
+        "o que não precisa (botão direito no item).");
     }
     p.versao = VERSAO_SAVE;
     return p;
@@ -3398,6 +3926,20 @@ const Mundo = {
     );
   },
 
+  // Casas onde o jogador pode pisar agora na área dele (1 = livre, 0 = não), na mesma regra de casaLivre
+  // (obstáculo do mapa, NPC ou criatura viva bloqueiam; a casa do próprio jogador conta como livre). Montada
+  // de uma vez para as rotas longas (rotaNaGrade): perguntar casa por casa percorreria NPCs e criaturas a
+  // cada vez.
+  gradeDePassagem(p) {
+    const mapa = mapas[p?.area], grade = new Uint8Array(COLS * ROWS);
+    if (!mapa) return grade;
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) grade[y * COLS + x] = mapa[y][x] === 0 ? 1 : 0;
+    for (const n of Object.values(npcs)) if (n.area === p.area && dentroDoMapa(n.x, n.y)) grade[n.y * COLS + n.x] = 0;
+    for (const e of Object.values(inimigos))
+      if (e.area === p.area && dentroDoMapa(e.x, e.y) && this.inimigoVivo(p, e.id)) grade[e.y * COLS + e.x] = 0;
+    return grade;
+  },
+
   casaLivre(x, y, p, ignorarJogador = false) {
     if (!mapas[p.area]?.[y] || mapas[p.area][y][x] !== 0) return false;
     if (!ignorarJogador && p.x === x && p.y === y) return false;
@@ -3408,9 +3950,10 @@ const Mundo = {
   },
 
   // ----- Inventário -----
+  // A munição recebida entra na pilha do espaço de munição (guardarItem); o resto vai para a mochila.
   adicionarItem(p, item) {
     if (!itemValido(item) || pesoCarregado(p) + pesoItem(item) > capacidadeCarga(p) + 0.0001) return false;
-    p.inventario.push(item);
+    guardarItem(p, item);
     return true;
   },
 
@@ -3440,36 +3983,78 @@ const Mundo = {
   },
 
   mensagemMochilaCheia(p, complemento) {
-    return `Mochila cheia (${pesoCarregado(p)}/${capacidadeCarga(p)} kg). ${complemento}`;
+    return `Mochila cheia (${textoKg(pesoCarregado(p))}/${textoKg(capacidadeCarga(p))} kg). ${complemento}`;
   },
 
+  // Equipa um item da mochila num espaço do boneco. A mão da arma aceita a arma de corpo a corpo ou a de
+  // distância; o arco usa as duas mãos: equipá-lo guarda o escudo, e com ele na mão o escudo não entra. A
+  // munição entra inteira: todas as unidades daquele item na mochila vão para a pilha do espaço.
+  // Devolve guardados: os itens que voltaram para a mochila (o que estava no espaço e o escudo).
   equiparItem(id, itemId, slot) {
     const p = this.jogadores[id];
-    const tipo = registroDe(SLOTS_EQUIPAMENTO, slot);
-    if (!p || !tipo || infoItem(itemId)?.tipo !== tipo)
-      return { ok: false, mensagem: "Esse item não serve neste espaço." };
+    const tipos = tiposDoSlot(slot);
+    const d = infoItem(itemId);
+    if (!p || !tipos.length || !d || !tipos.includes(d.tipo)) {
+      const certo = tipos.length && d ? slotDoItem(itemId) : null;
+      return { ok: false, mensagem: certo ? `${nomeItem(itemId)} vai ${ESPACOS_BONECO[certo].lugar}.` : "Esse item não serve neste espaço." };
+    }
     const indice = p.inventario.indexOf(itemId);
     if (indice < 0) return { ok: false, mensagem: "O item não está na mochila." };
-    const slotIncompativel = slot === "arma" ? "arco" : slot === "arco" ? "arma" : null;
-    if (slotIncompativel && p.equipamento[slotIncompativel]) {
-      p.inventario.push(p.equipamento[slotIncompativel]);
-      p.equipamento[slotIncompativel] = null;
+    if (slot === "municao") return this.equiparMunicao(p, itemId);
+    const naMao = armaNaMao(p);
+    if (slot === "escudo" && naMao && maosDoItem(naMao) === 2) {
+      return { ok: false, duasMaos: true, mensagem: `${textoDuasMaos(naMao)} Guarde-o para usar o escudo.` };
     }
-    const anterior = p.equipamento[slot];
+    const guardados = [];
     p.inventario.splice(indice, 1);
-    if (anterior) p.inventario.push(anterior);
+    if (p.equipamento[slot]) guardados.push(p.equipamento[slot]);
+    if (slot === "arma" && maosDoItem(itemId) === 2 && p.equipamento.escudo) {
+      guardados.push(p.equipamento.escudo);
+      p.equipamento.escudo = null;
+    }
+    p.inventario.push(...guardados);
     p.equipamento[slot] = itemId;
     this.ajustarVidaAoEquipamento(p);
     this.salvar(p);
-    const d = infoItem(itemId);
-    const efeito = [d.bonus ? `+${d.bonus} de dano` : `+${d.defesa || 0} de defesa`, ...textoAtributos(itemId).filter((t) => !/de dano$|de defesa$/.test(t))];
-    return { ok: true, mensagem: `${nomeItem(itemId)} equipado (${efeito.join(", ")}).` };
+    const efeito = efeitosDoItem(itemId);
+    const duasMaos = slot === "arma" && guardados.some((x) => infoItem(x)?.tipo === "escudo") ? ` ${textoDuasMaos(itemId)}` : "";
+    const nomes = guardados.map(nomeItem).join(" e ");
+    const voltou = guardados.length ? ` ${nomes} ${guardados.length > 1 ? "voltaram" : "voltou"} para a mochila.` : "";
+    return { ok: true, guardados, mensagem: `Equipou: ${nomeItem(itemId)}${efeito.length ? ` (${efeito.join(", ")})` : ""}.${duasMaos}${voltou}` };
+  },
+
+  // Munição: a pilha do item na mochila vai inteira para o espaço (outra munição que estiver lá volta).
+  equiparMunicao(p, itemId) {
+    const atual = p.equipamento.municao;
+    const guardados = [];
+    if (atual && atual !== itemId) {
+      for (let i = municaoNoEspaco(p); i > 0; i--) p.inventario.push(atual);
+      guardados.push(atual);
+      p.equipamento.municao = null;
+      p.quantidadeMunicao = 0;
+    }
+    const antes = municaoNoEspaco(p);
+    let n = Math.min(MUNICAO_MAXIMA - antes, p.inventario.filter((x) => x === itemId).length);
+    const total = antes + n;
+    p.inventario = p.inventario.filter((x) => !(x === itemId && n-- > 0));
+    p.equipamento.municao = itemId;
+    p.quantidadeMunicao = total;
+    this.salvar(p);
+    return { ok: true, guardados, mensagem: `${textoQuantidade(itemId, total)} no espaço de munição.` };
   },
 
   desequiparItem(id, slot) {
     const p = this.jogadores[id];
-    const item = registroDe(SLOTS_EQUIPAMENTO, slot) ? p?.equipamento?.[slot] : null;
+    const item = tiposDoSlot(slot).length ? p?.equipamento?.[slot] : null;
     if (!item) return { ok: false };
+    if (slot === "municao") {
+      const n = municaoNoEspaco(p);
+      for (let i = 0; i < n; i++) p.inventario.push(item);
+      p.equipamento.municao = null;
+      p.quantidadeMunicao = 0;
+      this.salvar(p);
+      return { ok: true, mensagem: `${textoQuantidade(item, n)} ${n === 1 ? "voltou" : "voltaram"} para a mochila.` };
+    }
     p.inventario.push(item);
     p.equipamento[slot] = null;
     this.ajustarVidaAoEquipamento(p);
@@ -3488,21 +4073,22 @@ const Mundo = {
     return { ok: true };
   },
 
+  // Troca o item do espaço pelo melhor da mochila que caiba nele (ou guarda, se não houver outro). Na mão da
+  // arma, prefere o mesmo jeito de lutar: o do item que está nela, ou o da vocação (o Fundibulário, distância).
   alternarEquipamento(id, slot) {
     const p = this.jogadores[id];
-    const tipo = registroDe(SLOTS_EQUIPAMENTO, slot);
-    if (!tipo) return { ok: false, mensagem: "Espaço de equipamento inválido." };
+    const tipos = tiposDoSlot(slot);
+    if (!p || !tipos.length) return { ok: false, mensagem: "Espaço de equipamento inválido." };
     const atual = p.equipamento[slot];
-    const valor = (item) => infoItem(item).bonus || infoItem(item).defesa || 0;
-    const candidatos = p.inventario.filter((item) => infoItem(item)?.tipo === tipo).sort((a, b) => valor(b) - valor(a));
-    if (atual && candidatos.length) {
-      const escolhido = candidatos[0];
-      p.inventario[p.inventario.indexOf(escolhido)] = atual;
-      p.equipamento[slot] = escolhido;
-      this.ajustarVidaAoEquipamento(p);
-      this.salvar(p);
-      return { ok: true, mensagem: `Equipado: ${nomeItem(escolhido)}. ${nomeItem(atual)} foi para a mochila.` };
+    if (slot === "municao") {
+      if (atual) return this.desequiparItem(id, slot);
+      const m = p.inventario.find((x) => infoItem(x)?.tipo === "municao");
+      return m ? this.equiparMunicao(p, m) : { ok: false, mensagem: "Você não tem munição na mochila." };
     }
+    const preferido = slot !== "arma" ? null : atual ? infoItem(atual).tipo : vocacaoADistancia(p) ? "arma_distancia" : "arma";
+    const valor = (item) => (infoItem(item).tipo === preferido ? 1000 : 0) + (infoItem(item).bonus || infoItem(item).defesa || 0);
+    const candidatos = p.inventario.filter((item) => tipos.includes(infoItem(item)?.tipo)).sort((a, b) => valor(b) - valor(a));
+    if (candidatos.length) return this.equiparItem(id, candidatos[0], slot);
     if (atual) {
       p.inventario.push(atual);
       p.equipamento[slot] = null;
@@ -3510,20 +4096,7 @@ const Mundo = {
       this.salvar(p);
       return { ok: true, mensagem: `Você guardou ${nomeItem(atual)} na mochila.` };
     }
-    if (!candidatos.length) return { ok: false, mensagem: `Você não tem item para equipar no espaço: ${slot}.` };
-    const escolhido = candidatos[0];
-    const slotIncompativel = slot === "arma" ? "arco" : slot === "arco" ? "arma" : null;
-    const trocou = !!(slotIncompativel && p.equipamento[slotIncompativel]);
-    if (trocou) {
-      p.inventario.push(p.equipamento[slotIncompativel]);
-      p.equipamento[slotIncompativel] = null;
-    }
-    p.inventario.splice(p.inventario.indexOf(escolhido), 1);
-    p.equipamento[slot] = escolhido;
-    this.ajustarVidaAoEquipamento(p);
-    this.salvar(p);
-    const aviso = trocou ? " Espada e arco não podem ser usados ao mesmo tempo; o outro foi para a mochila." : "";
-    return { ok: true, mensagem: `Equipado: ${nomeItem(escolhido)}.${aviso}` };
+    return { ok: false, mensagem: `Você não tem item para usar ${ESPACOS_BONECO[slot]?.lugar || "neste espaço"}.` };
   },
 
   // ----- Saques no chão -----
@@ -3584,7 +4157,8 @@ const Mundo = {
     });
     let excesso = p.saqueNoChao.length - LIMITE_SAQUES_NO_CHAO;
     if (excesso > 0) {
-      const removiveis = p.saqueNoChao.filter((s) => !protegido(s)).sort((a, b) => a.criadoEm - b.criadoEm);
+      // O que o próprio jogador jogou no chão fica os 10 minutos anunciados: o corte por quantidade só leva saques.
+      const removiveis = p.saqueNoChao.filter((s) => !protegido(s) && !s.largado).sort((a, b) => a.criadoEm - b.criadoEm);
       const cortar = new Set();
       for (const s of removiveis) {
         if (excesso <= 0) break;
@@ -3604,9 +4178,10 @@ const Mundo = {
     if (!s) return { ok: false, mensagem: "Esse saque não está mais no chão." };
     if (distanciaChebyshev(p, s) > ALCANCE_INTERACAO)
       return { ok: false, mensagem: "Chegue ao lado do item para pegá-lo." };
-    // O item que caiu na morte do próprio jogador não é saque novo: não entra no analisador.
+    // O item que caiu na morte do próprio jogador, ou que ele mesmo jogou no chão, não é saque novo: não
+    // entra no analisador (nem, o jogado no chão, nas missões).
     const analisador = this.estado[id]?.analisador;
-    const conta = analisador?.inicio && !s.id.startsWith("morte_");
+    const conta = analisador?.inicio && !s.id.startsWith("morte_") && !s.largado;
     if (s.moedas) {
       p.moedas += s.moedas;
       if (conta) analisador.moedas += s.moedas;
@@ -3614,18 +4189,29 @@ const Mundo = {
       this.salvar(p);
       return { ok: true, moedas: s.moedas, itemColetado: s.id, mensagem: `Você pegou ${s.moedas} moedas.` };
     }
-    if (!this.adicionarItem(p, s.item)) {
-      return { ok: false, mensagem: this.mensagemMochilaCheia(p, "Libere espaço para pegar o item.") };
-    }
-    p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id);
+    // Pilha (itens jogados no chão): leva o que couber na carga; o resto continua no chão.
+    const total = Number.isSafeInteger(s.quantidade) && s.quantidade > 1 ? s.quantidade : 1;
+    const folga = capacidadeCarga(p) - pesoCarregado(p) + 0.0001;
+    const pegos = itemValido(s.item) ? Math.max(0, Math.min(total, Math.floor(folga / pesoItem(s.item)))) : 0;
+    if (!pegos) return { ok: false, mensagem: this.mensagemMochilaCheia(p, "Libere espaço para pegar o item.") };
+    for (let i = 0; i < pegos; i++) guardarItem(p, s.item); // flechas voltam à pilha do espaço de munição
+    const restante = total - pegos;
+    if (restante > 1) s.quantidade = restante;
+    else if (restante === 1) delete s.quantidade;
+    else p.saqueNoChao = p.saqueNoChao.filter((x) => x.id !== s.id);
     if (conta) {
       analisador.itens += 1;
       analisador.valorItens += valorDeVenda(s.item);
       if (TIPOS_COM_RARIDADE.has(infoItem(s.item)?.tipo)) analisador.equipamentos += 1;
     }
-    this.registrarColeta(p, s.item, s.id, "saque");
+    if (!s.largado) this.registrarColeta(p, s.item, s.id, "saque");
     this.salvar(p);
-    return { ok: true, itemColetado: s.id, mensagem: `Você pegou: ${nomeItem(s.item)}.` };
+    const nome = pegos > 1 ? `${pegos}× ${nomeItem(s.item)}` : nomeItem(s.item);
+    if (restante) {
+      const ficou = this.mensagemMochilaCheia(p, `${restante === 1 ? "1 ficou" : `${restante} ficaram`} no chão.`);
+      return { ok: true, saqueId: s.id, quantidade: pegos, restante, mensagem: `Você pegou: ${nome}. ${ficou}` };
+    }
+    return { ok: true, itemColetado: s.id, quantidade: pegos, mensagem: `Você pegou: ${nome}.` };
   },
 
   // Ao pisar numa casa, recolhe toda a pilha de saque (item e moedas caem
@@ -3634,8 +4220,9 @@ const Mundo = {
   coletarPilhaDeSaque(id, p) {
     const deMissao = this.itensDeMissaoPendentes(p);
     const prioridade = (s) => (s.item && deMissao.includes(s.item) ? 1 : 0);
+    // O que o próprio jogador jogou no chão (largado) fica lá: só volta clicando no item.
     const pilha = p.saqueNoChao
-      .filter((s) => s.area === p.area && s.x === p.x && s.y === p.y)
+      .filter((s) => s.area === p.area && s.x === p.x && s.y === p.y && !s.largado)
       .sort((a, b) => prioridade(b) - prioridade(a));
     if (!pilha.length) return null;
     const coletados = [];
@@ -3666,37 +4253,173 @@ const Mundo = {
     };
   },
 
+  // ----- Reserva de missão e quantidades (vender, comprar, jogar no chão) -----
+  // Unidades de um item que as missões em andamento ainda pedem na entrega (objetivo "entregar"): não saem
+  // da mochila pela venda nem pelo chão, para a entrega não travar por descuido (o excedente sai normalmente).
+  // { quantidade, missao (nome), npc (nome de quem recebe) }.
+  reservaDeMissao(p, item) {
+    let quantidade = 0;
+    let missao = null;
+    for (const { missao: m, objetivo: o } of this.objetivosAbertos(p)) {
+      if (o.tipo !== "entregar" || o.item !== item) continue;
+      quantidade += o.quantidade || 1;
+      missao = missao || m;
+    }
+    return { quantidade, missao: missao?.nome || null, npc: missao ? npcs[receptorMissao(missao)]?.nome || null : null };
+  },
+
+  // Quantas unidades do item podem sair da mochila (vender ou jogar no chão): as que sobram da reserva.
+  quantidadeLivre(id, item) {
+    const p = this.jogadores[id];
+    if (!p) return 0;
+    return Math.max(0, this.contarItem(id, item) - this.reservaDeMissao(p, item).quantidade);
+  },
+
+  // Confere a quantidade pedida para tirar um item da mochila: inteiro de 1 até o que se tem, sem mexer na
+  // reserva de missão. verbo: "vender" ou "jogar no chão". Devolve { ok, quantidade } ou { ok: false, mensagem }.
+  conferirSaida(p, item, quantidadeBruta, verbo) {
+    const q = quantidadeBruta === undefined || quantidadeBruta === null ? 1 : Number(quantidadeBruta);
+    if (!Number.isSafeInteger(q) || q < 1) return { ok: false, mensagem: "Quantidade inválida: escolha 1 ou mais." };
+    const tem = p.inventario.filter((x) => x === item).length;
+    if (q > tem) return { ok: false, mensagem: `Você só tem ${tem}× ${nomeItem(item)}.` };
+    const reserva = this.reservaDeMissao(p, item);
+    const livre = tem - reserva.quantidade;
+    if (q > livre) {
+      const pede = `A missão “${reserva.missao}” pede ${reserva.quantidade}× ${nomeItem(item)} na entrega a ${reserva.npc}.`;
+      return { ok: false, reservado: true, mensagem: livre > 0 ? `${pede} Você pode ${verbo} até ${livre}.` : `${pede} Guarde para entregar.` };
+    }
+    return { ok: true, quantidade: q };
+  },
+
+  // ----- Jogar itens no chão -----
+  // Casa que leva a outro lugar (trilha, cais, portal): o item deixado ali não poderia ser buscado.
+  casaDeTransicao(areaId, x, y) {
+    const a = areas[areaId];
+    if (!a) return false;
+    if (a.passagem && a.passagem.x === x && a.passagem.y === y) return true;
+    if (a.cais && a.cais.x === x && a.cais.y === y) return true;
+    return PORTAIS.some((t) => t.area === areaId && t.x === x && t.y === y);
+  },
+
+  // Onde o item jogado cai: a casa pedida, se for a do jogador ou uma vizinha e for chão livre; senão uma
+  // vizinha reta livre (abaixo, à direita, à esquerda, acima: o item fica à vista, não escondido sob o
+  // personagem); senão a casa do jogador; senão uma diagonal (por último: pode ser do outro lado de uma quina
+  // de parede). null se não houver chão.
+  casaParaLargar(p, x, y) {
+    const serve = (cx, cy) => this.casaParaFicar(p.area, cx, cy) && !this.casaDeTransicao(p.area, cx, cy);
+    if (Number.isInteger(x) && Number.isInteger(y) && distanciaChebyshev(p, { x, y }) <= ALCANCE_INTERACAO && serve(x, y)) return { x, y };
+    for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1], [0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      if (serve(p.x + dx, p.y + dy)) return { x: p.x + dx, y: p.y + dy };
+    }
+    return null;
+  },
+
+  // Joga itens da mochila no chão para liberar espaço (comando largarItem). Ficam em p.saqueNoChao como saque
+  // "largado" (com quantidade, se mais de 1; o mesmo item jogado na mesma casa se junta à pilha): pisar em
+  // cima não os recolhe (só clicar no item, ao lado), não contam como saque novo no analisador nem nas missões
+  // e somem em TEMPO_EXPIRACAO_SAQUE como os outros. Equipamento vestido precisa voltar à mochila antes.
+  largarItem(id, item, quantidade, x, y) {
+    const p = this.jogadores[id];
+    if (!itemValido(item)) return { ok: false, mensagem: "Item inválido." };
+    if (!p.inventario.includes(item)) {
+      const noCorpo = Object.values(p.equipamento || {}).includes(item);
+      return {
+        ok: false,
+        mensagem: noCorpo ? `Tire do corpo antes de jogar no chão: guarde ${nomeItem(item)} na mochila.` : "O item não está na mochila.",
+      };
+    }
+    const conferido = this.conferirSaida(p, item, quantidade, "jogar no chão");
+    if (!conferido.ok) return conferido;
+    if (p.area === "mar") return { ok: false, mensagem: "No barco não há onde deixar itens. Desembarque primeiro." };
+    const pediu = x !== undefined && x !== null && y !== undefined && y !== null && Number.isInteger(Number(x)) && Number.isInteger(Number(y));
+    const casa = this.casaParaLargar(p, Number(x), Number(y));
+    if (!casa) return { ok: false, mensagem: "Não há chão livre aqui para deixar o item." };
+    // Pediu uma casa longe (ou ocupada): o item cai ao lado do jogador, e a mensagem diz isso.
+    const longe = pediu && (casa.x !== Number(x) || casa.y !== Number(y))
+      ? (distanciaChebyshev(p, { x: Number(x), y: Number(y) }) > ALCANCE_INTERACAO
+        ? " Caiu ao seu lado: só dá para jogar a até 1 casa de você."
+        : " Caiu ao seu lado: a casa escolhida não tem chão livre.")
+      : "";
+    const q = conferido.quantidade;
+    this.removerItens(p, item, q);
+    const agora = Date.now();
+    let s = p.saqueNoChao.find((c) => c.largado && c.item === item && c.area === p.area && c.x === casa.x && c.y === casa.y);
+    if (s) {
+      s.quantidade = (s.quantidade || 1) + q;
+      s.criadoEm = agora;
+    } else {
+      s = { id: `largado_${agora}_${Math.floor(Math.random() * 1e6).toString(36)}`, area: p.area, x: casa.x, y: casa.y, item, criadoEm: agora, largado: true };
+      if (q > 1) s.quantidade = q;
+      p.saqueNoChao.push(s);
+    }
+    this.salvar(p);
+    const minutos = Math.round(TEMPO_EXPIRACAO_SAQUE / 60000);
+    return {
+      ok: true,
+      saqueId: s.id,
+      quantidade: q,
+      mensagem: `Você jogou no chão: ${q > 1 ? `${q}× ` : ""}${nomeItem(item)}.${longe} Para pegar de volta, clique no item (ele some em ${minutos} minutos).`,
+    };
+  },
+
   // ----- Comércio -----
   mercadorProximo(p) {
     return this.npcProximo(p, (n) => n.papel === "loja");
   },
 
-  comprarItem(id, item) {
+  // Compra "quantidade" do catálogo (de flechas, lotes de FLECHAS_POR_PACOTE), de 1 até
+  // QUANTIDADE_MAXIMA_COMPRA, se houver moedas e carga para tudo.
+  comprarItem(id, item, quantidade) {
     const p = this.jogadores[id];
     const merc = p && this.mercadorProximo(p);
     if (!merc) return { ok: false, mensagem: "Aproxime-se do mercador para comprar." };
     const preco = catalogoDaLoja(merc.id).find((x) => x.item === item)?.preco;
     if (!preco) return { ok: false, mensagem: "Esse mercador não vende esse item." };
-    const lista = item === "flechas" ? Array(FLECHAS_POR_PACOTE).fill("flecha") : [item];
-    if (p.moedas < preco) return { ok: false, mensagem: `Você precisa de ${preco} moedas.` };
-    if (!this.podeReceberComRemocao(p, lista)) return { ok: false, mensagem: "A mochila está cheia." };
-    p.moedas -= preco;
-    for (const x of lista) this.adicionarItem(p, x);
+    const q = quantidade === undefined || quantidade === null ? 1 : Number(quantidade);
+    if (!Number.isSafeInteger(q) || q < 1 || q > QUANTIDADE_MAXIMA_COMPRA) {
+      return { ok: false, mensagem: `Quantidade inválida: de 1 a ${QUANTIDADE_MAXIMA_COMPRA} por compra.` };
+    }
+    const unidade = item === "flechas" ? "flecha" : item;
+    const porLote = item === "flechas" ? FLECHAS_POR_PACOTE : 1;
+    const total = preco * q;
+    const nome = item === "flechas" ? `${porLote * q} flechas` : q > 1 ? `${q}× ${nomeItem(item)}` : nomeItem(item);
+    if (p.moedas < total) {
+      return { ok: false, mensagem: q > 1 ? `Você precisa de ${total} moedas para ${nome} (tem ${p.moedas}).` : `Você precisa de ${preco} moedas.` };
+    }
+    const pesoLote = pesoItem(unidade) * porLote;
+    const folga = capacidadeCarga(p) - pesoCarregado(p) + 0.0001;
+    if (pesoLote * q > folga) {
+      const cabem = Math.max(0, Math.floor(folga / pesoLote));
+      return { ok: false, mensagem: q > 1 && cabem ? `A mochila não comporta tudo: cabem mais ${cabem}.` : "A mochila está cheia." };
+    }
+    p.moedas -= total;
+    // As flechas entram na pilha do espaço de munição (guardarItem), se ela estiver vazia ou for de flechas.
+    let naMunicao = 0;
+    for (let i = 0; i < porLote * q; i++) if (guardarItem(p, unidade) === "municao") naMunicao++;
     this.salvar(p);
-    const nome = item === "flechas" ? `${FLECHAS_POR_PACOTE} flechas` : nomeItem(item);
-    return { ok: true, mensagem: `Compra realizada: ${nome} por ${preco} moedas.` };
+    const onde = naMunicao ? " Estão no espaço de munição." : "";
+    return { ok: true, quantidade: q, mensagem: `Compra realizada: ${nome} por ${total} moedas.${onde}` };
   },
 
-  venderItem(id, item) {
+  // Vende "quantidade" unidades iguais da mochila (padrão 1). O equipamento vestido não está na mochila e não
+  // entra; cada raridade de um equipamento é um item à parte; a reserva de missão fica (conferirSaida).
+  venderItem(id, item, quantidade) {
     const p = this.jogadores[id];
     const valor = registroDe(VALORES_VENDA, item);
     if (!p || !this.mercadorProximo(p)) return { ok: false, mensagem: "Aproxime-se do mercador para vender." };
-    const i = p.inventario.indexOf(item);
-    if (!valor || i < 0) return { ok: false, mensagem: "O mercador não compra esse item ou você não o tem." };
-    p.inventario.splice(i, 1);
-    p.moedas += valor;
+    if (!valor || !p.inventario.includes(item)) return { ok: false, mensagem: "O mercador não compra esse item ou você não o tem." };
+    const conferido = this.conferirSaida(p, item, quantidade, "vender");
+    if (!conferido.ok) return conferido;
+    const q = conferido.quantidade;
+    this.removerItens(p, item, q);
+    p.moedas += valor * q;
     this.salvar(p);
-    return { ok: true, mensagem: `Você vendeu ${nomeItem(item)} por ${valor} moedas.` };
+    return {
+      ok: true,
+      quantidade: q,
+      moedas: valor * q,
+      mensagem: q > 1 ? `Você vendeu ${q}× ${nomeItem(item)} por ${valor * q} moedas (${valor} cada).` : `Você vendeu ${nomeItem(item)} por ${valor} moedas.`,
+    };
   },
 
   // ----- Comandos -----
@@ -3715,9 +4438,11 @@ const Mundo = {
       case "coletarSaque":
         return this.coletarSaque(id, comando.saqueId);
       case "comprar":
-        return this.comprarItem(id, comando.item);
+        return this.comprarItem(id, comando.item, comando.quantidade);
       case "vender":
-        return this.venderItem(id, comando.item);
+        return this.venderItem(id, comando.item, comando.quantidade);
+      case "largarItem":
+        return this.largarItem(id, comando.item, comando.quantidade, comando.x, comando.y);
       case "viajar":
         return this.viajar(id, comando.areaDestino);
       case "embarcar":
@@ -3725,9 +4450,9 @@ const Mundo = {
       case "pescar":
         return this.pescar(id);
       case "usarPocao":
-        return this.usarPocao(id);
+        return this.usarPocao(id, comando.mesmoCheio === true);
       case "usarPocaoFe":
-        return this.usarPocaoFe(id);
+        return this.usarPocaoFe(id, comando.mesmoCheio === true);
       case "orar":
         return this.orar(id, comando.acao);
       case "alternarEquipamento":
@@ -4001,7 +4726,7 @@ const Mundo = {
       for (const base of produtos) {
         const nivel = nivelOficio(p, r.oficio);
         const item = equipamento && Math.random() < chanceQualidade(nivel, r.nivel) ? gerarItem(base, sortearRaridade("incomum")) : base;
-        p.inventario.push(item);
+        guardarItem(p, item); // flechas vão para o espaço de munição
         itens.push(item);
       }
       const nivelNovo = ganharXpOficio(p, r.oficio, r.xp);
@@ -4089,16 +4814,22 @@ const Mundo = {
     if (a?.inicio) a.gastos += valor;
   },
 
-  usarPocao(id) {
+  // mesmoCheio: beber com a vida cheia, só para liberar espaço (pedido pela bolsa: duplo clique ou menu do
+  // item). Sem ele (tecla H, atalhos, botão de toque), a vida cheia recusa sem gastar a poção.
+  usarPocao(id, mesmoCheio = false) {
     const p = this.jogadores[id];
     const i = p.inventario.indexOf("pocao");
     if (i < 0) return { ok: false, mensagem: "Você não tem poções." };
-    if (p.vida >= vidaMaxima(p)) return { ok: false, mensagem: "Sua vida já está cheia. A poção não foi consumida." };
+    const cheia = p.vida >= vidaMaxima(p);
+    if (cheia && !mesmoCheio) {
+      return { ok: false, mensagem: "Sua vida já está cheia: a poção não foi consumida. Para beber assim mesmo, use-a pela bolsa." };
+    }
     p.inventario.splice(i, 1);
     this.gastoNoAnalisador(id, PRECOS_LOJA.pocao || 0);
     const antes = p.vida;
     p.vida = Math.min(vidaMaxima(p), p.vida + curaPocao(p));
     this.salvar(p);
+    if (cheia) return { ok: true, cura: 0, mensagem: "Você bebeu a poção, mas já estava com a vida cheia." };
     return {
       ok: true,
       cura: p.vida - antes,
@@ -4106,16 +4837,20 @@ const Mundo = {
     };
   },
 
-  usarPocaoFe(id) {
+  usarPocaoFe(id, mesmoCheio = false) {
     const p = this.jogadores[id];
     const i = p.inventario.indexOf("pocao_fe");
     if (i < 0) return { ok: false, mensagem: "Você não tem poções de fé." };
-    if (p.fe >= FE_MAXIMA) return { ok: false, mensagem: "Sua fé já está cheia; a poção não foi consumida." };
+    const cheia = p.fe >= FE_MAXIMA;
+    if (cheia && !mesmoCheio) {
+      return { ok: false, mensagem: "Sua fé já está cheia: a poção não foi consumida. Para beber assim mesmo, use-a pela bolsa." };
+    }
     p.inventario.splice(i, 1);
     this.gastoNoAnalisador(id, PRECOS_LOJA.pocao_fe || 0);
     const antes = p.fe;
     p.fe = Math.min(FE_MAXIMA, p.fe + CURA_POCAO_FE);
     this.salvar(p);
+    if (cheia) return { ok: true, feCurada: 0, mensagem: "Você bebeu a poção de fé, mas a sua fé já estava cheia." };
     return {
       ok: true,
       feCurada: p.fe - antes,
@@ -4771,15 +5506,24 @@ const Mundo = {
     };
   },
 
+  // Uma mão da arma: o ataque usa o que está nela. "atacar" (Espaço) é o ataque da arma — tiro com o arco ou
+  // a funda, golpe com a arma de corpo a corpo ou sem arma; sem flechas, com o alvo ao lado, o golpe sai sem
+  // arma. "atacarDistancia" (R) pede o tiro: sem arma à distância na mão, vale o golpe se o alvo estiver ao
+  // lado. tipoAtaque, no resultado, diz o que aconteceu.
   atacar(id, alvoId, tipo) {
     const p = this.jogadores[id];
     const estado = this.estado[id];
     const agora = Date.now();
-    const distancia = tipo === "distancia";
-    if (distancia) {
-      if (!p.equipamento.arco) return { ok: false, mensagem: "Equipe um arco ou a funda antes de atacar à distância." };
-      if (!infoItem(p.equipamento.arco)?.semMunicao && !p.inventario.includes("flecha")) return { ok: false, mensagem: "Você não tem flechas." };
+    let distancia = !!armaDistanciaNaMao(p);
+    let aviso = "";
+    if (distancia && !podeAtirar(p)) {
+      if (tipo === "distancia" || this.alvoCorpo(p, alvoId).erro) return { ok: false, mensagem: "Você não tem flechas." };
+      distancia = false;
+      aviso = "Sem flechas: golpe sem arma. ";
+    } else if (!distancia && tipo === "distancia" && this.alvoCorpo(p, alvoId).erro) {
+      return { ok: false, mensagem: "Equipe um arco ou a funda na mão da arma para atacar à distância." };
     }
+    tipo = distancia ? "distancia" : "corpo";
     if (this.atordoado(p, agora)) return { ok: false, atordoado: true, mensagem: "Você está atordoado e não consegue atacar." };
     if (statusAtivo(p, "medo", agora)) return { ok: false, medo: true, mensagem: "Você está com medo e não consegue atacar: recue, beba a poção ou espere passar." };
     const alvo = distancia ? this.alvoDistancia(p, alvoId) : this.alvoCorpo(p, alvoId);
@@ -4798,9 +5542,10 @@ const Mundo = {
     }
     estado.proximoAtaqueJogador = agora + RECARGA_ATAQUE;
     estado.ultimoCombate = agora;
+    estado.ultimoGolpe = agora;
     const analisador = this.iniciarAnalisador(id, agora);
-    if (distancia && !infoItem(p.equipamento.arco)?.semMunicao) {
-      this.removerItens(p, "flecha", 1);
+    if (distancia && gastaMunicao(p)) {
+      gastarFlechas(p, 1);
       analisador.gastos += custoFlecha();
     }
 
@@ -4815,7 +5560,8 @@ const Mundo = {
     const subiu = ganharHabilidade(p, chaveHabilidade, XP_HABILIDADE_POR_USO[chaveHabilidade]);
     p.vidaInimigos[e.id] = Math.max(0, p.vidaInimigos[e.id] - golpe.dano);
 
-    const prefixo = golpe.critico ? "CRÍTICO! " : "";
+    const prefixo = (golpe.critico ? "CRÍTICO! " : "") + aviso;
+    const projetil = distancia ? (gastaMunicao(p) ? "flecha" : "pedra") : null;
     const textoHabilidade = subiu
       ? ` ${NOMES_HABILIDADES[chaveHabilidade]}: nível ${p.habilidades[chaveHabilidade]}.`
       : "";
@@ -4826,6 +5572,7 @@ const Mundo = {
       critico: golpe.critico,
       defesaAlvo: at.defesa,
       tipoAtaque: tipo,
+      projetil,
       skillLevel: p.habilidades[chaveHabilidade],
       amuleto: bonus,
       combinacoes: combo.nomes.length ? combo.nomes : undefined,
@@ -4845,11 +5592,11 @@ const Mundo = {
         bestiario: morte.bestiario,
         xpGanho: morte.xpGanho,
         xpDescanso: morte.xpDescanso,
+        xpVigor: morte.xpVigor,
         mensagem: `${prefixo}${morte.mensagem}${textoHabilidade}`,
       };
     }
     this.salvar(p);
-    const projetil = infoItem(p.equipamento.arco || "")?.semMunicao ? "pedra" : "flecha";
     const acao = distancia ? `Sua ${projetil} atingiu ${e.nome.toLowerCase()}` : `Você acertou ${e.nome.toLowerCase()}`;
     return {
       ...base,
@@ -4874,8 +5621,11 @@ const Mundo = {
       .filter((t) => t.cumpridaAgora)
       .map((t) => ` Caçada cumprida: ${t.nome} (${t.meta}/${t.meta})! Entregue a qualquer atalaia.`)
       .join("");
-    const xpBase = Math.round(xpDoAbate(p, e) * (at.campeao ? CAMPEAO.xp : 1));
-    const xpDescanso = gastarDescanso(p, xpBase); // reserva do Sábado: XP em dobro enquanto durar
+    // XP da criatura × campeão × vigor; a reserva do Sábado dobra o resultado enquanto durar.
+    const composicao = composicaoXpAbate(p, e, at.campeao, agora);
+    const xpBase = composicao.xp;
+    const xpVigor = xpBase - composicao.semVigor;
+    const xpDescanso = gastarDescanso(p, xpBase);
     const xpGanho = xpBase + xpDescanso;
     const niveis = adicionarXP(p, xpGanho);
     const bestiario = this.registrarAbateBestiario(p, e);
@@ -4917,6 +5667,7 @@ const Mundo = {
     const alvoTexto = at.campeao || e.nomeado ? nome : nome.toLowerCase();
     const fraca = xpDoAbate(p, e) < e.xpRecompensa ? " (criatura fraca para o seu nível)" : "";
     const descanso = xpDescanso ? ` (${xpDescanso} do descanso; reserva: ${p.descanso.xp})` : "";
+    const vigor = xpVigor > 0 ? ` (${xpVigor} do vigor)` : xpVigor < 0 ? ` (${composicao.faixa.nome.toLowerCase()}: ${Math.round(composicao.fatorVigor * 100)}% do XP)` : "";
     const reaparece = e.nomeado ? "" : ` ${e.genero === "f" ? "Ela" : "Ele"} reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
     return {
       saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id),
@@ -4929,7 +5680,8 @@ const Mundo = {
       bestiario,
       xpGanho,
       xpDescanso,
-      mensagem: `Você derrotou ${alvoTexto}! +${xpGanho} XP${descanso}${fraca}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
+      xpVigor,
+      mensagem: `Você derrotou ${alvoTexto}! +${xpGanho} XP${descanso}${vigor}${fraca}.${up}${objetivo}${cacada}${textoSaque}${reaparece}`,
     };
   },
 
@@ -5138,6 +5890,7 @@ const Mundo = {
     const furia = e.furioso ? COMPORTAMENTOS.furia : null;
     e.proximoAtaque = agora + Math.round(at.intervaloAtaque * (furia ? furia.intervalo : 1));
     estado.ultimoCombate = agora;
+    estado.ultimoGolpe = agora;
     // Combinações: golpe no atordoado é crítico; com medo, leva mais dano.
     const combo = combinacoesNoGolpe(p, agora);
     const fatorCombo = combo.multiplicador * (combo.critico ? MULTIPLICADOR_CRITICO : 1);
@@ -5417,7 +6170,7 @@ const Mundo = {
     if (this.estado[id]) this.estado[id].aliados = [];
     let arma = "";
     if (v.arma && !p.inventario.includes(v.arma) && !Object.values(p.equipamento).includes(v.arma)) {
-      arma = this.adicionarItem(p, v.arma) ? ` Você recebeu: ${nomeItem(v.arma)} (equipe no espaço Arco).` : ` Libere espaço na mochila: a ${nomeItem(v.arma).toLowerCase()} está com o mercador de Canaã.`;
+      arma = this.adicionarItem(p, v.arma) ? ` Você recebeu: ${nomeItem(v.arma)} (equipe na mão da arma).` : ` Libere espaço na mochila: a ${nomeItem(v.arma).toLowerCase()} está com o mercador de Canaã.`;
     }
     this.ajustarVidaAoEquipamento(p);
     this.salvar(p);
@@ -5590,10 +6343,9 @@ const Mundo = {
     const golpes = h.dano?.golpes || 1;
     let gastaFlecha = false;
     if (h.dano?.tipo === "distancia") {
-      const arma = p.equipamento.arco;
-      if (!arma) return { ok: false, mensagem: "Equipe a funda ou o arco no espaço Arco para usar esta habilidade." };
-      gastaFlecha = !infoItem(arma)?.semMunicao;
-      if (gastaFlecha && this.contarItem(id, "flecha") < golpes) return { ok: false, mensagem: "Você não tem flechas para esta habilidade (a funda não precisa delas)." };
+      if (!armaDistanciaNaMao(p)) return { ok: false, mensagem: "Equipe a funda ou o arco na mão da arma para usar esta habilidade." };
+      gastaFlecha = gastaMunicao(p);
+      if (gastaFlecha && flechasDoJogador(p) < golpes) return { ok: false, mensagem: "Você não tem flechas para esta habilidade (a funda não precisa delas)." };
     }
     const caes = (estado.aliados || []).filter((a) => a.tipo === "cao" && a.area === p.area);
     if (h.cao && !caes.length) return { ok: false, mensagem: "Chame o cão primeiro." };
@@ -5611,9 +6363,10 @@ const Mundo = {
     const textos = [];
     if (ofensiva) {
       estado.ultimoCombate = agora;
+      estado.ultimoGolpe = agora;
       const a = this.iniciarAnalisador(id, agora);
       if (gastaFlecha) {
-        this.removerItens(p, "flecha", golpes);
+        gastarFlechas(p, golpes);
         a.gastos += custoFlecha() * golpes;
       }
     }
@@ -5902,6 +6655,21 @@ const Mundo = {
     return null;
   },
 
+  // Vigor: gasta em tempo real enquanto houve golpe dado ou recebido há pouco (REGRAS_VIGOR.janelaCombateSegundos).
+  // Passos longos (aba parada, sem quadros) não contam além de passoMaximoSegundos. Caçar é estar presente: a
+  // marca da ausência anda junto. Grava com o próximo salvar.
+  passoVigor(p, estado, agora) {
+    const R = REGRAS_VIGOR;
+    const desde = estado.vigorEm || agora;
+    estado.vigorEm = agora;
+    // Só golpes dados ou recebidos contam (estado.ultimoGolpe); veneno e sangramento não gastam vigor.
+    if (!(estado.ultimoGolpe > 0) || agora - estado.ultimoGolpe > R.janelaCombateSegundos * 1000) return;
+    if (!objetoValido(p.vigor)) normalizarVigor(p, agora);
+    const ms = Math.min(agora - desde, R.passoMaximoSegundos * 1000);
+    if (ms > 0) gastarVigor(p, ms / MINUTO_MS);
+    p.vigor.vistoEm = Math.max(p.vigor.vistoEm, agora);
+  },
+
   // Buffs com regeneração (Incenso): cura a cada intervalo. E os buffs vencidos saem.
   atualizarBuffs(p, agora, eventos) {
     if (!objetoValido(p.buffs)) return;
@@ -6044,6 +6812,7 @@ const Mundo = {
         if (atingiu) {
           p.vida = Math.max(0, p.vida - dano);
           estado.ultimoCombate = agora;
+          estado.ultimoGolpe = agora;
         }
         eventos.push({
           tipo: "explosao",
@@ -6114,6 +6883,7 @@ const Mundo = {
     this.atualizarNomeados(p, agora, eventos);
     this.atualizarAliados(id, p, estado, agora, eventos);
     this.atualizarBuffs(p, agora, eventos);
+    this.passoVigor(p, estado, agora);
 
     const estragou = this.estragarMana(p, agora);
     if (estragou) eventos.push({ tipo: "manaEstragou", quantidade: estragou, mensagem: this.textoManaEstragou(p, estragou, agora) });

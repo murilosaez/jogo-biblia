@@ -1153,6 +1153,58 @@
     const px = P.vista === "costas" ? 40 - pos[0] : pos[0];
     linF(g, hx - 1, hy - 1, px, pos[1] + 2, c[0]); elipF(g, px, pos[1], 1.6, 1.6, c[1] || "#8a8478");
   });
+  // Funda na mão do jogador: as duas cordas caem do punho até a bolsa com a pedra; no golpe, gira no alto.
+  acessorio("funda_mao", "frente", (g, c, P) => {
+    const [hx, hy] = P.maoArma;
+    if (P.q === 4) { linF(g, hx - 1, hy - 1, hx + (P.vista === "costas" ? -5 : 5), hy - 9, c[0]); elipF(g, hx + (P.vista === "costas" ? -5 : 5), hy - 10, 1.6, 1.4, c[1]); return; }
+    linF(g, hx - 2, hy + 1, hx - 2, hy + 5, c[0]); linF(g, hx, hy + 1, hx, hy + 5, escuro(c[0], 0.25));
+    retF(g, hx - 3, hy + 6, 4, 2, (X, Y) => (Y === hy + 6 ? c[0] : escuro(c[0], 0.3))); g.fino(hx - 2, hy + 6, c[1]);
+  });
+
+  // Peças do corpo do jogador (boneco): capacete de couro (calota com costura e aba, sem nasal) e as que
+  // pintam por cima do corpo já desenhado — grevas (canela), botas (tornozelo e pé) e saiote (tiras de couro
+  // sobre a saia). Elas trocam as cores da pele (ou da saia) só nas linhas da perna, então seguem o passo e as
+  // 3 vistas sem desenho próprio por quadro. Poucas cores novas (o sprite tem no máximo 24 e funde as raras):
+  // as grevas usam 2 tons de bronze; botas e saiote usam o couro das sandálias, que o boneco já tem.
+  acessorio("capacete", "frente", (g, c, P) => {
+    const T = P.T, v = P.vista, cx = v === "lado" ? 19.5 : 20, R = [claro(c[0], 0.24), c[0], escuro(c[0], 0.3)];
+    elipF(g, cx, T + 5.5, 8.6, 6.8, (nx, ny, X, Y) => (Y > T + 5 ? null : nx + ny < -0.75 ? R[0] : nx > 0.5 ? R[2] : R[1]));
+    // costura do meio e a aba clara
+    if (v === "lado") linF(g, 19, T - 1, 24, T + 4, R[2]); else for (let Y = T - 1; Y <= T + 4; Y++) g.fino(20, Y, R[2]);
+    retF(g, Math.round(cx) - 9, T + 5, 18, 1, (X) => (X < cx + 4 ? R[0] : R[2]));
+    if (v === "lado") retF(g, 14, T + 6, 3, 4, (X) => (X === 14 ? R[1] : R[2])); // a orelheira
+  });
+  function recolorir(g, y0, y1, de, para) {
+    for (let Y = y0; Y <= y1; Y++) for (let X = 0; X < 40; X++) {
+      const i = de.indexOf(g.gf(X, Y));
+      if (i >= 0) g.fino(X, Y, para[i]);
+    }
+  }
+  const linhaComPele = (g, k, ys) => ys.find((Y) => { for (let X = 0; X < 40; X++) if (k.pele.includes(g.gf(X, Y))) return true; return false; });
+  acessorio("grevas", "meio", (g, c, P, cfg) => {
+    // placa de bronze da canela, do joelho ao tornozelo, num tom só: o acabamento do contorno já dá o
+    // realce à esquerda e a sombra à direita (2 tons a mais seriam raros demais e se fundiriam na pele)
+    recolorir(g, 38, 42, coresHumano(cfg).pele, [c[0], c[0], c[0], c[0]]);
+  });
+  acessorio("botas", "meio", (g, c, P, cfg) => {
+    const k = coresHumano(cfg), S = k.sand;
+    // o cano sobe até o meio da canela; com grevas, só o que sobrou da perna (do tornozelo para baixo)
+    const topo = linhaComPele(g, k, [39, 40, 41, 42]) ?? 43;
+    recolorir(g, topo, 45, k.pele, [S[0], S[1], S[1], S[2]]);
+    if (topo === 39) recolorir(g, 39, 39, [S[1]], [S[0]]); // o cano dobrado
+  });
+  acessorio("saiote", "meio", (g, c, P, cfg) => {
+    const k = coresHumano(cfg), S = k.sand;
+    // tiras de couro de 2 px com o vão escuro entre elas, do quadril até 1 px abaixo da barra (a barra da
+    // veste usa a cor do cinto)
+    for (let Y = P.yR; Y <= 38; Y++) for (let X = 8; X < 32; X++) {
+      const cor = g.gf(X, Y);
+      const saia = k.pernas.includes(cor) || (Y === 37 && k.cinto.includes(cor));
+      const perna = Y === 38 && k.pele.includes(cor);
+      if ((!saia && !perna) || (perna && X % 3 === 2)) continue;
+      g.fino(X, Y, X % 3 === 2 ? S[2] : X % 3 === 0 && Y < 38 ? S[0] : S[1]);
+    }
+  });
 
   // Armaduras do jogador (por cima da veste): couro (colete com ombreiras e rebites) e escamas.
   // f desenha o colete (antes dos braços); ombros, as ombreiras (por cima dos braços).
@@ -1241,14 +1293,26 @@
     escudo_ferro: ["#8a949c", "#4a5258", "#d4dce2"],
   };
   const ARCOS = { arco_madeira: ["#9a6a3c", "#eadcb6"], arco_composto: ["#6e3a24", "#f0e4c4"] };
+  // Peças do corpo vistas no boneco: [acessório, cores]. Colar e anel são pequenos demais para o mundo.
+  const PECAS_CORPO = {
+    turbante_linho: ["turbante", ["#ddd0b0", "#a8916a"]],
+    capacete_couro: ["capacete", ["#7a4a2c", "#a8703a"]],
+    elmo_bronze: ["elmo", ["#a87234", "#e8b94a"]],
+    saiote_couro: ["saiote", ["#8a5a32", "#e8b94a"]],
+    grevas_bronze: ["grevas", ["#b07a38", "#f2d27a"]],
+    botas_viagem: ["botas", ["#6a4228", "#9a6a3c"]],
+  };
   const base = (id) => String(id || "").split("@")[0];
+  const ehDistancia = (id) => typeof ITENS !== "undefined" && ITENS[base(id)]?.tipo === "arma_distancia";
   // Cores do visual (JGB-49): cabeça, tronco, pernas e detalhe, ids da paleta CORES_VISUAL
   // (dados/cosmeticos.js); null ou ausente = a cor do traje (ou a do boneco sem traje).
   const PARTES_COR = ["cabeca", "tronco", "pernas", "detalhe"];
   const corDaPaleta = (id) => (id && typeof CORES_VISUAL !== "undefined" && CORES_VISUAL.find((x) => x.id === id)?.cor) || null;
   function chaveJogador(eq = {}, visual = {}) {
     const cores = PARTES_COR.map((k) => (corDaPaleta(visual.cores?.[k]) ? visual.cores[k] : ""));
-    const partes = [base(eq.arma), eq.arco ? base(eq.arco) : "", base(eq.escudo), base(eq.armadura), visual.traje || "", visual.montaria || ""];
+    const partes = [base(eq.arma), "", base(eq.escudo), base(eq.armadura), visual.traje || "", visual.montaria || ""];
+    const corpo = ["cabeca", "pernas", "pes"].map((s) => (PECAS_CORPO[base(eq[s])] ? base(eq[s]) : ""));
+    if (corpo.some(Boolean)) partes.push("e:" + corpo.join("."));
     if (cores.some(Boolean)) partes.push("c:" + cores.join("."));
     return "pj_jogador" + (partes.some(Boolean) ? "|" + partes.join("|") : "");
   }
@@ -1263,10 +1327,17 @@
     const per = corDaPaleta(visual.cores?.pernas), det = corDaPaleta(visual.cores?.detalhe);
     const acessorios = [["bolsa", ["#7a4a30", "#a8703a"]]].concat((traje?.acessorios || []).map(([nome, cores]) =>
       cab && PANOS_CABECA.has(nome) ? [nome, [cab].concat(cores.slice(1))] : [nome, cores]));
-    const arco = base(eq.arco);
-    if (arco === "funda") acessorios.push(["shofar", ["#8a6a42", "#5a3a24", "#a8916a"]]);
-    else if (arco) acessorios.push(["arco_costas", ARCOS[arco] || ARCOS.arco_madeira]);
-    if (eq.arma) acessorios.push(["espada", LAMINAS[base(eq.arma)] || LAMINAS.espada_ferro]);
+    // Peças do corpo (com traje não aparecem: o traje decide a roupa, como com a armadura). As grevas pintam a
+    // canela antes das botas; o turbante toma a cor da cabeça escolhida, como os panos dos trajes.
+    if (!traje) for (const s of ["pernas", "pes", "cabeca"]) {
+      const pc = PECAS_CORPO[base(eq[s])];
+      if (pc) acessorios.push(cab && PANOS_CABECA.has(pc[0]) ? [pc[0], [cab].concat(pc[1].slice(1))] : pc);
+    }
+    // Uma mão para a arma (o arco usa as duas): arco ou funda na mão, ou a espada.
+    const arma = base(eq.arma);
+    if (arma === "funda") acessorios.push(["funda_mao", ["#8a6a42", "#a8a090"]]);
+    else if (ehDistancia(arma)) acessorios.push(["arco_mao", ARCOS[arma] || ARCOS.arco_madeira]);
+    else if (arma) acessorios.push(["espada", LAMINAS[arma] || LAMINAS.espada_ferro]);
     if (eq.escudo) acessorios.push(["escudo_redondo", CORES_ESCUDO[base(eq.escudo)] || CORES_ESCUDO.escudo_madeira]);
     const cores = Object.assign({ H: "#4a2f20", S: "#e0a878", s: "#c68a5c", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", P: "#d4bf8f", p: "#b8a07a", q: "#8a7656", A: "#3b5a9a", F: "#5a3a24" }, traje?.cores);
     if (traje?.cores && !traje.cores.P) { delete cores.P; delete cores.p; delete cores.q; }
@@ -1747,36 +1818,41 @@
   registrar("es_tenda", {
     w: 52, h: 44, quadros: CORES_TENDA.length, origem: [0.5, 1], estrutura: true,
     desenhar(g, v) {
-      const c = CORES_TENDA[v], b = 42, cumeeira = 9, beiral = 24;
+      // em px de arte (X, Y): 1 px de arte = 1 px de mundo, como as árvores e os props
+      const c = CORES_TENDA[v], b = 42, cumeeira = 9, beiral = 24, B = 2 * b + 1, C = 2 * cumeeira, E = 2 * beiral;
       g.sombra(29, b + 0.5, 25, 2);
-      // cordas e estacas
-      for (const [x0, x1] of [[4, 1], [47, 50]]) { g.lin(x0, beiral, x1, b, "#8a6a42"); g.p(x1, b, "#5a3a24"); }
-      // teto: desce da cumeeira até o beiral, com listras
-      for (let y = cumeeira; y <= beiral; y++) {
-        const t = (y - cumeeira) / (beiral - cumeeira), meia = Math.round(15 + t * 9);
-        for (let x = 26 - meia; x <= 25 + meia; x++) {
-          const lado = x < 26 - meia + 3 ? 2 : x > 25 + meia - 4 ? 0 : 1;
+      // vara de 3 px (luz à esquerda, sombra à direita) de Y0 a Y1
+      const vara = (X0, Y0, Y1) => { for (let Y = Y0; Y <= Y1; Y++) { g.fino(X0, Y, "#8a6a42"); g.fino(X0 + 1, Y, "#6b4a2e"); g.fino(X0 + 2, Y, "#4a3222"); } };
+      // cordas de 1 px e estacas
+      for (const [x0, x1] of [[4, 1], [47, 50]]) { g.linf(x0 + 0.5, beiral + 0.5, x1 + 0.5, b, "#8a6a42"); g.retf(x1, b - 0.5, 1, 1, (X, Y, i) => (i ? "#3a2418" : "#5a3a24")); }
+      // teto: desce da cumeeira até o beiral, com listras de 2 px e a bainha escura de 1 px
+      for (let Y = C; Y <= E + 1; Y++) {
+        const t = (Y - C) / (E + 1 - C), meia = Math.round(30 + t * 18);
+        for (let X = 52 - meia; X <= 51 + meia; X++) {
+          const lado = X < 52 - meia + 5 ? 2 : X > 51 + meia - 7 ? 0 : 1, k = (Y - C) % 10;
           let cor = c.pano[lado];
-          if ((y - cumeeira) % 5 === 3) cor = c.listra;
-          if (y === beiral) cor = c.pano[0];
-          g.p(x, y, cor);
+          if (k === 6 || k === 7) cor = c.listra;
+          else if (k === 8) cor = misturar(c.pano[lado], "#1c1210", 0.12); // sombra de 1 px sob a listra
+          if (X === 52 - meia || X === 51 + meia) cor = c.pano[0];
+          if (Y === E + 1) cor = misturar(c.pano[0], "#1c1210", 0.2);
+          g.fino(X, Y, cor);
         }
       }
-      // paredes de pano até o chão, com a entrada aberta no meio
-      for (let y = beiral + 1; y <= b; y++)
-        for (let x = 3; x <= 48; x++) {
-          const entrada = x >= 21 && x <= 30;
-          let cor = x < 6 ? c.pano[2] : x > 45 ? c.pano[0] : c.pano[1];
-          if ((x - 3) % 9 === 0) cor = c.pano[0];
-          if (entrada) cor = y < beiral + 3 ? c.pano[0] : "#1c1210";
-          g.p(x, y, cor);
+      // paredes de pano até o chão (costuras de 1 px), com a entrada aberta no meio
+      for (let Y = E + 2; Y <= B; Y++)
+        for (let X = 6; X <= 97; X++) {
+          const entrada = X >= 42 && X <= 61;
+          let cor = X < 12 ? c.pano[2] : X > 91 ? c.pano[0] : c.pano[1];
+          if ((X - 6) % 18 === 0) cor = c.pano[0];
+          if (entrada) cor = Y < E + 7 ? c.pano[0] : X === 42 || X === 61 ? "#3a2a22" : "#1c1210";
+          g.fino(X, Y, cor);
         }
-      // aba enrolada sobre a entrada e varas do beiral
-      g.ret(20, beiral + 1, 12, 2, c.listra);
-      for (const x of [3, 20, 31, 48]) g.lin(x, beiral, x, b, "#6b4a2e");
-      g.lin(23, cumeeira - 3, 23, cumeeira, "#6b4a2e"); g.lin(28, cumeeira - 3, 28, cumeeira, "#6b4a2e");
-      // tapete na soleira
-      g.ret(22, b, 8, 1, "#8e2a1f");
+      // aba enrolada sobre a entrada (luz em cima, sombra embaixo) e varas do beiral
+      for (let X = 40; X <= 63; X++) for (let j = 0; j < 4; j++) g.fino(X, E + 2 + j, j === 0 ? misturar(c.listra, "#ffffff", 0.25) : j === 3 ? misturar(c.listra, "#1c1210", 0.35) : c.listra);
+      for (const X of [6, 40, 62, 96]) vara(X, E, B);
+      vara(46, C - 6, C + 1); vara(56, C - 6, C + 1);
+      // tapete na soleira, com a franja de 1 px
+      for (let X = 44; X <= 59; X++) { g.fino(X, B - 1, "#8e2a1f"); g.fino(X, B, X % 2 ? "#e8b94a" : "#5e1a14"); }
     },
   });
 
@@ -1784,39 +1860,49 @@
   registrar("es_banca", {
     w: 52, h: 46, quadros: 2, origem: [0.5, 1], estrutura: true,
     desenhar(g, v) {
-      const b = 44, toldo = 6, balcao = 31;
+      // em px de arte (X, Y): 1 px de arte = 1 px de mundo, como as árvores e os props
+      const b = 44, toldo = 6, balcao = 31, B = 2 * b + 1, Tt = 2 * toldo, Bc = 2 * balcao;
       g.sombra(29, b + 0.5, 25, 2);
-      // fundo de pano escuro entre os postes
-      g.ret(5, toldo + 9, 42, balcao - toldo - 9, (x, y) => ((x + y) % 7 === 0 ? "#4a3a30" : "#3a2c24"));
+      // bloco em px com a luz de 1 px em cima e a sombra de 1 px embaixo
+      const bloco = (X0, Y0, w, h, cor) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) g.fino(X0 + i, Y0 + j, j === 0 ? misturar(cor, "#ffffff", 0.3) : j === h - 1 ? misturar(cor, "#1c1210", 0.3) : cor); };
+      // fundo de pano escuro entre os postes, com a trama diagonal de 1 px
+      for (let Y = Tt + 18; Y < Bc; Y++) for (let X = 10; X <= 93; X++) g.fino(X, Y, (X + Y) % 9 === 0 ? "#4a3a30" : "#3a2c24");
       // prateleira dos fundos com jarros (mercadorias) ou panos dobrados (vazia)
-      g.lin(6, balcao - 7, 45, balcao - 7, "#7a5530");
+      for (let X = 12; X <= 91; X++) { g.fino(X, Bc - 14, "#9a7048"); g.fino(X, Bc - 13, "#5e3c1c"); }
       if (v === 0) {
         for (const [x, cor] of [[9, "#b5663a"], [14, "#c8b070"], [19, "#8e4a2a"], [33, "#b5663a"], [38, "#d88a58"], [42, "#8e4a2a"]])
-          g.elip(x, balcao - 10, 2, 2.6, (nx, ny) => (nx + ny < -0.4 ? misturar(cor, "#ffffff", 0.25) : cor));
+          g.elip(x, balcao - 10, 2, 2.6, (nx, ny) => (nx + ny < -0.4 ? misturar(cor, "#ffffff", 0.25) : nx > 0.55 ? misturar(cor, "#1c1210", 0.25) : cor));
       } else {
-        g.ret(10, balcao - 10, 8, 3, "#c8b48a"); g.lin(10, balcao - 10, 17, balcao - 10, "#e0d0a8");
-        g.ret(34, balcao - 9, 7, 2, "#a8916a");
+        bloco(20, Bc - 20, 16, 6, "#c8b48a"); bloco(68, Bc - 18, 14, 4, "#a8916a");
       }
-      // balcão de madeira
-      g.ret(3, balcao, 46, b - balcao + 1, (x, y) => (y === balcao ? "#c9a46a" : y === balcao + 1 ? "#a8844f" : (x - 3) % 11 === 0 ? "#5e4630" : x < 6 ? "#9a7048" : "#7a5530"));
+      // balcão de tábuas: tampo claro de 1 px, frente com as juntas de 1 px a cada 22 px e a beira esquerda na luz
+      for (let Y = Bc; Y <= B; Y++) for (let X = 6; X <= 97; X++) {
+        const j = Y - Bc;
+        g.fino(X, Y, j === 0 ? "#e0c08a" : j < 3 ? "#c9a46a" : j === 3 ? "#a8844f" : (X - 6) % 22 === 0 ? "#5e4630" : (Y - Bc) % 7 === 0 ? "#6a4a2c" : X < 12 ? "#9a7048" : "#7a5530");
+      }
       // mercadorias no balcão
       if (v === 0) {
-        g.elip(11, balcao - 1, 3, 1.5, "#e8b94a"); g.p(10, balcao - 2, "#ffe08a");
-        g.ret(17, balcao - 3, 6, 3, "#8e2a1f"); g.lin(17, balcao - 3, 22, balcao - 3, "#c2452d");
-        g.ret(25, balcao - 2, 5, 2, "#55642c"); g.p(26, balcao - 3, "#7a8a3f");
-        for (let i = 0; i < 3; i++) g.elip(35 + i * 4, balcao - 2, 1.6, 1.6, i % 2 ? "#c2452d" : "#d9a35c");
+        g.elip(11, balcao - 1, 3, 1.5, (nx, ny) => (ny < -0.3 ? "#f2cf6a" : "#e8b94a")); g.pf(10, balcao - 2, "#ffe08a");
+        bloco(34, Bc - 6, 12, 6, "#8e2a1f");
+        bloco(50, Bc - 4, 10, 4, "#55642c"); g.fino(52, Bc - 5, "#7a8a3f"); g.fino(53, Bc - 6, "#7a8a3f");
+        for (let i = 0; i < 3; i++) g.elip(35 + i * 4, balcao - 2, 1.6, 1.6, (nx, ny) => (nx + ny < -0.5 ? "#f0c080" : i % 2 ? "#c2452d" : "#d9a35c"));
       } else {
-        g.ret(20, balcao - 2, 10, 2, "#d4bf8f"); g.lin(20, balcao - 2, 29, balcao - 2, "#eadcb6");
+        bloco(40, Bc - 4, 20, 4, "#d4bf8f");
       }
-      // postes e toldo listrado com bainha recortada
-      for (const x of [4, 47]) g.lin(x, toldo, x, b, "#5e4630");
-      for (let y = toldo; y < toldo + 9; y++)
-        for (let x = 1; x <= 50; x++) {
-          const listra = Math.floor((x - 1) / 4) % 2 === 0;
-          const cor = y === toldo ? "#5e1a14" : listra ? (v === 0 ? "#c2452d" : "#3b5a9a") : "#eadcb6";
-          g.p(x, y, y > toldo + 6 && (x % 4 === 0) ? null : cor);
+      // postes de 3 px e toldo listrado (listras de 8 px) com a bainha recortada em línguas
+      for (const X of [8, 94]) for (let Y = Tt; Y <= B; Y++) { g.fino(X, Y, "#7a5a3c"); g.fino(X + 1, Y, "#5e4630"); g.fino(X + 2, Y, "#3e2c1e"); }
+      const fimToldo = 2 * (toldo + 9) - 1;
+      for (let Y = Tt; Y <= fimToldo; Y++)
+        for (let X = 2; X <= 101; X++) {
+          const k = (X - 2) % 8, r = Y - (fimToldo - 4);
+          if (r >= 0 && Math.abs(k - 3.5) > 3.6 - r * 0.75) continue; // a ponta de cada listra arredonda
+          const listra = Math.floor((X - 2) / 8) % 2 === 0;
+          let cor = listra ? (v === 0 ? "#c2452d" : "#3b5a9a") : "#eadcb6";
+          if (Y === Tt) cor = "#5e1a14";
+          else if (Y === Tt + 2) cor = "#f3e4c0";
+          else if (r >= 2 || Y === fimToldo) cor = misturar(cor, "#1c1210", 0.22);
+          g.fino(X, Y, cor);
         }
-      g.lin(1, toldo + 1, 50, toldo + 1, "#f3e4c0");
     },
   });
 
@@ -1825,23 +1911,26 @@
     desenhar(g) {
       const b = 26;
       g.sombra(12, b, 9, 1.6);
-      // cilindro de pedra
-      for (let y = 15; y <= b; y++)
-        for (let x = 2; x <= 17; x++) {
-          const fila = Math.floor((y - 15) / 3), off = fila % 2 ? 2 : 0;
-          let cor = x < 5 ? "#c8b898" : x > 14 ? "#7a6a54" : "#a8987a";
-          if ((y - 15) % 3 === 2 || (x + off) % 5 === 0) cor = "#6e604c";
-          g.p(x, y, cor);
+      // cilindro de pedra em px de arte: fiadas de 5 px com a junta de 1 px, pedras de 9 px desencontradas,
+      // aresta de luz no topo de cada pedra, lado esquerdo claro e direito na sombra
+      for (let Y = 30; Y <= 2 * b + 1; Y++)
+        for (let X = 4; X <= 35; X++) {
+          const fila = Math.floor((Y - 30) / 6), off = fila % 2 ? 5 : 0, k = (Y - 30) % 6;
+          let cor = X < 9 ? "#c8b898" : X > 30 ? "#7a6a54" : "#a8987a";
+          if (k === 5 || (X + off) % 10 === 0) cor = "#6e604c";
+          else if (k === 0) cor = X > 30 ? "#8a7a62" : X < 9 ? "#ddd0b4" : "#c8b898";
+          g.fino(X, Y, cor);
         }
       // borda e água escura
-      g.elip(9.5, 14.5, 8.5, 3, "#d2c2a2");
-      g.elip(9.5, 14.5, 6, 1.8, "#1d4f5c");
-      g.p(8, 14, "#4fa3a5");
-      // armação, travessa, corda e balde
-      g.lin(3, 14, 3, 3, "#6b4a2e"); g.lin(16, 14, 16, 3, "#6b4a2e");
-      g.lin(2, 3, 17, 3, "#8a6a42"); g.lin(2, 2, 17, 2, "#5e4630");
-      g.lin(10, 4, 10, 9, "#c9a46a");
-      g.ret(9, 9, 3, 3, "#7a5530"); g.lin(9, 9, 11, 9, "#a8844f");
+      g.elip(9.5, 14.5, 8.5, 3, (nx, ny) => (ny < -0.45 ? "#e2d4b6" : nx > 0.7 ? "#b8a888" : "#d2c2a2"));
+      g.elip(9.5, 14.5, 6, 1.8, (nx, ny) => (ny < -0.5 ? "#143a44" : "#1d4f5c"));
+      g.pf(8, 14.5, "#4fa3a5"); g.pf(8.5, 14.5, "#4fa3a5"); g.pf(11, 15, "#2f7680");
+      // armação (postes de 3 px), travessa, corda de 1 px e balde com o aro
+      const poste = (X0) => { for (let Y = 6; Y <= 29; Y++) { g.fino(X0, Y, "#8a6a42"); g.fino(X0 + 1, Y, "#6b4a2e"); g.fino(X0 + 2, Y, "#4a3222"); } };
+      poste(5); poste(31);
+      for (let X = 4; X <= 35; X++) { g.fino(X, 4, "#a8844f"); g.fino(X, 5, "#8a6a42"); g.fino(X, 6, "#5e4630"); }
+      g.linf(10, 3.5, 10, 9, "#c9a46a");
+      g.retf(8.5, 9.5, 3.5, 2.5, (X, Y, i, j) => (j === 0 ? "#a8844f" : j === 4 ? "#5e4630" : i === 0 ? "#9a7048" : i === 6 ? "#5e4630" : j === 2 ? "#6b4a2e" : "#7a5530"));
     },
   });
 
@@ -2511,6 +2600,92 @@
     g.elip(8, 10, 3.2, 3.4, esfera(["#1e6a7a", "#2fa0a8", "#8ad8d0"]));
     g.p(8, 10, "#1c3a4a"); g.p(7, 10, "#f6efdc"); g.p(9, 10, "#f6efdc"); g.p(8, 12, "#1c3a4a");
   });
+  // Peças do corpo (boneco). Luz de cima e da esquerda, 3–4 tons por material.
+  item("turbante_linho", (g) => {
+    const L = ["#8a7656", "#b8a47e", "#dccba4", "#f4ecd4"];
+    g.elip(8, 9, 5.8, 4.4, (nx, ny) => (ny > 0.62 ? L[0] : tom([L[1], L[2], L[3]], -(0.55 * nx + 0.85 * ny))));
+    // as voltas do pano (diagonais) e a ponta caindo à direita
+    for (const k of [0, 3, 6]) g.linf(3.5 + k, 12, 6 + k, 6.5, L[1]);
+    g.retf(2.5, 11.5, 11, 1.5, (X) => (X < 12 ? L[2] : L[1]));
+    g.lin(13, 10, 13, 13, L[1]); g.pf(13, 13.5, L[0]);
+  });
+  item("capacete_couro", (g) => {
+    const C = ["#4a2c1a", "#7a4a2c", "#a8703a", "#c89058"];
+    g.elip(8, 10, 5.5, 5.6, (nx, ny) => (ny > 0.05 ? null : tom([C[1], C[2], C[3]], -(0.6 * nx + 0.8 * ny) * 1.3)));
+    g.retf(2.5, 9.5, 11, 1.5, (X) => (X < 14 ? C[2] : C[1])); // aba
+    g.retf(3, 11, 2, 3, C[1]); g.retf(11, 11, 2, 3, C[0]); // orelheiras
+    for (let y = 4.5; y < 9.5; y += 1) g.pf(8, y, y % 2 ? C[0] : C[1]); // costura
+    g.pf(5, 6.5, C[3]); g.pf(4.5, 7.5, C[3]);
+  });
+  item("elmo_bronze", (g) => {
+    const B = ["#5e3c1c", "#8a5a2a", "#b07a38", "#d29e52", "#f2d27a"];
+    g.elip(8, 9, 5.4, 5.2, (nx, ny) => (ny > 0.08 ? null : tom([B[2], B[3], B[4]], -(0.6 * nx + 0.8 * ny) * 1.3)));
+    g.retf(2.5, 8.5, 11, 1.5, (X) => (X < 10 ? B[3] : B[2])); // testeira
+    g.retf(3, 10, 2.5, 4, (X) => (X < 7 ? B[3] : B[2])); g.retf(10.5, 10, 2.5, 4, B[1]); // abas do rosto
+    g.retf(5.5, 10, 5, 3.5, "#2a1a14"); g.retf(7.5, 10, 1, 3, B[2]); // abertura e nasal
+    g.retf(7, 2.5, 2, 1.5, B[4]); g.retf(7.5, 4, 1, 1, B[3]); // botão no alto
+  });
+  item("colar_contas", (g) => {
+    // fio em arco com contas de cornalina e a conta maior no meio
+    const contas = [[3, 5], [3.6, 7.4], [4.8, 9.4], [6.4, 10.8], [9.6, 10.8], [11.2, 9.4], [12.4, 7.4], [13, 5]];
+    g.linf(3, 4.5, 3, 5, "#8a7656"); g.linf(13, 4.5, 13, 5, "#8a7656");
+    for (const [x, y] of contas) g.elip(x, y, 1.05, 1.05, (nx, ny) => (nx + ny < -0.4 ? "#f0905a" : nx + ny > 0.5 ? "#8a2a1a" : "#c2452d"));
+    g.elip(8, 12, 1.7, 1.7, (nx, ny) => (nx + ny < -0.5 ? "#f6b07a" : nx + ny > 0.5 ? "#8a2a1a" : "#d2582d"));
+    g.pf(7.5, 11.5, "#fff0d8");
+  });
+  item("saiote_couro", (g) => {
+    const C = ["#4a2c1a", "#6e4228", "#8a5a32", "#b07a44"];
+    g.retf(3, 3.5, 10, 2, (X, Y, i, j) => (j === 0 ? C[3] : C[2])); // cinto
+    g.retf(7, 3.5, 2, 2, "#e8b94a"); g.pf(7.5, 4, "#f2d27a"); // fivela
+    for (let i = 0; i < 5; i++) {
+      const x = 3 + i * 2, comp = 8 - Math.abs(i - 2) * 0.5;
+      g.retf(x, 5.5, 1.5, comp, (X, Y, a) => (a === 0 ? C[3 - (i % 2)] : C[1]));
+      g.retf(x, 5.5 + comp, 1.5, 0.5, "#d29e52"); // a ponta de bronze
+    }
+  });
+  item("grevas_bronze", (g) => {
+    const B = ["#5e3c1c", "#8a5a2a", "#b07a38", "#d29e52", "#f2d27a"];
+    for (const x0 of [3.5, 8.5]) {
+      // placa da canela: joelho largo em cima, afina no tornozelo
+      for (let y = 3; y < 14; y += 0.5) {
+        const w = y < 5 ? 3.5 : y < 10 ? 3 : 2.5;
+        g.retf(x0 + (3.5 - w) / 2, y, w, 0.5, (X, Y, i) => (i === 0 ? B[4] : i < 2 ? B[3] : i < 4 ? B[2] : B[1]));
+      }
+      g.retf(x0, 6.5, 3.5, 0.5, B[0]); g.retf(x0 + 0.25, 11, 3, 0.5, B[0]); // as correias
+    }
+  });
+  item("sandalias_couro", (g) => {
+    const C = ["#4a2c1a", "#7a4a2c", "#a8703a", "#c89058"];
+    for (const [x, d] of [[3.5, 0], [9, 1]]) {
+      g.elip(x + 2, 9 + d, 2.2, 4.4, (nx, ny) => (nx + ny < -0.5 ? C[3] : nx > 0.5 ? C[1] : C[2])); // sola
+      g.retf(x + 0.5, 7 + d, 3.5, 1, C[0]); g.retf(x + 0.5, 10 + d, 3.5, 1, C[0]); // tiras
+      g.linf(x + 2, 6 + d, x + 2, 7 + d, C[0]);
+    }
+  });
+  item("botas_viagem", (g) => {
+    const C = ["#3a2216", "#5e3a24", "#7a4e30", "#a0703e"];
+    // cano e pé de perfil (bico à direita), sola escura e o cano dobrado
+    g.retf(4, 3.5, 5, 7.5, (X, Y, i) => (i < 2 ? C[3] : i < 6 ? C[2] : C[1]));
+    g.elip(9, 11.6, 4.6, 2.4, (nx, ny) => (ny < -0.2 && nx < 0 ? C[2] : nx + ny < -0.4 ? C[3] : C[1]));
+    g.retf(4, 13, 10, 1, C[0]);
+    g.retf(3.5, 3, 6, 1.5, (X, Y, i) => (i < 3 ? "#b08458" : "#8a6440"));
+    for (const y of [6, 7.5, 9]) g.retf(8, y, 1.5, 0.5, "#d8c8a0"); // atilhos
+  });
+  item("anel_selo_bronze", (g) => {
+    g.elip(8, 10, 4, 3.4, (nx, ny) => (nx * nx + ny * ny < 0.38 ? null : nx + ny < -0.4 ? "#f2d27a" : nx + ny > 0.6 ? "#7a4a24" : "#b07a38"));
+    // o selo: chapa oval por cima, com a marca gravada
+    g.elip(8, 5.5, 2.8, 2.2, (nx, ny) => (nx + ny < -0.5 ? "#f2d27a" : nx + ny > 0.5 ? "#8a5a2a" : "#d29e52"));
+    g.retf(7, 5, 2, 0.5, "#5e3c1c"); g.retf(7.5, 4.5, 1, 1.5, "#5e3c1c");
+  });
+  // A mochila do boneco (o espaço que abre o painel Mochila): couro com aba, fivela e alças.
+  item("mochila", (g) => {
+    const C = ["#4a2c1a", "#7a4a2c", "#a8703a", "#c89058"];
+    g.retf(3, 4, 10, 10, (X, Y, i, j) => (j === 19 ? C[0] : i < 2 ? C[3] : i > 16 ? C[1] : C[2]));
+    g.retf(3, 4, 10, 4.5, (X, Y, i, j) => (j === 8 ? C[0] : j === 0 ? C[3] : C[1])); // aba
+    g.retf(7, 7.5, 2, 2, "#e8b94a"); g.pf(7.5, 8, "#f2d27a"); // fivela
+    g.retf(4, 2.5, 2, 1.5, C[1]); g.retf(10, 2.5, 2, 1.5, C[1]); // alças
+    g.retf(4, 11, 8, 0.5, C[1]);
+  });
   // Pedras do peitoral: a mesma lapidação, na cor de cada pedra (campo "pedra" em dados/itens.js).
   for (const [chave, d] of Object.entries(typeof ITENS !== "undefined" ? ITENS : {})) {
     if (!d.pedra) continue;
@@ -2822,14 +2997,15 @@
     desenhar(g, q) {
       const cor = (a) => comAlfa("#e8f2e0", a);
       if (q === 3) { g.elip(8, 8, 3, 1.4, (nx, ny) => (nx * nx + ny * ny > 0.5 ? cor(0.35) : null)); return; }
+      // ondulações de 1 px de arte (como a água) e a sombra do peixe embaixo
       const raios = [2 + q, 5 + q * 0.6];
       for (const r of raios) {
-        for (let a = 0; a < 40; a++) {
-          const t = (a / 40) * Math.PI * 2;
-          g.p(8 + Math.cos(t) * r, 8 + Math.sin(t) * r * 0.5, cor(r > 5 ? 0.45 : 0.85));
+        for (let a = 0; a < 72; a++) {
+          const t = (a / 72) * Math.PI * 2;
+          g.pf(8 + Math.cos(t) * r, 8 + Math.sin(t) * r * 0.5, cor(r > 5 ? 0.45 : 0.85));
         }
       }
-      g.ret(6 + (q % 2), 9, 4, 1, "#245e6a"); g.ret(7 + (q % 2), 8, 2, 1, "#245e6a");
+      g.retf(6.5 + (q % 2) * 0.5, 9, 3, 0.5, "#245e6a"); g.retf(7 + (q % 2) * 0.5, 8.5, 2, 0.5, "#245e6a"); g.pf(5.5 + (q % 2) * 0.5, 8.5, "#245e6a");
     },
   });
   registrar("mk_barco", {
@@ -2997,33 +3173,66 @@
   });
 
   // Decoração plana das vilas (até 3 px-a de altura; vai em casa livre; posições em dados/mapas.js).
+  // Desenhadas em px de arte (g.fino, g.retf, g.elip), como o resto do chão: 1 px de arte = 1 px de mundo.
   registrar("dc_tapete", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
-      g.ret(2, 4, 12, 8, (x, y) => (y === 4 || y === 11 ? "#5e1a14" : (y - 4) % 3 === 0 ? "#e8b94a" : "#8e2a1f"));
-      for (let x = 2; x < 14; x += 2) { g.p(x, 3, "#e8b94a"); g.p(x, 12, "#e8b94a"); }
+      // tapete de lã: bainha escura, duas faixas douradas de 1 px, losango no meio e a franja nas pontas
+      g.retf(2, 4, 12, 8, (X, Y, i, j) => {
+        if (j === 0 || j === 15 || i === 0 || i === 23) return "#5e1a14";
+        if (j === 2 || j === 13) return "#e8b94a";
+        const d = Math.abs(i - 11.5) * 0.55 + Math.abs(j - 7.5);
+        if (d > 2.6 && d < 3.6) return "#e8b94a";
+        if (d <= 1.2) return "#3b5a9a";
+        return (i * 3 + j) % 7 === 0 ? "#a8382a" : "#8e2a1f";
+      });
+      for (let X = 3; X < 28; X += 2) { g.fino(X, 7, "#e8b94a"); g.fino(X + 1, 24, "#c99a3a"); }
     },
   });
   registrar("dc_esteira", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
-      g.ret(2, 5, 12, 7, (x, y) => ((x + (y % 2)) % 2 ? "#c8b070" : "#a8904e"));
-      g.elip(12, 4, 2.5, 1.6, "#8a6a42"); g.p(12, 4, "#5e4630");
+      // esteira de palha trançada: fios de 3 × 2 px que se alternam, beira escura e o rolo na ponta
+      g.retf(2, 5, 12, 7, (X, Y, i, j) => {
+        if (i === 0 || j === 0 || i === 23 || j === 13) return "#8a7040";
+        const fio = (Math.floor(i / 3) + Math.floor(j / 2)) % 2;
+        return fio ? (i % 3 === 0 ? "#b89c5c" : "#c8b070") : (j % 2 ? "#94783e" : "#a8904e");
+      });
+      g.elip(12, 4, 2.5, 1.6, (nx, ny) => (nx + ny < -0.5 ? "#a8844f" : "#8a6a42"));
+      g.fino(24, 8, "#5e4630"); g.fino(25, 8, "#5e4630");
     },
   });
   registrar("dc_rede", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
-      for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) if ((x + y) % 3 === 0 || (x - y + 30) % 3 === 0) g.p(x, y, "#c9b48a");
-      for (const [x, y] of [[3, 3], [13, 4], [4, 12], [12, 12]]) g.p(x, y, "#e6cf9c");
-      g.ret(9, 9, 3, 2, "#4fa3a5"); g.p(12, 9, "#2f7680");
+      // rede de pesca estendida: malha diagonal de 1 px com os nós claros, borda solta, boias de cortiça e um peixe
+      for (let Y = 5; Y < 27; Y++) for (let X = 3; X < 29; X++) {
+        const nx = (X - 15.5) / 12.5, ny = (Y - 15.5) / 10.5;
+        if (nx * nx + ny * ny > 0.92 + hash2(X >> 1, Y >> 1, 90) * 0.16) continue;
+        const a = (X + Y) % 5 === 0, b = (X - Y + 60) % 5 === 0;
+        if (a && b) g.fino(X, Y, "#e6cf9c"); else if (a || b) g.fino(X, Y, (X + Y * 3) % 7 ? "#b8a278" : "#9a8460");
+      }
+      for (const [X, Y] of [[6, 9], [24, 8], [7, 22], [24, 21]]) {
+        g.fino(X, Y, "#c98a52"); g.fino(X + 1, Y, "#a66b39"); g.fino(X, Y + 1, "#a66b39"); g.fino(X + 1, Y + 1, "#6e4426");
+      }
+      // peixe: corpo de 6 px, barriga clara, olho e a cauda em leque
+      for (let X = 19; X <= 22; X++) { g.fino(X, 17, "#7cc4c0"); g.fino(X, 19, "#2f7680"); }
+      for (let X = 18; X <= 23; X++) g.fino(X, 18, "#4fa3a5");
+      g.fino(19, 18, "#1c2a2a"); g.fino(24, 18, "#2f7680"); g.fino(25, 17, "#2f7680"); g.fino(25, 19, "#2f7680");
     },
   });
   registrar("dc_fogo_apagado", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
-      for (let a = 0; a < 8; a++) { const t = (a / 8) * Math.PI * 2; g.ret(7 + Math.cos(t) * 4.5, 8 + Math.sin(t) * 3, 2, 1, a % 2 ? "#8a8070" : "#a39b8a"); }
-      g.ret(6, 7, 4, 2, "#3a2c24"); g.p(7, 7, "#6a5646");
+      // fogueira apagada: anel de 8 pedras (3 × 2 px, luz em cima), a cinza no meio e dois tições cruzados
+      g.elip(8, 8.2, 3.4, 2, (nx, ny) => (nx * nx + ny * ny > 0.55 ? "#7a7068" : "#5a5048"));
+      for (let a = 0; a < 8; a++) {
+        const t = (a / 8) * Math.PI * 2, X = Math.round(15.5 + Math.cos(t) * 9.5) - 1, Y = Math.round(16 + Math.sin(t) * 6) - 1;
+        const [luz, meio, sombra] = a % 2 ? ["#a39b8a", "#8a8070", "#5e564a"] : ["#bcb4a2", "#a39b8a", "#6e665a"];
+        for (let i = 0; i < 3; i++) { g.fino(X + i, Y, luz); g.fino(X + i, Y + 1, i === 2 ? sombra : meio); }
+      }
+      g.linf(6.5, 7.2, 9.5, 8.7, "#2a1e18"); g.linf(6.5, 8.7, 9.5, 7.2, "#3a2c24");
+      g.fino(16, 15, "#8a3a24"); g.fino(15, 16, "#5a2a1c");
     },
   });
 
@@ -3186,73 +3395,352 @@
       desenhar(g, v) { desenhar(g, v, alto ? 24 : 16); },
     });
   }
+  // -------------------------------------------------------------------
+  // Rochas facetadas em px de arte: o contorno é um polígono irregular (7 a 10 lados sorteados em volta de uma
+  // elipse, a base reta no chão) e cada lado vira uma face que sobe até o pico, um pouco à esquerda e acima do
+  // meio. A luz de cada face (de cima e da esquerda) mistura a direção da face com o volume da pedra e cai em 4
+  // tons; as cristas viradas para a luz ganham 1 px de realce e as dobras viradas para baixo, 1 px escuro.
+  // Material: estratos (arenito), pintas (granito), musgo, colunas (basalto) e rachaduras. O contorno e a sombra
+  // no chão (para a direita) completam a peça. tons: [sombra funda, sombra, base, luz, realce].
+  // -------------------------------------------------------------------
+  function rochaArte(g, cx, B, rx, ry, tons, sem, o = {}) {
+    const N = o.lados || 8, angs = [], raios = [];
+    for (let k = 0; k < N; k++) {
+      angs.push(-Math.PI + ((k + 0.25 + hash2(k, sem, 1) * 0.5) * 2 * Math.PI) / N);
+      raios.push(0.84 + hash2(k, sem, 2) * 0.24);
+    }
+    const setor = (a) => { let k = N - 1; for (let i = 0; i < N; i++) if (a >= angs[i]) k = i; return a < angs[0] ? N - 1 : k; };
+    const raio = (a) => {
+      const k = setor(a), k2 = (k + 1) % N;
+      let a0 = angs[k], a1 = angs[k2];
+      if (a1 <= a0) a1 += 2 * Math.PI;
+      let aa = a; if (aa < a0) aa += 2 * Math.PI;
+      const t = (aa - a0) / (a1 - a0);
+      // lado reto entre dois vértices: raio do polígono na direção a (aproximação pela corda)
+      const r0 = raios[k], r1 = raios[k2], meio = Math.cos(((a1 - a0) / 2));
+      return ((r0 * (1 - t) + r1 * t) * meio) / Math.cos(aa - (a0 + a1) / 2);
+    };
+    const cy = B - ry * (o.alto || 0.92), pkx = -0.22, pky = -0.42;
+    const W = g.w, H = g.h, mapa = new Int8Array(W * H).fill(-1), face = new Int8Array(W * H).fill(-1);
+    const nxy = (X, Y) => [(X + 0.5 - cx) / rx, (Y + 0.5 - cy) / ry];
+    for (let Y = Math.max(0, Math.floor(cy - ry * 1.2)); Y <= Math.min(H - 1, B); Y++)
+      for (let X = Math.max(0, Math.floor(cx - rx * 1.2)); X <= Math.min(W - 1, Math.ceil(cx + rx * 1.2)); X++) {
+        const [nx, ny] = nxy(X, Y), d = Math.hypot(nx, ny);
+        if (d > raio(Math.atan2(ny, nx))) continue;
+        const k = setor(Math.atan2(ny - pky, nx - pkx)), am = (angs[k] + angs[(k + 1) % N] + (k === N - 1 ? 2 * Math.PI : 0)) / 2;
+        const fb = -(0.62 * Math.cos(am) + 0.78 * Math.sin(am)), sb = -(0.6 * nx + 0.8 * ny) * 0.8 + (1 - d) * 0.35;
+        const l = 0.5 * fb + 0.5 * sb + (o.luz || 0) - (ny > 0.55 ? 0.25 : 0);
+        let tom = l > 0.42 ? 3 : l > 0.02 ? 2 : l > -0.42 ? 1 : 0;
+        if (ny < -0.4 && l > -0.35) tom = Math.max(tom, 3); // o plano de cima, sempre na luz
+        mapa[Y * W + X] = tom;
+        face[Y * W + X] = k;
+      }
+    const em = (X, Y) => (X < 0 || Y < 0 || X >= W || Y >= H ? -1 : mapa[Y * W + X]);
+    const fc = (X, Y) => (X < 0 || Y < 0 || X >= W || Y >= H ? -1 : face[Y * W + X]);
+    const t = mapa.slice();
+    for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+      const v = em(X, Y);
+      if (v < 0) continue;
+      const i = Y * W + X, [nx, ny] = nxy(X, Y);
+      // material
+      if (o.estratos && ny > -0.5 && (Y + Math.round(nx * 2)) % 4 === 0) t[i] = Math.max(0, v - 1);
+      if (o.colunas && ny > -0.35 && (X + (Y >> 3)) % 4 === 0) t[i] = Math.max(0, v - 1);
+      if (o.pintas && hash2(X, Y, sem + 3) < 0.1) t[i] = hash2(X, Y, sem + 4) < 0.5 ? Math.max(0, v - 1) : Math.min(4, v + 1);
+      // cristas e dobras entre faces (só na metade de cima, onde se vê o volume)
+      const kR = fc(X + 1, Y), kB = fc(X, Y + 1);
+      if (ny < 0.35 && ((kR >= 0 && kR !== face[i]) || (kB >= 0 && kB !== face[i]))) {
+        const outro = kR >= 0 && kR !== face[i] ? em(X + 1, Y) : em(X, Y + 1);
+        t[i] = v >= 2 && outro >= 2 ? 4 : Math.max(0, Math.min(v, outro) - 1);
+      }
+      // silhueta: realce em cima e à esquerda, sombra funda embaixo e à direita
+      if (em(X, Y - 1) < 0 && v >= 2) t[i] = 4;
+      else if (em(X - 1, Y) < 0 && v >= 2 && ny < 0.3) t[i] = Math.max(t[i], 3);
+      else if (em(X + 1, Y) < 0 || em(X, Y + 1) < 0) t[i] = Math.min(t[i], 0);
+      if (o.musgo && ny < -0.25 && v >= 2 && hash2(X >> 1, Y >> 1, sem + 5) < 0.42) t[i] = 5 + (hash2(X, Y, sem + 6) < 0.5 ? 0 : 1);
+    }
+    // rachaduras: passeios curtos de 1 px na face de sombra
+    for (let r = 0; r < (o.rachas ?? 2); r++) {
+      let X = Math.round(cx + rx * (0.1 + hash2(r, sem, 7) * 0.5)), Y = Math.round(cy - ry * 0.2 + hash2(sem, r, 8) * ry * 0.6);
+      for (let n = 0; n < 4 + Math.floor(hash2(r, sem, 9) * 4); n++) {
+        if (em(X, Y) >= 1 && em(X + 1, Y) >= 0 && em(X, Y + 1) >= 0) t[Y * W + X] = 0;
+        Y += 1; X += hash2(n, r, sem + 10) < 0.5 ? 1 : 0;
+      }
+    }
+    const musgo = o.corMusgo || ["#4a5a2a", "#6e8a3a"];
+    for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+      const v = t[Y * W + X];
+      if (mapa[Y * W + X] < 0) continue;
+      g.fino(X, Y, v >= 5 ? musgo[v - 5] : tons[v]);
+    }
+  }
+  // Pedra de uma casa (baixa): 1 ou 2 blocos e a sombra para a direita.
+  function pedregulho(chave, variantes, tons, sem0, o = {}) {
+    return obstaculo(chave, false, variantes, (g, v) => {
+      const sem = sem0 + v * 31, B = 31;
+      const [rx, ry, cx] = (o.formas || [[13, 10, 18], [11, 8, 16], [14, 12, 18]])[v % 3];
+      g.sombra((cx + 4) / 2, B / 2, rx / 2 + 1.5, 1.6, "#1c1210", 0.32);
+      if (o.antes) o.antes(g, v, B);
+      if (o.dupla && v === 1) rochaArte(g, cx + rx - 1, B, rx * 0.45, ry * 0.5, tons, sem + 7, { ...o, rachas: 0, lados: 7 });
+      rochaArte(g, cx, B, rx, ry, tons, sem, o);
+      if (o.dupla && v !== 1) rochaArte(g, cx - rx * 0.55, B + 1, rx * 0.42, ry * 0.45, tons, sem + 9, { ...o, rachas: 0, lados: 7, musgo: false });
+    });
+  }
+  // Arbusto de uma casa (bloqueia): galhos curtos no pé e a copa baixa em cachos (Copa, os mesmos 5 tons e o
+  // contorno escuro das árvores), sombra para a direita. o.seco: cachos ralos com os galhos à mostra;
+  // o.flores: [cor, luz] dos pontinhos de flor.
+  function arbustoOb(chave, variantes, tons, sem0, o = {}) {
+    const d = obstaculo(chave, false, variantes, (g, v) => {
+      const sem = sem0 + v * 37, B = 31, W = g.w, cx = W / 2 + (v - 1);
+      g.sombra(cx / 2 + 2.5, B / 2, 8, 1.7, "#1c1210", 0.3);
+      const casca = o.casca || CASCA_ACACIA;
+      for (let k = 0; k < 5; k++) galhoArte(g, cx + (k - 2), B, cx + (k - 2) * 4, B - 9 - (k % 2) * 4, casca, false);
+      const C = new Copa(W, B + 1);
+      const molde = [[cx - 7, B - 11, 7, 6], [cx + 6, B - 12, 7, 6], [cx, B - 17, 8, 6], [cx - 4, B - 6, 7, 4.5], [cx + 5, B - 6, 6, 4]];
+      moldeCopa(C, o.seco ? molde.filter((_, i) => hash2(i, v, sem) > 0.35) : molde, v, sem, { topo: B - 23, base: B, lobos: 7, jitter: 4 });
+      if (o.seco) for (let k = 0; k < 4; k++) galhoArte(g, cx + (k - 1.5) * 3, B - 8, cx + (k - 1.5) * 9, B - 22 + (k % 2) * 3, casca, false);
+      C.pintar(g, tons, sem, 0.5);
+      if (o.flores) for (let k = 0; k < 12; k++) {
+        const X = 4 + Math.floor(hash2(k, v, sem + 20) * (W - 8)), Y = B - 24 + Math.floor(hash2(v, k, sem + 21) * 18);
+        if (C.get(X, Y) >= 2) { g.fino(X, Y, o.flores[0]); if (k % 2) g.fino(X, Y - 1, o.flores[1]); }
+      }
+    });
+    d.contorno = "#1c2414";
+    return d;
+  }
+  // Retama (giesta do deserto): moita de varas finas que sobem em leque, verde-acinzentadas, com as pontas claras,
+  // folhinhas em grupos de 2 px e flores amarelas.
+  function retamaOb(chave, variantes, sem0) {
+    const d = obstaculo(chave, false, variantes, (g, v) => {
+      const sem = sem0 + v * 41, B = 31, cx = g.w / 2 + (v - 1);
+      const c = ["#3e3e20", "#5e5e30", "#7e7e44", "#a0a060"];
+      g.sombra(cx / 2 + 2, B / 2, 7, 1.5, "#1c1210", 0.3);
+      const n = 13 + v * 2;
+      for (let k = 0; k < n; k++) {
+        const a = -Math.PI / 2 + (k / (n - 1) - 0.5) * 2.1 + (hash2(k, v, sem) - 0.5) * 0.25;
+        const L = 13 + Math.floor(hash2(v, k, sem + 1) * 9) - Math.abs(k / (n - 1) - 0.5) * 8;
+        const x0 = cx + Math.round((k / (n - 1) - 0.5) * 6), X1 = x0 + Math.cos(a) * L, Y1 = B + Math.sin(a) * L;
+        linhaPx(g, x0, B, X1, Y1, (X, Y, i) => (i < 3 ? c[0] : i > L - 3 ? c[3] : k % 2 ? c[1] : c[2]));
+        for (let q = 4; q < L - 2; q += 4) {
+          const X = Math.round(x0 + Math.cos(a) * q), Y = Math.round(B + Math.sin(a) * q), lado = k < n / 2 ? -1 : 1;
+          g.fino(X + lado, Y, c[2]); g.fino(X + lado * 2, Y - 1, c[3]);
+        }
+        if (hash2(k, v, sem + 2) < 0.4) { g.fino(Math.round(X1), Math.round(Y1) - 1, "#e8d468"); g.fino(Math.round(X1) + 1, Math.round(Y1), "#b89a3a"); }
+      }
+    });
+    d.contorno = "#2a2a16";
+    return d;
+  }
+  // Coral morto na praia do Mar Vermelho: galhos grossos que se bifurcam (3, 2 e 1 px), com as pontas claras e os
+  // pólipos em pontinhos, sobre uma laje de pedra.
+  function coralOb(chave, variantes, sem0) {
+    return obstaculo(chave, false, variantes, (g, v) => {
+      const sem = sem0 + v * 43, B = 31, cx = g.w / 2 + (v - 1) * 2;
+      const c = ["#5a1e1a", "#8a3a30", "#b8584a", "#d8806a", "#f2ae90"];
+      g.sombra(cx / 2 + 2, B / 2, 8, 1.6, "#1c1210", 0.32);
+      rochaArte(g, cx, B, 9, 3, ["#4a3a30", "#6a5446", "#8a705c", "#a88c74", "#c4a88e"], sem + 5, { lados: 7, rachas: 0 });
+      const galho = (X, Y, ang, L, larg, prof) => {
+        const X1 = X + Math.cos(ang) * L, Y1 = Y + Math.sin(ang) * L;
+        for (let w = 0; w < larg; w++) linhaPx(g, X + w, Y, X1 + w, Y1, (x, y, i) => (w === 0 ? c[Math.min(4, 2 + prof)] : w === larg - 1 ? c[Math.max(0, prof)] : c[1 + Math.min(2, prof)]));
+        if (prof >= 2 || L < 4) { g.fino(Math.round(X1), Math.round(Y1) - 1, c[4]); return; }
+        const abre = 0.45 + hash2(prof, Math.round(X), sem) * 0.35;
+        galho(X1, Y1, ang - abre, L * 0.72, Math.max(1, larg - 1), prof + 1);
+        galho(X1, Y1, ang + abre, L * 0.66, Math.max(1, larg - 1), prof + 1);
+      };
+      galho(cx - 4, B - 4, -Math.PI / 2 - 0.5, 9 + v, 3, 0);
+      galho(cx + 2, B - 4, -Math.PI / 2 + 0.35, 10, 3, 0);
+      if (v !== 1) galho(cx - 1, B - 5, -Math.PI / 2 - 0.05, 7, 2, 1);
+    });
+  }
+
+  // -------------------------------------------------------------------
+  // Vegetação em escala de MMORPG clássico: a árvore é maior que a casa. A copa transborda para cima (a
+  // árvore tem 56–68 px de altura, quase 2 casas) e um pouco para os lados; o tronco fica na casa que bloqueia,
+  // com a base na linha b (a colisão não muda). Desenho em px de arte: a copa é feita de cachos de folhas
+  // (bolhas recortadas em lobos) sombreados um a um em 5 tons (sombra funda → realce, luz de cima e da
+  // esquerda); onde um cacho cai sobre outro, a borda escurece e separa os cachos; as marcas de folha vêm em
+  // grupos de 2 px (nada de ruído de TV); contorno escuro de 1 px e a sombra no chão para a direita.
+  // 3 variantes por espécie (quadros); game.js sorteia a variante, o espelho e um deslocamento por casa.
+  // -------------------------------------------------------------------
+  class Copa {
+    constructor(W, H) { this.W = W; this.H = H; this.t = new Int8Array(W * H).fill(-1); }
+    get(X, Y) { return X < 0 || Y < 0 || X >= this.W || Y >= this.H ? -1 : this.t[Y * this.W + X]; }
+    set(X, Y, v) { if (X >= 0 && Y >= 0 && X < this.W && Y < this.H) this.t[Y * this.W + X] = v; }
+    // Cacho de folhas: centro e raios em px de arte; luz: viés do cacho (+ mais claro); lobos: recortes da borda.
+    cacho(cx, cy, rx, ry, sem, luz = 0, lobos = 6) {
+      const fase = hash2(Math.round(cx), Math.round(cy), sem) * 6.283;
+      const x0 = Math.floor(cx - rx - 3), x1 = Math.ceil(cx + rx + 3), y0 = Math.floor(cy - ry - 3), y1 = Math.ceil(cy + ry + 3);
+      const novo = [];
+      for (let Y = y0; Y <= y1; Y++) for (let X = x0; X <= x1; X++) {
+        const nx = (X + 0.5 - cx) / rx, ny = (Y + 0.5 - cy) / ry, d = Math.sqrt(nx * nx + ny * ny);
+        const lim = 1 + 0.11 * Math.sin(Math.atan2(ny, nx) * lobos + fase) + (hash2(X >> 1, Y >> 1, sem + 1) - 0.5) * 0.14;
+        if (d <= lim) {
+          const l = -(0.55 * nx + 0.8 * ny) * 0.7 + luz + (1 - d) * 0.2;
+          novo.push(X, Y, l > 0.6 ? 4 : l > 0.22 ? 3 : l > -0.16 ? 2 : l > -0.52 ? 1 : 0);
+        } else if (d <= lim + 1.2 / Math.min(rx, ry) && ny < 0.2 && this.get(X, Y) >= 0 && hash2(X >> 1, Y, sem + 2) < 0.7) novo.push(X, Y, -2); // fresta entre cachos
+      }
+      for (let i = 0; i < novo.length; i += 3) {
+        const X = novo[i], Y = novo[i + 1], v = novo[i + 2];
+        this.set(X, Y, v === -2 ? Math.max(0, Math.min(this.get(X, Y) - 1, 1)) : v);
+      }
+    }
+    // Pinta na grade com os 5 tons; marcas de folha: grupos de 2 px um tom abaixo e brilhos de 1 px um tom acima.
+    // Folhas: numa grade de 4 × 3 px (deslocada a cada fileira), cada folha é um traço de 2 px um tom acima com
+    // 1 px um tom abaixo logo embaixo (a sombra da folha); marcas: chance de folha por célula.
+    pintar(g, tons, sem, marcas = 0.5) {
+      const W = this.W, t = this.t, orig = t.slice();
+      const o = (X, Y) => (X < 0 || Y < 0 || X >= W || Y >= this.H ? -1 : orig[Y * W + X]);
+      for (let Y = 1; Y < this.H - 1; Y += 3) for (let X = ((Y / 3) | 0) % 2 ? 2 : 0; X < W - 1; X += 4) {
+        const h = hash2(X, Y, sem + 7);
+        if (h > marcas) continue;
+        const x = X + (h < marcas * 0.5 ? 1 : 0), v = o(x, Y);
+        if (v < 1 || o(x + 1, Y) < 1 || o(x, Y + 1) < 0 || o(x, Y - 1) < 0) continue;
+        if (v < 4) { t[Y * W + x] = v + 1; if (hash2(x, Y, sem + 8) < 0.6) t[Y * W + x + 1] = Math.min(4, o(x + 1, Y) + 1); }
+        t[(Y + 1) * W + x] = Math.max(0, o(x, Y + 1) - 1);
+      }
+      for (let Y = 0; Y < this.H; Y++) for (let X = 0; X < W; X++) { const v = t[Y * W + X]; if (v >= 0) g.fino(X, Y, tons[v]); }
+    }
+    tem(X, Y) { return this.get(X, Y) >= 0; }
+  }
+  // Linha de 1 px de arte (Bresenham) em px de arte.
+  function linhaPx(g, X0, Y0, X1, Y1, c) {
+    X0 = Math.round(X0); Y0 = Math.round(Y0); X1 = Math.round(X1); Y1 = Math.round(Y1);
+    const dX = Math.abs(X1 - X0), dY = -Math.abs(Y1 - Y0), sX = X0 < X1 ? 1 : -1, sY = Y0 < Y1 ? 1 : -1;
+    let e = dX + dY, i = 0;
+    for (;;) {
+      g.fino(X0, Y0, typeof c === "function" ? c(X0, Y0, i++) : c);
+      if (X0 === X1 && Y0 === Y1) break;
+      const e2 = 2 * e;
+      if (e2 >= dY) { e += dY; X0 += sX; }
+      if (e2 <= dX) { e += dX; Y0 += sY; }
+    }
+  }
+  // Tronco em px de arte, da base (x0, yb) ao topo (x1, yt): afina para cima, abre a raiz no chão; casca com
+  // luz à esquerda, sombra à direita e estrias. cores: [sombra funda, sombra, base, luz]. torto: curva em px.
+  function troncoArte(g, x0, yb, x1, yt, larg, cores, sem, torto = 0, afina = 0.4) {
+    for (let Y = yt; Y <= yb; Y++) {
+      const t = (yb - Y) / Math.max(1, yb - yt);
+      const cx = x0 + (x1 - x0) * t + Math.sin(t * 3.4 + sem) * torto * t;
+      let w = larg * (1 - t * afina);
+      if (Y > yb - 4) w += (Y - (yb - 4)) * 1.3; // raiz que abre no chão
+      const a = Math.round(cx - w / 2), b = Math.max(a + 1, Math.round(cx + w / 2) - 1), n = b - a;
+      for (let X = a; X <= b; X++) {
+        const i = X - a;
+        let c = i === 0 ? cores[3] : i === n ? cores[0] : i >= n - 1 ? cores[1] : cores[2];
+        if (i > 0 && i < n - 1 && hash2(X, Y >> 1, sem) < 0.16) c = cores[1];
+        else if (i === 1 && hash2(X, Y, sem + 1) < 0.4) c = cores[3];
+        g.fino(X, Y, c);
+      }
+    }
+  }
+  // Galho de 2 px: luz em cima, sombra embaixo.
+  function galhoArte(g, X0, Y0, X1, Y1, cores, grosso = true) {
+    linhaPx(g, X0, Y0, X1, Y1, cores[2]);
+    if (grosso) linhaPx(g, X0 + 1, Y0 + 1, X1 + 1, Y1 + 1, cores[1]);
+  }
+  // Cachos de uma copa a partir de um molde [[x, y, rx, ry], ...], com variação por variante e a luz
+  // maior em cima e à esquerda. Os de cima pintam primeiro; os de baixo ficam por cima (frente da copa).
+  function moldeCopa(C, molde, v, sem, { luz = 0.18, jitter = 3, W = C.W, topo = 0, base = C.H, lobos = 6 } = {}) {
+    const cachos = molde.map(([x, y, rx, ry], i) => [
+      x + (hash2(i, v, sem) - 0.5) * jitter, y + (hash2(v, i, sem + 1) - 0.5) * jitter * 0.7,
+      rx * (0.9 + hash2(i, v, sem + 2) * 0.2), ry * (0.9 + hash2(i, v, sem + 3) * 0.2),
+    ]).sort((a, b) => a[1] - b[1]);
+    cachos.forEach(([x, y, rx, ry], i) => {
+      const l = luz - ((y - topo) / Math.max(1, base - topo)) * 0.42 - ((x - W / 2) / W) * 0.28;
+      C.cacho(x, y, rx, ry, sem + i * 13, l, lobos);
+    });
+  }
+  function arvore(chave, w, h, desenhar, contorno = "#1c2414") {
+    return registrar(chave, {
+      w, h, quadros: 3, alto: true, obstaculo: true, arvore: true, origem: [0.5, 1], contorno,
+      desenhar(g, v) { desenhar(g, v, (h - 2) * 2, w * 2); },
+    });
+  }
+  const CASCA_OLIVEIRA = ["#2a241e", "#463c32", "#665a4a", "#8a7e68"];
+  const CASCA_FIGUEIRA = ["#2e2a26", "#4a443e", "#6a6258", "#8c8476"];
+  const CASCA_ACACIA = ["#2a1e16", "#4a3424", "#6a4c32", "#8c6a46"];
+  const CASCA_PALMEIRA = ["#3a2a1c", "#5a4228", "#7c5c38", "#a07c4e"];
 
   // Canaã
-  obstaculo("ob_canaan_oliveira", true, 3, (g, v, b) => {
-    g.sombra(11, b, 6.5, 1.6);
-    const tr = ["#4a321f", "#6b4a2e"];
-    tronco(g, 8, b, 13, tr);
-    g.p(10, 15, tr[1]); g.p(11, 14, tr[1]);
-    const cp = ["#4a5f2e", "#5f7a3a", "#7d9548", "#a3b468"], s = 30 + v;
-    const o = v === 1 ? 1 : 0;
-    copa(g, 5.5 + o, 9, 4.2, 3.6, cp, s);
-    copa(g, 11.5 - o, 8, 4.4, 4, cp, s + 3);
-    copa(g, 8.5, 11.5 + (v === 2 ? 1 : 0), 5.6, 3.4, cp, s + 6);
-    for (let i = 0; i < 6; i++) {
-      const x = 3 + Math.floor(hash2(i, v, 11) * 12), y = 5 + Math.floor(hash2(i, v, 12) * 8);
-      if (g.g(x, y)) g.p(x, y, "#b9c08a");
+  // Oliveira: dois troncos cinzentos que se enroscam e abrem em galhos, copa aberta e prateada (cachos soltos,
+  // com frestas onde aparecem os galhos), o avesso prateado das folhas e azeitonas.
+  const MOLDE_OLIVEIRA = [
+    [[20, 12, 10, 7], [35, 10, 10, 7], [10, 22, 8, 7], [46, 21, 8, 7], [22, 26, 10, 7], [37, 27, 10, 7], [28, 18, 9, 7]],
+    [[16, 13, 9, 7], [30, 9, 10, 7], [43, 15, 9, 7], [9, 25, 8, 6], [24, 25, 10, 8], [41, 28, 10, 7], [33, 19, 8, 6]],
+    [[24, 10, 11, 8], [40, 14, 9, 7], [12, 18, 8, 7], [17, 29, 9, 6], [31, 25, 11, 8], [46, 27, 7, 6]],
+  ];
+  arvore("ob_canaan_oliveira", 28, 31, (g, v, B, W) => {
+    const cx = W / 2, sem = 310 + v * 17;
+    g.sombra(cx / 2 + 3, B / 2 - 0.5, 12, 2.8);
+    troncoArte(g, cx - 2, B, cx - 6 + v * 3, B - 24, 6, CASCA_OLIVEIRA, sem, 2.2);
+    troncoArte(g, cx + 2, B - 2, cx + 5 - v, B - 22, 5, CASCA_OLIVEIRA, sem + 3, -1.8);
+    galhoArte(g, cx - 6 + v * 3, B - 24, cx - 16, B - 32, CASCA_OLIVEIRA);
+    galhoArte(g, cx + 5 - v, B - 22, cx + 16, B - 30, CASCA_OLIVEIRA);
+    galhoArte(g, cx - 2, B - 26, cx + 1, B - 40, CASCA_OLIVEIRA);
+    const C = new Copa(W, B);
+    moldeCopa(C, MOLDE_OLIVEIRA[v], v, sem, { topo: 2, base: 36 });
+    C.pintar(g, ["#28331f", "#3f4e30", "#5a6a42", "#7a8a5c", "#a2ae84"], sem);
+    for (let k = 0; k < 22; k++) {
+      const X = 4 + Math.floor(hash2(k, v, sem + 20) * (W - 8)), Y = 3 + Math.floor(hash2(v, k, sem + 21) * 32);
+      if (C.get(X, Y) >= 2 && C.get(X + 1, Y) >= 2) { g.fino(X, Y, "#b8c094"); if (k % 3 === 0) g.fino(X + 1, Y, "#cdd2ac"); }
+    }
+    for (let k = 0; k < 7; k++) {
+      const X = 6 + Math.floor(hash2(k, v, sem + 22) * (W - 12)), Y = 8 + Math.floor(hash2(v, k, sem + 23) * 26);
+      if (C.get(X, Y) >= 1 && C.get(X, Y + 1) >= 1) { g.fino(X, Y, "#4a3c58"); g.fino(X, Y + 1, "#2a2034"); }
     }
   });
+  // mureta de pedra seca solta (a emendada vem de Cenario.texturaMuro), em px de arte: 3 fiadas de 7 px com a junta
+  // de 1 px, pedras de 6 a 10 px desencontradas (a fiada do meio começa com meia pedra), luz em cima e à esquerda
   obstaculo("ob_canaan_muro", false, 2, (g, v, b) => {
     g.sombra(10, b, 8, 1.3);
-    const P = ["#6e5a40", "#9c8460", "#c2ab82", "#d8c8a0"];
+    const P = ["#6e5a40", "#9c8460", "#c2ab82", "#d8c8a0"], X1 = 33;
     for (let fila = 0; fila < 3; fila++) {
-      const y0 = b - 11 + fila * 4;
-      let x = 1 + ((fila + v) % 2) * 2;
-      if (fila === 0) x = 1;
-      while (x < 17) {
-        const w = Math.min(17 - x, 3 + Math.floor(hash2(x, fila, 40 + v) * 3));
-        g.ret(x, y0, w, 3, (px, py) => (py === y0 ? P[3] : py === y0 + 2 ? P[1] : px === x ? P[2] : P[2]));
-        g.p(x + w - 1, y0 + 1, P[1]);
-        g.ret(x + w, y0, 1, 3, P[0]);
-        x += w + 1;
+      const Y0 = 2 * (b - 11) + fila * 8;
+      let X = 2, primeira = (fila + v) % 2 === 1;
+      while (X <= X1) {
+        const w = Math.min(X1 + 1 - X, primeira ? 3 + Math.floor(hash2(X, fila, 42 + v) * 3) : 6 + Math.floor(hash2(X, fila, 40 + v) * 5));
+        primeira = false;
+        for (let j = 0; j < 7; j++) for (let i = 0; i < w; i++) g.fino(X + i, Y0 + j, j === 0 ? P[3] : j === 6 || i === w - 1 ? P[1] : i === 0 ? P[3] : P[2]);
+        for (let j = 0; j < 7; j++) g.fino(X + w, Y0 + j, P[0]);
+        X += w + 1;
       }
-      g.lin(1, y0 + 3, 16, y0 + 3, P[0]);
+      for (let X = 2; X <= X1; X++) g.fino(X, Y0 + 7, P[0]);
     }
-    for (let x = 1; x < 17; x++) if (hash2(x, v, 41) < 0.35) g.p(x, b - 12, "#6e8a3a");
+    // musgo de 1 a 2 px no alto da mureta
+    for (let X = 2; X <= X1; X++) if (hash2(X, v, 41) < 0.3) { g.fino(X, 2 * (b - 11) - 1, "#6e8a3a"); if (hash2(v, X, 43) < 0.4) g.fino(X, 2 * (b - 11) - 2, "#8fa84c"); }
   });
-  obstaculo("ob_canaan_rocha", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    rocha(g, 2 + v, b - 9, 13 - v, 10, ["#7c7466", "#a39b8a", "#c8c0ac"], 50 + v);
-    for (let x = 3 + v; x < 9; x++) for (let y = b - 9; y < b - 7; y++) if (g.g(x, y) && hash2(x, y, 51) < 0.7) g.p(x, y, "#6e8a3a");
-  });
+  pedregulho("ob_canaan_rocha", 3, ["#3e3a32", "#5e584c", "#857e6c", "#aaa28e", "#cec6b0"], 50, { musgo: true, dupla: true });
 
   // Deserto
-  obstaculo("ob_deserto_rocha", false, 3, (g, v, b) => {
-    const dim = [[14, 12], [12, 9], [16, 14]][v];
-    g.sombra(10, b, dim[0] / 2 + 1, 1.4);
-    rocha(g, Math.round(9 - dim[0] / 2), b - dim[1] + 1, dim[0], dim[1], ["#6e4228", "#96532f", "#c47a45", "#e0a16a"], 60 + v, { topo: "#edc08a", estratos: true });
-  });
-  obstaculo("ob_deserto_acacia", true, 2, (g, v, b) => {
-    g.sombra(11, b, 6, 1.5);
-    const tr = ["#4a3222", "#6b4a2e"];
-    g.lin(8, b, 8, 12, tr[1]); g.lin(9, b, 9, 13, tr[0]);
-    g.lin(8, 12, 5, 8, tr[1]); g.lin(9, 12, 12, 8, tr[0]);
-    const cp = ["#5a6a2e", "#8a8f4a", "#a8a85e"];
-    for (let y = 4 + v; y <= 8 + v; y++) {
-      const meia = y === 4 + v ? 5 : y === 8 + v ? 6 : 7;
-      for (let x = 9 - meia; x <= 8 + meia; x++) if (hash2(x, y, 70) > 0.08) g.p(x, y, y === 4 + v ? cp[2] : y >= 7 + v ? cp[0] : hash2(x, y, 71) < 0.3 ? cp[2] : cp[1]);
-    }
-  });
-  obstaculo("ob_deserto_retama", false, 2, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    const c = ["#5a5630", "#8c8450", "#a8a068"];
-    for (let i = 0; i < 9; i++) {
-      const x = 4 + i + (i > 4 ? v : 0), alt = 5 + Math.floor(hash2(i, v, 80) * 5);
-      g.lin(x, b, x + (i % 3 === 0 ? -1 : 0), b - alt, i % 2 ? c[1] : c[0]);
-      g.p(x + (i % 3 === 0 ? -1 : 0), b - alt, c[2]);
-    }
-  });
+  pedregulho("ob_deserto_rocha", 3, ["#5a3020", "#86482c", "#b0663c", "#d08a56", "#eab47e"], 60, { estratos: true, dupla: true });
+  // Acácia: tronco fino que se abre em três galhos até a copa chata em guarda-chuva (cachos achatados, 8
+  // lobos), com as bolinhas amarelas das flores. No Sinai a copa é mais rala e mais seca.
+  const MOLDE_ACACIA = [
+    [[13, 12, 8, 5], [24, 9, 9, 5], [36, 9, 9, 5], [47, 12, 8, 5], [8, 18, 7, 4], [19, 17, 9, 5], [31, 16, 9, 5], [42, 17, 9, 5], [52, 18, 6, 4]],
+    [[16, 10, 9, 5], [29, 8, 10, 5], [42, 11, 9, 5], [10, 17, 8, 4], [23, 16, 10, 5], [37, 17, 9, 5], [50, 16, 7, 4]],
+    [[11, 14, 8, 5], [22, 10, 9, 5], [35, 11, 9, 5], [48, 15, 8, 5], [16, 19, 9, 4], [29, 18, 10, 5], [42, 19, 9, 4]],
+  ];
+  function acacia(chave, tons, sem0, rala) {
+    arvore(chave, 30, 28, (g, v, B, W) => {
+      const cx = W / 2, sem = sem0 + v * 23;
+      g.sombra(cx / 2 + 3, B / 2 - 0.5, 13, 2.6);
+      const fx = cx + (v - 1) * 2, fy = B - 14;
+      troncoArte(g, cx, B, fx, fy, 5, CASCA_ACACIA, sem, 1, 0.2);
+      galhoArte(g, fx, fy, 14 + v, 20, CASCA_ACACIA);
+      galhoArte(g, fx, fy, cx + 1, 15, CASCA_ACACIA);
+      galhoArte(g, fx + 1, fy, 46 - v, 20, CASCA_ACACIA);
+      galhoArte(g, fx - 6, fy - 4, 6 + v, 18, CASCA_ACACIA, false);
+      const C = new Copa(W, B);
+      const molde = rala ? MOLDE_ACACIA[v].filter((_, i) => hash2(i, v, sem) > 0.25) : MOLDE_ACACIA[v];
+      moldeCopa(C, molde, v, sem, { topo: 4, base: 24, lobos: 8, luz: 0.22 });
+      C.pintar(g, tons, sem, 0.4);
+      for (let k = 0; k < 12; k++) {
+        const X = 4 + Math.floor(hash2(k, v, sem + 30) * (W - 8)), Y = 4 + Math.floor(hash2(v, k, sem + 31) * 18);
+        if (C.get(X, Y) >= 2) g.fino(X, Y, "#e2d27a");
+      }
+    });
+  }
+  acacia("ob_deserto_acacia", ["#30381a", "#4c5426", "#687034", "#888e44", "#aaa862"], 380, false);
+  retamaOb("ob_deserto_retama", 3, 80);
   obstaculo("ob_deserto_tenda", true, 1, (g, v, b) => {
     g.sombra(11, b, 8, 1.6);
     const c = ["#3a2c24", "#4a3a30", "#6a5646"];
@@ -3279,11 +3767,7 @@
     folhas.forEach(([dx, dy], i) => { g.lin(tx, ty, tx + dx, ty + dy, f[i % 2 ? 1 : 2]); g.lin(tx, ty + 1, tx + dx, ty + dy + 1, f[0]); });
     g.p(tx, ty + 1, "#8e4a2a"); g.p(tx + 1, ty + 2, "#8e4a2a");
   });
-  obstaculo("ob_mar_rochedo", false, 2, (g, v, b) => {
-    g.elip(9, b - 1.5, 8, 2.2, "#e8f2e0");
-    rocha(g, 3 + v, b - 11, 12 - v, 11, ["#4a4038", "#5d5048", "#7d6a4a", "#a8936a"], 90 + v);
-    for (let x = 2; x < 16; x++) if (hash2(x, v, 91) < 0.5) g.p(x, b - 1, "#e8f2e0");
-  });
+  pedregulho("ob_mar_rochedo", 2, ["#3a322c", "#54483e", "#74644e", "#9a8664", "#bca884"], 90, { antes: (g) => g.elip(9.5, 15, 8.5, 1.8, "#e8f2e0") });
   obstaculo("ob_mar_recife", false, 2, (g, v, b) => {
     g.elip(9, b - 3, 8, 3.6, "#4fa3a5");
     for (let i = 0; i < 7; i++) {
@@ -3293,22 +3777,41 @@
   });
 
   // Egito
-  obstaculo("ob_egito_tamareira", true, 2, (g, v, b) => {
-    g.sombra(11, b, 6, 1.5);
-    const tr = ["#6a4a2e", "#8a6a42"];
-    for (let y = b; y >= 8; y--) { const x = 8 + (v && y < 14 ? 1 : 0); g.p(x, y, y % 2 ? tr[0] : tr[1]); g.p(x + 1, y, tr[0]); }
-    const tx = 8.5 + v, ty = 6;
-    const f = ["#4f6f2e", "#6a8a3a", "#9ab04a"];
-    const arcos = [[-7, 4], [-5, 1], [-1, -4], [4, -2], [7, 2], [6, 6], [-6, 7]];
-    arcos.forEach(([dx, dy], i) => {
-      const n = 7;
-      for (let k = 0; k <= n; k++) {
-        const t = k / n, x = tx + dx * t, y = ty + dy * t + t * t * 3 - 1;
-        g.p(x, y, k > n - 2 ? f[0] : i % 2 ? f[1] : f[2]);
-        if (k > 1 && k < n) g.p(x, y + 1, f[0]);
+  // Tamareira: tronco alto com as cicatrizes das folhas em escamas (em V, luz à esquerda), coroa de folhas
+  // compridas que caem com o peso (folíolos dos dois lados da nervura: claros em cima, escuros embaixo) e
+  // cachos de tâmaras debaixo da coroa.
+  arvore("ob_egito_tamareira", 26, 34, (g, v, B, W) => {
+    const cx = W / 2, sem = 420 + v * 29;
+    g.sombra(cx / 2 + 3, B / 2 - 0.5, 9, 2.4);
+    const tx = cx + (v - 1) * 4, ty = 20 + v;
+    for (let Y = ty; Y <= B; Y++) {
+      const t = (B - Y) / (B - ty), xc = cx + (tx - cx) * t * t;
+      const w = 6 - t * 1.5 + (Y > B - 3 ? (Y - (B - 3)) * 1.2 : 0);
+      const a = Math.round(xc - w / 2), b = Math.round(xc + w / 2) - 1;
+      for (let X = a; X <= b; X++) {
+        const i = X - a, n = b - a, faixa = (Y + Math.abs(X + 0.5 - xc) * 0.9 | 0) % 4;
+        let c = faixa === 0 ? CASCA_PALMEIRA[1] : faixa === 1 ? CASCA_PALMEIRA[3] : CASCA_PALMEIRA[2];
+        if (i === n) c = CASCA_PALMEIRA[0]; else if (i === n - 1 && faixa !== 1) c = CASCA_PALMEIRA[1];
+        else if (i === 0 && faixa !== 0) c = CASCA_PALMEIRA[3];
+        g.fino(X, Y, c);
       }
-    });
-    g.ret(tx - 1, ty + 1, 3, 2, "#8e4a2a"); g.p(tx - 1, ty + 1, "#b5663a");
+    }
+    const tons = ["#1e3418", "#2e4c20", "#44682a", "#5e8636", "#82a64c"];
+    // [ângulo em graus (0 = direita, −90 = para cima), comprimento, plano: 0 atrás … 2 na frente]. Cada folha é
+    // uma faixa curva: a nervura em cima (clara) e os folíolos pendurados embaixo, mais compridos no meio, com a
+    // borda de baixo serrilhada e escura.
+    const folhas = [[-120, 14, 0], [-60, 14, 0], [-92, 11, 0], [-140, 18, 1], [-40, 18, 1], [-165, 21, 1], [-15, 21, 1], [172, 23, 2], [8, 23, 2], [138, 18, 2], [42, 18, 2], [100, 12, 2]];
+    for (const [ang0, L0, plano] of folhas) {
+      const ang = ((ang0 + (hash2(ang0 + 200, v, sem) - 0.5) * 16) * Math.PI) / 180, L = L0 + (hash2(v, ang0 + 200, sem + 1) - 0.5) * 4;
+      const dx = Math.cos(ang), dy = Math.sin(ang), b = plano + 1;
+      for (let k = 1; k <= L; k++) {
+        const t = k / L, X = Math.round(tx + dx * k), Y = Math.round(ty + dy * k * 0.8 + t * t * L * 0.55);
+        const w = Math.max(1, Math.round(Math.sin(Math.min(1, t * 1.15) * Math.PI) * 4.6 + 0.6) - (k % 3 === 2 ? 1 : 0));
+        for (let q = 0; q <= w; q++) g.fino(X, Y + q, q === 0 ? tons[Math.min(4, b + 1)] : q === w ? tons[Math.max(0, b - 1)] : tons[b]);
+      }
+    }
+    for (const [ox, oy] of [[-4, 3], [3, 4], [-1, 5]]) for (let k = 0; k < 6; k++) g.fino(tx + ox + (k % 3) - 1, ty + oy + ((k / 3) | 0), k === 0 ? "#e8a050" : k % 2 ? "#a8521e" : "#d07a32");
+    g.fino(tx, ty, tons[0]); g.fino(tx - 1, ty, tons[1]); g.fino(tx + 1, ty, tons[1]);
   });
   obstaculo("ob_egito_coluna", true, 1, (g, v, b) => {
     g.sombra(11, b, 6, 1.5);
@@ -3347,30 +3850,8 @@
   });
 
   // Mar Vermelho
-  obstaculo("ob_marVermelho_granito", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    const c = ["#5a2a20", "#7a3426", "#a5503a", "#c87a58"];
-    for (let y = b - 11; y <= b; y++) for (let x = 2; x < 16; x++) {
-      const lim = (y - (b - 11)) * (v ? 1.4 : 1.1);
-      if (x < 9 - lim || x > 9 + lim * 0.8 + 2) continue;
-      let cor = x < 9 - lim + 2 ? c[3] : y < b - 8 ? c[2] : x > 9 + lim * 0.6 ? c[0] : c[1];
-      if (Math.abs(x - 6 - (y - (b - 11)) * 0.7) < 0.5) cor = c[0];
-      g.p(x, y, cor);
-    }
-  });
-  obstaculo("ob_marVermelho_coral", false, 2, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    const c = ["#8a3a30", "#c8604c", "#e08a6a"];
-    const galhos = (x, y, ang, n, prof) => {
-      if (prof > 3 || n < 1) return;
-      let px = x, py = y;
-      for (let i = 0; i < n; i++) { px += Math.cos(ang); py += Math.sin(ang); g.p(px, py, prof === 0 ? c[0] : prof === 1 ? c[1] : c[2]); }
-      galhos(px, py, ang - 0.6, n - 1, prof + 1);
-      galhos(px, py, ang + 0.6, n - 1, prof + 1);
-    };
-    galhos(9 + v, b, -Math.PI / 2, 4, 0);
-    g.ret(7 + v, b - 1, 4, 2, c[0]);
-  });
+  pedregulho("ob_marVermelho_granito", 3, ["#4a1e18", "#74302a", "#9e4a3a", "#c46e56", "#e0987a"], 70, { pintas: true, lados: 7 });
+  coralOb("ob_marVermelho_coral", 3, 95);
   obstaculo("ob_marVermelho_destrocos", false, 2, (g, v, b) => {
     g.sombra(10, b, 7.5, 1.2);
     const c = ["#5e4630", "#8a6a4a", "#a8865e"];
@@ -3381,16 +3862,8 @@
   });
 
   // Sinai
-  obstaculo("ob_sinai_penedo", false, 2, (g, v, b) => {
-    const dim = [[16, 14], [12, 10]][v];
-    g.sombra(10, b, dim[0] / 2 + 1, 1.4);
-    rocha(g, Math.round(9 - dim[0] / 2), b - dim[1] + 1, dim[0], dim[1], ["#4e302a", "#6a4038", "#8a5a4a", "#b07a62"], 120 + v, { veio: "#d0a080" });
-  });
-  obstaculo("ob_sinai_arbusto", false, 1, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    copa(g, 9, b - 4, 5.5, 4, ["#3e4a2a", "#5a6a3a", "#7a8a4a"], 130, 0.3);
-    for (let i = 0; i < 8; i++) { const x = 4 + Math.floor(hash2(i, 1, 131) * 11), y = b - 8 + Math.floor(hash2(i, 2, 131) * 3); if (!g.g(x, y)) g.p(x, y, "#7a8a4a"); }
-  });
+  pedregulho("ob_sinai_penedo", 3, ["#36282a", "#5a423c", "#7e5e4e", "#a27c64", "#c49e82"], 120, { pintas: true, dupla: true, formas: [[15, 12, 18], [13, 10, 17], [15, 13, 18]] });
+  arbustoOb("ob_sinai_arbusto", 3, ["#24261a", "#3c3e26", "#565834", "#727244", "#908e5a"], 130, { seco: true });
   obstaculo("ob_sinai_marco", false, 1, (g, v, b) => {
     g.sombra(10, b, 5, 1.2);
     const c = ["#6a5a4a", "#8a7a6a", "#a89a88"];
@@ -3399,24 +3872,28 @@
     rocha(g, 6, b - 10, 6, 3, c, 142);
     rocha(g, 7, b - 13, 4, 3, c, 143);
   });
-  obstaculo("ob_sinai_acacia", true, 1, (g, v, b) => {
-    g.sombra(11, b, 6, 1.5);
-    const tr = ["#4a3222", "#6b4a2e"];
-    g.lin(8, b, 8, 12, tr[1]); g.lin(9, b, 9, 12, tr[0]);
-    g.lin(8, 12, 4, 6, tr[1]); g.lin(9, 12, 13, 5, tr[0]); g.lin(8, 9, 9, 4, tr[1]);
-    g.lin(4, 6, 2, 5, tr[1]); g.lin(13, 5, 15, 4, tr[0]);
-    for (const [x, y] of [[3, 4], [5, 5], [12, 3], [14, 4], [9, 3], [10, 3]]) g.p(x, y, "#7a7a40");
-  });
-
+  acacia("ob_sinai_acacia", ["#2e3018", "#484a24", "#626430", "#7e7e40", "#9c9858"], 400, true);
   // Galileia
-  obstaculo("ob_galileia_figueira", true, 2, (g, v, b) => {
-    g.sombra(11, b, 7, 1.6);
-    const tr = ["#3e2c20", "#5a4030"];
-    tronco(g, 8, b, 13, tr);
-    const cp = ["#3a5e2a", "#4f7a34", "#6e9a48", "#8ab45e"];
-    copa(g, 8.5, 9.5, 7.6, 5.4, cp, 150 + v, 0.18);
-    for (let i = 0; i < 5; i++) { const x = 3 + Math.floor(hash2(i, v, 152) * 12), y = 6 + Math.floor(hash2(i, v, 153) * 6); if (g.g(x, y)) { g.p(x, y, cp[3]); g.p(x + 1, y + 1, cp[0]); } }
-    for (const [x, y] of [[5, 11], [11, 9], [9, 13]]) g.p(x + v, y, "#5a2e5a");
+  // Figueira: tronco curto e grosso de casca lisa e cinzenta, copa larga e fechada em cachos grandes (folhas
+  // largas, verde-escuro) e figos maduros.
+  const MOLDE_FIGUEIRA = [
+    [[18, 11, 11, 8], [32, 8, 11, 8], [45, 12, 10, 8], [9, 23, 9, 8], [23, 22, 11, 9], [38, 22, 11, 9], [51, 24, 8, 8], [17, 34, 10, 7], [31, 35, 11, 7], [45, 34, 10, 7]],
+    [[22, 9, 12, 8], [40, 10, 11, 8], [11, 20, 9, 8], [28, 21, 12, 9], [47, 22, 10, 8], [15, 33, 10, 7], [32, 34, 12, 7], [48, 33, 8, 7]],
+    [[26, 8, 11, 8], [41, 13, 10, 8], [13, 15, 9, 8], [20, 26, 11, 9], [36, 25, 12, 9], [52, 27, 7, 7], [10, 34, 8, 6], [27, 36, 11, 7], [43, 36, 10, 6]],
+  ];
+  arvore("ob_galileia_figueira", 30, 32, (g, v, B, W) => {
+    const cx = W / 2, sem = 350 + v * 19;
+    g.sombra(cx / 2 + 3, B / 2 - 0.5, 13, 3);
+    troncoArte(g, cx, B, cx - 1 + v, B - 20, 9, CASCA_FIGUEIRA, sem, 1, 0.3);
+    galhoArte(g, cx - 2, B - 16, cx - 12, B - 24, CASCA_FIGUEIRA);
+    galhoArte(g, cx + 2, B - 15, cx + 13, B - 23, CASCA_FIGUEIRA);
+    const C = new Copa(W, B);
+    moldeCopa(C, MOLDE_FIGUEIRA[v], v, sem, { topo: 0, base: 42, lobos: 5 });
+    C.pintar(g, ["#16301a", "#244a24", "#356630", "#4c843e", "#6ea456"], sem, 0.55);
+    for (let k = 0; k < 9; k++) {
+      const X = 5 + Math.floor(hash2(k, v, sem + 22) * (W - 10)), Y = 6 + Math.floor(hash2(v, k, sem + 23) * 34);
+      if (C.get(X, Y) >= 1 && C.get(X + 1, Y + 1) >= 1) { g.fino(X, Y, "#8a5a8a"); g.fino(X + 1, Y, "#6a3a6a"); g.fino(X, Y + 1, "#5a2e5a"); g.fino(X + 1, Y + 1, "#3e1e40"); }
+    }
   });
   obstaculo("ob_galileia_basalto_muro", false, 2, (g, v, b) => {
     g.sombra(10, b, 8, 1.3);
@@ -3436,12 +3913,7 @@
       g.lin(1, y0 + 3, 16, y0 + 3, c[0]);
     }
   });
-  obstaculo("ob_galileia_basalto", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    rocha(g, 2 + v, b - 9, 13 - v, 10, ["#262422", "#363432", "#4c4a48", "#6e6a64"], 170 + v);
-    // vesículas do basalto: furinhos escuros
-    for (let i = 0; i < 6; i++) { const x = 4 + Math.floor(hash2(i, v, 171) * 9), y = b - 7 + Math.floor(hash2(i, v, 172) * 6); if (g.g(x, y)) g.p(x, y, "#262422"); }
-  });
+  pedregulho("ob_galileia_basalto", 3, ["#1a1a1c", "#2c2c2e", "#424240", "#5e5c58", "#807c74"], 170, { colunas: true, lados: 7 });
   obstaculo("ob_galileia_barco", false, 1, (g, v, b) => {
     g.sombra(10, b, 8.5, 1.3);
     const c = ["#4a3222", "#6e4a28", "#9a6a3c", "#b8875a"];
@@ -3467,6 +3939,161 @@
 
   // Tipo de obstáculo por casa: o tipo fixo do mapa (bosque, muro da vila, marco; dados/mapas.js) ou o
   // sorteio por peso do bioma. Tipos com desenho próprio fora do bioma ficam em MARCOS.
+  // -------------------------------------------------------------------
+  // Props das vilas (marcos de dados/mapas.js): barril, caixotes, carroça, jarros, lenha, cocho e cerca. Um
+  // desenho por região (ob_<area>_<tipo>) com a madeira, o barro e a pedra de lá; bloqueiam a casa como todo
+  // marco e não têm deslocamento sorteado (a cerca emenda com a vizinha: postes a cada 16 px e as travessas de
+  // ponta a ponta). Desenho em px de arte, luz de cima e da esquerda, 4–5 tons por material, contorno sépia.
+  // -------------------------------------------------------------------
+  const PROPS_VILA = ["barril", "caixotes", "carroca", "jarros", "lenha", "cocho", "cerca"];
+  const MATERIAL_PROPS = {
+    canaan: { madeira: ["#3a2416", "#5a3a22", "#7a5232", "#9a6e44", "#bc8e5e"], barro: ["#5a2e1c", "#84462a", "#a8603a", "#c87e52", "#e0a070"], pedra: ["#4a463c", "#6a6456", "#8c8672", "#aea690", "#cac2aa"] },
+    deserto: { madeira: ["#4a2e1c", "#6e4628", "#92623a", "#b4824e", "#d0a06a"], barro: ["#6a3a20", "#92562e", "#b8743e", "#d49656", "#ecb878"], pedra: ["#5a3a26", "#7e5434", "#a47248", "#c4945e", "#deb47c"] },
+    egito: { madeira: ["#4e3a20", "#72562e", "#967444", "#b8945c", "#d4b47a"], barro: ["#5e2c18", "#8a4426", "#b05e36", "#cc7c4c", "#e49c68"], pedra: ["#6a5c40", "#8a7a5a", "#ab9b78", "#cdbf9c", "#e4d8b8"] },
+    marVermelho: { madeira: ["#3e342c", "#5e5246", "#80705e", "#a08e78", "#c0ae96"], barro: ["#5a2e22", "#82442e", "#a65e40", "#c27c58", "#dc9e78"], pedra: ["#4a2a24", "#6e3e30", "#965a44", "#b87a5c", "#d49c7e"] },
+    sinai: { madeira: ["#33241c", "#52392a", "#73503a", "#94704e", "#b48e68"], barro: ["#56301e", "#7a462a", "#9c603a", "#ba7e52", "#d29c6c"], pedra: ["#3a2c28", "#5a463c", "#7a6250", "#9c8068", "#bca084"] },
+    galileia: { madeira: ["#36231a", "#56382a", "#784e38", "#9a6a4a", "#ba8a64"], barro: ["#56301e", "#7e4a2c", "#a2643c", "#c08254", "#d8a274"], pedra: ["#222224", "#363636", "#4e4c4a", "#6c6a64", "#8c8880"] },
+  };
+  const FERRO_PROPS = ["#24201c", "#3e3832", "#5e564c", "#80786a"];
+  const AGUA_PROPS = ["#24505e", "#346e7e", "#5a98a4", "#9ccacc"];
+  // retângulo em px de arte com a cor de cada px (função ou cor)
+  function retPx(g, X, Y, w, h, c) {
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const cor = typeof c === "function" ? c(i, j, w, h) : c; if (cor) g.fino(X + i, Y + j, cor); }
+  }
+  // elipse cheia em px de arte; c(nx, ny) devolve a cor
+  function elipPx(g, cx, cy, rx, ry, c) {
+    for (let Y = Math.floor(cy - ry); Y <= Math.ceil(cy + ry); Y++) for (let X = Math.floor(cx - rx); X <= Math.ceil(cx + rx); X++) {
+      const nx = (X + 0.5 - cx) / rx, ny = (Y + 0.5 - cy) / ry;
+      if (nx * nx + ny * ny <= 1) { const cor = c(nx, ny, X, Y); if (cor) g.fino(X, Y, cor); }
+    }
+  }
+  const DESENHO_PROP = {
+    // barril de aduelas com dois aros de ferro e a tampa de cima; a variante 1 tem um barril menor ao lado
+    barril(g, v, M, B) {
+      const um = (cx, base, rx, alt) => {
+        const m = M.madeira, topo = base - alt;
+        for (let Y = topo + 2; Y <= base; Y++) {
+          const t = (Y - topo) / alt, bojo = Math.sin(t * Math.PI) * 1.6, r = rx - 1.6 + bojo;
+          for (let X = Math.round(cx - r); X <= Math.round(cx + r) - 1; X++) {
+            const u = (X + 0.5 - (cx - r)) / (2 * r), ad = Math.floor(u * 6);
+            let k = u < 0.2 ? 4 : u < 0.45 ? 3 : u < 0.75 ? 2 : u < 0.9 ? 1 : 0;
+            if (Math.floor(((X - (cx - r)) / (2 * r)) * 6 * 2) % 2 === 1 && k > 0 && ad % 2) k--;
+            let cor = m[k];
+            const aro = Math.abs(Y - (topo + alt * 0.3)) < 1 || Math.abs(Y - (topo + alt * 0.75)) < 1;
+            if (aro) cor = FERRO_PROPS[Math.min(3, Math.max(0, k - 1))];
+            g.fino(X, Y, cor);
+          }
+        }
+        elipPx(g, cx - 0.5, topo + 2.5, rx - 1.2, 2.4, (nx, ny) => (nx * nx + ny * ny > 0.55 ? m[1] : ny < 0 ? m[4] : m[3]));
+      };
+      g.sombra(11, B / 2, 7, 1.6, "#1c1210", 0.3);
+      if (v === 1) um(27, B - 1, 6, 14);
+      um(15, B, 9, 22);
+    },
+    // caixotes de tábuas com o quadro escuro e a trave em X; empilhados
+    caixotes(g, v, M, B) {
+      const m = M.madeira;
+      const cx = (X, Y, w, h, tampa) => {
+        retPx(g, X, Y, w, tampa, (i) => (i === 0 ? m[4] : i === w - 1 ? m[2] : m[3]));
+        retPx(g, X, Y + tampa, w, h - tampa, (i, j, W, H) => {
+          if (i === 0 || j === 0) return m[3];
+          if (i === W - 1 || j === H - 1) return m[0];
+          if (i === 1 || i === W - 2 || j === 1 || j === H - 2) return m[1];
+          const d = Math.abs((i - 2) / (W - 4) - (j - 2) / (H - 4));
+          if (d < 0.12) return m[1];
+          return j % 4 === 0 ? m[1] : i < W / 2 ? m[3] : m[2];
+        });
+      };
+      g.sombra(11, B / 2, 8, 1.6, "#1c1210", 0.3);
+      cx(3, B - 15, 17, 16, 4);
+      cx(19, B - 12, 13, 13, 3);
+      if (v !== 1) cx(7, B - 26, 13, 12, 3);
+    },
+    // carroça de duas rodas, de lado: caixa de tábuas com sacos ou feno, roda de raios e os varais no chão
+    carroca(g, v, M, B) {
+      const m = M.madeira, W = g.w;
+      g.sombra(W / 4 + 1, B / 2, 13, 1.8, "#1c1210", 0.3);
+      // varais
+      linhaPx(g, W - 4, B - 1, W - 16, B - 9, m[1]); linhaPx(g, W - 4, B - 2, W - 16, B - 10, m[3]);
+      // carga
+      if (v === 0) for (let k = 0; k < 3; k++) elipPx(g, 12 + k * 7, B - 19, 4.2, 4, (nx, ny) => (ny < -0.3 && nx < 0.2 ? "#e0d0a8" : nx > 0.4 || ny > 0.5 ? "#a08a60" : "#c8b488"));
+      else for (let X = 7; X < 30; X++) for (let Y = B - 23 + Math.round(Math.sin(X * 0.7) * 1.2); Y < B - 15; Y++) g.fino(X, Y, (X + Y) % 3 === 0 ? "#b89a40" : Y < B - 20 ? "#e8d070" : "#d0b050");
+      // caixa
+      retPx(g, 5, B - 16, 28, 9, (i, j, w, h) => (j === 0 ? m[4] : j === h - 1 || i === w - 1 ? m[0] : j % 3 === 0 ? m[1] : i < 3 ? m[3] : m[2]));
+      // roda
+      const rx = 17, ry = B - 7;
+      elipPx(g, rx, ry, 7, 7, (nx, ny, X, Y) => {
+        const d = Math.hypot(nx, ny);
+        if (d > 0.74) return d > 0.9 ? m[0] : nx + ny < 0 ? m[3] : m[1];
+        if (d < 0.2) return m[4];
+        const a = Math.atan2(ny, nx), raio = Math.abs(((a / Math.PI) * 3 + 6) % 1 - 0.5) < 0.12;
+        return raio ? m[2] : null;
+      });
+    },
+    // jarros de barro (talhas): 2 ou 3 de tamanhos diferentes, com a boca escura e a luz à esquerda
+    jarros(g, v, M, B) {
+      const b = M.barro;
+      const jarro = (cx, base, rx, alt) => {
+        const cy = base - alt * 0.42;
+        elipPx(g, cx, cy, rx, alt * 0.42, (nx, ny) => { const l = -(0.65 * nx + 0.6 * ny); return l > 0.5 ? b[4] : l > 0.1 ? b[3] : l > -0.35 ? b[2] : l > -0.7 ? b[1] : b[0]; });
+        const topo = base - alt;
+        retPx(g, Math.round(cx - rx * 0.45), topo + 2, Math.round(rx * 0.9), Math.round(alt * 0.22), (i, j, w) => (i === 0 ? b[3] : i === w - 1 ? b[0] : b[2]));
+        retPx(g, Math.round(cx - rx * 0.6), topo, Math.round(rx * 1.2), 2, (i, j, w) => (j === 0 ? (i === 0 ? b[3] : b[4]) : i < w - 2 && i > 1 ? "#1c1210" : b[1]));
+      };
+      g.sombra(11, B / 2, 8, 1.6, "#1c1210", 0.3);
+      jarro(22, B - 2, 6, 16);
+      jarro(12, B, 7.5, 22);
+      if (v === 1) jarro(27, B, 4.5, 12);
+    },
+    // lenha empilhada: toras vistas de ponta (anéis claros, casca escura) em fileiras de 3, 2 e 1
+    lenha(g, v, M, B) {
+      const m = M.madeira;
+      g.sombra(11, B / 2, 8, 1.5, "#1c1210", 0.3);
+      // as toras de lado, atrás
+      retPx(g, 4, B - 13, 26, 12, (i, j, w, h) => (j === 0 ? m[3] : j === h - 1 ? m[0] : j % 4 === 0 ? m[0] : (i * 7 + j) % 11 === 0 ? m[1] : m[2]));
+      const fil = [[3, B - 4], [2, B - 11], [1, B - 18]];
+      fil.forEach(([n, y], f) => {
+        for (let k = 0; k < n; k++) {
+          const x = 10 + k * 8 - (n - 3) * 4 + (v && f === 1 ? 1 : 0);
+          elipPx(g, x, y, 4, 3.6, (nx, ny) => {
+            const d = Math.hypot(nx, ny);
+            if (d > 0.78) return nx + ny < -0.3 ? m[2] : m[0];
+            return d < 0.25 ? "#a07a4a" : Math.abs(d - 0.5) < 0.1 ? "#c8a070" : "#e0c08a";
+          });
+        }
+      });
+    },
+    // cocho: pedra (ou madeira no deserto) com a água dentro, a face da frente mais escura
+    cocho(g, v, M, B) {
+      const p = M.pedra, a = AGUA_PROPS;
+      g.sombra(11, B / 2, 9, 1.5, "#1c1210", 0.3);
+      retPx(g, 3, B - 14, 30, 6, (i, j, w, h) => {
+        if (j === 0 || i === 0) return p[4];
+        if (i === w - 1) return p[1];
+        if (j === h - 1 || i === 1 || i === w - 2) return p[3];
+        return j === 1 ? a[0] : (i + j * 3) % 9 === 0 ? a[3] : j === 2 ? a[1] : a[2];
+      });
+      retPx(g, 3, B - 8, 30, 8, (i, j, w, h) => (j === 0 ? p[2] : i === w - 1 || j === h - 1 ? p[0] : (i % 7 === 0 && j > 1) ? p[0] : i < 3 ? p[2] : p[1]));
+    },
+    // cerca de madeira: postes a cada 16 px (com a cabeça clara) e duas travessas de ponta a ponta da casa; nos
+    // quadros de fecho (v ≥ 2: a última peça da fileira, sem cerca à direita) as travessas terminam num poste
+    cerca(g, v, M, B) {
+      const m = M.madeira, W = g.w, x0 = (W - 32) / 2;
+      for (const y of [B - 15, B - 8]) retPx(g, x0, y, 32, 3, (i, j) => (j === 0 ? m[3] : j === 2 ? m[0] : (i + y) % 9 === 0 ? m[1] : m[2]));
+      const postes = v >= 2 ? [x0 + 1, x0 + 17, x0 + 28] : [x0 + 1, x0 + 17];
+      for (const px of postes) retPx(g, px, B - 20, 4, 20, (i, j, w, h) => (j === 0 ? m[4] : i === 0 ? m[3] : i === w - 1 ? m[0] : j === h - 1 ? m[0] : m[2]));
+    },
+  };
+  for (const area of Object.keys(MATERIAL_PROPS)) for (const tipo of PROPS_VILA) {
+    const chave = `ob_${area}_${tipo}`;
+    if (PIXEL_PATTERNS[chave]) continue; // os jarros do Egito já são obstáculo do bioma
+    const largo = tipo === "carroca", cerca = tipo === "cerca";
+    // a cerca tem 2 quadros a mais com o poste de fecho na ponta direita (fecho: 2 = primeiro quadro de fecho)
+    registrar(chave, {
+      w: largo ? 22 : 18, h: tipo === "caixotes" || tipo === "barril" || tipo === "jarros" ? 20 : 18, quadros: cerca ? 4 : 2, fecho: cerca ? 2 : 0, obstaculo: true, prop: true, origem: [0.5, 1],
+      desenhar(g, v) { DESENHO_PROP[tipo](g, v, MATERIAL_PROPS[area], g.h - 5); },
+    });
+  }
   const MARCOS = {
     fogueira: { chave: "fx_fogueira", alto: false, animado: 3 },
     estandarte: { chave: "ob_sinai_estandarte", alto: true },
@@ -3480,6 +4107,9 @@
       const doBioma = bio.obstaculos.find((o) => o.tipo === fixo);
       if (doBioma) return { chave: `ob_${area}_${fixo}`, alto: !!doBioma.alto };
       if (MARCOS[fixo]) return MARCOS[fixo];
+      const prop = PIXEL_PATTERNS[`ob_${area}_${fixo}`];
+      // fecho: prop que emenda com o vizinho (a cerca) e é o último da fileira, sem o mesmo prop à direita
+      if (prop?.prop) return { chave: `ob_${area}_${fixo}`, alto: false, prop: true, fecho: !!prop.fecho && tiposObstaculo[area][x + 1 + "," + y] !== fixo };
     }
     const lista = bio.obstaculos.filter((o) => !o.soMarco);
     const total = lista.reduce((s, o) => s + o.peso, 0);
@@ -3689,19 +4319,23 @@
   }
 
   // Água: fases 0–3 (cada casa começa numa fase diferente).
+  // Água em px de arte (1 px de arte = 1 px de mundo, como o resto do cenário): a base, 5 ondulações por tile
+  // (vale escuro de 4 a 7 px e a crista clara 1 px acima, mais curta) que derivam 1 px a cada 2 fases (≈ 500 ms)
+  // e, de vez em quando, um brilho de 2 px.
   function pintarAgua(pin, i, agua, fase, t, clara = false) {
-    const base = clara ? misturar(agua.base, agua.clara, 0.45) : agua.base;
+    const base = clara ? misturar(agua.base, agua.clara, 0.45) : agua.base, L = T * pin.r;
     pin.encher(i, base);
-    // 3 ondulações por tile (vale escuro + crista clara), em posições próprias
-    // de cada tile; derivam 1 px-a a cada 2 fases (≈ 500 ms).
-    for (let k = 0; k < 3; k++) {
-      const x0 = Math.floor(hash2(i, k, 31) * 16), y0 = 2 + Math.floor(hash2(k, i, 32) * 12);
-      const desl = Math.floor((t + hash2(i, k, 33) * 8) / 2) % 16;
-      const len = 3 + (k % 2);
-      for (let d = 0; d < len; d++) pin.set(i, (x0 + desl + d) % 16, y0, agua.escura);
-      for (let d = 1; d < len - 1; d++) pin.set(i, (x0 + desl + d) % 16, y0 - 1, agua.clara);
+    for (let k = 0; k < 5; k++) {
+      const x0 = Math.floor(hash2(i, k, 31) * L), y0 = 3 + Math.floor(hash2(k, i, 32) * (L - 5));
+      const desl = Math.floor((t + hash2(i, k, 33) * 8) / 2) % L;
+      const len = 4 + Math.floor(hash2(k, i, 36) * 4);
+      for (let d = 0; d < len; d++) pin.fino(i, (x0 + desl + d) % L, y0, agua.escura);
+      for (let d = 1; d < len - 1; d++) pin.fino(i, (x0 + desl + d) % L, y0 - 1, agua.clara);
     }
-    if ((t + fase + i) % 7 < 2) pin.set(i, Math.floor(hash2(i, fase, 34) * 16), Math.floor(hash2(fase, i, 35) * 16), agua.brilho);
+    if ((t + fase + i) % 7 < 2) {
+      const X = Math.floor(hash2(i, fase, 34) * (L - 1)), Y = Math.floor(hash2(fase, i, 35) * L);
+      pin.fino(i, X, Y, agua.brilho); pin.fino(i, X + 1, Y, agua.brilho);
+    }
   }
   function pintarCosta(pin, bio, t) {
     const a = bio.agua;
@@ -3718,28 +4352,37 @@
       }
     }
   }
-  // Muralha de água (Mar Vermelho): faixas verticais que descem 1 px por quadro.
+  // Muralha de água (Mar Vermelho), em px de arte como a água ao lado: faixas verticais de 3 px que descem 2 px
+  // por quadro (o ciclo de 16 px fecha em 8 quadros), um fio claro de 1 px na crista de cada onda que desce,
+  // a borda esquerda na luz e a direita na sombra.
   function pintarMuralha(pin, bio, t) {
-    const a = bio.agua, rampa = [a.profunda, a.escura, a.base, a.clara];
-    const corpo = (i, ox) => {
-      for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-        const faixa = Math.floor(hash2(x, 0, 200) * 4);
-        const v = (y - t * 1 + faixa * 5 + 64) % 8;
-        const l = (x < 3 ? 1 : x > 12 ? -1 : 0) * 0.3 + (v < 2 ? 0.5 : v < 5 ? 0 : -0.4);
-        pin.set(i, x, y, tom(rampa, l));
+    const a = bio.agua, rampa = [a.profunda, a.escura, a.base, a.clara], L = T * pin.r;
+    const corpo = (i) => {
+      for (let Y = 0; Y < L; Y++) for (let X = 0; X < L; X++) {
+        const faixa = Math.floor(hash2(Math.floor((X + 1) / 3), 0, 200) * 4);
+        const v = (Y - t * 2 + faixa * 10 + 128) % 16;
+        const l = (X < 5 ? 1 : X > 26 ? -1 : 0) * 0.3 + (v < 3 ? 0.5 : v < 10 ? 0 : -0.4);
+        pin.fino(i, X, Y, v === 0 && (X + faixa) % 3 ? a.clara : tom(rampa, l));
       }
     };
+    const coral = (X) => (hash2(Math.floor(X / 3), 1, 201) < 0.5 ? "#d07a5a" : "#a85a4a");
     // 24: corpo (norte); 25: base norte (espuma + coral); 26: crista sul (espuma em cima); 27: corpo (sul)
     corpo(24); corpo(27);
     corpo(25);
-    for (let x = 0; x < 16; x++) {
-      const o = (x + t) % 3 === 0 ? 1 : 0;
-      pin.set(25, x, 13 - o, a.espuma); pin.set(25, x, 14, a.espuma); pin.set(25, x, 15, hash2(x, 1, 201) < 0.5 ? "#d07a5a" : "#a85a4a");
+    for (let X = 0; X < L; X++) {
+      const o = (X + t * 2) % 5;
+      if (o === 0) pin.fino(25, X, 25, a.espuma); // respingo solto
+      if (o < 3) pin.fino(25, X, 26, a.espuma);
+      pin.fino(25, X, 27, a.espuma); pin.fino(25, X, 28, a.espuma); pin.fino(25, X, 29, misturar(a.espuma, a.clara, 0.4));
+      pin.fino(25, X, 30, coral(X)); pin.fino(25, X, 31, misturar(coral(X), "#3a1a14", 0.35));
     }
     corpo(26);
-    for (let x = 0; x < 16; x++) {
-      const o = (x + t) % 3 === 0 ? 1 : 0;
-      pin.set(26, x, 0, "#a85a4a"); pin.set(26, x, 1, a.espuma); pin.set(26, x, 2 + o, a.espuma);
+    for (let X = 0; X < L; X++) {
+      const o = (X + t * 2) % 5;
+      pin.fino(26, X, 0, misturar(coral(X), "#3a1a14", 0.35)); pin.fino(26, X, 1, coral(X));
+      pin.fino(26, X, 2, a.espuma); pin.fino(26, X, 3, a.espuma);
+      if (o < 3) pin.fino(26, X, 4, a.espuma);
+      if (o === 0) pin.fino(26, X, 5, a.espuma);
     }
   }
 
@@ -3962,6 +4605,9 @@
       const r = area === "egito" ? ruido(x / 10, y / 2, semente) : ruido(x / 6, y / 6, semente);
       return r > 0.62;
     };
+    // Com o chão contínuo (cenario.js), a beira da água (areia, espuma e raso) é pintada por ele, seguindo uma
+    // linha orgânica: a água do Tilemap fica lisa, sem a espuma em degrau nas beiras das casas.
+    const beiraContinua = () => area !== "mar" && typeof global.Cenario !== "undefined";
     function indice(x, y) {
       // moldura externa
       if (x < 0 || y < 0 || x >= COLSm || y >= ROWSm) {
@@ -3977,6 +4623,7 @@
       if (ehBorda(x, y)) {
         if (ehMuralha(x, y)) return y <= 0 ? ID.COSTA + 1 : ID.COSTA + 2;
         if (ehAguaBorda(x, y)) {
+          if (beiraContinua()) return ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
           // costa: espuma nos lados com terra
           let m = 0;
           if (!ehAgua(x, y + 1)) m |= 4;
@@ -3993,7 +4640,7 @@
         // lago ou rio: espuma nos lados com terra (como a costa da borda)
         const terra = (xx, yy) => (xx >= 0 && yy >= 0 && xx < COLSm && yy < ROWSm && !ehAgua(xx, yy) ? 1 : 0);
         const m = terra(x, y - 1) | (terra(x + 1, y) << 1) | (terra(x, y + 1) << 2) | (terra(x - 1, y) << 3);
-        return m ? ID.COSTA + m : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
+        return m && !beiraContinua() ? ID.COSTA + m : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
       }
       if (ehCaminho(x, y)) {
         const m = (ehCaminho(x, y - 1) ? 1 : 0) | (ehCaminho(x + 1, y) ? 2 : 0) | (ehCaminho(x, y + 1) ? 4 : 0) | (ehCaminho(x - 1, y) ? 8 : 0);
@@ -4013,6 +4660,8 @@
     function indiceDeco(x, y, proibido) {
       if (!mapa || x < 1 || y < 1 || x >= COLSm - 1 || y >= ROWSm - 1 || mapa[y][x]) return -1;
       if (area === "mar") return hash2(x, y, 7) < 0.015 ? ID.DECO : -1;
+      // com o chão contínuo, a vegetação rasteira sai em moitas no próprio chão (cenario.js, DADOS_MAPAS.vegetacao)
+      if (beiraContinua() && DADOS_MAPAS[area]?.vegetacao) return -1;
       if (ehCaminho(x, y) || (proibido && proibido(x, y))) return -1;
       if (piso && piso[y][x] >= (PISOm.ESTRUTURA ?? 3)) return -1; // chão de prédio (cenario.js pinta o piso)
       // Galileia: a mancha é um campo de flores; cada casa sorteia a sua flor
@@ -4222,8 +4871,8 @@
   function registrarTexturas(scene) {
     for (const chave of Object.keys(PIXEL_PATTERNS)) {
       // sob demanda: portais, variantes do jogador, humanos, criaturas e montarias (criarEntidade gera
-      // só os que aparecem na área)
-      if (/^(mk_portal_|pj_|in_|al_|mt_)/.test(chave)) continue;
+      // só os que aparecem na área) e os obstáculos (criarObstaculos e criarOrla geram os da área atual)
+      if (/^(mk_portal_|pj_|in_|al_|mt_|ob_)/.test(chave)) continue;
       garantirTextura(scene, chave);
     }
   }
