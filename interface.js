@@ -784,8 +784,8 @@
   function atualizarBoneco(p, peso, cap) {
     $("#gradeEquip").innerHTML = ORDEM_BONECO.map((slot) => (slot === "mochila" ? htmlMochilaBoneco(peso, cap) : htmlEspacoBoneco(p, slot))).join("") + htmlLadoBoneco(p);
   }
-  // O espaço da mochila no boneco: mostra o painel Mochila (no largo, mesmo escondido pela tecla I; no médio,
-  // na aba dele; no celular, na folha Mochila) e o destaca por um instante.
+  // O espaço da mochila no boneco: mostra o painel Mochila (no largo e no médio, reabre ou restaura a janela,
+  // mesmo fechada pela tecla I; no celular, na folha Mochila) e o destaca por um instante.
   function abrirMochila() {
     if (modo === "estreito" && folhaAtual !== "mochila") abrirFolha("mochila");
     // Largo e médio: a janela Mochila reabre (fechada) ou volta a crescer (minimizada); "Janelas laterais".
@@ -2764,7 +2764,7 @@
     largo: { esq: ["pMissao", "pMochila", "pBolsa", "pAnalisador"], dir: ["pMapa", "pPersonagem", "pEquip", "pBatalha"], min: [], fechadas: [] },
     // Largo bem baixo (1366×768): com o dock de baixo, cada coluna tem ~540 px. Personagem e Equipamento enchem
     // a direita, então a Batalha vai para a esquerda, sob a Missão, com a Mochila; Bolsa e Caçada começam
-    // minimizadas (as poções também estão nos atalhos). Assim a Batalha mostra 3 linhas sem rolar.
+    // minimizadas (as poções também estão nos atalhos). Assim tudo cabe sem rolar e a Batalha mostra 2 linhas.
     baixo: { esq: ["pMissao", "pBatalha", "pMochila", "pBolsa", "pAnalisador"], dir: ["pMapa", "pPersonagem", "pEquip"], min: ["pBolsa", "pAnalisador"], fechadas: [] },
     // Médio: uma coluna só, à direita (o Mapa fica sobre o mundo); vida, fé e XP já estão no HUD, então
     // Personagem e Caçada começam minimizadas.
