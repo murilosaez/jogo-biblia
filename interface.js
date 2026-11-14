@@ -3882,8 +3882,8 @@
     // O mural de um atalaia também; a consulta (T) pode continuar aberta.
     if (modalAberto?.id === "modalMural" && muralNpc !== null) fecharModal(false);
     // A cena nova (área, morte, viagem) liga o teclado e a captura de Espaço e setas de novo; com um
-    // modal ainda aberto, desliga outra vez (sem isto, Espaço não ativa o botão focado do modal).
-    if (modalAberto) teclado(false);
+    // modal ou menu ainda aberto, desliga outra vez (sem isto, Espaço não ativa o botão focado e WASD anda).
+    if (modalAberto || menuJanelas.aberto || menuItem) teclado(false);
     alvoDesenhado = undefined;
     assinaturaBatalha = "";
     atualizar();
