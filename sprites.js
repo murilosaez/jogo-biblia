@@ -4021,19 +4021,22 @@
       });
       retPx(g, 3, B - 8, 30, 8, (i, j, w, h) => (j === 0 ? p[2] : i === w - 1 || j === h - 1 ? p[0] : (i % 7 === 0 && j > 1) ? p[0] : i < 3 ? p[2] : p[1]));
     },
-    // cerca de madeira: postes a cada 16 px (com a cabeça clara) e duas travessas de ponta a ponta da casa
+    // cerca de madeira: postes a cada 16 px (com a cabeça clara) e duas travessas de ponta a ponta da casa; nos
+    // quadros de fecho (v ≥ 2: a última peça da fileira, sem cerca à direita) as travessas terminam num poste
     cerca(g, v, M, B) {
       const m = M.madeira, W = g.w, x0 = (W - 32) / 2;
       for (const y of [B - 15, B - 8]) retPx(g, x0, y, 32, 3, (i, j) => (j === 0 ? m[3] : j === 2 ? m[0] : (i + y) % 9 === 0 ? m[1] : m[2]));
-      for (const px of [x0 + 1, x0 + 17]) retPx(g, px, B - 20, 4, 20, (i, j, w, h) => (j === 0 ? m[4] : i === 0 ? m[3] : i === w - 1 ? m[0] : j === h - 1 ? m[0] : m[2]));
+      const postes = v >= 2 ? [x0 + 1, x0 + 17, x0 + 28] : [x0 + 1, x0 + 17];
+      for (const px of postes) retPx(g, px, B - 20, 4, 20, (i, j, w, h) => (j === 0 ? m[4] : i === 0 ? m[3] : i === w - 1 ? m[0] : j === h - 1 ? m[0] : m[2]));
     },
   };
   for (const area of Object.keys(MATERIAL_PROPS)) for (const tipo of PROPS_VILA) {
     const chave = `ob_${area}_${tipo}`;
     if (PIXEL_PATTERNS[chave]) continue; // os jarros do Egito já são obstáculo do bioma
-    const largo = tipo === "carroca";
+    const largo = tipo === "carroca", cerca = tipo === "cerca";
+    // a cerca tem 2 quadros a mais com o poste de fecho na ponta direita (fecho: 2 = primeiro quadro de fecho)
     registrar(chave, {
-      w: largo ? 22 : 18, h: tipo === "caixotes" || tipo === "barril" || tipo === "jarros" ? 20 : 18, quadros: 2, obstaculo: true, prop: true, origem: [0.5, 1],
+      w: largo ? 22 : 18, h: tipo === "caixotes" || tipo === "barril" || tipo === "jarros" ? 20 : 18, quadros: cerca ? 4 : 2, fecho: cerca ? 2 : 0, obstaculo: true, prop: true, origem: [0.5, 1],
       desenhar(g, v) { DESENHO_PROP[tipo](g, v, MATERIAL_PROPS[area], g.h - 5); },
     });
   }
@@ -4050,7 +4053,9 @@
       const doBioma = bio.obstaculos.find((o) => o.tipo === fixo);
       if (doBioma) return { chave: `ob_${area}_${fixo}`, alto: !!doBioma.alto };
       if (MARCOS[fixo]) return MARCOS[fixo];
-      if (PIXEL_PATTERNS[`ob_${area}_${fixo}`]?.prop) return { chave: `ob_${area}_${fixo}`, alto: false, prop: true };
+      const prop = PIXEL_PATTERNS[`ob_${area}_${fixo}`];
+      // fecho: prop que emenda com o vizinho (a cerca) e é o último da fileira, sem o mesmo prop à direita
+      if (prop?.prop) return { chave: `ob_${area}_${fixo}`, alto: false, prop: true, fecho: !!prop.fecho && tiposObstaculo[area][x + 1 + "," + y] !== fixo };
     }
     const lista = bio.obstaculos.filter((o) => !o.soMarco);
     const total = lista.reduce((s, o) => s + o.peso, 0);

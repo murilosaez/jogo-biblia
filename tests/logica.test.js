@@ -7200,6 +7200,27 @@ teste("78. arte do mundo (revisão): decorações sem prop por cima e moitas lon
     assert.ok(pintados > 1000, `${area}: a vegetação continua lá (${pintados} px)`);
     igual(ruins.length, 0, `${area}: moita fora do chão livre (${ruins.slice(0, 4).join(", ")})`);
   }
+  // (c) cerca: só a última peça de cada fileira (sem cerca à direita) pede o fecho, e o quadro de fecho tem um
+  // poste na ponta direita onde o quadro comum só tem as travessas soltas
+  const Arte = j.ctx.Arte;
+  let fileiras = 0;
+  for (const [area, d] of Object.entries(MAPAS)) {
+    const cercas = new Set(d.marcos.filter((m) => m.tipo === "cerca").map((m) => `${m.x},${m.y}`));
+    for (const k of cercas) {
+      const [x, y] = k.split(",").map(Number), t = Arte.tipoObstaculo(area, x, y), fim = !cercas.has(`${x + 1},${y}`);
+      igual(t.fecho, fim, `${area}: cerca em ${k} (fecho)`);
+      if (fim) fileiras++;
+    }
+    if (!cercas.size) continue;
+    const chave = `ob_${area}_cerca`, def = Arte.PIXEL_PATTERNS[chave];
+    assert.ok(def.fecho > 0 && def.quadros === 2 * def.fecho, `${chave}: quadros de fecho`);
+    const comum = Arte.pixels(chave, { quadro: 0 }), fecho = Arte.pixels(chave, { quadro: def.fecho });
+    const W = comum.w, x0 = (W - 32) / 2;
+    // coluna x0 + 30 (dentro do poste de fecho): o poste pinta 20 px de altura, as travessas soltas só as 2 faixas
+    const coluna = (px) => { let n = 0; for (let Y = 0; Y < px.h; Y++) if (px.data[Y * W + x0 + 30]) n++; return n; };
+    assert.ok(coluna(fecho) >= 18 && coluna(comum) <= 12, `${chave}: poste de fecho (${coluna(comum)} → ${coluna(fecho)} px)`);
+  }
+  assert.ok(fileiras >= 3, `fileiras de cerca: ${fileiras}`);
 });
 
 const filtro = process.argv[2];

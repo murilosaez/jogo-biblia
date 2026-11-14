@@ -235,7 +235,7 @@ cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noi
 - **Props das vilas** (`PROPS_VILA`, `DESENHO_PROP` em `sprites.js`): barril de aduelas com aros, caixotes de
   tábuas com a trave em X, carroça de duas rodas (com sacos ou feno), jarros de barro, lenha empilhada (toras de
   ponta com os anéis), cocho com água e cerca (postes a cada 16 px e travessas de ponta a ponta: emenda com a
-  vizinha). Um desenho por região, `ob_<área>_<tipo>`, com a madeira, o barro e a pedra de lá
+  vizinha; a última da fileira, sem cerca à direita, usa o quadro de fecho com o poste na ponta). Um desenho por região, `ob_<área>_<tipo>`, com a madeira, o barro e a pedra de lá
   (`MATERIAL_PROPS`). São marcos de `dados/mapas.js` (bloqueiam a casa, ficam no lugar, sem deslocamento
   sorteado); o teste 76 confere que ficam dentro das vilas, fora das ruas, da frente das portas e da clareira
   dos personagens, e que não fecham casa nenhuma.

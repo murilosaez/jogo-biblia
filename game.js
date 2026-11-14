@@ -377,7 +377,8 @@ class Cena extends Phaser.Scene {
           }
         }
         const def = PIXEL_PATTERNS[tipo.chave];
-        const variante = tipo.animado ? 0 : Math.floor(Arte.hash2(x, y, 4) * def.quadros);
+        let variante = tipo.animado ? 0 : Math.floor(Arte.hash2(x, y, 4) * (def.fecho || def.quadros));
+        if (tipo.fecho) variante += def.fecho; // a última cerca da fileira: quadro com o poste na ponta direita
         // árvores e pedras fora da grade: deslocamento e espelho sorteados por casa (bosque natural)
         const solto = !tipo.animado && !muro && !def.prop; // os props das vilas ficam no lugar (a cerca emenda)
         const desloc = solto ? Math.round((Arte.hash2(x, y, 5) - 0.5) * (tipo.alto ? 14 : 8)) : 0;
