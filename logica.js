@@ -4020,7 +4020,7 @@ const Mundo = {
     const duasMaos = slot === "arma" && guardados.some((x) => infoItem(x)?.tipo === "escudo") ? ` ${textoDuasMaos(itemId)}` : "";
     const nomes = guardados.map(nomeItem).join(" e ");
     const voltou = guardados.length ? ` ${nomes} ${guardados.length > 1 ? "voltaram" : "voltou"} para a mochila.` : "";
-    return { ok: true, guardados, mensagem: `${nomeItem(itemId)} equipado${efeito.length ? ` (${efeito.join(", ")})` : ""}.${duasMaos}${voltou}` };
+    return { ok: true, guardados, mensagem: `Equipou: ${nomeItem(itemId)}${efeito.length ? ` (${efeito.join(", ")})` : ""}.${duasMaos}${voltou}` };
   },
 
   // Munição: a pilha do item na mochila vai inteira para o espaço (outra munição que estiver lá volta).
@@ -4325,14 +4325,21 @@ const Mundo = {
       const noCorpo = Object.values(p.equipamento || {}).includes(item);
       return {
         ok: false,
-        mensagem: noCorpo ? `${nomeItem(item)} está no corpo: guarde na mochila antes de jogar no chão.` : "O item não está na mochila.",
+        mensagem: noCorpo ? `Tire do corpo antes de jogar no chão: guarde ${nomeItem(item)} na mochila.` : "O item não está na mochila.",
       };
     }
     const conferido = this.conferirSaida(p, item, quantidade, "jogar no chão");
     if (!conferido.ok) return conferido;
     if (p.area === "mar") return { ok: false, mensagem: "No barco não há onde deixar itens. Desembarque primeiro." };
+    const pediu = x !== undefined && x !== null && y !== undefined && y !== null && Number.isInteger(Number(x)) && Number.isInteger(Number(y));
     const casa = this.casaParaLargar(p, Number(x), Number(y));
     if (!casa) return { ok: false, mensagem: "Não há chão livre aqui para deixar o item." };
+    // Pediu uma casa longe (ou ocupada): o item cai ao lado do jogador, e a mensagem diz isso.
+    const longe = pediu && (casa.x !== Number(x) || casa.y !== Number(y))
+      ? (distanciaChebyshev(p, { x: Number(x), y: Number(y) }) > ALCANCE_INTERACAO
+        ? " Caiu ao seu lado: só dá para jogar a até 1 casa de você."
+        : " Caiu ao seu lado: a casa escolhida não tem chão livre.")
+      : "";
     const q = conferido.quantidade;
     this.removerItens(p, item, q);
     const agora = Date.now();
@@ -4351,7 +4358,7 @@ const Mundo = {
       ok: true,
       saqueId: s.id,
       quantidade: q,
-      mensagem: `Você jogou no chão: ${q > 1 ? `${q}× ` : ""}${nomeItem(item)}. Para pegar de volta, clique no item (ele some em ${minutos} minutos).`,
+      mensagem: `Você jogou no chão: ${q > 1 ? `${q}× ` : ""}${nomeItem(item)}.${longe} Para pegar de volta, clique no item (ele some em ${minutos} minutos).`,
     };
   },
 

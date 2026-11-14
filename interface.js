@@ -600,7 +600,8 @@
       const ro = $("#resumoOficios");
       if (ro && ro.textContent !== r) ro.textContent = r;
     }
-    // Quem subiu pisca; as habilidades de combate avisam no console (aba Servidor).
+    // Quem subiu pisca. O aviso no registro já vem na mensagem do golpe ("Corpo a corpo: nível N."), então
+    // aqui não se registra de novo (antes cada avanço aparecia duas vezes).
     const agoraNiveis = {};
     for (const h of f.combate) agoraNiveis[h.chave] = h.nivel;
     for (const o of f.oficios) agoraNiveis[`of:${o.id}`] = o.nivel;
@@ -608,7 +609,6 @@
       for (const h of f.combate) {
         if (h.nivel > (niveisFicha[h.chave] ?? h.nivel)) {
           destacarLinha(ul, h.chave);
-          registrar(`Você avançou em ${h.nome}: nível ${h.nivel}.`, "avanco");
         }
       }
       for (const o of f.oficios) if (o.nivel > (niveisFicha[`of:${o.id}`] ?? o.nivel)) destacarLinha(uo, o.id);
@@ -636,6 +636,7 @@
         abrirSecaoFicha(qual, aberta);
         prefFicha[qual] = aberta;
         salvarFicha();
+        ajustarFichaAoEspaco(aberta);
       });
     }
     // Uma linha abre (ou fecha) a dica do que falta: no toque não há o title do mouse.
@@ -2797,6 +2798,8 @@
     }
     return r;
   }
+  // Havia layout guardado ao abrir? Sem ele, colunasPeloEspaco ajusta o padrão ao espaço no 1º desenho.
+  const layoutGuardado = (() => { try { return !!localStorage.getItem(CHAVE_JANELAS); } catch (e) { return false; } })();
   let janelas = carregarJanelas();
   const salvarJanelas = () => { try { localStorage.setItem(CHAVE_JANELAS, JSON.stringify(janelas)); } catch (e) { /* sem armazenamento */ } };
   // Qual layout guardado vale agora: o do modo de tela (o largo bem baixo tem o seu).
@@ -2881,6 +2884,7 @@
     aplicarJanelas();
     salvarJanelas();
     if (modo !== "estreito") ajustarConsole();
+    ajustarFichaAoEspaco();
   }
   function minimizarJanela(id, sim) {
     marcarEm(layout().min, id, sim);
@@ -2933,6 +2937,7 @@
     prefConsole.aberto = true;
     salvarConsole();
     mudouLayout();
+    colunasPeloEspaco(true);
     aviso("Layout das janelas restaurado.", "sistema");
   }
   // A tecla I (game.js alterna body.hideBags) mostra ou esconde Mochila e Bolsa juntas; o espaço da mochila
@@ -2972,6 +2977,60 @@
     abrirSecaoFicha("habilidades", true);
     const apertaBatalha = bat?.closest(".coluna") === col && bat.dataset.min !== "true" && bat.offsetHeight < ALTURA_MIN_BATALHA;
     if (col.scrollHeight > col.clientHeight + 1 || apertaBatalha) abrirSecaoFicha("habilidades", false);
+  }
+  // Abrir Habilidades (ou Ofícios, que fica dentro dela) no largo não pode empurrar a Batalha para fora da
+  // coluna: se a coluna passar a rolar, ou a Batalha que divide a coluna ficar com menos de ALTURA_MIN_BATALHA,
+  // a seção ganha altura máxima e rola por dentro. Se nem assim couber com a Batalha à vista (ex.: 1600 × 900),
+  // ao abrir pelo botão o Equipamento da mesma coluna é minimizado, com aviso. Revisto ao abrir, ao mudar o
+  // layout e ao redimensionar.
+  const ALTURA_MIN_FICHA = 120;
+  function ajustarFichaAoEspaco(abrindo = false) {
+    const corpo = $("#corpoHabilidades");
+    if (!corpo) return;
+    corpo.style.maxHeight = "";
+    corpo.style.overflowY = "";
+    if (modo !== "largo" || corpo.hidden) return;
+    const col = corpo.closest(".coluna"), bat = painel("pBatalha");
+    if (!col || painel("pPersonagem")?.dataset.min === "true") return;
+    const batNaColuna = bat && bat.closest(".coluna") === col && bat.dataset.min !== "true" && !bat.hidden;
+    const sobra = Math.max(0, col.scrollHeight - col.clientHeight);
+    const falta = batNaColuna ? Math.max(0, ALTURA_MIN_BATALHA - bat.offsetHeight) : 0;
+    if (sobra + falta <= 1) return;
+    const altura = corpo.offsetHeight;
+    if (abrindo && batNaColuna && altura - sobra < ALTURA_MIN_FICHA) {
+      const eq = painel("pEquip");
+      if (eq && eq.closest(".coluna") === col && !janelaMinimizada("pEquip")) {
+        marcarEm(layout().min, "pEquip", true);
+        mudouLayout(); // aplica e chama de novo (sem abrindo) para ajustar a altura com o espaço novo
+        aviso("Equipamento minimizado para as habilidades caberem sem esconder a Batalha. Clique no título dele para abrir.", "sistema");
+        return;
+      }
+    }
+    // Com a Batalha em ALTURA_MIN_BATALHA se der; senão só sem rolar a coluna (a Batalha fica no mínimo do CSS).
+    const alvo = altura - sobra - falta >= ALTURA_MIN_FICHA ? altura - sobra - falta : altura - sobra;
+    corpo.style.maxHeight = `${Math.max(ALTURA_MIN_FICHA, alvo)}px`;
+    corpo.style.overflowY = "auto";
+  }
+  // Primeira vez no largo (nada guardado no navegador): se uma coluna não couber, as janelas secundárias
+  // começam minimizadas, nesta ordem (Caçada, depois Bolsa; as poções também estão nos atalhos), até caber.
+  // Ex.: 1600 × 900 e 1920 × 1080, onde a Caçada ficava cortada no pé da coluna esquerda.
+  let colunasMedidas = false;
+  function colunasPeloEspaco(forcar = false) {
+    if (colunasMedidas && !forcar) return;
+    colunasMedidas = true;
+    if (modo !== "largo" || (layoutGuardado && !forcar)) return;
+    let mudou = false;
+    for (const col of [$("#colEsq"), $("#colDir")]) {
+      for (const id of ["pAnalisador", "pBolsa"]) {
+        if (!col || col.scrollHeight <= col.clientHeight + 1) break;
+        const el = painel(id);
+        if (!el || el.closest(".coluna") !== col || janelaMinimizada(id) || janelaFechada(id)) continue;
+        marcarEm(layout().min, id, true);
+        aplicarJanelas();
+        mudou = true;
+      }
+    }
+    if (mudou) mudouLayout();
   }
   // ----- Arrastar janelas -----
   // O cabeçalho é a alça (com o mouse, a caneta ou o dedo). Passou de 6 px, vira arraste: a janela fica
@@ -3600,7 +3659,7 @@
       + `<button type="button" class="menu-fechar" data-menu-fechar aria-label="Fechar o menu"><img class="px g16" src="${glifoURL("ui_fechar", 2)}" alt=""></button></div>`
       + `<p class="menu-info">${esc([atributoItem(id, p), pesoTxt].filter(Boolean).join(" · "))}</p>${reservaTxt}`
       + (usar ? `<div class="menu-grupo">${usar}</div>` : "")
-      + (largar ? `<div class="menu-grupo" role="group" aria-label="Jogar no chão"><span class="menu-rotulo">Jogar no chão${menuItem.casa ? " (onde você soltou)" : ""}</span>${largar}</div>` : "");
+      + (largar ? `<div class="menu-grupo" role="group" aria-label="Jogar no chão"><span class="menu-rotulo">Jogar no chão${menuItem.casa ? " (onde você soltou)" : " (ao seu lado)"}</span>${largar}</div>` : "");
     m.setAttribute("aria-label", `Ações: ${nomeDoItem(id)}`);
     m.classList.add("aberto");
     posicionarMenuItem();
@@ -3701,11 +3760,15 @@
       const item = e.dataTransfer.getData("text/item"), slotEq = e.dataTransfer.getData("text/equip");
       if (slotEq) {
         const vestido = jogador()?.equipamento?.[slotEq];
-        mensagem(`${vestido ? nomeDoItem(vestido) : "O equipamento"} está no corpo: arraste-o para a mochila antes de jogar no chão.`, "perigo");
+        mensagem(`Tire do corpo antes de jogar no chão: arraste ${vestido ? nomeDoItem(vestido) : "a peça"} para a mochila.`, "perigo");
         return;
       }
       if (!item || !contarNaMochila(item)) return;
-      const casa = window.Jogo?.casaNaTela?.(e.clientX, e.clientY) || null;
+      // Só vale a casa onde soltou se estiver ao alcance (a lógica põe o item ao lado do jogador se não estiver),
+      // para o menu não prometer "onde você soltou" e o item cair em outro lugar.
+      const sob = window.Jogo?.casaNaTela?.(e.clientX, e.clientY) || null;
+      const eu = jogador();
+      const casa = sob && eu && Math.max(Math.abs(sob.x - eu.x), Math.abs(sob.y - eu.y)) <= ALCANCE_INTERACAO ? sob : null;
       if (livreParaSair(item) > 1) abrirMenuItem(item, { x: e.clientX, y: e.clientY }, casa);
       else largarItem(item, 1, casa);
     });
@@ -3839,7 +3902,9 @@
     if (modalAberto?.id === "modalVocacao") desenharVocacao();
     if (modalAberto?.id === "modalOficios") desenharOficios();
     if (modalAberto?.id === "modalVisual") desenharVisual();
+    colunasPeloEspaco();
     habilidadesPeloEspaco();
+    ajustarFichaAoEspaco();
   }
 
   function areaMudou(area) {
@@ -4139,7 +4204,7 @@
       (mq.addEventListener ? mq.addEventListener("change", re) : mq.addListener(re));
     }
     // O console acompanha o tamanho da janela (a altura dele não deixa o zoom do mundo cair).
-    addEventListener("resize", () => { if (modo !== "estreito") ajustarConsole(); medirRodape(); });
+    addEventListener("resize", () => { if (modo !== "estreito") ajustarConsole(); medirRodape(); ajustarFichaAoEspaco(); });
     setInterval(tique, 250);
     requestAnimationFrame(laçoRecarga);
     atualizar();

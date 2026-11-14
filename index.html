@@ -562,6 +562,11 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
  body:not(.chat-sob-mundo) #atalhos-dica{order:3;max-width:330px;margin:0;text-align:center;color:var(--texto-mudo)}
  body:not(.chat-sob-mundo) .atalhos-faixa:has(#barraHab:not([hidden])) #atalhos-dica{display:none}
  body.chat-sob-mundo #rodape .atalhos-rotulo{display:none}
+ /* conversa recolhida no dock: fica só a barra de entrada, no pé, e os atalhos numa fileira (sem rótulo nem
+    dica), para a altura voltar ao mundo em vez de sobrar uma faixa vazia */
+ body:not(.chat-sob-mundo) #rodape.recolhido{align-items:end}
+ body:not(.chat-sob-mundo) #rodape.recolhido .atalhos-faixa{flex-direction:row;align-self:stretch}
+ body:not(.chat-sob-mundo) #rodape.recolhido .atalhos-rotulo,body:not(.chat-sob-mundo) #rodape.recolhido #atalhos-dica{display:none}
  #rodape .barra-hab .hab,#rodape .atalho{width:46px;height:46px}
  /* conversa sob o mundo: o dock é só a faixa dos atalhos, como antes */
  body.chat-sob-mundo #rodape{display:flex;flex-direction:column;justify-content:center}

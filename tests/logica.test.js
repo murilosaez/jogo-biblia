@@ -3135,7 +3135,7 @@ teste("48. raridades: atributos valem no combate, na vida, na carga e sobrevivem
   assert.ok(j.M.equiparItem(ID, espada, "arma").ok);
   const r = j.M.equiparItem(ID, couraca, "armadura");
   assert.ok(r.ok);
-  assert.match(r.mensagem, /Armadura de couro \(Épico\) equipado \(\+8 de defesa, \+5 kg de carga\)/);
+  assert.match(r.mensagem, /Equipou: Armadura de couro \(Épico\) \(\+8 de defesa, \+5 kg de carga\)/);
   const baseArma = arma0 ? j.g("infoItem")(arma0).bonus : 0;
   assert.strictEqual(danoBruto(p, "corpo"), dano0 - baseArma + 12 + 5);
   assert.strictEqual(vidaMaxima(p), vida0 + 25);
@@ -6166,7 +6166,7 @@ teste("72. inventário (b): jogar no chão 1, X ou tudo; o que foi jogado volta 
   assert.match(largar("pele_lobo", 11).mensagem, /^Você só tem 10× Pele de lobo\.$/);
   assert.match(largar("pele_lobo", 0).mensagem, /Quantidade inválida/);
   // Equipamento vestido: precisa voltar à mochila antes.
-  assert.match(largar("espada_madeira", 1).mensagem, /^Espada de madeira está no corpo: guarde na mochila antes de jogar no chão\.$/);
+  assert.match(largar("espada_madeira", 1).mensagem, /^Tire do corpo antes de jogar no chão: guarde Espada de madeira na mochila\.$/);
   igual(p, antes, "as recusas não mudam o save");
 
   // 1 unidade, sem casa pedida: cai numa vizinha reta livre (à vista, não sob o personagem).
@@ -7160,6 +7160,34 @@ teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no
     j.M.passoVigor(p, estado, t0 + 8000);
     assert.ok(p.vigor.minutos < antes, "com golpe, cai");
   }
+});
+
+teste("80. revisão de uso: jogar longe cai ao lado e avisa; equipar sem erro de concordância", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, M = j.M;
+  const largar = (item, quantidade, x, y) => j.exec({ tipo: "largarItem", item, quantidade, x, y });
+  p.inventario.push("erva", "erva", "erva", "grevas_bronze");
+  // Casa pedida a 6 casas: cai ao lado e a mensagem diz por quê.
+  let r = largar("erva", 1, p.x - 6, p.y + 4);
+  assert.ok(r.ok, r.mensagem);
+  let s = p.saqueNoChao.find((x) => x.id === r.saqueId);
+  assert.ok(j.g("distanciaChebyshev")(p, s) <= 1, "caiu ao lado do jogador");
+  assert.match(r.mensagem, /^Você jogou no chão: Erva medicinal\. Caiu ao seu lado: só dá para jogar a até 1 casa de você\. Para pegar/);
+  // Casa vizinha livre pedida: cai nela, sem aviso extra.
+  const casa = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
+    .find((c) => M.casaParaFicar(p.area, c.x, c.y) && !M.casaDeTransicao(p.area, c.x, c.y));
+  r = largar("erva", 1, casa.x, casa.y);
+  s = p.saqueNoChao.find((x) => x.id === r.saqueId);
+  igual([r.ok, s.x, s.y, /Caiu ao seu lado/.test(r.mensagem)], [true, casa.x, casa.y, false]);
+  // Sem casa pedida (menu do item): sem aviso extra.
+  r = largar("erva", 1);
+  assert.ok(r.ok && !/Caiu ao seu lado/.test(r.mensagem), r.mensagem);
+  // Equipar: forma neutra (antes "Grevas de bronze equipado").
+  r = M.equiparItem(ID, "grevas_bronze", "pernas");
+  assert.ok(r.ok, r.mensagem);
+  assert.match(r.mensagem, /^Equipou: Grevas de bronze \(/);
+  assert.match(largar("grevas_bronze", 1).mensagem, /^Tire do corpo antes de jogar no chão: guarde Grevas de bronze na mochila\.$/);
 });
 
 const filtro = process.argv[2];

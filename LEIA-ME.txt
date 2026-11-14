@@ -169,7 +169,7 @@ Controles — teclado e mouse
   feitas vão para ela quando está vazia ou já tem flechas; elas pesam); o arco gasta primeiro as do espaço de
   munição e depois as da mochila. Colar e anel dão vida ou crítico; as botas de viagem, carga.
 - Jogar no chão: arraste um item da mochila ou da bolsa para o mundo (cai na casa solta, se for ao lado do
-  personagem; senão, ao lado dele), ou abra o menu do item com o botão direito (Shift + F10 no teclado; toque
+  personagem; senão, ao lado dele, e o menu e a mensagem dizem isso), ou abra o menu do item com o botão direito (Shift + F10 no teclado; toque
   longo no celular): Beber/Equipar e Jogar 1, Jogar X (− número +) ou Jogar tudo. Uma pilha solta no mundo
   também abre o menu. O que você jogou fica no chão por 10 minutos e não volta ao pisar em cima: clique no
   item para buscá-lo (com a mochila cheia, leva o que couber). Equipamento vestido volta à mochila antes; as
@@ -218,10 +218,12 @@ Interface e visual
   ou num clique na barra —, capacidade e vigor sempre à vista; a seção Habilidades, recolhível, com Corpo a
   corpo, Distância, Defesa (treina com os golpes recebidos) e Oração em linhas "nome … nível" com o fio de % até o próximo nível, os
   números do combate de estatisticasCombate e a seção Ofícios, também recolhível, com os 6 ofícios. Um clique
-  ou toque na linha abre a dica do que falta. Quem sobe pisca em ouro, e a habilidade de combate avisa no
-  console, aba Servidor: "Você avançou em Corpo a corpo: nível 15." As seções lembram a escolha neste
+  ou toque na linha abre a dica do que falta. Quem sobe pisca em ouro, e a mensagem do golpe já diz o nível
+  novo (uma linha só no registro: "... Corpo a corpo: nível 15."). As seções lembram a escolha neste
   navegador; sem escolha, no largo Habilidades só começa aberta se a coluna dela comportar a seção sem rolar e
-  com 3 linhas da Batalha à vista — recolhida em 1920 × 1080, aberta em 2560 × 1440),
+  com 3 linhas da Batalha à vista — recolhida em 1920 × 1080, aberta em 2560 × 1440. Aberta numa coluna
+  apertada, a seção rola por dentro para a Batalha não sair da tela; se nem assim couber, abrir pelo botão
+  minimiza o Equipamento da mesma coluna, com aviso),
   Equipamento (boneco clássico: colar, cabeça e mochila em cima; mão da arma, armadura e mão do
   escudo; anel, pernas e munição; pés embaixo; o espaço vazio mostra o contorno do que vai nele e a dica dá os
   efeitos; ao lado, a figura com o que está vestido, o jeito de atacar da mão e o ataque e a defesa),
@@ -239,7 +241,8 @@ Interface e visual
   O espaço da mochila no boneco reabre a janela Mochila (fechada ou minimizada). Em telas de até 800 px de
   altura (1366 × 768, 1280 × 720) o padrão é outro: com o dock de baixo cada coluna tem ~540 px, então a
   Batalha fica à esquerda, sob a Missão, com a Mochila, e Bolsa e Caçada começam minimizadas; à direita,
-  Personagem e Equipamento inteiros. O layout fica neste navegador (localStorage "jornada_janelas"), um para
+  Personagem e Equipamento inteiros. Na primeira vez no largo, se uma coluna não couber (1600 × 900,
+  1920 × 1080), Caçada e depois Bolsa começam minimizadas até caber. O layout fica neste navegador (localStorage "jornada_janelas"), um para
   o largo, outro para o largo de até 800 px de altura e outro para o médio; um layout salvo estragado ou de
   outra versão volta ao padrão sem erro. Com as duas colunas no médio, o mundo fica estreito e o zoom pode
   cair para 1× (cada pixel da arte em 1 px de tela, ainda nítido).
