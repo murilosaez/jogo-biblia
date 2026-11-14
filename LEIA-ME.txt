@@ -709,7 +709,9 @@ Para desenvolvedores
   numa rota de 125 passos). Bloqueada no meio (uma criatura entrou), a rota refaz o A* até o mesmo destino.
   NPCs, saques, pesca e a perseguição do alvo seguem com a busca em largura curta (calcularRota). O teste 75
   confere o caminho mais rápido contra uma busca completa, a casa mais perto quando o destino é bloqueado ou
-  cercado, a grade de passagem e uma rota de ponta a ponta de Canaã andada com o comando mover.
+  cercado, a grade de passagem, uma rota de ponta a ponta de Canaã andada com o comando mover, o clique no
+  minimapa ligado à rota longa e os layouts padrão das janelas laterais (LAYOUT_PADRAO, em interface.js: toda
+  janela numa coluna uma vez só; uma janela nova entra em JANELAS e em cada layout).
 - Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
   interface.js (window.UI: painéis, modais, atalhos, toque; window.UI.abrirMural(npcId) abre o mural de
   um atalaia, ou a consulta com null; window.UI.abrirBestiario() abre o bestiário). Os nomes antigos continuam

@@ -6876,7 +6876,7 @@ teste("74. vigor (e): save sem versão nova — quem não tem o campo começa ch
   igual(q.vigor, { minutos: 777.5, vistoEm: local(10, 9) });
 });
 
-teste("75. rota longa (A*): caminho mais rápido, casa alcançável mais perto e o mapa inteiro sem travar", () => {
+teste("75. rota longa (A*): caminho mais rápido, casa alcançável mais perto, o mapa inteiro sem travar, o clique no minimapa e os layouts das janelas", () => {
   const j = carregarJogo();
   j.entrar();
   const M = j.M, p = j.p;
@@ -6983,6 +6983,28 @@ teste("75. rota longa (A*): caminho mais rápido, casa alcançável mais perto e
   assert.ok(Math.max(Math.abs(r.chegada.x - destino.x), Math.abs(r.chegada.y - destino.y)) <= 6, `chega perto do canto: ${JSON.stringify(r.chegada)}`);
   for (const [dx, dy] of r.passos) assert.ok(j.exec({ tipo: "mover", dx, dy }).ok !== false, `passo ${dx},${dy} em ${p.x},${p.y}`);
   igual([p.area, p.x, p.y], ["canaan", r.chegada.x, r.chegada.y], "andou a rota inteira");
+
+  // (e) A interface: o clique no minimapa anda pela rota longa (que troca a anterior e larga a perseguição) e
+  // a marca o destino; cada layout padrão das janelas laterais (largo, largo baixo, médio, celular) põe toda
+  // janela numa coluna uma vez só, e toda janela existe no index.html; o console tem as letras pedidas.
+  const FONTE_UI = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  const HTML = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  assert.match(FONTE_GAME, /function ligarMinimapa\(\) \{[\s\S]{0,900}\.irAteCasa\(x, y\)/, "o clique no minimapa usa irAteCasa");
+  assert.match(FONTE_GAME, /irAteCasa\(x, y\) \{[\s\S]{0,240}this\.rotaAte\(x, y\);\s*this\.perseguir = false;/, "irAteCasa: rota longa e sem perseguição");
+  assert.match(FONTE_GAME, /rotaAte\(x, y\) \{[\s\S]{0,160}Mundo\.gradeDePassagem\(this\.p\)[\s\S]{0,160}rotaNaGrade\(/, "rotaAte: A* sobre a grade de passagem");
+  assert.match(FONTE_GAME, /const d = this\.rota\?\.destino;/, "o minimapa desenha o destino da rota");
+  const objeto = (nome) => Function(`"use strict"; return (${FONTE_UI.match(new RegExp(`const ${nome} = (\\{[\\s\\S]*?\\n  \\});`))[1]});`)();
+  const JANELAS = objeto("JANELAS"), LAYOUTS = objeto("LAYOUT_PADRAO");
+  const ids = Object.keys(JANELAS).sort();
+  igual(ids.length, 8, "8 janelas laterais");
+  for (const id of ids) assert.match(HTML, new RegExp(`<section class="[^"]*" id="${id}"`), `${id} no index.html`);
+  igual(Object.keys(LAYOUTS).sort(), ["baixo", "estreito", "largo", "medio"]);
+  for (const [m, l] of Object.entries(LAYOUTS)) {
+    igual([...l.esq, ...l.dir].sort(), ids, `layout ${m}: toda janela uma vez`);
+    for (const id of [...l.min, ...l.fechadas]) assert.ok(ids.includes(id), `layout ${m}: ${id} é janela`);
+  }
+  assert.match(HTML, /\.console-lista\{[^}]*font:500 15px\/1\.55/, "linhas do console em 15 px com mais espaço");
+  assert.match(HTML, /\.console-lista time\{[^}]*font:700 var\(--fs-13\)/, "a hora em 13 px");
 });
 
 const filtro = process.argv[2];
