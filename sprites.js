@@ -1818,36 +1818,41 @@
   registrar("es_tenda", {
     w: 52, h: 44, quadros: CORES_TENDA.length, origem: [0.5, 1], estrutura: true,
     desenhar(g, v) {
-      const c = CORES_TENDA[v], b = 42, cumeeira = 9, beiral = 24;
+      // em px de arte (X, Y): 1 px de arte = 1 px de mundo, como as árvores e os props
+      const c = CORES_TENDA[v], b = 42, cumeeira = 9, beiral = 24, B = 2 * b + 1, C = 2 * cumeeira, E = 2 * beiral;
       g.sombra(29, b + 0.5, 25, 2);
-      // cordas e estacas
-      for (const [x0, x1] of [[4, 1], [47, 50]]) { g.lin(x0, beiral, x1, b, "#8a6a42"); g.p(x1, b, "#5a3a24"); }
-      // teto: desce da cumeeira até o beiral, com listras
-      for (let y = cumeeira; y <= beiral; y++) {
-        const t = (y - cumeeira) / (beiral - cumeeira), meia = Math.round(15 + t * 9);
-        for (let x = 26 - meia; x <= 25 + meia; x++) {
-          const lado = x < 26 - meia + 3 ? 2 : x > 25 + meia - 4 ? 0 : 1;
+      // vara de 3 px (luz à esquerda, sombra à direita) de Y0 a Y1
+      const vara = (X0, Y0, Y1) => { for (let Y = Y0; Y <= Y1; Y++) { g.fino(X0, Y, "#8a6a42"); g.fino(X0 + 1, Y, "#6b4a2e"); g.fino(X0 + 2, Y, "#4a3222"); } };
+      // cordas de 1 px e estacas
+      for (const [x0, x1] of [[4, 1], [47, 50]]) { g.linf(x0 + 0.5, beiral + 0.5, x1 + 0.5, b, "#8a6a42"); g.retf(x1, b - 0.5, 1, 1, (X, Y, i) => (i ? "#3a2418" : "#5a3a24")); }
+      // teto: desce da cumeeira até o beiral, com listras de 2 px e a bainha escura de 1 px
+      for (let Y = C; Y <= E + 1; Y++) {
+        const t = (Y - C) / (E + 1 - C), meia = Math.round(30 + t * 18);
+        for (let X = 52 - meia; X <= 51 + meia; X++) {
+          const lado = X < 52 - meia + 5 ? 2 : X > 51 + meia - 7 ? 0 : 1, k = (Y - C) % 10;
           let cor = c.pano[lado];
-          if ((y - cumeeira) % 5 === 3) cor = c.listra;
-          if (y === beiral) cor = c.pano[0];
-          g.p(x, y, cor);
+          if (k === 6 || k === 7) cor = c.listra;
+          else if (k === 8) cor = misturar(c.pano[lado], "#1c1210", 0.12); // sombra de 1 px sob a listra
+          if (X === 52 - meia || X === 51 + meia) cor = c.pano[0];
+          if (Y === E + 1) cor = misturar(c.pano[0], "#1c1210", 0.2);
+          g.fino(X, Y, cor);
         }
       }
-      // paredes de pano até o chão, com a entrada aberta no meio
-      for (let y = beiral + 1; y <= b; y++)
-        for (let x = 3; x <= 48; x++) {
-          const entrada = x >= 21 && x <= 30;
-          let cor = x < 6 ? c.pano[2] : x > 45 ? c.pano[0] : c.pano[1];
-          if ((x - 3) % 9 === 0) cor = c.pano[0];
-          if (entrada) cor = y < beiral + 3 ? c.pano[0] : "#1c1210";
-          g.p(x, y, cor);
+      // paredes de pano até o chão (costuras de 1 px), com a entrada aberta no meio
+      for (let Y = E + 2; Y <= B; Y++)
+        for (let X = 6; X <= 97; X++) {
+          const entrada = X >= 42 && X <= 61;
+          let cor = X < 12 ? c.pano[2] : X > 91 ? c.pano[0] : c.pano[1];
+          if ((X - 6) % 18 === 0) cor = c.pano[0];
+          if (entrada) cor = Y < E + 7 ? c.pano[0] : X === 42 || X === 61 ? "#3a2a22" : "#1c1210";
+          g.fino(X, Y, cor);
         }
-      // aba enrolada sobre a entrada e varas do beiral
-      g.ret(20, beiral + 1, 12, 2, c.listra);
-      for (const x of [3, 20, 31, 48]) g.lin(x, beiral, x, b, "#6b4a2e");
-      g.lin(23, cumeeira - 3, 23, cumeeira, "#6b4a2e"); g.lin(28, cumeeira - 3, 28, cumeeira, "#6b4a2e");
-      // tapete na soleira
-      g.ret(22, b, 8, 1, "#8e2a1f");
+      // aba enrolada sobre a entrada (luz em cima, sombra embaixo) e varas do beiral
+      for (let X = 40; X <= 63; X++) for (let j = 0; j < 4; j++) g.fino(X, E + 2 + j, j === 0 ? misturar(c.listra, "#ffffff", 0.25) : j === 3 ? misturar(c.listra, "#1c1210", 0.35) : c.listra);
+      for (const X of [6, 40, 62, 96]) vara(X, E, B);
+      vara(46, C - 6, C + 1); vara(56, C - 6, C + 1);
+      // tapete na soleira, com a franja de 1 px
+      for (let X = 44; X <= 59; X++) { g.fino(X, B - 1, "#8e2a1f"); g.fino(X, B, X % 2 ? "#e8b94a" : "#5e1a14"); }
     },
   });
 
@@ -1855,39 +1860,49 @@
   registrar("es_banca", {
     w: 52, h: 46, quadros: 2, origem: [0.5, 1], estrutura: true,
     desenhar(g, v) {
-      const b = 44, toldo = 6, balcao = 31;
+      // em px de arte (X, Y): 1 px de arte = 1 px de mundo, como as árvores e os props
+      const b = 44, toldo = 6, balcao = 31, B = 2 * b + 1, Tt = 2 * toldo, Bc = 2 * balcao;
       g.sombra(29, b + 0.5, 25, 2);
-      // fundo de pano escuro entre os postes
-      g.ret(5, toldo + 9, 42, balcao - toldo - 9, (x, y) => ((x + y) % 7 === 0 ? "#4a3a30" : "#3a2c24"));
+      // bloco em px com a luz de 1 px em cima e a sombra de 1 px embaixo
+      const bloco = (X0, Y0, w, h, cor) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) g.fino(X0 + i, Y0 + j, j === 0 ? misturar(cor, "#ffffff", 0.3) : j === h - 1 ? misturar(cor, "#1c1210", 0.3) : cor); };
+      // fundo de pano escuro entre os postes, com a trama diagonal de 1 px
+      for (let Y = Tt + 18; Y < Bc; Y++) for (let X = 10; X <= 93; X++) g.fino(X, Y, (X + Y) % 9 === 0 ? "#4a3a30" : "#3a2c24");
       // prateleira dos fundos com jarros (mercadorias) ou panos dobrados (vazia)
-      g.lin(6, balcao - 7, 45, balcao - 7, "#7a5530");
+      for (let X = 12; X <= 91; X++) { g.fino(X, Bc - 14, "#9a7048"); g.fino(X, Bc - 13, "#5e3c1c"); }
       if (v === 0) {
         for (const [x, cor] of [[9, "#b5663a"], [14, "#c8b070"], [19, "#8e4a2a"], [33, "#b5663a"], [38, "#d88a58"], [42, "#8e4a2a"]])
-          g.elip(x, balcao - 10, 2, 2.6, (nx, ny) => (nx + ny < -0.4 ? misturar(cor, "#ffffff", 0.25) : cor));
+          g.elip(x, balcao - 10, 2, 2.6, (nx, ny) => (nx + ny < -0.4 ? misturar(cor, "#ffffff", 0.25) : nx > 0.55 ? misturar(cor, "#1c1210", 0.25) : cor));
       } else {
-        g.ret(10, balcao - 10, 8, 3, "#c8b48a"); g.lin(10, balcao - 10, 17, balcao - 10, "#e0d0a8");
-        g.ret(34, balcao - 9, 7, 2, "#a8916a");
+        bloco(20, Bc - 20, 16, 6, "#c8b48a"); bloco(68, Bc - 18, 14, 4, "#a8916a");
       }
-      // balcão de madeira
-      g.ret(3, balcao, 46, b - balcao + 1, (x, y) => (y === balcao ? "#c9a46a" : y === balcao + 1 ? "#a8844f" : (x - 3) % 11 === 0 ? "#5e4630" : x < 6 ? "#9a7048" : "#7a5530"));
+      // balcão de tábuas: tampo claro de 1 px, frente com as juntas de 1 px a cada 22 px e a beira esquerda na luz
+      for (let Y = Bc; Y <= B; Y++) for (let X = 6; X <= 97; X++) {
+        const j = Y - Bc;
+        g.fino(X, Y, j === 0 ? "#e0c08a" : j < 3 ? "#c9a46a" : j === 3 ? "#a8844f" : (X - 6) % 22 === 0 ? "#5e4630" : (Y - Bc) % 7 === 0 ? "#6a4a2c" : X < 12 ? "#9a7048" : "#7a5530");
+      }
       // mercadorias no balcão
       if (v === 0) {
-        g.elip(11, balcao - 1, 3, 1.5, "#e8b94a"); g.p(10, balcao - 2, "#ffe08a");
-        g.ret(17, balcao - 3, 6, 3, "#8e2a1f"); g.lin(17, balcao - 3, 22, balcao - 3, "#c2452d");
-        g.ret(25, balcao - 2, 5, 2, "#55642c"); g.p(26, balcao - 3, "#7a8a3f");
-        for (let i = 0; i < 3; i++) g.elip(35 + i * 4, balcao - 2, 1.6, 1.6, i % 2 ? "#c2452d" : "#d9a35c");
+        g.elip(11, balcao - 1, 3, 1.5, (nx, ny) => (ny < -0.3 ? "#f2cf6a" : "#e8b94a")); g.pf(10, balcao - 2, "#ffe08a");
+        bloco(34, Bc - 6, 12, 6, "#8e2a1f");
+        bloco(50, Bc - 4, 10, 4, "#55642c"); g.fino(52, Bc - 5, "#7a8a3f"); g.fino(53, Bc - 6, "#7a8a3f");
+        for (let i = 0; i < 3; i++) g.elip(35 + i * 4, balcao - 2, 1.6, 1.6, (nx, ny) => (nx + ny < -0.5 ? "#f0c080" : i % 2 ? "#c2452d" : "#d9a35c"));
       } else {
-        g.ret(20, balcao - 2, 10, 2, "#d4bf8f"); g.lin(20, balcao - 2, 29, balcao - 2, "#eadcb6");
+        bloco(40, Bc - 4, 20, 4, "#d4bf8f");
       }
-      // postes e toldo listrado com bainha recortada
-      for (const x of [4, 47]) g.lin(x, toldo, x, b, "#5e4630");
-      for (let y = toldo; y < toldo + 9; y++)
-        for (let x = 1; x <= 50; x++) {
-          const listra = Math.floor((x - 1) / 4) % 2 === 0;
-          const cor = y === toldo ? "#5e1a14" : listra ? (v === 0 ? "#c2452d" : "#3b5a9a") : "#eadcb6";
-          g.p(x, y, y > toldo + 6 && (x % 4 === 0) ? null : cor);
+      // postes de 3 px e toldo listrado (listras de 8 px) com a bainha recortada em línguas
+      for (const X of [8, 94]) for (let Y = Tt; Y <= B; Y++) { g.fino(X, Y, "#7a5a3c"); g.fino(X + 1, Y, "#5e4630"); g.fino(X + 2, Y, "#3e2c1e"); }
+      const fimToldo = 2 * (toldo + 9) - 1;
+      for (let Y = Tt; Y <= fimToldo; Y++)
+        for (let X = 2; X <= 101; X++) {
+          const k = (X - 2) % 8, r = Y - (fimToldo - 4);
+          if (r >= 0 && Math.abs(k - 3.5) > 3.6 - r * 0.75) continue; // a ponta de cada listra arredonda
+          const listra = Math.floor((X - 2) / 8) % 2 === 0;
+          let cor = listra ? (v === 0 ? "#c2452d" : "#3b5a9a") : "#eadcb6";
+          if (Y === Tt) cor = "#5e1a14";
+          else if (Y === Tt + 2) cor = "#f3e4c0";
+          else if (r >= 2 || Y === fimToldo) cor = misturar(cor, "#1c1210", 0.22);
+          g.fino(X, Y, cor);
         }
-      g.lin(1, toldo + 1, 50, toldo + 1, "#f3e4c0");
     },
   });
 
@@ -1896,23 +1911,26 @@
     desenhar(g) {
       const b = 26;
       g.sombra(12, b, 9, 1.6);
-      // cilindro de pedra
-      for (let y = 15; y <= b; y++)
-        for (let x = 2; x <= 17; x++) {
-          const fila = Math.floor((y - 15) / 3), off = fila % 2 ? 2 : 0;
-          let cor = x < 5 ? "#c8b898" : x > 14 ? "#7a6a54" : "#a8987a";
-          if ((y - 15) % 3 === 2 || (x + off) % 5 === 0) cor = "#6e604c";
-          g.p(x, y, cor);
+      // cilindro de pedra em px de arte: fiadas de 5 px com a junta de 1 px, pedras de 9 px desencontradas,
+      // aresta de luz no topo de cada pedra, lado esquerdo claro e direito na sombra
+      for (let Y = 30; Y <= 2 * b + 1; Y++)
+        for (let X = 4; X <= 35; X++) {
+          const fila = Math.floor((Y - 30) / 6), off = fila % 2 ? 5 : 0, k = (Y - 30) % 6;
+          let cor = X < 9 ? "#c8b898" : X > 30 ? "#7a6a54" : "#a8987a";
+          if (k === 5 || (X + off) % 10 === 0) cor = "#6e604c";
+          else if (k === 0) cor = X > 30 ? "#8a7a62" : X < 9 ? "#ddd0b4" : "#c8b898";
+          g.fino(X, Y, cor);
         }
       // borda e água escura
-      g.elip(9.5, 14.5, 8.5, 3, "#d2c2a2");
-      g.elip(9.5, 14.5, 6, 1.8, "#1d4f5c");
-      g.p(8, 14, "#4fa3a5");
-      // armação, travessa, corda e balde
-      g.lin(3, 14, 3, 3, "#6b4a2e"); g.lin(16, 14, 16, 3, "#6b4a2e");
-      g.lin(2, 3, 17, 3, "#8a6a42"); g.lin(2, 2, 17, 2, "#5e4630");
-      g.lin(10, 4, 10, 9, "#c9a46a");
-      g.ret(9, 9, 3, 3, "#7a5530"); g.lin(9, 9, 11, 9, "#a8844f");
+      g.elip(9.5, 14.5, 8.5, 3, (nx, ny) => (ny < -0.45 ? "#e2d4b6" : nx > 0.7 ? "#b8a888" : "#d2c2a2"));
+      g.elip(9.5, 14.5, 6, 1.8, (nx, ny) => (ny < -0.5 ? "#143a44" : "#1d4f5c"));
+      g.pf(8, 14.5, "#4fa3a5"); g.pf(8.5, 14.5, "#4fa3a5"); g.pf(11, 15, "#2f7680");
+      // armação (postes de 3 px), travessa, corda de 1 px e balde com o aro
+      const poste = (X0) => { for (let Y = 6; Y <= 29; Y++) { g.fino(X0, Y, "#8a6a42"); g.fino(X0 + 1, Y, "#6b4a2e"); g.fino(X0 + 2, Y, "#4a3222"); } };
+      poste(5); poste(31);
+      for (let X = 4; X <= 35; X++) { g.fino(X, 4, "#a8844f"); g.fino(X, 5, "#8a6a42"); g.fino(X, 6, "#5e4630"); }
+      g.linf(10, 3.5, 10, 9, "#c9a46a");
+      g.retf(8.5, 9.5, 3.5, 2.5, (X, Y, i, j) => (j === 0 ? "#a8844f" : j === 4 ? "#5e4630" : i === 0 ? "#9a7048" : i === 6 ? "#5e4630" : j === 2 ? "#6b4a2e" : "#7a5530"));
     },
   });
 
@@ -2979,14 +2997,15 @@
     desenhar(g, q) {
       const cor = (a) => comAlfa("#e8f2e0", a);
       if (q === 3) { g.elip(8, 8, 3, 1.4, (nx, ny) => (nx * nx + ny * ny > 0.5 ? cor(0.35) : null)); return; }
+      // ondulações de 1 px de arte (como a água) e a sombra do peixe embaixo
       const raios = [2 + q, 5 + q * 0.6];
       for (const r of raios) {
-        for (let a = 0; a < 40; a++) {
-          const t = (a / 40) * Math.PI * 2;
-          g.p(8 + Math.cos(t) * r, 8 + Math.sin(t) * r * 0.5, cor(r > 5 ? 0.45 : 0.85));
+        for (let a = 0; a < 72; a++) {
+          const t = (a / 72) * Math.PI * 2;
+          g.pf(8 + Math.cos(t) * r, 8 + Math.sin(t) * r * 0.5, cor(r > 5 ? 0.45 : 0.85));
         }
       }
-      g.ret(6 + (q % 2), 9, 4, 1, "#245e6a"); g.ret(7 + (q % 2), 8, 2, 1, "#245e6a");
+      g.retf(6.5 + (q % 2) * 0.5, 9, 3, 0.5, "#245e6a"); g.retf(7 + (q % 2) * 0.5, 8.5, 2, 0.5, "#245e6a"); g.pf(5.5 + (q % 2) * 0.5, 8.5, "#245e6a");
     },
   });
   registrar("mk_barco", {
@@ -3154,33 +3173,66 @@
   });
 
   // Decoração plana das vilas (até 3 px-a de altura; vai em casa livre; posições em dados/mapas.js).
+  // Desenhadas em px de arte (g.fino, g.retf, g.elip), como o resto do chão: 1 px de arte = 1 px de mundo.
   registrar("dc_tapete", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
-      g.ret(2, 4, 12, 8, (x, y) => (y === 4 || y === 11 ? "#5e1a14" : (y - 4) % 3 === 0 ? "#e8b94a" : "#8e2a1f"));
-      for (let x = 2; x < 14; x += 2) { g.p(x, 3, "#e8b94a"); g.p(x, 12, "#e8b94a"); }
+      // tapete de lã: bainha escura, duas faixas douradas de 1 px, losango no meio e a franja nas pontas
+      g.retf(2, 4, 12, 8, (X, Y, i, j) => {
+        if (j === 0 || j === 15 || i === 0 || i === 23) return "#5e1a14";
+        if (j === 2 || j === 13) return "#e8b94a";
+        const d = Math.abs(i - 11.5) * 0.55 + Math.abs(j - 7.5);
+        if (d > 2.6 && d < 3.6) return "#e8b94a";
+        if (d <= 1.2) return "#3b5a9a";
+        return (i * 3 + j) % 7 === 0 ? "#a8382a" : "#8e2a1f";
+      });
+      for (let X = 3; X < 28; X += 2) { g.fino(X, 7, "#e8b94a"); g.fino(X + 1, 24, "#c99a3a"); }
     },
   });
   registrar("dc_esteira", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
-      g.ret(2, 5, 12, 7, (x, y) => ((x + (y % 2)) % 2 ? "#c8b070" : "#a8904e"));
-      g.elip(12, 4, 2.5, 1.6, "#8a6a42"); g.p(12, 4, "#5e4630");
+      // esteira de palha trançada: fios de 3 × 2 px que se alternam, beira escura e o rolo na ponta
+      g.retf(2, 5, 12, 7, (X, Y, i, j) => {
+        if (i === 0 || j === 0 || i === 23 || j === 13) return "#8a7040";
+        const fio = (Math.floor(i / 3) + Math.floor(j / 2)) % 2;
+        return fio ? (i % 3 === 0 ? "#b89c5c" : "#c8b070") : (j % 2 ? "#94783e" : "#a8904e");
+      });
+      g.elip(12, 4, 2.5, 1.6, (nx, ny) => (nx + ny < -0.5 ? "#a8844f" : "#8a6a42"));
+      g.fino(24, 8, "#5e4630"); g.fino(25, 8, "#5e4630");
     },
   });
   registrar("dc_rede", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
-      for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) if ((x + y) % 3 === 0 || (x - y + 30) % 3 === 0) g.p(x, y, "#c9b48a");
-      for (const [x, y] of [[3, 3], [13, 4], [4, 12], [12, 12]]) g.p(x, y, "#e6cf9c");
-      g.ret(9, 9, 3, 2, "#4fa3a5"); g.p(12, 9, "#2f7680");
+      // rede de pesca estendida: malha diagonal de 1 px com os nós claros, borda solta, boias de cortiça e um peixe
+      for (let Y = 5; Y < 27; Y++) for (let X = 3; X < 29; X++) {
+        const nx = (X - 15.5) / 12.5, ny = (Y - 15.5) / 10.5;
+        if (nx * nx + ny * ny > 0.92 + hash2(X >> 1, Y >> 1, 90) * 0.16) continue;
+        const a = (X + Y) % 5 === 0, b = (X - Y + 60) % 5 === 0;
+        if (a && b) g.fino(X, Y, "#e6cf9c"); else if (a || b) g.fino(X, Y, (X + Y * 3) % 7 ? "#b8a278" : "#9a8460");
+      }
+      for (const [X, Y] of [[6, 9], [24, 8], [7, 22], [24, 21]]) {
+        g.fino(X, Y, "#c98a52"); g.fino(X + 1, Y, "#a66b39"); g.fino(X, Y + 1, "#a66b39"); g.fino(X + 1, Y + 1, "#6e4426");
+      }
+      // peixe: corpo de 6 px, barriga clara, olho e a cauda em leque
+      for (let X = 19; X <= 22; X++) { g.fino(X, 17, "#7cc4c0"); g.fino(X, 19, "#2f7680"); }
+      for (let X = 18; X <= 23; X++) g.fino(X, 18, "#4fa3a5");
+      g.fino(19, 18, "#1c2a2a"); g.fino(24, 18, "#2f7680"); g.fino(25, 17, "#2f7680"); g.fino(25, 19, "#2f7680");
     },
   });
   registrar("dc_fogo_apagado", {
     w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
     desenhar(g) {
-      for (let a = 0; a < 8; a++) { const t = (a / 8) * Math.PI * 2; g.ret(7 + Math.cos(t) * 4.5, 8 + Math.sin(t) * 3, 2, 1, a % 2 ? "#8a8070" : "#a39b8a"); }
-      g.ret(6, 7, 4, 2, "#3a2c24"); g.p(7, 7, "#6a5646");
+      // fogueira apagada: anel de 8 pedras (3 × 2 px, luz em cima), a cinza no meio e dois tições cruzados
+      g.elip(8, 8.2, 3.4, 2, (nx, ny) => (nx * nx + ny * ny > 0.55 ? "#7a7068" : "#5a5048"));
+      for (let a = 0; a < 8; a++) {
+        const t = (a / 8) * Math.PI * 2, X = Math.round(15.5 + Math.cos(t) * 9.5) - 1, Y = Math.round(16 + Math.sin(t) * 6) - 1;
+        const [luz, meio, sombra] = a % 2 ? ["#a39b8a", "#8a8070", "#5e564a"] : ["#bcb4a2", "#a39b8a", "#6e665a"];
+        for (let i = 0; i < 3; i++) { g.fino(X + i, Y, luz); g.fino(X + i, Y + 1, i === 2 ? sombra : meio); }
+      }
+      g.linf(6.5, 7.2, 9.5, 8.7, "#2a1e18"); g.linf(6.5, 8.7, 9.5, 7.2, "#3a2c24");
+      g.fino(16, 15, "#8a3a24"); g.fino(15, 16, "#5a2a1c");
     },
   });
 
@@ -3636,23 +3688,25 @@
       if (C.get(X, Y) >= 1 && C.get(X, Y + 1) >= 1) { g.fino(X, Y, "#4a3c58"); g.fino(X, Y + 1, "#2a2034"); }
     }
   });
+  // mureta de pedra seca solta (a emendada vem de Cenario.texturaMuro), em px de arte: 3 fiadas de 7 px com a junta
+  // de 1 px, pedras de 6 a 10 px desencontradas (a fiada do meio começa com meia pedra), luz em cima e à esquerda
   obstaculo("ob_canaan_muro", false, 2, (g, v, b) => {
     g.sombra(10, b, 8, 1.3);
-    const P = ["#6e5a40", "#9c8460", "#c2ab82", "#d8c8a0"];
+    const P = ["#6e5a40", "#9c8460", "#c2ab82", "#d8c8a0"], X1 = 33;
     for (let fila = 0; fila < 3; fila++) {
-      const y0 = b - 11 + fila * 4;
-      let x = 1 + ((fila + v) % 2) * 2;
-      if (fila === 0) x = 1;
-      while (x < 17) {
-        const w = Math.min(17 - x, 3 + Math.floor(hash2(x, fila, 40 + v) * 3));
-        g.ret(x, y0, w, 3, (px, py) => (py === y0 ? P[3] : py === y0 + 2 ? P[1] : px === x ? P[2] : P[2]));
-        g.p(x + w - 1, y0 + 1, P[1]);
-        g.ret(x + w, y0, 1, 3, P[0]);
-        x += w + 1;
+      const Y0 = 2 * (b - 11) + fila * 8;
+      let X = 2, primeira = (fila + v) % 2 === 1;
+      while (X <= X1) {
+        const w = Math.min(X1 + 1 - X, primeira ? 3 + Math.floor(hash2(X, fila, 42 + v) * 3) : 6 + Math.floor(hash2(X, fila, 40 + v) * 5));
+        primeira = false;
+        for (let j = 0; j < 7; j++) for (let i = 0; i < w; i++) g.fino(X + i, Y0 + j, j === 0 ? P[3] : j === 6 || i === w - 1 ? P[1] : i === 0 ? P[3] : P[2]);
+        for (let j = 0; j < 7; j++) g.fino(X + w, Y0 + j, P[0]);
+        X += w + 1;
       }
-      g.lin(1, y0 + 3, 16, y0 + 3, P[0]);
+      for (let X = 2; X <= X1; X++) g.fino(X, Y0 + 7, P[0]);
     }
-    for (let x = 1; x < 17; x++) if (hash2(x, v, 41) < 0.35) g.p(x, b - 12, "#6e8a3a");
+    // musgo de 1 a 2 px no alto da mureta
+    for (let X = 2; X <= X1; X++) if (hash2(X, v, 41) < 0.3) { g.fino(X, 2 * (b - 11) - 1, "#6e8a3a"); if (hash2(v, X, 43) < 0.4) g.fino(X, 2 * (b - 11) - 2, "#8fa84c"); }
   });
   pedregulho("ob_canaan_rocha", 3, ["#3e3a32", "#5e584c", "#857e6c", "#aaa28e", "#cec6b0"], 50, { musgo: true, dupla: true });
 
@@ -4298,28 +4352,37 @@
       }
     }
   }
-  // Muralha de água (Mar Vermelho): faixas verticais que descem 1 px por quadro.
+  // Muralha de água (Mar Vermelho), em px de arte como a água ao lado: faixas verticais de 3 px que descem 2 px
+  // por quadro (o ciclo de 16 px fecha em 8 quadros), um fio claro de 1 px na crista de cada onda que desce,
+  // a borda esquerda na luz e a direita na sombra.
   function pintarMuralha(pin, bio, t) {
-    const a = bio.agua, rampa = [a.profunda, a.escura, a.base, a.clara];
-    const corpo = (i, ox) => {
-      for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-        const faixa = Math.floor(hash2(x, 0, 200) * 4);
-        const v = (y - t * 1 + faixa * 5 + 64) % 8;
-        const l = (x < 3 ? 1 : x > 12 ? -1 : 0) * 0.3 + (v < 2 ? 0.5 : v < 5 ? 0 : -0.4);
-        pin.set(i, x, y, tom(rampa, l));
+    const a = bio.agua, rampa = [a.profunda, a.escura, a.base, a.clara], L = T * pin.r;
+    const corpo = (i) => {
+      for (let Y = 0; Y < L; Y++) for (let X = 0; X < L; X++) {
+        const faixa = Math.floor(hash2(Math.floor((X + 1) / 3), 0, 200) * 4);
+        const v = (Y - t * 2 + faixa * 10 + 128) % 16;
+        const l = (X < 5 ? 1 : X > 26 ? -1 : 0) * 0.3 + (v < 3 ? 0.5 : v < 10 ? 0 : -0.4);
+        pin.fino(i, X, Y, v === 0 && (X + faixa) % 3 ? a.clara : tom(rampa, l));
       }
     };
+    const coral = (X) => (hash2(Math.floor(X / 3), 1, 201) < 0.5 ? "#d07a5a" : "#a85a4a");
     // 24: corpo (norte); 25: base norte (espuma + coral); 26: crista sul (espuma em cima); 27: corpo (sul)
     corpo(24); corpo(27);
     corpo(25);
-    for (let x = 0; x < 16; x++) {
-      const o = (x + t) % 3 === 0 ? 1 : 0;
-      pin.set(25, x, 13 - o, a.espuma); pin.set(25, x, 14, a.espuma); pin.set(25, x, 15, hash2(x, 1, 201) < 0.5 ? "#d07a5a" : "#a85a4a");
+    for (let X = 0; X < L; X++) {
+      const o = (X + t * 2) % 5;
+      if (o === 0) pin.fino(25, X, 25, a.espuma); // respingo solto
+      if (o < 3) pin.fino(25, X, 26, a.espuma);
+      pin.fino(25, X, 27, a.espuma); pin.fino(25, X, 28, a.espuma); pin.fino(25, X, 29, misturar(a.espuma, a.clara, 0.4));
+      pin.fino(25, X, 30, coral(X)); pin.fino(25, X, 31, misturar(coral(X), "#3a1a14", 0.35));
     }
     corpo(26);
-    for (let x = 0; x < 16; x++) {
-      const o = (x + t) % 3 === 0 ? 1 : 0;
-      pin.set(26, x, 0, "#a85a4a"); pin.set(26, x, 1, a.espuma); pin.set(26, x, 2 + o, a.espuma);
+    for (let X = 0; X < L; X++) {
+      const o = (X + t * 2) % 5;
+      pin.fino(26, X, 0, misturar(coral(X), "#3a1a14", 0.35)); pin.fino(26, X, 1, coral(X));
+      pin.fino(26, X, 2, a.espuma); pin.fino(26, X, 3, a.espuma);
+      if (o < 3) pin.fino(26, X, 4, a.espuma);
+      if (o === 0) pin.fino(26, X, 5, a.espuma);
     }
   }
 

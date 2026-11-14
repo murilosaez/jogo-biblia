@@ -187,7 +187,10 @@ convenções do gênero (escala das árvores, contorno escuro, luz de cima e da 
 cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noite).
 
 - **Escala de pixel**: 1 px de arte = 1 px de mundo em tudo o que fica no chão e em pé (árvores, pedras, props,
-  água, chão). A câmera segue um alvo em px inteiros e, a cada quadro, quem anda (personagens, barras, nomes,
+  decorações do chão, poço, tendas, bancas, a mureta solta, água, a muralha de água do Mar Vermelho e o chão;
+  o teste 78 mede as decorações, o ponto de pesca, o poço, a tenda e a banca). Ficam de fora, de propósito, os
+  sinais e efeitos (setas do portal `mk_setas`, anel de alvo, faíscas e golpes `fx_*`), em traço de 2 px para
+  ler de longe, e o `es_casa`, que não aparece no mundo (as casas onde se entra vêm de `cenario.js`). A câmera segue um alvo em px inteiros e, a cada quadro, quem anda (personagens, barras, nomes,
   números) vai para px inteiros (`pixelsInteiros` em `game.js`): nada fica a meio pixel de arte do chão, em
   qualquer zoom. Os ícones da interface usam `image-rendering: pixelated`.
 - **Árvores em escala de MMORPG** (`arvore`, `Copa`, `moldeCopa` em `sprites.js`): a árvore é maior que a casa —

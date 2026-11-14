@@ -7162,7 +7162,7 @@ teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no
   }
 });
 
-teste("78. arte do mundo (revisão): decorações sem prop por cima e moitas longe das estradas e do chão pisado", () => {
+teste("78. arte do mundo (revisão): decorações sem prop por cima, moitas longe das estradas, cerca com poste de fecho e escala de 1 px", () => {
   const j = carregarJogo();
   j.entrar();
   const [mapas, MAPAS] = ["mapas", "DADOS_MAPAS"].map(j.g);
@@ -7221,6 +7221,20 @@ teste("78. arte do mundo (revisão): decorações sem prop por cima e moitas lon
     assert.ok(coluna(fecho) >= 18 && coluna(comum) <= 12, `${chave}: poste de fecho (${coluna(comum)} → ${coluna(fecho)} px)`);
   }
   assert.ok(fileiras >= 3, `fileiras de cerca: ${fileiras}`);
+  // (d) escala de pixel: decorações do chão, ponto de pesca, poço, tenda e banca em px de arte (1 px de arte =
+  // 1 px de mundo), não em blocos de 2 px. Mede a fração das trocas de cor que caem fora da grade de 2 px:
+  // perto de 0 é arte em unidades (blocos de 2 px), perto de 1 é arte de 1 px.
+  for (const chave of ["dc_tapete", "dc_esteira", "dc_rede", "dc_fogo_apagado", "mk_pesca", "es_poco", "es_tenda", "es_banca"]) {
+    const def = Arte.PIXEL_PATTERNS[chave];
+    let naGrade = 0, fora = 0;
+    for (let q = 0; q < def.quadros; q++) {
+      const { w, h, data } = Arte.pixels(chave, { quadro: q }), em = (x, y) => data[y * w + x];
+      for (let y = 0; y < h; y++) for (let x = 0; x + 1 < w; x++) if (em(x, y) !== em(x + 1, y)) x % 2 ? naGrade++ : fora++;
+      for (let y = 0; y + 1 < h; y++) for (let x = 0; x < w; x++) if (em(x, y) !== em(x, y + 1)) y % 2 ? naGrade++ : fora++;
+    }
+    const fracao = (2 * fora) / (naGrade + fora);
+    assert.ok(fracao > 0.6, `${chave}: arte em blocos de 2 px (fração fora da grade ${fracao.toFixed(2)})`);
+  }
 });
 
 const filtro = process.argv[2];
