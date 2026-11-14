@@ -4260,19 +4260,23 @@
   }
 
   // Água: fases 0–3 (cada casa começa numa fase diferente).
+  // Água em px de arte (1 px de arte = 1 px de mundo, como o resto do cenário): a base, 5 ondulações por tile
+  // (vale escuro de 4 a 7 px e a crista clara 1 px acima, mais curta) que derivam 1 px a cada 2 fases (≈ 500 ms)
+  // e, de vez em quando, um brilho de 2 px.
   function pintarAgua(pin, i, agua, fase, t, clara = false) {
-    const base = clara ? misturar(agua.base, agua.clara, 0.45) : agua.base;
+    const base = clara ? misturar(agua.base, agua.clara, 0.45) : agua.base, L = T * pin.r;
     pin.encher(i, base);
-    // 3 ondulações por tile (vale escuro + crista clara), em posições próprias
-    // de cada tile; derivam 1 px-a a cada 2 fases (≈ 500 ms).
-    for (let k = 0; k < 3; k++) {
-      const x0 = Math.floor(hash2(i, k, 31) * 16), y0 = 2 + Math.floor(hash2(k, i, 32) * 12);
-      const desl = Math.floor((t + hash2(i, k, 33) * 8) / 2) % 16;
-      const len = 3 + (k % 2);
-      for (let d = 0; d < len; d++) pin.set(i, (x0 + desl + d) % 16, y0, agua.escura);
-      for (let d = 1; d < len - 1; d++) pin.set(i, (x0 + desl + d) % 16, y0 - 1, agua.clara);
+    for (let k = 0; k < 5; k++) {
+      const x0 = Math.floor(hash2(i, k, 31) * L), y0 = 3 + Math.floor(hash2(k, i, 32) * (L - 5));
+      const desl = Math.floor((t + hash2(i, k, 33) * 8) / 2) % L;
+      const len = 4 + Math.floor(hash2(k, i, 36) * 4);
+      for (let d = 0; d < len; d++) pin.fino(i, (x0 + desl + d) % L, y0, agua.escura);
+      for (let d = 1; d < len - 1; d++) pin.fino(i, (x0 + desl + d) % L, y0 - 1, agua.clara);
     }
-    if ((t + fase + i) % 7 < 2) pin.set(i, Math.floor(hash2(i, fase, 34) * 16), Math.floor(hash2(fase, i, 35) * 16), agua.brilho);
+    if ((t + fase + i) % 7 < 2) {
+      const X = Math.floor(hash2(i, fase, 34) * (L - 1)), Y = Math.floor(hash2(fase, i, 35) * L);
+      pin.fino(i, X, Y, agua.brilho); pin.fino(i, X + 1, Y, agua.brilho);
+    }
   }
   function pintarCosta(pin, bio, t) {
     const a = bio.agua;
