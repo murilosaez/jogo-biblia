@@ -57,6 +57,10 @@ const DADOS_ESTRUTURAS = {
 //   fica logo atrás dele); reservada: loja futura prevista para a banca vazia.
 // marcos: obstáculos de uma casa com tipo fixo (fogueira, estandarte, barco, jarros...).
 // decoracoes: enfeites planos no chão (dc_tapete, dc_esteira, dc_rede, dc_fogo_apagado).
+// vegetacao: enfeites do chão que não bloqueiam, pintados em moitas pelo chão contínuo (cenario.js):
+//   densidade (chance de uma moita a cada 44 px, modulada por um ruído largo), moitas (tipo: peso — capim,
+//   flor, arbusto, pedra, liquen, seixos, concha, caco, broto) e beira (o que nasce na beira da água: junco,
+//   papiro ou alga, com a densidade).
 // zonasColeta: onde ervas (Canaã) e odres (Deserto) brotam de novo depois de coletados (x, y, raio).
 const DADOS_MAPAS = {
   canaan: {
@@ -95,6 +99,7 @@ const DADOS_MAPAS = {
     ],
     marcos: [],
     decoracoes: [{ chave: "dc_fogo_apagado", x: 31, y: 23 }],
+    vegetacao: { densidade: 0.5, moitas: { capim: 5, flor: 3, arbusto: 2, pedra: 1, seixos: 1 }, beira: { junco: 0.7 } },
     zonasColeta: [
       { x: 56, y: 15, raio: 9 },
       { x: 44, y: 84, raio: 12 },
@@ -135,6 +140,7 @@ const DADOS_MAPAS = {
     ],
     marcos: [{ tipo: "fogueira", x: 135, y: 19 }],
     decoracoes: [{ chave: "dc_tapete", x: 136, y: 17 }],
+    vegetacao: { densidade: 0.3, moitas: { capim: 3, pedra: 3, seixos: 3, arbusto: 1 }, beira: { junco: 0.6 } },
     zonasColeta: [
       { x: 56, y: 76, raio: 12 },
       { x: 110, y: 48, raio: 12 },
@@ -199,6 +205,7 @@ const DADOS_MAPAS = {
       { tipo: "jarros", x: 17, y: 95 },
     ],
     decoracoes: [{ chave: "dc_esteira", x: 22, y: 98 }],
+    vegetacao: { densidade: 0.4, moitas: { broto: 3, capim: 2, caco: 1, seixos: 1 }, beira: { papiro: 0.8 } },
     zonasColeta: [],
   },
   marVermelho: {
@@ -233,6 +240,7 @@ const DADOS_MAPAS = {
     ],
     marcos: [],
     decoracoes: [],
+    vegetacao: { densidade: 0.32, moitas: { concha: 3, seixos: 2, pedra: 2, capim: 1 }, beira: { alga: 0.7 } },
     zonasColeta: [],
   },
   sinai: {
@@ -265,6 +273,7 @@ const DADOS_MAPAS = {
     ],
     marcos: [{ tipo: "estandarte", x: 17, y: 95 }],
     decoracoes: [],
+    vegetacao: { densidade: 0.4, moitas: { pedra: 3, seixos: 3, capim: 2, liquen: 2, arbusto: 1 }, beira: {} },
     zonasColeta: [],
   },
   galileia: {
@@ -312,6 +321,7 @@ const DADOS_MAPAS = {
       { chave: "dc_rede", x: 48, y: 22 },
       { chave: "dc_esteira", x: 34, y: 29 },
     ],
+    vegetacao: { densidade: 0.55, moitas: { flor: 4, capim: 4, arbusto: 2, seixos: 1 }, beira: { junco: 0.8 } },
     zonasColeta: [],
   },
 };

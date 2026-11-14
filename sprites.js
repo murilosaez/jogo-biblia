@@ -4334,6 +4334,8 @@
     function indiceDeco(x, y, proibido) {
       if (!mapa || x < 1 || y < 1 || x >= COLSm - 1 || y >= ROWSm - 1 || mapa[y][x]) return -1;
       if (area === "mar") return hash2(x, y, 7) < 0.015 ? ID.DECO : -1;
+      // com o chão contínuo, a vegetação rasteira sai em moitas no próprio chão (cenario.js, DADOS_MAPAS.vegetacao)
+      if (beiraContinua() && DADOS_MAPAS[area]?.vegetacao) return -1;
       if (ehCaminho(x, y) || (proibido && proibido(x, y))) return -1;
       if (piso && piso[y][x] >= (PISOm.ESTRUTURA ?? 3)) return -1; // chão de prédio (cenario.js pinta o piso)
       // Galileia: a mancha é um campo de flores; cada casa sorteia a sua flor

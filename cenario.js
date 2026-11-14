@@ -768,6 +768,175 @@
     return cacheClasses[area];
   }
 
+  // ---------------------------------------------------------------- vegetação rasteira (moitas)
+  // Enfeites que não bloqueiam, pintados no próprio pedaço do chão em moitas (2 a 6 peças juntas, como num mapa
+  // feito à mão): tufos de capim, flores, arbustos baixos, pedras, seixos, conchas, cacos e brotos; na beira da
+  // água, juncos (papiro no Nilo, algas no Mar Vermelho). Tipos, pesos e densidade: DADOS_MAPAS[area].vegetacao.
+  // Cada peça tem 3 a 5 tons, luz de cima e da esquerda e, nas que têm volume (arbusto, pedra), contorno escuro e
+  // sombra no chão. O sorteio é por posição do mundo e a peça pode passar para o pedaço vizinho (que pinta a
+  // parte dele): não há emenda entre os pedaços.
+  const TONS_MOITA = {
+    canaan: { capim: ["#3a4a22", "#55692e", "#6e8a3a", "#8fa84c", "#b4c46a"], arbusto: ["#1c2612", "#2e3e1c", "#465a28", "#627a36", "#82984a"], pedra: ["#3a362c", "#5e584a", "#857e6a", "#aca48c", "#cec6ac"], junco: ["#34441c", "#50682a", "#73903e"], cabeca: ["#4a2e1a", "#6e4426"] },
+    deserto: { capim: ["#5a4a26", "#7a6634", "#9a8550", "#b8a46a", "#d4c48a"], arbusto: ["#2a2a18", "#46462a", "#62603a", "#7e7a4c", "#9c9662"], pedra: ["#4e3424", "#7a5636", "#a07a52", "#c49c6c", "#e0c290"], junco: ["#44501e", "#66702e", "#8a9442"], cabeca: ["#5a3a20", "#7a5030"] },
+    egito: { capim: ["#3a4220", "#56602c", "#6f7a3a", "#8c9a4a", "#acb866"], arbusto: ["#202c16", "#384a24", "#506630", "#6c8240", "#8ca058"], pedra: ["#584c34", "#7e6e50", "#a2926e", "#c4b690", "#e0d4b0"], junco: ["#34481c", "#52702e", "#76983a"], cabeca: ["#8cac52", "#b8d074"] },
+    marVermelho: { capim: ["#5a5034", "#78704a", "#968c62", "#b4aa80", "#d0c8a0"], arbusto: ["#34342a", "#545440", "#6e6e56", "#8a8a70", "#a8a88c"], pedra: ["#3e1e18", "#6a3224", "#954a34", "#bc7052", "#d8987a"], junco: ["#3a4628", "#566636", "#6e7e4c"], cabeca: ["#46562e", "#62744a"] },
+    sinai: { capim: ["#4a4428", "#666036", "#7a7f4a", "#969a5e", "#b4b67a"], arbusto: ["#262618", "#40402a", "#5a5a3a", "#76744c", "#949060"], pedra: ["#34261f", "#5a4436", "#7e624e", "#a2846a", "#c2a688"], junco: ["#3a4624", "#566634", "#748444"], cabeca: ["#5a3a24", "#7a5232"] },
+    galileia: { capim: ["#2a4020", "#44622c", "#5e7e40", "#7ca052", "#9cc06a"], arbusto: ["#122416", "#1e3c22", "#2e562c", "#46743a", "#62944c"], pedra: ["#22201e", "#3a3836", "#56524e", "#76726a", "#98948a"], junco: ["#2a4620", "#44682e", "#60863c"], cabeca: ["#4a2e1a", "#6e4426"] },
+  };
+  const TIPOS_FLOR = new Set(["anemona", "flor_branca", "flor_amarela", "mostarda", "lirio"]);
+  const MIOLO_FLOR = { anemona: "#2a1a14", flor_branca: "#e2b84a", flor_amarela: "#9a6a1a", mostarda: "#8a5a10", lirio: "#e9d36a" };
+  const cacheMoita = {};
+  function tonsMoita(area) {
+    if (cacheMoita[area]) return cacheMoita[area];
+    const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan, base = TONS_MOITA[area] || TONS_MOITA.canaan;
+    const t = {};
+    for (const k of Object.keys(base)) t[k] = paleta(base[k]);
+    t.flores = (bio.deco || []).filter((d) => TIPOS_FLOR.has(d.tipo)).map((d) => ({
+      luz: rgb(cla(d.cor, 0.4)), cor: rgb(d.cor), sombra: rgb(esc(d.cor, 0.38)), miolo: rgb(MIOLO_FLOR[d.tipo] || "#2a1a14"),
+    }));
+    t.concha = paleta(["#b89888", "#d8c0b0", "#f4e8dc"]);
+    t.caco = paleta(["#6e3820", "#9a5230", "#c47448", "#e0986a"]);
+    t.alga = paleta(["#2e3a22", "#4a5a34", "#6a7a4a"]);
+    t.liquen = paleta(["#7a7e48", "#a4aa6a"]);
+    cacheMoita[area] = t;
+    return t;
+  }
+  // Peças. pt(x, y, cor) pinta 1 px em coordenadas do mundo; (x, y) é o pé da peça; h em [0, 1) sorteia a forma.
+  const PECAS = {
+    // tufo de capim: 5 a 8 folhas de 4 a 10 px, pé escuro, ponta clara, as de fora inclinadas para fora
+    tufo(pt, x, y, h, T, alto = false) {
+      const c = T.capim, n = 5 + Math.floor(h * 4), x0 = x - (n >> 1), sem = Math.floor(h * 997);
+      for (let b = 0; b < n; b++) {
+        const meio = Math.abs(b - (n - 1) / 2) / ((n - 1) / 2);
+        const alt = Math.max(3, (alto ? 8 : 5) + Math.floor(hash2(b, sem, 61) * 3) - Math.round(meio * 3));
+        const lado = b < (n - 1) / 2 ? -1 : b > (n - 1) / 2 ? 1 : 0, escura = b % 2 === 1;
+        let xx = x0 + b;
+        for (let k = 0; k < alt; k++) {
+          if (lado && (k === alt - 2 || (meio > 0.6 && k === Math.floor(alt / 2)))) xx += lado;
+          const cor = k === 0 ? c[0] : k === alt - 1 ? c[escura ? 3 : 4] : k >= alt - 3 ? c[escura ? 2 : 3] : c[escura ? 1 : 2];
+          pt(xx, y - k, cor);
+        }
+      }
+      for (let b = -1; b <= n; b++) pt(x0 + b, y + 1, c[0]); // pé na sombra
+    },
+    // broto (plantio do Egito): 3 a 4 folhas curtas em leque
+    broto(pt, x, y, h, T) {
+      const c = T.capim;
+      pt(x, y + 1, c[0]); pt(x, y, c[1]); pt(x, y - 1, c[2]); pt(x, y - 2, c[3]); pt(x, y - 3, c[4]);
+      pt(x - 1, y - 1, c[2]); pt(x - 2, y - 2, c[3]); pt(x - 3, y - 2, c[4]);
+      pt(x + 1, y, c[2]); pt(x + 2, y - 1, c[3]); pt(x + 3, y - 2, c[4]);
+      if (h > 0.5) { pt(x + 1, y - 2, c[3]); pt(x + 1, y - 3, c[4]); }
+    },
+    // flor: haste de 3 a 5 px com 2 folhas e a corola em cruz (5 px com o miolo) ou cheia (3 × 3 e as 4 pontas)
+    flor(pt, x, y, h, T, f) {
+      const c = T.capim, alt = 3 + Math.floor(h * 3);
+      for (let k = 0; k < alt; k++) pt(x, y - k, c[k === 0 ? 0 : k === 1 ? 1 : 2]);
+      pt(x - 1, y - 1, c[3]); pt(x - 2, y - 2, c[4]); pt(x + 1, y - 2, c[2]); pt(x + 2, y - 3, c[3]);
+      const cy = y - alt - 1;
+      if (h < 0.5) {
+        pt(x, cy - 1, f.luz); pt(x - 1, cy, f.luz); pt(x + 1, cy, f.cor); pt(x, cy + 1, f.sombra); pt(x, cy, f.miolo);
+      } else {
+        pt(x, cy - 2, f.luz); pt(x - 2, cy, f.luz); pt(x + 2, cy, f.sombra); pt(x, cy + 2, f.sombra);
+        pt(x - 1, cy - 1, f.luz); pt(x, cy - 1, f.luz); pt(x + 1, cy - 1, f.cor);
+        pt(x - 1, cy, f.cor); pt(x, cy, f.miolo); pt(x + 1, cy, f.cor);
+        pt(x - 1, cy + 1, f.cor); pt(x, cy + 1, f.sombra); pt(x + 1, cy + 1, f.sombra);
+      }
+    },
+    // arbusto baixo (não bloqueia): bolha recortada em lobos de 14 a 20 px, 4 tons pela luz, folhas em grupos de
+    // 2 px, contorno escuro e sombra no chão para a direita
+    arbusto(pt, x, y, h, T, sombra) {
+      const c = T.arbusto, rx = 7 + Math.floor(h * 4), ry = 5 + Math.floor(hash2(x, y, 62) * 3), cy = y - ry, fase = h * 6.283;
+      const dentro = (X, Y) => {
+        const nx = (X + 0.5 - x) / rx, ny = (Y + 0.5 - cy) / ry;
+        return Y <= y && Math.sqrt(nx * nx + ny * ny) <= 1 + 0.12 * Math.sin(Math.atan2(ny, nx) * 6 + fase) + (hash2(X >> 1, Y >> 1, 69) - 0.5) * 0.1;
+      };
+      for (let X = x - rx + 1; X <= x + rx + 4; X++) for (let Y = y - 2; Y <= y + 2; Y++) {
+        const nx = (X + 0.5 - x - 3) / (rx + 1), ny = (Y + 0.5 - y) / 2.2;
+        if (nx * nx + ny * ny <= 1 && !dentro(X, Y)) pt(X, Y, sombra);
+      }
+      for (let Y = cy - ry - 2; Y <= y + 1; Y++) for (let X = x - rx - 2; X <= x + rx + 2; X++) {
+        if (dentro(X, Y)) {
+          const nx = (X + 0.5 - x) / rx, ny = (Y + 0.5 - cy) / ry, l = -(0.6 * nx + 0.8 * ny) + (1 - Math.hypot(nx, ny)) * 0.3;
+          let k = l > 0.55 ? 4 : l > 0.12 ? 3 : l > -0.35 ? 2 : 1;
+          const g = hash2(X >> 1, Y, 63);
+          if (Y % 3 === 0 && g < 0.35 && dentro(X + 1, Y)) { k = Math.min(4, k + 1); }
+          else if (Y % 3 === 1 && g > 0.7 && k > 1) k--;
+          pt(X, Y, c[k]);
+        } else if (dentro(X - 1, Y) || dentro(X + 1, Y) || dentro(X, Y - 1) || dentro(X, Y + 1)) pt(X, Y, c[0]);
+      }
+    },
+    // pedra: bloco com a face de cima clara, a aresta de luz, a face lateral escura, contorno e sombra
+    pedra(pt, x, y, h, T, sombra, liquen) {
+      const c = T.pedra, rx = 4 + Math.floor(h * 4), ry = 3 + (h > 0.4 ? 1 : 0), cy = y - ry;
+      const dentro = (X, Y) => { const nx = (X + 0.5 - x) / rx, ny = (Y + 0.5 - cy) / (ry + 0.4); return Y <= y && nx * nx + ny * ny <= 1 + (hash2(X, Y >> 1, 70) - 0.5) * 0.12; };
+      for (let X = x - rx + 2; X <= x + rx + 3; X++) for (let Y = y; Y <= y + 1; Y++) if (!dentro(X, Y)) pt(X, Y, sombra);
+      const aresta = x + Math.round(rx * 0.3);
+      for (let Y = cy - ry - 2; Y <= y + 1; Y++) for (let X = x - rx - 1; X <= x + rx + 1; X++) {
+        if (dentro(X, Y)) {
+          const topo = !dentro(X, Y - 1), dir = !dentro(X + 1, Y), baixo = !dentro(X, Y + 1), esq = !dentro(X - 1, Y);
+          const faceTopo = Y < cy;
+          let k = faceTopo ? 3 : X > aresta ? 1 : 2;
+          if (topo) k = 4; else if (esq && !faceTopo) k = 3; else if (dir || baixo) k = 1;
+          if (!topo && Y === cy) k = Math.max(1, k - 1); // quina entre o topo e a frente
+          pt(X, Y, c[k]);
+          if (liquen && faceTopo && !topo && hash2(X >> 1, Y, 64) < 0.35) pt(X, Y, T.liquen[hash2(X, Y, 65) < 0.5 ? 0 : 1]);
+        } else if (dentro(X - 1, Y) || dentro(X + 1, Y) || dentro(X, Y - 1) || dentro(X, Y + 1)) pt(X, Y, c[0]);
+      }
+    },
+    // seixo de 2 × 2 ou 3 × 2
+    seixo(pt, x, y, h, T) {
+      const c = T.pedra;
+      pt(x, y - 1, c[3]); pt(x + 1, y - 1, c[2]); pt(x, y, c[2]); pt(x + 1, y, c[1]);
+      if (h > 0.5) { pt(x + 2, y - 1, c[2]); pt(x + 2, y, c[1]); }
+      pt(x + 1, y + 1, c[0]);
+    },
+    concha(pt, x, y, h, T) {
+      const c = T.concha;
+      pt(x - 1, y, c[1]); pt(x, y, c[2]); pt(x + 1, y, c[1]); pt(x, y - 1, c[2]); pt(x - 1, y + 1, c[0]); pt(x + 1, y + 1, c[0]);
+      if (h > 0.5) pt(x, y + 1, c[0]);
+    },
+    caco(pt, x, y, h, T) {
+      const c = T.caco;
+      pt(x, y - 1, c[3]); pt(x + 1, y - 1, c[2]); pt(x, y, c[2]); pt(x + 1, y, c[1]); pt(x + 2, y, c[0]);
+      if (h > 0.5) { pt(x - 1, y, c[2]); pt(x - 1, y + 1, c[0]); }
+    },
+    alga(pt, x, y, h, T) {
+      const c = T.alga;
+      for (let k = 0; k < 5; k++) pt(x - 2 + k, y - (k % 2), c[k % 3]);
+      if (h > 0.5) { pt(x - 1, y - 2, c[1]); pt(x, y - 3, c[2]); }
+    },
+    // juncos: 3 a 6 hastes de 6 a 12 px, inclinadas, e taboas marrons; no Nilo, papiro com a umbela em leque
+    junco(pt, x, y, h, T, papiro) {
+      const c = T.junco, cab = T.cabeca, n = 3 + Math.floor(h * 4);
+      for (let s = 0; s < n; s++) {
+        const sx = x - n + 1 + s * 2 + (hash2(s, x, 66) < 0.4 ? 1 : 0), alt = 9 + Math.floor(hash2(x, s, 67) * 7) + (papiro ? 3 : 0);
+        const lado = sx < x ? -1 : sx > x ? 1 : 0, escura = s % 2 === 1;
+        let X = sx;
+        for (let k = 0; k < alt; k++) {
+          if (k === Math.floor(alt * 0.6) && lado) X += lado;
+          pt(X, y - k, c[k < 2 ? 0 : escura ? 1 : k > alt * 0.7 ? 2 : 1]);
+        }
+        const yt = y - alt;
+        if (papiro) { pt(X - 2, yt + 1, cab[0]); pt(X - 1, yt, cab[1]); pt(X, yt, cab[1]); pt(X + 1, yt, cab[1]); pt(X + 2, yt + 1, cab[0]); pt(X, yt - 1, cab[1]); }
+        else if (hash2(s, x + y, 68) < 0.45) { pt(X, yt + 1, cab[1]); pt(X, yt + 2, cab[1]); pt(X, yt + 3, cab[0]); pt(X + 1, yt + 2, cab[0]); }
+      }
+    },
+  };
+  // Proibidas para a vegetação: onde ficam personagens, portais, trilha, cais, decorações e pontos de extração.
+  const cacheProibidas = {};
+  function casasSemVegetacao(area) {
+    if (cacheProibidas[area]) return cacheProibidas[area];
+    const set = new Set(), marca = (x, y, r = 0) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) set.add(`${x + dx},${y + dy}`); };
+    if (typeof npcs !== "undefined") for (const n of Object.values(npcs)) if (n.area === area) marca(n.x, n.y);
+    if (typeof DADOS_PORTAIS !== "undefined") for (const p of DADOS_PORTAIS) if (p.area === area) marca(p.x, p.y, 1);
+    const a = typeof areas !== "undefined" ? areas[area] : null;
+    for (const k of ["passagem", "cais"]) if (a && a[k]) marca(a[k].x, a[k].y, 1);
+    for (const d of (DADOS_MAPAS[area] && DADOS_MAPAS[area].decoracoes) || []) marca(d.x, d.y, 1);
+    if (typeof pontosExtracao !== "undefined") for (const p of pontosExtracao) if (p.area === area) marca(p.x, p.y);
+    cacheProibidas[area] = set;
+    return set;
+  }
+
   const LADO = 16; // casas por pedaço
   // Campo de ruído amostrado numa grade grossa (a cada P px, com 1 amostra de folga em volta) e lido por
   // interpolação bilinear: o mesmo desenho de ruido() a uma fração do custo (o pedaço tem 262 mil px).
@@ -809,6 +978,8 @@
       molhada: paleta(basalto ? ["#4a4238", "#5a5044"] : [misturar(cm.escuro, "#3a3022", 0.45), misturar(cm.escuro, "#3a3022", 0.25)]),
       espuma: rgb(agua.espuma), raso: rgb(agua.clara),
       seixo: paleta(basalto ? ["#262422", "#4c4a48", "#7a766e"] : area === "sinai" ? ["#4e3a30", "#7a6050", "#a8907a"] : ["#6a5a44", "#9a8a6c", "#d0c4a4"]),
+      // seixos soltos na relva: claros (o basalto escuro na relva parecia sujeira)
+      seixoChao: paleta(basalto ? ["#4c4a44", "#76726a", "#a09a8e"] : area === "sinai" ? ["#4e3a30", "#7a6050", "#a8907a"] : ["#6a5a44", "#9a8a6c", "#d0c4a4"]),
       broto: rgb(area === "egito" ? "#6f7a3a" : c.escuro),
     };
     cachePaletas[area] = p;
@@ -879,6 +1050,8 @@
     const ONDA = areia ? campo(L, 8, W0, H0, (x, y) => ruido(x / 46, y / 46, s + 16) * 26) : null;
     const FORTE = areia ? campo(L, 8, W0, H0, (x, y) => ruido(x / 70, y / 70, s + 27)) : null;
     const SULCO = egito ? campo(L, 8, W0, H0, (x, y) => ruido(x / 60, y / 60, s) * 6) : null;
+    // onde os motivos se juntam (folhinhas em touceiras, chão calmo entre elas)
+    const TUF = campo(L, 16, W0, H0, (x, y) => ruido(x / 56, y / 56, s + 40));
 
     // 1) classe orgânica de cada px (com 1 px de folga): a amostra deslocada pelo ruído faz a beira irregular
     const KL = L + 2, K = new Uint8Array(KL * KL);
@@ -913,23 +1086,39 @@
       return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
     };
 
+    // Beira da água, dos dois lados, pela "terra" t: a linha da água fica sempre dentro da casa de água (t < 0,5,
+    // com ruído), então a beira nunca é o degrau reto entre duas casas. Da água para a terra: o raso (2 faixas
+    // por cima da água animada), a espuma em px soltos, a fileira escura da areia molhada (a beira definida), a
+    // areia molhada, a areia seca e, na relva, 1 px de relva escura onde ela começa. Devolve true se pintou.
+    const beira = (o, i, t, fino, wx, wy, terra = false) => {
+      const n = fino - 0.5, ts = 0.3 + n * 0.22, seco = 0.66 + n * 0.3;
+      if (terra && t < ts) t = ts; // casa de terra (o Tilemap embaixo não é água): no máximo a fileira escura
+      if (t >= seco + 0.04) return false;
+      if (t >= seco) { if (!relva) return false; put(o, P.chao[1]); TI[i] = 1; return true; }
+      if (t >= ts + 0.2) put(o, P.seca[(fino * 5 + (hash2(wx >> 1, wy >> 1, s + 30) < 0.3 ? 1 : 0)) % 3 | 0]);
+      else if (t >= ts + 0.05) put(o, P.molhada[1]);
+      else if (t >= ts) put(o, P.molhada[0]);
+      else if (t >= ts - 0.045) { if (hash2(wx >> 1, wy, s + 31) < 0.82) putA(o, P.espuma, 0.9); else putA(o, P.raso, 0.45); return true; }
+      else if (t >= ts - 0.1) { putA(o, P.raso, 0.34); return true; }
+      else if (t >= ts - 0.17) { putA(o, P.raso, 0.16); return true; }
+      else return true;
+      BE[i] = 1;
+      return true;
+    };
+
     // 2) cor de cada px
     for (let py = 0; py < L; py++) {
       const wy = H0 + py;
       for (let px = 0; px < L; px++) {
         const wx = W0 + px, o = (py * L + px) * 4, i = py * L + px;
-        const k = kEm(px, py);
+        let k = kEm(px, py);
         const perto = flag(AG, wx, wy), fino = perto || k === TERRA ? ler(FINO, px, py) : 0.5;
         if (k === NADA) {
-          // água: a terra entra uns px na casa (beira orgânica), depois a areia molhada, a espuma e o raso
+          // água: a terra entra uns px na casa (beira orgânica), depois a areia molhada, a espuma e o raso; no canto
+          // de uma casa de água cercada de terra, a linha passa e o chão continua (pinta como chão)
           if (!ehAgua(wx >> 5, wy >> 5)) continue;
-          const lt = terraEm(wx, wy) - (0.5 - (fino - 0.5) * 0.34);
-          if (lt < -0.16) continue;
-          if (lt > 0.09) { put(o, P.seca[(fino * 5 + (hash2(wx >> 1, wy >> 1, s + 30) < 0.3 ? 1 : 0)) % 3 | 0]); BE[i] = 1; }
-          else if (lt > 0) put(o, P.molhada[lt > 0.045 ? 1 : 0]);
-          else if (lt > -0.05) { if (hash2(wx >> 1, wy, s + 31) < 0.8) putA(o, P.espuma, 0.85); }
-          else putA(o, P.raso, lt > -0.09 ? 0.38 : 0.2);
-          continue;
+          if (beira(o, i, terraEm(wx, wy), fino, wx, wy)) continue;
+          k = CHAO;
         }
         let cor = null;
         if (k === RUA) {
@@ -944,7 +1133,7 @@
           if (cor !== P.junta && kEm(px, py) === RUA && (kEm(px + 3, py) === CHAO || kEm(px - 3, py) === CHAO || kEm(px, py + 3) === CHAO || kEm(px, py - 3) === CHAO) && hash2(wx >> 2, wy >> 2, s + 6) < 0.5) cor = P.chao[1];
         } else if (k === TERRA) {
           const n = ler(TOM, px, py) * 0.7 + fino * 0.3;
-          let t = n < 0.4 ? 1 : n < 0.66 ? 2 : 3;
+          let t = n < 0.3 ? 1 : n < 0.72 ? 2 : 3; // quase toda no tom de base, manchas menores clara e escura
           // beira: a fileira de fora escura (com pontas de relva por cima) e a segunda um tom abaixo
           const c1 = kEm(px + 1, py) === CHAO || kEm(px - 1, py) === CHAO || kEm(px, py + 1) === CHAO || kEm(px, py - 1) === CHAO;
           if (c1) {
@@ -955,9 +1144,9 @@
         } else {
           // relva ou areia: 3 tons em manchas grandes de beira nítida; nas manchas, um tom abaixo
           const n = ler(TOM, px, py);
-          let t = n < 0.33 ? 2 : n < 0.66 ? 3 : 4;
+          let t = n < 0.5 ? 3 : 4; // 2 tons em manchas grandes (+ o da mancha): paleta curta
           const mn = ler(MAN, px, py);
-          if (!egito && mn > 0.6) t--;
+          if (!egito && mn > 0.6) t = 2;
           if (egito && mn > 0.58) {
             // campos de plantio do Egito: sulcos paralelos
             const sulco = (wy + Math.round(ler(SULCO, px, py))) % 8;
@@ -975,11 +1164,7 @@
           if (g > 0.5) { const tg = n < 0.45 ? 2 : 3; put(o, P.gasto[g > 0.535 ? tg : 1]); BE[i] = 3; TI[i] = -1; continue; }
           // beira da água do lado da terra: areia seca
           const lt = perto ? terraEm(wx, wy) : 1;
-          if (lt < 1) {
-            const lim = 0.5 - (fino - 0.5) * 0.34;
-            if (lt < lim) { put(o, P.molhada[1]); BE[i] = 1; continue; }
-            if (lt < lim + 0.3) { put(o, P.seca[(fino * 5) % 3 | 0]); BE[i] = 1; continue; }
-          }
+          if (lt < 1 && beira(o, i, lt, fino, wx, wy, true)) continue;
           cor = P.chao[t]; TI[i] = t;
         }
         put(o, cor);
@@ -992,10 +1177,13 @@
     const folha = (x, y, d) => { const t = tomEm(x, y); if (t >= 0) pinta(x, y, P.chao[Math.max(0, Math.min(6, t + d * 2))]); };
     const passo = relva ? 5 : 7;
     for (let gy = 0; gy < L; gy += passo) for (let gx = (gy / passo) & 1 ? 2 : 0; gx < L; gx += passo) {
-      const wx = W0 + gx, wy = H0 + gy, h = hash2(wx, wy, s + 20);
+      const wx = W0 + gx, wy = H0 + gy;
       const x = gx + Math.floor(hash2(wx, wy, s + 21) * (passo - 2)), y = gy + Math.floor(hash2(wx, wy, s + 22) * (passo - 2)) + 2;
       const t = tomEm(x, y);
       if (t < 0 || tomEm(x + 1, y) < 0 || tomEm(x, y - 2) < 0) continue;
+      // touceira: perto do miolo do campo TUF os motivos ficam densos; longe, raros
+      const m = Math.max(0.18, Math.min(1.25, (ler(TUF, Math.min(L - 1, x), Math.min(L - 1, y)) - 0.28) * 2.6));
+      const h = hash2(wx, wy, s + 20) / m;
       if (relva) {
         if (h < 0.34) { folha(x, y - 1, +1); folha(x, y, -1); } // folhinha: ponta clara, pé escuro
         else if (h < 0.56) { folha(x, y - 1, +1); folha(x + 1, y - 2, +1); folha(x, y, -1); folha(x + 1, y - 1, -1); } // tufo de 2
@@ -1012,14 +1200,137 @@
       const x = gx + Math.floor(hash2(wx, wy, s + 24) * 7), y = gy + Math.floor(hash2(wx, wy, s + 25) * 7);
       if (x + 2 >= L || y + 1 >= L) continue;
       const be = BE[y * L + x], t = TI[y * L + x];
-      const chance = be === 1 ? 0.5 : be === 2 ? 0.16 : t >= 0 ? (areia ? 0.08 : 0.04) : 0;
+      const chance = be === 1 ? 0.5 : be === 2 ? 0.16 : t >= 0 ? (areia ? 0.06 : 0.012) : 0;
       if (h > chance || (be !== BE[y * L + x + 2] && t !== TI[y * L + x + 2])) continue;
-      const c = P.seixo, grande = hash2(wx, wy, s + 26) < 0.4;
+      const c = be ? P.seixo : P.seixoChao, grande = hash2(wx, wy, s + 26) < 0.4;
       pinta(x, y, c[2]); pinta(x + 1, y, c[1]); pinta(x, y + 1, c[1]); pinta(x + 1, y + 1, c[0]);
       if (grande) { pinta(x + 2, y, c[1]); pinta(x + 2, y + 1, c[0]); pinta(x + 1, y - 1, c[2]); }
     }
+    // 4) vegetação rasteira em moitas (não bloqueia)
+    const veg = DADOS_MAPAS[area] && DADOS_MAPAS[area].vegetacao;
+    if (veg) pintarMoitas(area, veg, { W0, H0, L, put, celula, ehAgua, terraEm, s, P });
     return tela;
   }
+
+  // Moitas de um pedaço: centros numa grade de PASSO_MOITA px (deslocados por sorteio), com a chance de
+  // vegetacao.densidade modulada por um ruído largo (trechos mais cheios e trechos limpos); cada moita escolhe um
+  // tipo pelo peso e junta 2 a 6 peças em volta do centro, pintadas de cima para baixo. Na beira da água, o tipo
+  // de vegetacao.beira (juncos, papiro, algas) entre a espuma e a areia seca.
+  const PASSO_MOITA = 44, FOLGA_MOITA = 26, PASSO_BEIRA = 14;
+  function pintarMoitas(area, veg, c) {
+    const { W0, H0, L, put, celula, ehAgua, terraEm, s, P } = c;
+    const T = tonsMoita(area), proib = casasSemVegetacao(area), mapa = mapas[area], piso = pisos[area];
+    const { gasto } = classesDaArea(area);
+    const pt = (x, y, cor) => { x -= W0; y -= H0; if (x >= 0 && y >= 0 && x < L && y < L) put((y * L + x) * 4, cor); };
+    const sombra = P.chao[0];
+    const casaOk = (cx, cy, bloco) => {
+      if (celula(cx, cy) !== CHAO || proib.has(cx + "," + cy)) return false;
+      if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return true; // orla, fora do mapa
+      if (piso[cy][cx] !== PISO.CHAO || gasto[cy * COLS + cx] > 0.45) return false;
+      return bloco || !mapa[cy][cx];
+    };
+    const semAgua = (cx, cy) => { for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (ehAgua(cx + i, cy + j)) return false; return true; };
+    // a peça fica a 9 px de qualquer casa que não seja chão (a beira orgânica das estradas chega a 9 px)
+    const pontoOk = (wx, wy, bloco) => casaOk(wx >> 5, wy >> 5, bloco) && semAgua(wx >> 5, wy >> 5) &&
+      celula((wx - 9) >> 5, (wy - 9) >> 5) === CHAO && celula((wx + 9) >> 5, (wy - 9) >> 5) === CHAO &&
+      celula((wx - 9) >> 5, (wy + 4) >> 5) === CHAO && celula((wx + 9) >> 5, (wy + 4) >> 5) === CHAO;
+    const tipos = Object.entries(veg.moitas || {}).filter(([t]) => PECAS_MOITA[t] && (t !== "flor" || T.flores.length));
+    const escolher = (r, bonusFlor) => {
+      const total = tipos.reduce((a, [t, p]) => a + p * (t === "flor" ? bonusFlor : 1), 0);
+      let x = r * total;
+      for (const [t, p] of tipos) { x -= p * (t === "flor" ? bonusFlor : 1); if (x <= 0) return t; }
+      return tipos.length ? tipos[tipos.length - 1][0] : null;
+    };
+    const lista = [];
+    const gx0 = Math.floor((W0 - FOLGA_MOITA) / PASSO_MOITA), gx1 = Math.floor((W0 + L + FOLGA_MOITA) / PASSO_MOITA);
+    const gy0 = Math.floor((H0 - FOLGA_MOITA) / PASSO_MOITA), gy1 = Math.floor((H0 + L + FOLGA_MOITA) / PASSO_MOITA);
+    if (tipos.length) for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
+      const cx = gx * PASSO_MOITA + Math.floor(hash2(gx, gy, s + 71) * (PASSO_MOITA - 10));
+      const cy = gy * PASSO_MOITA + Math.floor(hash2(gx, gy, s + 72) * (PASSO_MOITA - 10));
+      const campoV = ruido(cx / 170, cy / 170, s + 73);
+      if (hash2(gx, gy, s + 70) > (veg.densidade || 0) * Math.max(0, campoV * 1.8 - 0.35)) continue;
+      const man = ruido(cx / 140, cy / 140, s + 14) * 0.72 + ruido(cx / 31, cy / 31, s + 15) * 0.28;
+      const tipo = escolher(hash2(gx, gy, s + 74), man > 0.6 ? 3 : 1);
+      if (tipo) PECAS_MOITA[tipo](lista, cx, cy, hash2(gx, gy, s + 75), (k) => hash2(cx + k * 17, cy - k * 13, s + 76), T);
+    }
+    // de cima para baixo: a peça mais ao sul fica por cima
+    lista.sort((a, b) => a[2] - b[2] || a[1] - b[1]);
+    for (const [nome, x, y, h, ...extra] of lista) {
+      const bloco = nome === "tufo" || nome === "seixo" || nome === "pedra";
+      if (pontoOk(x, y, bloco)) PECAS[nome](pt, x, y, h, T, ...(nome === "arbusto" || nome === "pedra" ? [sombra, ...extra] : extra));
+    }
+    // beira da água
+    for (const [tipoB, densB] of Object.entries(veg.beira || {})) {
+      if (!densB) continue;
+      const bx0 = Math.floor((W0 - FOLGA_MOITA) / PASSO_BEIRA), bx1 = Math.floor((W0 + L + FOLGA_MOITA) / PASSO_BEIRA);
+      const by0 = Math.floor((H0 - FOLGA_MOITA) / PASSO_BEIRA), by1 = Math.floor((H0 + L + FOLGA_MOITA) / PASSO_BEIRA);
+      const pecas = [];
+      for (let gy = by0; gy <= by1; gy++) for (let gx = bx0; gx <= bx1; gx++) {
+        const wx = gx * PASSO_BEIRA + Math.floor(hash2(gx, gy, s + 82) * 8), wy = gy * PASSO_BEIRA + Math.floor(hash2(gx, gy, s + 83) * 8);
+        const cx = wx >> 5, cy = wy >> 5;
+        if (semAgua(cx, cy) || proib.has(cx + "," + cy) || (!ehAgua(cx, cy) && celula(cx, cy) !== CHAO)) continue;
+        const t = terraEm(wx, wy), ts = 0.3 + (ruido(wx / 9, wy / 9, s + 19) - 0.5) * 0.22;
+        if (t < ts - 0.07 || t > ts + 0.24) continue;
+        if (hash2(gx, gy, s + 80) > densB * Math.max(0, ruido(wx / 90, wy / 90, s + 81) * 1.7 - 0.25)) continue;
+        pecas.push([wx, wy, hash2(gx, gy, s + 84)]);
+      }
+      pecas.sort((a, b) => a[1] - b[1]);
+      for (const [wx, wy, h] of pecas) {
+        if (tipoB === "alga") PECAS.alga(pt, wx, wy, h, T);
+        else PECAS.junco(pt, wx, wy, h, T, tipoB === "papiro");
+      }
+    }
+  }
+  // Composição de cada moita: põe na lista [peça, x, y, h, ...] as peças em volta do centro (cx, cy).
+  // r(k) é o sorteio fixo da k-ésima peça.
+  const espalhar = (r, cx, cy, k, raio) => [cx + Math.round((r(k) - 0.5) * 2 * raio), cy + Math.round((r(k + 50) - 0.5) * raio)];
+  const PECAS_MOITA = {
+    capim(l, cx, cy, h, r) {
+      const n = 2 + Math.floor(h * 3);
+      for (let k = 0; k < n; k++) { const [x, y] = espalhar(r, cx, cy, k, 9); l.push(["tufo", x, y, r(k + 100), k === 0 && h > 0.45]); }
+    },
+    flor(l, cx, cy, h, r, T) {
+      const f = T.flores[Math.floor(h * T.flores.length)], f2 = T.flores[Math.floor(r(9) * T.flores.length)];
+      const n = 3 + Math.floor(h * 4);
+      for (let k = 0; k < n; k++) { const [x, y] = espalhar(r, cx, cy, k, 7); l.push(["flor", x, y, r(k + 100), k % 3 === 2 ? f2 : f]); }
+      const [x, y] = espalhar(r, cx, cy, 20, 9);
+      l.push(["tufo", x, y, r(120), false]);
+    },
+    arbusto(l, cx, cy, h, r, T) {
+      l.push(["arbusto", cx, cy, h]);
+      l.push(["tufo", cx + 6 + Math.round(r(1) * 3), cy + 1, r(101), false]);
+      if (r(2) > 0.5) l.push(["tufo", cx - 7 - Math.round(r(3) * 3), cy + 2, r(102), false]);
+      if (h > 0.55 && T.flores.length) { const f = T.flores[Math.floor(r(4) * T.flores.length)]; l.push(["flor", cx - 4, cy + 3, r(103), f], ["flor", cx - 1, cy + 4, r(104), f]); }
+    },
+    pedra(l, cx, cy, h, r) {
+      l.push(["pedra", cx, cy, h, false]);
+      const n = 1 + Math.floor(h * 2);
+      for (let k = 0; k < n; k++) { const [x, y] = espalhar(r, cx + 4, cy + 3, k, 8); l.push(["seixo", x, y, r(k + 100)]); }
+      if (r(30) > 0.4) l.push(["tufo", cx - 5, cy + 1, r(130), false]);
+    },
+    liquen(l, cx, cy, h, r) {
+      l.push(["pedra", cx, cy, 0.5 + h * 0.5, true]);
+      const [x, y] = espalhar(r, cx, cy + 3, 1, 8);
+      l.push(["seixo", x, y, r(101)]);
+    },
+    seixos(l, cx, cy, h, r) {
+      const n = 3 + Math.floor(h * 3);
+      for (let k = 0; k < n; k++) { const [x, y] = espalhar(r, cx, cy, k, 9); l.push(["seixo", x, y, r(k + 100)]); }
+    },
+    concha(l, cx, cy, h, r) {
+      const n = 2 + Math.floor(h * 3);
+      for (let k = 0; k < n; k++) { const [x, y] = espalhar(r, cx, cy, k, 10); l.push(["concha", x, y, r(k + 100)]); }
+      if (h > 0.5) { const [x, y] = espalhar(r, cx, cy, 20, 8); l.push(["alga", x, y, r(120)]); }
+    },
+    caco(l, cx, cy, h, r) {
+      const n = 2 + Math.floor(h * 2);
+      for (let k = 0; k < n; k++) { const [x, y] = espalhar(r, cx, cy, k, 8); l.push(["caco", x, y, r(k + 100)]); }
+    },
+    broto(l, cx, cy, h, r) {
+      const n = 3 + Math.floor(h * 4);
+      for (let k = 0; k < n; k++) { const [x, y] = espalhar(r, cx, cy, k, 10); l.push(["broto", x, y, r(k + 100)]); }
+    },
+  };
 
   function texturaPedacoChao(scene, area, bx, by) {
     const chave = `chao_${area}_${bx}_${by}`;
