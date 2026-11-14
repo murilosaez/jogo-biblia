@@ -614,8 +614,9 @@ Personagem, com a barra na cor da faixa. Números em REGRAS_VIGOR (dados/mundo.j
   mensagem do abate mostra a parte do vigor: "+44 XP (4 do vigor)" ou "+20 XP (exausto: 50% do XP)".
 
 Analisador de caçada
-Painel "Caçada" (coluna da esquerda no largo; aba ou folha Batalha no médio e no celular). Tecla X mostra ou
-oculta; a escolha fica no navegador.
+Janela "Caçada" (coluna da esquerda no largo; coluna da direita, minimizada no começo, no médio; folha
+Batalha no celular). Tecla X minimiza ou restaura (e reabre a janela, se ela estiver fechada); a escolha fica
+no navegador.
 - O relógio começa no seu primeiro golpe e corre até você zerar (botão Zerar) ou recarregar a página;
   trocar de área, viajar ou morrer não zeram.
 - Por sessão e por hora: XP (dos abates), saque (moedas recolhidas + valor de venda dos itens recolhidos,
