@@ -227,7 +227,8 @@ Interface e visual
   Equipamento (boneco clássico: colar, cabeça e mochila em cima; mão da arma, armadura e mão do
   escudo; anel, pernas e munição; pés embaixo; o espaço vazio mostra o contorno do que vai nele e a dica dá os
   efeitos; ao lado, a figura com o que está vestido, o jeito de atacar da mão e o ataque e a defesa),
-  Mochila, Bolsa, Batalha (inimigos da área, alvo destacado; o glifo de contagem marca quem conta
+  Mochila, Bolsa, Batalha (só as criaturas a até 8 casas, da mais perto para a mais longe; o alvo e as que
+  vêm atrás de você como reforço ficam mesmo de longe; alvo destacado; o glifo de contagem marca quem conta
   para uma caçada ativa), Caçada (analisador, recolhível) e Mapa (o minimapa). O nome da região fica no topo, ao lado do nome do jogo, e o quadro do alvo (retrato, vida e
   a recarga do autoataque) no canto de cima do mundo (no médio e no celular, no HUD).
 - Janelas laterais (largo e médio), como nos MMORPGs clássicos: o cabeçalho de cada janela é a alça.
@@ -366,7 +367,7 @@ Criaturas (33 espécies e 6 raros nomeados; cada uma com sprite próprio)
   à distância — flecha, pedra ou feitiço de até 5 casas com o caminho livre; mantém distância: mais perto que
     3 casas, recua entre um disparo e outro;
   curandeiro — a cada 4 s cura 20% da vida da criatura mais ferida (menor fração de vida, abaixo de 75%) a
-    até 6 casas; aparece primeiro na lista de Batalha, com a marca CURA: é a prioridade de alvo;
+    até 6 casas; aparece na lista de Batalha com a marca CURA: é a prioridade de alvo;
   investida — entre 2 e 4 casas, marca no chão (em vermelho) a linha até onde você está e, 1 s depois, avança
     por ela batendo 1,6×; saia da área marcada e ela erra; recarga de 7 s;
   fúria — com 30% da vida, bate 1,4× mais forte e 25% mais rápido.

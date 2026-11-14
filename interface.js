@@ -887,15 +887,15 @@
   }
   const alvoAtual = () => (window.Jogo && typeof Jogo.alvoAtual === "function" ? Jogo.alvoAtual() : window.gameScene?.alvoId) || null;
 
-  function inimigosVivos(p) {
+  // Só as criaturas por perto, da mais perto para a mais longe (listaDeBatalha, logica.js; raio em dados/mundo.js).
+  function inimigosPorPerto(p, alvo) {
     if (typeof inimigos === "undefined" || typeof Mundo === "undefined") return [];
-    return Object.values(inimigos).filter((e) => e.area === p.area && Mundo.obterVidaInimigo(ID, e.id) > 0);
+    return listaDeBatalha(p, Object.values(inimigos), { alvoId: alvo, vivo: (e) => Mundo.obterVidaInimigo(ID, e.id) > 0 });
   }
 
   function atualizarBatalha(p) {
     const alvo = alvoAtual();
-    // Prioridade de alvo: curandeiros primeiro na lista, depois a ordem de sempre.
-    const vivos = inimigosVivos(p).sort((a, b) => (ficha(b.id)?.curandeiro ? 1 : 0) - (ficha(a.id)?.curandeiro ? 1 : 0));
+    const vivos = inimigosPorPerto(p, alvo);
     const cacadas = cacadasAtivas(p).map((t) => [t.id, t.progresso, t.estado]);
     const ass = JSON.stringify([alvo, vivos.map((e) => [e.id, Mundo.obterVidaInimigo(ID, e.id), ficha(e.id)?.nome]), cacadas]);
     if (ass === assinaturaBatalha) return;
@@ -2596,6 +2596,7 @@
       ["Clique no chão", "Anda até lá (contorna obstáculos); num personagem ou saque, vai até ele"],
       ["Clique no minimapa", "Anda até aquele ponto, por longe que seja (a cruz de ouro marca o destino)"],
       ["Clique no inimigo", "Escolhe o alvo, vai até ele e ataca sozinho a cada 2 s"],
+      ["Janela Batalha", `As criaturas a até ${typeof REGRAS_BATALHA !== "undefined" ? REGRAS_BATALHA.raio : 8} casas, da mais perto para a mais longe; clique numa para escolher o alvo`],
       [k("Espaço"), "Ataque com o que está na mão da arma: golpe (também na diagonal) ou, com arco ou funda, tiro"],
       [k("R"), "Ataque à distância (arco com flechas ou funda na mão); ao lado do alvo, golpeia"],
       [k("H"), "Usar poção de vida"],

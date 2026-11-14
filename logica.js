@@ -874,6 +874,18 @@ function distanciaChebyshev(a, b) {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
+// Lista da janela Batalha (pura): das criaturas dadas, as vivas na área do jogador a até REGRAS_BATALHA.raio
+// casas, mais o alvo atual e as chamadas como reforço (chamadoAte > agora), mesmo longe; ordenadas da mais perto
+// para a mais longe (empate: a mais perto em linha reta, depois o id, para a ordem não pular à toa).
+function listaDeBatalha(p, criaturas, { alvoId = null, agora = Date.now(), vivo = () => true } = {}) {
+  const raio = REGRAS_BATALHA.raio;
+  const reta = (e) => (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
+  return (criaturas || [])
+    .filter((e) => e && e.area === p.area && vivo(e)
+      && (distanciaChebyshev(p, e) <= raio || e.id === alvoId || (e.chamadoAte || 0) > agora))
+    .sort((a, b) => distanciaChebyshev(p, a) - distanciaChebyshev(p, b) || reta(a) - reta(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
 function dentroDoMapa(x, y) {
   return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < COLS && y < ROWS;
 }

@@ -7298,6 +7298,44 @@ teste("80. revisão de uso: jogar longe cai ao lado e avisa; equipar sem erro de
   assert.match(largar("grevas_bronze", 1).mensagem, /^Tire do corpo antes de jogar no chão: guarde Grevas de bronze na mochila\.$/);
 });
 
+teste("81. janela Batalha: só as criaturas por perto, da mais perto para a mais longe", () => {
+  const j = carregarJogo();
+  const lista = j.g("listaDeBatalha"), raio = j.g("REGRAS_BATALHA").raio;
+  igual(raio, 8);
+  const p = { area: "canaan", x: 20, y: 20 };
+  const c = (id, x, y, extra = {}) => ({ id, area: "canaan", x, y, ...extra });
+  const criaturas = [
+    c("longe", 20 + raio + 1, 20),          // fora do raio
+    c("borda", 20 - raio, 20 + raio),       // exatamente no raio (diagonal conta como reta)
+    c("colado", 21, 21),                    // vizinha
+    c("tres_reto", 23, 20),                 // 3 casas em linha reta
+    c("tres_diag", 23, 23),                 // 3 casas na diagonal: mesma distância, mais longe em linha reta
+    c("outra_area", 21, 20, { area: "galileia" }),
+    c("morta", 22, 20),
+    c("alvo_longe", 50, 50),
+    c("reforco", 60, 20, { chamadoAte: 2000 }),
+    c("reforco_vencido", 61, 20, { chamadoAte: 500 }),
+  ];
+  const ids = (r) => r.map((e) => e.id);
+  const vivo = (e) => e.id !== "morta";
+  // agora 3000: o chamado do reforço (até 2000) já venceu.
+  igual(ids(lista(p, criaturas, { agora: 3000, vivo })), ["colado", "tres_reto", "tres_diag", "borda"], "raio e ordem por distância");
+  igual(ids(lista(p, criaturas, { agora: 3000, vivo: () => true })).slice(0, 2), ["colado", "morta"], "morta só sai pelo vivo");
+  // O alvo atual e quem vem como reforço (chamado ainda valendo) ficam na lista mesmo longe, no fim, pela distância.
+  igual(ids(lista(p, criaturas, { agora: 1000, vivo })), ["colado", "tres_reto", "tres_diag", "borda", "reforco"]);
+  igual(ids(lista(p, criaturas, { alvoId: "alvo_longe", agora: 1000, vivo })).slice(-2), ["alvo_longe", "reforco"]);
+  // A ordem acompanha o movimento: quem chega mais perto sobe.
+  const movida = criaturas.map((e) => (e.id === "borda" ? { ...e, x: 20, y: 19 } : e));
+  igual(ids(lista(p, movida, { agora: 3000, vivo })), ["borda", "colado", "tres_reto", "tres_diag"]);
+  // Sem criaturas, sem erro.
+  igual(lista(p, [], {}), []);
+  igual(lista(p, undefined, {}), []);
+  // A janela usa esta lista (e não mais a área inteira com curandeiros primeiro).
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  assert.match(ui, /listaDeBatalha\(p, Object\.values\(inimigos\)/);
+  assert.doesNotMatch(ui, /curandeiro \? 1 : 0\) - \(ficha\(a\.id\)\?\.curandeiro/);
+});
+
 const filtro = process.argv[2];
 const selecionados = filtro ? testes.filter((t) => t.nome.startsWith(filtro)) : testes;
 let falhas = 0;
