@@ -270,7 +270,7 @@ Interface e visual
   palavras-chave, do tamanho do dedo) só abre quando o console não está à vista: no celular com a folha
   Conversa fechada, ou com o console recolhido. Clique na caixa ou aperte F (perto do personagem) para
   completar o texto; de novo, para fechar. F só volta a falar com ele depois de a caixa fechar.
-- Layouts: largo (1280 px ou mais, janelas dos dois lados; com até 940 px de altura o minimapa fica sobre
+- Layouts: largo (1280 px ou mais, janelas dos dois lados; com até 1000 px de altura o minimapa fica sobre
   o mundo, no canto de cima), médio (uma coluna de janelas à direita, Personagem e Caçada minimizadas no
   começo, vida/fé/XP no HUD e o minimapa sobre o mundo; pode-se abrir a coluna da esquerda arrastando uma
   janela para lá) e celular (até 760 px, painéis em folhas pela barra inferior). Foco visível no teclado, rótulos de

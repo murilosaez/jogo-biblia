@@ -2710,9 +2710,10 @@
     registro: { titulo: "Conversa e registro", paineis: ["pRegistro"] },
   };
   const calcModo = () => (mm("(min-width: 1280px)") ? "largo" : mm("(max-width: 760px)") ? "estreito" : "medio");
-  // Largo em tela baixa (até 940 px de altura, ex.: 1600×900, 1366×768): o minimapa vai para cima do mundo,
-  // como no médio, e as colunas ficam com as outras janelas inteiras.
-  const TELA_BAIXA = "(max-height: 940px)";
+  // Largo em tela baixa (até 1000 px de altura, ex.: 1600×900, 1366×768 e o 1920×969 do navegador num monitor
+  // 1080p): o minimapa vai para cima do mundo, como no médio, e a coluna direita fica com Personagem,
+  // Equipamento e a Batalha à vista (colunasPeloEspaco minimiza as janelas secundárias que não couberem).
+  const TELA_BAIXA = "(max-height: 1000px)";
   // Largo bem baixo (até 800 px de altura, ex.: 1366×768, 1280×720, ou 1920×1080 a 125% com a barra do
   // navegador): o layout padrão é outro (LAYOUT_PADRAO.baixo) e fica guardado à parte.
   const TELA_MUITO_BAIXA = "(max-height: 800px)";
@@ -2997,7 +2998,7 @@
     const falta = batNaColuna ? Math.max(0, ALTURA_MIN_BATALHA - bat.offsetHeight) : 0;
     if (sobra + falta <= 1) return;
     const altura = corpo.offsetHeight;
-    if (abrindo && batNaColuna && altura - sobra < ALTURA_MIN_FICHA) {
+    if (abrindo && batNaColuna && altura - sobra - falta < ALTURA_MIN_FICHA) {
       const eq = painel("pEquip");
       if (eq && eq.closest(".coluna") === col && !janelaMinimizada("pEquip")) {
         marcarEm(layout().min, "pEquip", true);
@@ -3011,8 +3012,9 @@
     corpo.style.maxHeight = `${Math.max(ALTURA_MIN_FICHA, alvo)}px`;
     corpo.style.overflowY = "auto";
   }
-  // Primeira vez no largo (nada guardado no navegador): se uma coluna não couber, as janelas secundárias
-  // começam minimizadas, nesta ordem (Caçada, depois Bolsa; as poções também estão nos atalhos), até caber.
+  // Primeira vez no largo (nada guardado no navegador): se uma coluna não couber (ou apertar a Batalha abaixo de
+  // ALTURA_MIN_BATALHA), as janelas secundárias começam minimizadas, nesta ordem (Caçada, depois Bolsa; as
+  // poções também estão nos atalhos), até caber.
   // Ex.: 1600 × 900 e 1920 × 1080, onde a Caçada ficava cortada no pé da coluna esquerda.
   let colunasMedidas = false;
   function colunasPeloEspaco(forcar = false) {
@@ -3021,8 +3023,11 @@
     if (modo !== "largo" || (layoutGuardado && !forcar)) return;
     let mudou = false;
     for (const col of [$("#colEsq"), $("#colDir")]) {
+      const bat = painel("pBatalha");
+      const aperta = () => col.scrollHeight > col.clientHeight + 1
+        || (bat && bat.closest(".coluna") === col && bat.dataset.min !== "true" && bat.offsetHeight < ALTURA_MIN_BATALHA);
       for (const id of ["pAnalisador", "pBolsa"]) {
-        if (!col || col.scrollHeight <= col.clientHeight + 1) break;
+        if (!col || !aperta()) break;
         const el = painel(id);
         if (!el || el.closest(".coluna") !== col || janelaMinimizada(id) || janelaFechada(id)) continue;
         marcarEm(layout().min, id, true);
