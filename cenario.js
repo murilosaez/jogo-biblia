@@ -1144,9 +1144,9 @@
         } else {
           // relva ou areia: 3 tons em manchas grandes de beira nítida; nas manchas, um tom abaixo
           const n = ler(TOM, px, py);
-          let t = n < 0.5 ? 3 : 4; // 2 tons em manchas grandes (+ o da mancha): paleta curta
+          let t = n < 0.6 ? 3 : 4; // quase todo no tom de base, manchas claras e (mancha) escuras: paleta curta
           const mn = ler(MAN, px, py);
-          if (!egito && mn > 0.6) t = 2;
+          if (!egito && mn > 0.66) t = 2;
           if (egito && mn > 0.58) {
             // campos de plantio do Egito: sulcos paralelos
             const sulco = (wy + Math.round(ler(SULCO, px, py))) % 8;

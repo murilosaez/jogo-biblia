@@ -3343,6 +3343,162 @@
       desenhar(g, v) { desenhar(g, v, alto ? 24 : 16); },
     });
   }
+  // -------------------------------------------------------------------
+  // Rochas facetadas em px de arte: o contorno é um polígono irregular (7 a 10 lados sorteados em volta de uma
+  // elipse, a base reta no chão) e cada lado vira uma face que sobe até o pico, um pouco à esquerda e acima do
+  // meio. A luz de cada face (de cima e da esquerda) mistura a direção da face com o volume da pedra e cai em 4
+  // tons; as cristas viradas para a luz ganham 1 px de realce e as dobras viradas para baixo, 1 px escuro.
+  // Material: estratos (arenito), pintas (granito), musgo, colunas (basalto) e rachaduras. O contorno e a sombra
+  // no chão (para a direita) completam a peça. tons: [sombra funda, sombra, base, luz, realce].
+  // -------------------------------------------------------------------
+  function rochaArte(g, cx, B, rx, ry, tons, sem, o = {}) {
+    const N = o.lados || 8, angs = [], raios = [];
+    for (let k = 0; k < N; k++) {
+      angs.push(-Math.PI + ((k + 0.25 + hash2(k, sem, 1) * 0.5) * 2 * Math.PI) / N);
+      raios.push(0.84 + hash2(k, sem, 2) * 0.24);
+    }
+    const setor = (a) => { let k = N - 1; for (let i = 0; i < N; i++) if (a >= angs[i]) k = i; return a < angs[0] ? N - 1 : k; };
+    const raio = (a) => {
+      const k = setor(a), k2 = (k + 1) % N;
+      let a0 = angs[k], a1 = angs[k2];
+      if (a1 <= a0) a1 += 2 * Math.PI;
+      let aa = a; if (aa < a0) aa += 2 * Math.PI;
+      const t = (aa - a0) / (a1 - a0);
+      // lado reto entre dois vértices: raio do polígono na direção a (aproximação pela corda)
+      const r0 = raios[k], r1 = raios[k2], meio = Math.cos(((a1 - a0) / 2));
+      return ((r0 * (1 - t) + r1 * t) * meio) / Math.cos(aa - (a0 + a1) / 2);
+    };
+    const cy = B - ry * (o.alto || 0.92), pkx = -0.22, pky = -0.42;
+    const W = g.w, H = g.h, mapa = new Int8Array(W * H).fill(-1), face = new Int8Array(W * H).fill(-1);
+    const nxy = (X, Y) => [(X + 0.5 - cx) / rx, (Y + 0.5 - cy) / ry];
+    for (let Y = Math.max(0, Math.floor(cy - ry * 1.2)); Y <= Math.min(H - 1, B); Y++)
+      for (let X = Math.max(0, Math.floor(cx - rx * 1.2)); X <= Math.min(W - 1, Math.ceil(cx + rx * 1.2)); X++) {
+        const [nx, ny] = nxy(X, Y), d = Math.hypot(nx, ny);
+        if (d > raio(Math.atan2(ny, nx))) continue;
+        const k = setor(Math.atan2(ny - pky, nx - pkx)), am = (angs[k] + angs[(k + 1) % N] + (k === N - 1 ? 2 * Math.PI : 0)) / 2;
+        const fb = -(0.62 * Math.cos(am) + 0.78 * Math.sin(am)), sb = -(0.6 * nx + 0.8 * ny) * 0.8 + (1 - d) * 0.35;
+        const l = 0.5 * fb + 0.5 * sb + (o.luz || 0) - (ny > 0.55 ? 0.25 : 0);
+        let tom = l > 0.42 ? 3 : l > 0.02 ? 2 : l > -0.42 ? 1 : 0;
+        if (ny < -0.4 && l > -0.35) tom = Math.max(tom, 3); // o plano de cima, sempre na luz
+        mapa[Y * W + X] = tom;
+        face[Y * W + X] = k;
+      }
+    const em = (X, Y) => (X < 0 || Y < 0 || X >= W || Y >= H ? -1 : mapa[Y * W + X]);
+    const fc = (X, Y) => (X < 0 || Y < 0 || X >= W || Y >= H ? -1 : face[Y * W + X]);
+    const t = mapa.slice();
+    for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+      const v = em(X, Y);
+      if (v < 0) continue;
+      const i = Y * W + X, [nx, ny] = nxy(X, Y);
+      // material
+      if (o.estratos && ny > -0.5 && (Y + Math.round(nx * 2)) % 4 === 0) t[i] = Math.max(0, v - 1);
+      if (o.colunas && ny > -0.35 && (X + (Y >> 3)) % 4 === 0) t[i] = Math.max(0, v - 1);
+      if (o.pintas && hash2(X, Y, sem + 3) < 0.1) t[i] = hash2(X, Y, sem + 4) < 0.5 ? Math.max(0, v - 1) : Math.min(4, v + 1);
+      // cristas e dobras entre faces (só na metade de cima, onde se vê o volume)
+      const kR = fc(X + 1, Y), kB = fc(X, Y + 1);
+      if (ny < 0.35 && ((kR >= 0 && kR !== face[i]) || (kB >= 0 && kB !== face[i]))) {
+        const outro = kR >= 0 && kR !== face[i] ? em(X + 1, Y) : em(X, Y + 1);
+        t[i] = v >= 2 && outro >= 2 ? 4 : Math.max(0, Math.min(v, outro) - 1);
+      }
+      // silhueta: realce em cima e à esquerda, sombra funda embaixo e à direita
+      if (em(X, Y - 1) < 0 && v >= 2) t[i] = 4;
+      else if (em(X - 1, Y) < 0 && v >= 2 && ny < 0.3) t[i] = Math.max(t[i], 3);
+      else if (em(X + 1, Y) < 0 || em(X, Y + 1) < 0) t[i] = Math.min(t[i], 0);
+      if (o.musgo && ny < -0.25 && v >= 2 && hash2(X >> 1, Y >> 1, sem + 5) < 0.42) t[i] = 5 + (hash2(X, Y, sem + 6) < 0.5 ? 0 : 1);
+    }
+    // rachaduras: passeios curtos de 1 px na face de sombra
+    for (let r = 0; r < (o.rachas ?? 2); r++) {
+      let X = Math.round(cx + rx * (0.1 + hash2(r, sem, 7) * 0.5)), Y = Math.round(cy - ry * 0.2 + hash2(sem, r, 8) * ry * 0.6);
+      for (let n = 0; n < 4 + Math.floor(hash2(r, sem, 9) * 4); n++) {
+        if (em(X, Y) >= 1 && em(X + 1, Y) >= 0 && em(X, Y + 1) >= 0) t[Y * W + X] = 0;
+        Y += 1; X += hash2(n, r, sem + 10) < 0.5 ? 1 : 0;
+      }
+    }
+    const musgo = o.corMusgo || ["#4a5a2a", "#6e8a3a"];
+    for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+      const v = t[Y * W + X];
+      if (mapa[Y * W + X] < 0) continue;
+      g.fino(X, Y, v >= 5 ? musgo[v - 5] : tons[v]);
+    }
+  }
+  // Pedra de uma casa (baixa): 1 ou 2 blocos e a sombra para a direita.
+  function pedregulho(chave, variantes, tons, sem0, o = {}) {
+    return obstaculo(chave, false, variantes, (g, v) => {
+      const sem = sem0 + v * 31, B = 31;
+      const [rx, ry, cx] = (o.formas || [[13, 10, 18], [11, 8, 16], [14, 12, 18]])[v % 3];
+      g.sombra((cx + 4) / 2, B / 2, rx / 2 + 1.5, 1.6, "#1c1210", 0.32);
+      if (o.antes) o.antes(g, v, B);
+      if (o.dupla && v === 1) rochaArte(g, cx + rx - 1, B, rx * 0.45, ry * 0.5, tons, sem + 7, { ...o, rachas: 0, lados: 7 });
+      rochaArte(g, cx, B, rx, ry, tons, sem, o);
+      if (o.dupla && v !== 1) rochaArte(g, cx - rx * 0.55, B + 1, rx * 0.42, ry * 0.45, tons, sem + 9, { ...o, rachas: 0, lados: 7, musgo: false });
+    });
+  }
+  // Arbusto de uma casa (bloqueia): galhos curtos no pé e a copa baixa em cachos (Copa, os mesmos 5 tons e o
+  // contorno escuro das árvores), sombra para a direita. o.seco: cachos ralos com os galhos à mostra;
+  // o.flores: [cor, luz] dos pontinhos de flor.
+  function arbustoOb(chave, variantes, tons, sem0, o = {}) {
+    const d = obstaculo(chave, false, variantes, (g, v) => {
+      const sem = sem0 + v * 37, B = 31, W = g.w, cx = W / 2 + (v - 1);
+      g.sombra(cx / 2 + 2.5, B / 2, 8, 1.7, "#1c1210", 0.3);
+      const casca = o.casca || CASCA_ACACIA;
+      for (let k = 0; k < 5; k++) galhoArte(g, cx + (k - 2), B, cx + (k - 2) * 4, B - 9 - (k % 2) * 4, casca, false);
+      const C = new Copa(W, B + 1);
+      const molde = [[cx - 7, B - 11, 7, 6], [cx + 6, B - 12, 7, 6], [cx, B - 17, 8, 6], [cx - 4, B - 6, 7, 4.5], [cx + 5, B - 6, 6, 4]];
+      moldeCopa(C, o.seco ? molde.filter((_, i) => hash2(i, v, sem) > 0.35) : molde, v, sem, { topo: B - 23, base: B, lobos: 7, jitter: 4 });
+      if (o.seco) for (let k = 0; k < 4; k++) galhoArte(g, cx + (k - 1.5) * 3, B - 8, cx + (k - 1.5) * 9, B - 22 + (k % 2) * 3, casca, false);
+      C.pintar(g, tons, sem, 0.5);
+      if (o.flores) for (let k = 0; k < 12; k++) {
+        const X = 4 + Math.floor(hash2(k, v, sem + 20) * (W - 8)), Y = B - 24 + Math.floor(hash2(v, k, sem + 21) * 18);
+        if (C.get(X, Y) >= 2) { g.fino(X, Y, o.flores[0]); if (k % 2) g.fino(X, Y - 1, o.flores[1]); }
+      }
+    });
+    d.contorno = "#1c2414";
+    return d;
+  }
+  // Retama (giesta do deserto): moita de varas finas que sobem em leque, verde-acinzentadas, com as pontas claras,
+  // folhinhas em grupos de 2 px e flores amarelas.
+  function retamaOb(chave, variantes, sem0) {
+    const d = obstaculo(chave, false, variantes, (g, v) => {
+      const sem = sem0 + v * 41, B = 31, cx = g.w / 2 + (v - 1);
+      const c = ["#3e3e20", "#5e5e30", "#7e7e44", "#a0a060"];
+      g.sombra(cx / 2 + 2, B / 2, 7, 1.5, "#1c1210", 0.3);
+      const n = 13 + v * 2;
+      for (let k = 0; k < n; k++) {
+        const a = -Math.PI / 2 + (k / (n - 1) - 0.5) * 2.1 + (hash2(k, v, sem) - 0.5) * 0.25;
+        const L = 13 + Math.floor(hash2(v, k, sem + 1) * 9) - Math.abs(k / (n - 1) - 0.5) * 8;
+        const x0 = cx + Math.round((k / (n - 1) - 0.5) * 6), X1 = x0 + Math.cos(a) * L, Y1 = B + Math.sin(a) * L;
+        linhaPx(g, x0, B, X1, Y1, (X, Y, i) => (i < 3 ? c[0] : i > L - 3 ? c[3] : k % 2 ? c[1] : c[2]));
+        for (let q = 4; q < L - 2; q += 4) {
+          const X = Math.round(x0 + Math.cos(a) * q), Y = Math.round(B + Math.sin(a) * q), lado = k < n / 2 ? -1 : 1;
+          g.fino(X + lado, Y, c[2]); g.fino(X + lado * 2, Y - 1, c[3]);
+        }
+        if (hash2(k, v, sem + 2) < 0.4) { g.fino(Math.round(X1), Math.round(Y1) - 1, "#e8d468"); g.fino(Math.round(X1) + 1, Math.round(Y1), "#b89a3a"); }
+      }
+    });
+    d.contorno = "#2a2a16";
+    return d;
+  }
+  // Coral morto na praia do Mar Vermelho: galhos grossos que se bifurcam (3, 2 e 1 px), com as pontas claras e os
+  // pólipos em pontinhos, sobre uma laje de pedra.
+  function coralOb(chave, variantes, sem0) {
+    return obstaculo(chave, false, variantes, (g, v) => {
+      const sem = sem0 + v * 43, B = 31, cx = g.w / 2 + (v - 1) * 2;
+      const c = ["#5a1e1a", "#8a3a30", "#b8584a", "#d8806a", "#f2ae90"];
+      g.sombra(cx / 2 + 2, B / 2, 8, 1.6, "#1c1210", 0.32);
+      rochaArte(g, cx, B, 9, 3, ["#4a3a30", "#6a5446", "#8a705c", "#a88c74", "#c4a88e"], sem + 5, { lados: 7, rachas: 0 });
+      const galho = (X, Y, ang, L, larg, prof) => {
+        const X1 = X + Math.cos(ang) * L, Y1 = Y + Math.sin(ang) * L;
+        for (let w = 0; w < larg; w++) linhaPx(g, X + w, Y, X1 + w, Y1, (x, y, i) => (w === 0 ? c[Math.min(4, 2 + prof)] : w === larg - 1 ? c[Math.max(0, prof)] : c[1 + Math.min(2, prof)]));
+        if (prof >= 2 || L < 4) { g.fino(Math.round(X1), Math.round(Y1) - 1, c[4]); return; }
+        const abre = 0.45 + hash2(prof, Math.round(X), sem) * 0.35;
+        galho(X1, Y1, ang - abre, L * 0.72, Math.max(1, larg - 1), prof + 1);
+        galho(X1, Y1, ang + abre, L * 0.66, Math.max(1, larg - 1), prof + 1);
+      };
+      galho(cx - 4, B - 4, -Math.PI / 2 - 0.5, 9 + v, 3, 0);
+      galho(cx + 2, B - 4, -Math.PI / 2 + 0.35, 10, 3, 0);
+      if (v !== 1) galho(cx - 1, B - 5, -Math.PI / 2 - 0.05, 7, 2, 1);
+    });
+  }
 
   // -------------------------------------------------------------------
   // Vegetação em escala de MMORPG clássico: a árvore é maior que a casa. A copa transborda para cima (a
@@ -3498,18 +3654,10 @@
     }
     for (let x = 1; x < 17; x++) if (hash2(x, v, 41) < 0.35) g.p(x, b - 12, "#6e8a3a");
   });
-  obstaculo("ob_canaan_rocha", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    rocha(g, 2 + v, b - 9, 13 - v, 10, ["#7c7466", "#a39b8a", "#c8c0ac"], 50 + v);
-    for (let x = 3 + v; x < 9; x++) for (let y = b - 9; y < b - 7; y++) if (g.g(x, y) && hash2(x, y, 51) < 0.7) g.p(x, y, "#6e8a3a");
-  });
+  pedregulho("ob_canaan_rocha", 3, ["#3e3a32", "#5e584c", "#857e6c", "#aaa28e", "#cec6b0"], 50, { musgo: true, dupla: true });
 
   // Deserto
-  obstaculo("ob_deserto_rocha", false, 3, (g, v, b) => {
-    const dim = [[14, 12], [12, 9], [16, 14]][v];
-    g.sombra(10, b, dim[0] / 2 + 1, 1.4);
-    rocha(g, Math.round(9 - dim[0] / 2), b - dim[1] + 1, dim[0], dim[1], ["#6e4228", "#96532f", "#c47a45", "#e0a16a"], 60 + v, { topo: "#edc08a", estratos: true });
-  });
+  pedregulho("ob_deserto_rocha", 3, ["#5a3020", "#86482c", "#b0663c", "#d08a56", "#eab47e"], 60, { estratos: true, dupla: true });
   // Acácia: tronco fino que se abre em três galhos até a copa chata em guarda-chuva (cachos achatados, 8
   // lobos), com as bolinhas amarelas das flores. No Sinai a copa é mais rala e mais seca.
   const MOLDE_ACACIA = [
@@ -3538,15 +3686,7 @@
     });
   }
   acacia("ob_deserto_acacia", ["#30381a", "#4c5426", "#687034", "#888e44", "#aaa862"], 380, false);
-  obstaculo("ob_deserto_retama", false, 2, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    const c = ["#5a5630", "#8c8450", "#a8a068"];
-    for (let i = 0; i < 9; i++) {
-      const x = 4 + i + (i > 4 ? v : 0), alt = 5 + Math.floor(hash2(i, v, 80) * 5);
-      g.lin(x, b, x + (i % 3 === 0 ? -1 : 0), b - alt, i % 2 ? c[1] : c[0]);
-      g.p(x + (i % 3 === 0 ? -1 : 0), b - alt, c[2]);
-    }
-  });
+  retamaOb("ob_deserto_retama", 3, 80);
   obstaculo("ob_deserto_tenda", true, 1, (g, v, b) => {
     g.sombra(11, b, 8, 1.6);
     const c = ["#3a2c24", "#4a3a30", "#6a5646"];
@@ -3573,11 +3713,7 @@
     folhas.forEach(([dx, dy], i) => { g.lin(tx, ty, tx + dx, ty + dy, f[i % 2 ? 1 : 2]); g.lin(tx, ty + 1, tx + dx, ty + dy + 1, f[0]); });
     g.p(tx, ty + 1, "#8e4a2a"); g.p(tx + 1, ty + 2, "#8e4a2a");
   });
-  obstaculo("ob_mar_rochedo", false, 2, (g, v, b) => {
-    g.elip(9, b - 1.5, 8, 2.2, "#e8f2e0");
-    rocha(g, 3 + v, b - 11, 12 - v, 11, ["#4a4038", "#5d5048", "#7d6a4a", "#a8936a"], 90 + v);
-    for (let x = 2; x < 16; x++) if (hash2(x, v, 91) < 0.5) g.p(x, b - 1, "#e8f2e0");
-  });
+  pedregulho("ob_mar_rochedo", 2, ["#3a322c", "#54483e", "#74644e", "#9a8664", "#bca884"], 90, { antes: (g) => g.elip(9.5, 15, 8.5, 1.8, "#e8f2e0") });
   obstaculo("ob_mar_recife", false, 2, (g, v, b) => {
     g.elip(9, b - 3, 8, 3.6, "#4fa3a5");
     for (let i = 0; i < 7; i++) {
@@ -3660,30 +3796,8 @@
   });
 
   // Mar Vermelho
-  obstaculo("ob_marVermelho_granito", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    const c = ["#5a2a20", "#7a3426", "#a5503a", "#c87a58"];
-    for (let y = b - 11; y <= b; y++) for (let x = 2; x < 16; x++) {
-      const lim = (y - (b - 11)) * (v ? 1.4 : 1.1);
-      if (x < 9 - lim || x > 9 + lim * 0.8 + 2) continue;
-      let cor = x < 9 - lim + 2 ? c[3] : y < b - 8 ? c[2] : x > 9 + lim * 0.6 ? c[0] : c[1];
-      if (Math.abs(x - 6 - (y - (b - 11)) * 0.7) < 0.5) cor = c[0];
-      g.p(x, y, cor);
-    }
-  });
-  obstaculo("ob_marVermelho_coral", false, 2, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    const c = ["#8a3a30", "#c8604c", "#e08a6a"];
-    const galhos = (x, y, ang, n, prof) => {
-      if (prof > 3 || n < 1) return;
-      let px = x, py = y;
-      for (let i = 0; i < n; i++) { px += Math.cos(ang); py += Math.sin(ang); g.p(px, py, prof === 0 ? c[0] : prof === 1 ? c[1] : c[2]); }
-      galhos(px, py, ang - 0.6, n - 1, prof + 1);
-      galhos(px, py, ang + 0.6, n - 1, prof + 1);
-    };
-    galhos(9 + v, b, -Math.PI / 2, 4, 0);
-    g.ret(7 + v, b - 1, 4, 2, c[0]);
-  });
+  pedregulho("ob_marVermelho_granito", 3, ["#4a1e18", "#74302a", "#9e4a3a", "#c46e56", "#e0987a"], 70, { pintas: true, lados: 7 });
+  coralOb("ob_marVermelho_coral", 3, 95);
   obstaculo("ob_marVermelho_destrocos", false, 2, (g, v, b) => {
     g.sombra(10, b, 7.5, 1.2);
     const c = ["#5e4630", "#8a6a4a", "#a8865e"];
@@ -3694,16 +3808,8 @@
   });
 
   // Sinai
-  obstaculo("ob_sinai_penedo", false, 2, (g, v, b) => {
-    const dim = [[16, 14], [12, 10]][v];
-    g.sombra(10, b, dim[0] / 2 + 1, 1.4);
-    rocha(g, Math.round(9 - dim[0] / 2), b - dim[1] + 1, dim[0], dim[1], ["#4e302a", "#6a4038", "#8a5a4a", "#b07a62"], 120 + v, { veio: "#d0a080" });
-  });
-  obstaculo("ob_sinai_arbusto", false, 1, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    copa(g, 9, b - 4, 5.5, 4, ["#3e4a2a", "#5a6a3a", "#7a8a4a"], 130, 0.3);
-    for (let i = 0; i < 8; i++) { const x = 4 + Math.floor(hash2(i, 1, 131) * 11), y = b - 8 + Math.floor(hash2(i, 2, 131) * 3); if (!g.g(x, y)) g.p(x, y, "#7a8a4a"); }
-  });
+  pedregulho("ob_sinai_penedo", 3, ["#36282a", "#5a423c", "#7e5e4e", "#a27c64", "#c49e82"], 120, { pintas: true, dupla: true, formas: [[15, 12, 18], [13, 10, 17], [15, 13, 18]] });
+  arbustoOb("ob_sinai_arbusto", 3, ["#24261a", "#3c3e26", "#565834", "#727244", "#908e5a"], 130, { seco: true });
   obstaculo("ob_sinai_marco", false, 1, (g, v, b) => {
     g.sombra(10, b, 5, 1.2);
     const c = ["#6a5a4a", "#8a7a6a", "#a89a88"];
@@ -3753,12 +3859,7 @@
       g.lin(1, y0 + 3, 16, y0 + 3, c[0]);
     }
   });
-  obstaculo("ob_galileia_basalto", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    rocha(g, 2 + v, b - 9, 13 - v, 10, ["#262422", "#363432", "#4c4a48", "#6e6a64"], 170 + v);
-    // vesículas do basalto: furinhos escuros
-    for (let i = 0; i < 6; i++) { const x = 4 + Math.floor(hash2(i, v, 171) * 9), y = b - 7 + Math.floor(hash2(i, v, 172) * 6); if (g.g(x, y)) g.p(x, y, "#262422"); }
-  });
+  pedregulho("ob_galileia_basalto", 3, ["#1a1a1c", "#2c2c2e", "#424240", "#5e5c58", "#807c74"], 170, { colunas: true, lados: 7 });
   obstaculo("ob_galileia_barco", false, 1, (g, v, b) => {
     g.sombra(10, b, 8.5, 1.3);
     const c = ["#4a3222", "#6e4a28", "#9a6a3c", "#b8875a"];
