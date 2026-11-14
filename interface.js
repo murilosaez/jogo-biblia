@@ -3086,6 +3086,8 @@
 
   // ----- Menus: Janelas (topo) e o de cada janela -----
   // Um menu por vez; ↑ e ↓ andam entre as opções, Esc fecha e devolve o foco ao botão, clicar fora fecha.
+  // Aberto, o menu fica com o teclado (como o menu do item e os modais): Espaço e Enter ativam a opção, e
+  // nem as setas nem WASD andam com o personagem.
   const menuJanelas = { aberto: null };
   function abrirMenu(el, botao, html) {
     fecharMenuJanelas();
@@ -3093,6 +3095,7 @@
     el.hidden = false;
     menuJanelas.aberto = { id: el.id, el, botao };
     botao.setAttribute("aria-expanded", "true");
+    teclado(false);
     posicionarMenu();
     el.querySelector(".menu-op:not([aria-disabled='true'])")?.focus();
   }
@@ -3112,6 +3115,8 @@
     m.el.hidden = true;
     m.el.innerHTML = "";
     m.botao.setAttribute("aria-expanded", "false");
+    // O teclado volta ao jogo, a menos que outro dono o segure (modal, menu do item, caixa de conversa).
+    if (!modalAberto && !menuItem && document.activeElement?.id !== "entradaConversa") teclado(true);
     if (devolverFoco && document.contains(m.botao)) m.botao.focus();
   }
   const opMenu = (acao, rotulo, { desab = false, dica = "", papel = "menuitem", marcado = null, id = "" } = {}) =>
@@ -3180,6 +3185,14 @@
         const i = ops.indexOf(document.activeElement);
         if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fecharMenuJanelas(true); return; }
         if (e.key === "Tab") { fecharMenuJanelas(); return; }
+        // Espaço ativa a opção como Enter; ← e → não fazem nada aqui (nem rolam a coluna). O stopPropagation
+        // vale mesmo se uma cena nova religar o teclado do Phaser com o menu aberto (ele ouve na window).
+        if (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.key === " " && !e.repeat && ops.includes(document.activeElement)) acaoDoMenu(document.activeElement);
+          return;
+        }
         const passo = { ArrowDown: 1, ArrowUp: -1 }[e.key];
         if (passo) { e.preventDefault(); ops[(i + passo + ops.length) % ops.length]?.focus(); }
         if (e.key === "Home" || e.key === "End") { e.preventDefault(); ops[e.key === "Home" ? 0 : ops.length - 1]?.focus(); }
@@ -3190,6 +3203,20 @@
       if (m && !m.el.contains(e.target) && !m.botao.contains(e.target)) fecharMenuJanelas();
     }, true);
     addEventListener("resize", () => fecharMenuJanelas());
+    // Botões do cabeçalho das janelas e o botão Janelas, alcançados pelo teclado (Tab): Espaço os ativa como
+    // Enter, em vez de chegar ao jogo (ataque). Depois de um clique, o foco fica no botão, mas aí Espaço
+    // continua sendo o ataque, como antes; o Tab é que marca a navegação pelo teclado.
+    let navegandoPorTab = false;
+    document.addEventListener("pointerdown", () => { navegandoPorTab = false; }, true);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Tab") { navegandoPorTab = true; return; }
+      if (e.key !== " " || !navegandoPorTab || e.ctrlKey || e.metaKey || e.altKey) return;
+      const b = e.target.closest?.(".janela-btn, #btnJanelas");
+      if (!b) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) b.click();
+    }, true);
   }
 
   function abrirFolha(k) {
