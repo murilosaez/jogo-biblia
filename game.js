@@ -2917,15 +2917,6 @@ class Cena extends Phaser.Scene {
     };
     const v = this.cameras.main.worldView, naVista = (s) => s.x > v.x - 40 && s.x < v.right + 40 && s.y > v.y - 8 && s.y < v.bottom + 96;
 
-    // Jogador: nome e barra rentes à cabeça, como em todo personagem.
-    const p = this.p, vmax = typeof vidaMaxima === "function" ? vidaMaxima(p) : 0, j = this.jogador;
-    if (vmax && j?.visible) {
-      const frac = Math.max(0, Math.min(1, p.vida / vmax)), cor = corDaVida(frac);
-      const topo = Math.round(j.y - this.alturaRotuloJogador() - BARRA.folga - BARRA.h);
-      barra(j.x, topo, BARRA.w, BARRA.h, frac, cor[1]);
-      this.rotuloJogador.setPosition(Math.round(j.x), topo - 2);
-      if (this.corRotuloJogador !== cor[2]) { this.corRotuloJogador = cor[2]; this.rotuloJogador.setColor(cor[2]); }
-    }
     const cheia = corDaVida(1)[1];
     for (const ent of Object.values(this.entidades)) {
       const s = ent.sprite, w = ent.chefe ? BARRA.wChefe : BARRA.w, h = ent.chefe ? BARRA.hChefe : BARRA.h;
@@ -2948,6 +2939,16 @@ class Cena extends Phaser.Scene {
       if (ent.fantasmaDesde) fantasma = ent.vidaFantasma - (ent.vidaFantasma - vida) * Math.min(1, (time - ent.fantasmaDesde) / 400);
       barra(s.x, topo, w, h, vida / max, cor[1], fantasma / max);
       if (ent.chefe) this.estrelaChefe.setVisible(true).setPosition(Math.round(s.x - w / 2) - 10, Math.round(topo) + 2);
+    }
+    // Jogador: nome e barra rentes à cabeça, como em todo personagem. Por último: a barra dele fica por cima
+    // da de uma criatura colada logo atrás (ao norte), que cairia na mesma altura.
+    const p = this.p, vmax = typeof vidaMaxima === "function" ? vidaMaxima(p) : 0, j = this.jogador;
+    if (vmax && j?.visible) {
+      const frac = Math.max(0, Math.min(1, p.vida / vmax)), cor = corDaVida(frac);
+      const topo = Math.round(j.y - this.alturaRotuloJogador() - BARRA.folga - BARRA.h);
+      barra(j.x, topo, BARRA.w, BARRA.h, frac, cor[1]);
+      this.rotuloJogador.setPosition(Math.round(j.x), topo - 2);
+      if (this.corRotuloJogador !== cor[2]) { this.corRotuloJogador = cor[2]; this.rotuloJogador.setColor(cor[2]); }
     }
   }
 

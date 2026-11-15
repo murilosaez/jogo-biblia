@@ -173,7 +173,8 @@ Direção: pixel art de MMORPG clássico visto de cima, mundo em casas, paleta c
 anti-serrilhado nem 3D, ambiente do antigo Oriente Próximo. Tudo é original e gerado em código: segue só as
 convenções do gênero (escala das árvores, contorno escuro, luz de cima e da esquerda), sem copiar sprites,
 ícones, layouts ou paletas de jogo nenhum. Capturas: `docs/capturas/arte-antes-depois.jpg` (antes e depois em
-cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noite).
+cada região, centro ampliado) e `docs/capturas/arte-regioes.jpg` (as 6 regiões e o mar, de dia e de noite com
+`--hora 0.75`). Nas regiões o jogador pode aparecer com a vida baixa: a ferramenta passa por lá depois do combate.
 
 Flora, rochas e terreno têm dois conjuntos de desenho no código: o de `arte/flora.js` e `arte/terreno.js`
 (seções 2 e 10) e o desta revisão, em `sprites.js` e `cenario.js`. Os dois seguem a mesma escala (1 px de arte
@@ -425,4 +426,6 @@ Capturas em `docs/capturas/`: `inicio-1600x900.jpg`, `celular-390x844.jpg`, `tel
 `tela-1920x1080.jpg`, `regiao-<area>.jpg` e `regiao-canaan-zoom.jpg`, `combate.jpg`, `combate-golpe.jpg`,
 `passo.jpg`, `atras-arvore.jpg`, `atras-casa.jpg`, `dentro-de-casa.jpg`, `folha-humanos.jpg`,
 `folha-criaturas.jpg`, `folha-flora.jpg`, `folha-itens.jpg`, `folha-icones.jpg`, `folha-efeitos.jpg`,
-`folha-montarias.jpg`, `antes-depois-inicio.jpg`, `antes-depois-combate.jpg`, `antes-depois-celular.jpg`.
+`folha-montarias.jpg`, `antes-depois-inicio.jpg`, `antes-depois-combate.jpg`, `antes-depois-celular.jpg`,
+`arte-antes-depois.jpg` e `arte-regioes.jpg`. As telas e comparações foram refeitas depois da junção com a
+`main` (janelas móveis, dock e equipamento da `main` com a arte nova); as `folha-*.jpg` são da onda 5.

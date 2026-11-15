@@ -1831,27 +1831,39 @@
         pt(x - 1, cy + 1, f.cor); pt(x, cy + 1, f.sombra); pt(x + 1, cy + 1, f.sombra);
       }
     },
-    // arbusto baixo (não bloqueia): bolha recortada em lobos de 14 a 20 px, 4 tons pela luz, folhas em grupos de
-    // 2 px, contorno escuro e sombra no chão para a direita
+    // arbusto baixo (não bloqueia): 4 tufos de folhagem sobrepostos (o de trás no alto, dois dos lados e um à
+    // frente), cada um com a sua luz de cima e da esquerda e a sua sombra embaixo e à direita, folhas em grupos
+    // de 2 px, contorno colorido (médio do lado da luz, escuro do lado da sombra) e sombra no chão para a direita
     arbusto(pt, x, y, h, T, sombra) {
-      const c = T.arbusto, { rx, ry } = medidaArbusto(x, y, h), cy = y - ry, fase = h * 6.283;
-      const dentro = (X, Y) => {
-        const nx = (X + 0.5 - x) / rx, ny = (Y + 0.5 - cy) / ry;
-        return Y <= y && Math.sqrt(nx * nx + ny * ny) <= 1 + 0.12 * Math.sin(Math.atan2(ny, nx) * 6 + fase) + (hash2(X >> 1, Y >> 1, 69) - 0.5) * 0.1;
+      const c = T.arbusto, { rx, ry } = medidaArbusto(x, y, h), cy = y - ry, d = (h * 7 % 1 - 0.5) * 0.16;
+      const LOBOS = [[d, -0.3, 0.68], [-0.42, 0.15 + d, 0.58], [0.45, 0.12 - d, 0.55], [0.02 - d, 0.45, 0.5]];
+      // tufo que está à frente neste ponto (−1 fora), com a beira picotada pelas folhas
+      const lobo = (X, Y) => {
+        if (Y > y) return -1;
+        const nx = (X + 0.5 - x) / rx, ny = (Y + 0.5 - cy) / ry, j = (hash2(X >> 1, Y >> 1, 69) - 0.5) * 0.12;
+        for (let i = LOBOS.length - 1; i >= 0; i--) { const L = LOBOS[i]; if (Math.hypot(nx - L[0], ny - L[1]) <= L[2] + j) return i; }
+        return -1;
       };
+      const dentro = (X, Y) => lobo(X, Y) >= 0;
       for (let X = x - rx + 1; X <= x + rx + 4; X++) for (let Y = y - 2; Y <= y + 2; Y++) {
         const nx = (X + 0.5 - x - 3) / (rx + 1), ny = (Y + 0.5 - y) / 2.2;
         if (nx * nx + ny * ny <= 1 && !dentro(X, Y)) pt(X, Y, sombra);
       }
       for (let Y = cy - ry - 2; Y <= y + 1; Y++) for (let X = x - rx - 2; X <= x + rx + 2; X++) {
-        if (dentro(X, Y)) {
-          const nx = (X + 0.5 - x) / rx, ny = (Y + 0.5 - cy) / ry, l = -(0.6 * nx + 0.8 * ny) + (1 - Math.hypot(nx, ny)) * 0.3;
-          let k = l > 0.55 ? 4 : l > 0.12 ? 3 : l > -0.35 ? 2 : 1;
+        const i = lobo(X, Y);
+        if (i >= 0) {
+          const L = LOBOS[i], lx = ((X + 0.5 - x) / rx - L[0]) / L[2], ly = ((Y + 0.5 - cy) / ry - L[1]) / L[2];
+          const l = -(0.6 * lx + 0.8 * ly) + (i === 0 ? 0.1 : i === 3 ? -0.1 : 0);
+          let k = l > 0.5 ? 4 : l > 0.05 ? 3 : l > -0.5 ? 2 : 1;
+          // a sombra que o tufo da frente lança no de trás, logo acima da beira dele
+          const baixo = lobo(X, Y + 1), dir = lobo(X + 1, Y);
+          if ((baixo > i || dir > i) && k > 1) k--;
           const g = hash2(X >> 1, Y, 63);
-          if (Y % 3 === 0 && g < 0.35 && dentro(X + 1, Y)) { k = Math.min(4, k + 1); }
-          else if (Y % 3 === 1 && g > 0.7 && k > 1) k--;
+          if (Y % 3 === 0 && g < 0.3 && k < 4 && l > -0.3) k++;
+          else if (Y % 3 === 1 && g > 0.72 && k > 1) k--;
           pt(X, Y, c[k]);
-        } else if (dentro(X - 1, Y) || dentro(X + 1, Y) || dentro(X, Y - 1) || dentro(X, Y + 1)) pt(X, Y, c[0]);
+        } else if (dentro(X, Y + 1) || dentro(X + 1, Y)) { if (Y <= y) pt(X, Y, dentro(X, Y - 1) || dentro(X - 1, Y) ? c[0] : c[1]); }
+        else if (dentro(X - 1, Y) || dentro(X, Y - 1)) pt(X, Y, c[0]);
       }
     },
     // pedra: bloco com a face de cima clara, a aresta de luz, a face lateral escura, contorno e sombra

@@ -1400,33 +1400,90 @@
       }
     },
   });
+  // Marco de trilha: pedra fincada, de topo arredondado, com a seta ocre pintada. Desenhado em px de arte
+  // (24 × 40): luz de cima e da esquerda, face direita na sombra, fissura, lasca, musgo e capim no pé.
   registrar("mk_trilha", {
     w: 12, h: 20,
     desenhar(g) {
       g.sombra(8, 18.5, 4, 1.2);
-      g.ret(2, 3, 8, 16, (x, y) => tom(["#7c7466", "#a39b8a", "#c8c0ac"], -((x - 5.5) * 0.35 + (y - 10) * 0.08)));
-      g.apagar(2, 3); g.apagar(9, 3);
-      g.ret(3, 2, 6, 1, "#c8c0ac");
-      // seta ocre pintada
-      g.lin(4, 8, 7, 8, "#b07a3e"); g.p(6, 7, "#b07a3e"); g.p(6, 9, "#b07a3e"); g.p(7, 8, "#d9a35c");
-      g.lin(3, 13, 8, 13, "#7c7466"); g.p(4, 16, "#6e8a3a"); g.p(3, 17, "#6e8a3a");
+      const P = ["#4c463c", "#6e675a", "#8f8778", "#aea694", "#c9c1ad", "#e0d9c6"];
+      const x0 = 5, x1 = 18, y0 = 5, y1 = 37;
+      const dentro = (X, Y) => {
+        if (X < x0 || X > x1 || Y < y0 || Y > y1) return false;
+        const r = 4, cx = X < x0 + r ? x0 + r : X > x1 - r ? x1 - r : X;
+        return Y >= y0 + r || Math.hypot(X - cx, Y - (y0 + r)) <= r + 0.3;
+      };
+      const h = (X, Y) => { const n = Math.sin(X * 12.9898 + Y * 78.233) * 43758.5453; return n - Math.floor(n); };
+      for (let Y = y0; Y <= y1; Y++) for (let X = x0; X <= x1; X++) {
+        if (!dentro(X, Y)) continue;
+        const face = X >= 15; // face lateral, na sombra
+        let k = face ? 1 : X <= x0 + 1 ? 4 : X >= 12 ? 2 : 3;
+        if (!face && Y < y0 + 3) k = Math.min(5, k + 1); // chanfro do topo
+        if (!dentro(X, Y - 1) && !face) k = 5;
+        if (Y > y1 - 4) k = Math.max(0, k - 1); // pé na sombra do capim
+        const n = h(X, Y);
+        if (n > 0.97 && k < 5) k++; else if (n < 0.05 && k > 0) k--;
+        g.fino(X, Y, P[k]);
+      }
+      for (let Y = y0 + 3; Y <= y1; Y++) g.fino(14, Y, P[4]); // aresta de luz entre as faces
+      // fissura e lasca
+      for (const [X, Y] of [[8, 25], [9, 26], [9, 27], [10, 28], [10, 29], [11, 30]]) { g.fino(X, Y, P[0]); g.fino(X + 1, Y, P[4]); }
+      g.fino(6, 9, P[1]); g.fino(7, 8, P[1]); g.fino(6, 10, P[2]);
+      // seta ocre pintada (aponta para a trilha), com a tinta gasta
+      const O = ["#7a4e22", "#b07a3e", "#d9a35c"];
+      for (let X = 7; X <= 12; X++) { g.fino(X, 16, O[2]); g.fino(X, 17, O[1]); if (h(X, 3) > 0.25) g.fino(X, 18, O[0]); }
+      for (let i = 0; i < 4; i++) { g.fino(12 - i, 13 + i, O[2]); g.fino(12 - i, 14 + i, O[1]); g.fino(12 - i, 21 - i, O[0]); g.fino(12 - i, 20 - i, O[1]); }
+      g.fino(13, 16, O[2]); g.fino(13, 17, O[1]); g.fino(13, 18, O[0]);
+      // musgo no pé e capim
+      const V = ["#3c4c22", "#5a7030", "#86a04a"];
+      for (const [X, Y, k] of [[6, 33, 1], [7, 33, 2], [6, 34, 1], [7, 34, 1], [8, 34, 2], [6, 35, 0], [7, 35, 1], [16, 34, 0], [16, 35, 1], [17, 35, 0]]) g.fino(X, Y, V[k]);
+      for (const [X, a] of [[3, 3], [4, 5], [6, 3], [9, 2], [13, 3], [19, 4], [20, 2]]) for (let q = 0; q < a; q++) g.fino(X + (q === a - 1 && X < 12 ? -1 : q === a - 1 ? 1 : 0), 38 - q, V[q === 0 ? 0 : q === a - 1 ? 2 : 1]);
     },
   });
-  // Cais: píer de tábuas na vertical (3 tiles), postes, bandeirola com 2 quadros.
+  // Cais: píer de tábuas na vertical (3 tiles), estacas, cabeços de amarração com corda e flâmula (2 quadros).
+  // Desenhado em px de arte (36 × 100): tábuas de 4 px com veio, fresta, pregos e emendas; luz da esquerda.
   registrar("mk_cais", {
     w: 18, h: 50, quadros: 2,
     desenhar(g, q) {
-      for (const x of [3, 14]) for (const y of [6, 20, 34]) { g.ret(x, y, 1, 3, "#4a3222"); g.p(x, y + 3, "#2a1a14"); }
-      for (let y = 4; y < 48; y++) {
-        const t = y % 4 === 0 ? "#6e4a28" : y % 4 === 1 ? "#c08f58" : "#9a6a3c";
-        g.ret(4, y, 10, 1, t);
-        if (y % 4 === 0) g.p(4 + ((y * 3) % 9), y, "#4a3222");
+      const M = ["#2e1c12", "#4e321e", "#6e4a2a", "#8e643a", "#ae8250", "#cca36c", "#e2c28e"];
+      const h = (X, Y) => { const n = Math.sin(X * 12.9898 + Y * 78.233) * 43758.5453; return n - Math.floor(n); };
+      const ret = (X, Y, W, H, c) => { for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) g.fino(X + i, Y + j, c); };
+      // estacas que saem dos lados, com o tampo claro e a base escura na água
+      for (const Y of [14, 40, 66, 90]) for (const X of [5, 28]) {
+        ret(X, Y, 3, 8, M[2]); ret(X, Y, 1, 8, M[3]); ret(X + 2, Y, 1, 8, M[1]); ret(X, Y, 3, 1, M[5]); ret(X, Y + 7, 3, 1, M[0]);
       }
-      g.ret(2, 2, 2, 8, "#6e4a28"); g.ret(14, 2, 2, 8, "#6e4a28");
-      g.lin(3, 3, 14, 3, "#c9b48a");
-      g.lin(16, 0, 16, 9, "#4a3222");
-      const b = q ? 1 : 0;
-      g.ret(17 - 4, 1 + b, 3, 2, "#6fd0d0"); g.p(12, 1 + b * 2, "#6fd0d0");
+      // longarinas (as vigas de baixo aparecem nas bordas)
+      ret(8, 8, 1, 88, M[1]); ret(27, 8, 1, 88, M[0]);
+      // tábuas
+      for (let Y = 8, n = 0; Y < 96; Y += 4, n++) {
+        const t = 3 + Math.floor(h(n, 7) * 2.4); // tom da tábua: 3, 4 ou 5
+        const dx = h(n, 9) < 0.3 ? 1 : 0; // algumas saem 1 px para a esquerda
+        for (let X = 8 - dx; X <= 27; X++) {
+          g.fino(X, Y, M[Math.min(6, t + 1)]);
+          g.fino(X, Y + 1, M[h(X >> 1, n * 3 + 1) < 0.22 ? t - 1 : t]);
+          g.fino(X, Y + 2, M[h((X + 1) >> 1, n * 3 + 2) < 0.3 ? t - 1 : t]);
+          g.fino(X, Y + 3, M[1]);
+        }
+        g.fino(8 - dx, Y + 1, M[Math.min(6, t + 1)]); g.fino(8 - dx, Y + 2, M[Math.min(6, t + 1)]);
+        g.fino(27, Y + 1, M[t - 1]); g.fino(27, Y + 2, M[t - 2]);
+        g.fino(10, Y + 1, M[t - 2]); g.fino(25, Y + 1, M[t - 2]); // pregos
+        if (h(n, 11) < 0.35) { const e = 13 + Math.floor(h(n, 13) * 10); g.fino(e, Y + 1, M[1]); g.fino(e, Y + 2, M[1]); g.fino(e + 1, Y + 1, M[0]); } // emenda
+      }
+      ret(8, 96, 20, 1, M[0]);
+      // cabeços de amarração na ponta, com a corda enrolada
+      for (const X of [4, 28]) {
+        ret(X, 4, 4, 15, M[2]); ret(X, 4, 1, 15, M[4]); ret(X + 3, 4, 1, 15, M[1]);
+        ret(X, 3, 4, 1, M[5]); ret(X + 1, 3, 2, 1, M[6]); ret(X, 18, 4, 1, M[0]);
+        ret(X, 9, 4, 1, "#d8c8a0"); ret(X, 10, 4, 1, "#a8946a"); ret(X, 11, 4, 1, "#d8c8a0"); ret(X, 12, 4, 1, "#7a6844");
+      }
+      ret(8, 6, 20, 1, M[5]); ret(8, 7, 20, 1, M[2]); // travessa da ponta
+      // mastro e flâmula
+      ret(32, 0, 1, 19, M[1]); g.fino(32, 0, M[5]);
+      const F = ["#245a6c", "#3e8a9a", "#6fc0c8", "#b0e6e4"];
+      for (let c = 0; c < 9; c++) {
+        const X = 31 - c, meia = Math.max(0, Math.round(2.6 - c * 0.3)), dy = Math.round(Math.sin((c + q * 3) * 0.9) * (c / 8) * 1.4);
+        for (let j = -meia; j <= meia; j++) g.fino(X, 5 + dy + j, F[j === -meia && meia > 0 ? 3 : j === meia && meia > 0 ? 0 : (c + q) % 4 === 2 ? 1 : 2]);
+      }
     },
   });
   // Ponto de pesca: ondulações (3 quadros) + quadro 3 = esgotado.
