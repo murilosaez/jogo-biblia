@@ -444,7 +444,8 @@
     if (id === "pocao") return `cura ${p && typeof curaPocao === "function" ? curaPocao(p) : 30} de vida`;
     if (id === "pocao_fe") return `+${typeof CURA_POCAO_FE !== "undefined" ? CURA_POCAO_FE : 40} de fé`;
     if (d.tipo === "municao") return "munição para o arco";
-    if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) return `os mercadores pagam ${VALORES_VENDA[id]}`;
+    const venda = typeof valorDeVenda === "function" ? valorDeVenda(id) : 0;
+    if (venda) return `os mercadores pagam ${venda}`;
     return NOME_TIPO[d.tipo] || "";
   }
 
@@ -481,8 +482,8 @@
     if (origem === "equip") acao += "Arraste para a mochila, ou dê duplo clique, para guardar.";
     else if (slotDe(id)) acao += "Duplo clique equipa. Também pode arrastar ou tocar e escolher o espaço.";
     else if (d.tipo === "consumivel") acao = "Duplo clique bebe (mesmo sem precisar, para liberar espaço). Arraste para uma tecla de atalho.";
-    else if (typeof VALORES_VENDA !== "undefined" && VALORES_VENDA[id]) acao = "Venda a qualquer mercador (há um em cada cidade).";
-    if (origem === "mochila") acao += " Botão direito ou toque longo: jogar no chão.";
+    else if (typeof valorDeVenda === "function" && valorDeVenda(id)) acao = "Venda a qualquer mercador ou guarde no depósito (há um de cada em toda cidade).";
+    if (origem === "mochila") acao += " Botão direito ou toque longo: usar ou destruir.";
     const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
     return `<h4${titulo}>${esc(nomeDoItem(id))}</h4>${linhaRaridade}<p>${esc([...new Set(partes)].join(" · "))}</p>${linhaAtributos}${acao ? `<p class="acao">${esc(acao)}</p>` : ""}`;
   }
@@ -657,13 +658,18 @@
     // Capacidade e vigor (sempre à vista).
     const med = $("#listaMedidas");
     if (med) {
-      linhasDa(med, ["carga", "vigor"]);
+      linhasDa(med, ["carga", "velocidade", "vigor"]);
       const c = f.carga, v = f.vigor;
       const livre = Math.max(0, c.maximo - c.atual);
       preencherLinha(med, "carga", {
         nome: "Capacidade", valor: c.texto, pct: c.pct,
-        dica: c.pct >= 100 ? "Mochila cheia: venda, largue ou guarde algo para pegar mais." : `Livre: ${kg(livre)} kg. Sobe ${kg(typeof CARGA_POR_NIVEL !== "undefined" ? CARGA_POR_NIVEL : 3)} kg por nível e com os alforjes.`,
+        dica: c.pct >= 100 ? "Mochila cheia: venda, guarde no depósito ou destrua algo para pegar mais." : `Livre: ${kg(livre)} kg. Sobe ${kg(typeof CARGA_POR_NIVEL !== "undefined" ? CARGA_POR_NIVEL : 3)} kg por nível e com os alforjes.`,
         classes: { quase: c.pct >= 90 && c.pct < 100, cheia: c.pct >= 100 },
+      });
+      const vel = f.velocidade;
+      if (vel) preencherLinha(med, "velocidade", {
+        nome: "Velocidade", valor: vel.texto, pct: vel.pct,
+        dica: vel.maxima ? `Velocidade máxima (${vel.reto} ms por casa).` : `${vel.reto} ms por casa. Sobe um pouco a cada nível, até ${String(vel.maximo).replace(".", ",")} casas/s.`,
       });
       const cair = v.proxima ? ` Cai para ${v.proxima.nome.toLowerCase()} (${v.proxima.texto}) em ${typeof textoVigor === "function" ? textoVigor(v.ateCair) : ""} de caçada.` : "";
       preencherLinha(med, "vigor", {
@@ -936,7 +942,7 @@
     $("#gradeMochila").innerHTML = encher(mochila, 15);
     $("#gradeBolsa").innerHTML = encher(bolsa, 15);
     const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
-    // Carga em kg com vírgula; acima de 90% fica âmbar e, cheia, vermelha (é hora de vender ou jogar no chão).
+    // Carga em kg com vírgula; acima de 90% fica âmbar e, cheia, vermelha (é hora de vender, guardar no depósito ou destruir).
     const pesoEl = $("#pesoTexto");
     pesoEl.textContent = `${kg(peso)} / ${kg(cap)} kg`;
     pesoEl.classList.toggle("quase-cheia", cap > 0 && peso >= cap * 0.9 && peso < cap);
@@ -1283,7 +1289,7 @@
     dlg.npc = npc;
     $("#dlgNome").textContent = nomeCurto(nome);
     const reserva = papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : papel === "mural" ? "vigia · mural de caçadas"
-      : papel === "barqueiro" ? "barqueiro" : papel === "ambiente" ? String(nome).split(",").slice(1).join(",").trim() : "";
+      : papel === "barqueiro" ? "barqueiro" : papel === "deposito" ? "guarda do depósito · baú de todas as cidades" : papel === "ambiente" ? String(nome).split(",").slice(1).join(",").trim() : "";
     $("#dlgPapel").textContent = PAPEIS[id] || reserva;
     porFigura($("#dlgRetrato"), visualDe(id), 44, 44);
     $("#dlgRetrato").alt = `Retrato de ${nomeCurto(nome)}`;
@@ -1368,6 +1374,7 @@
     dialogo({ id: npc.id, papel: npc.papel, texto: k.fala, palavras: k.acao === "fala" ? palavrasChaveDoNpc(p, npc.id) : [] });
     if (k.acao === "despedir") conversaCom = null;
     else if (k.acao === "loja") abrirLoja(npc.id, k.aba);
+    else if (k.acao === "deposito") abrirDeposito(npc.id);
     else if (k.acao === "viagem") abrirViagem(npc.id);
     else if (k.acao === "barco") abrirBarco(npc.id);
   }
@@ -1632,6 +1639,7 @@
     porFigura($("#lojaRetrato"), visualDe(merc?.id || "mercador1"), 44, 44);
     falaLoja = falaRecente(merc?.id);
     if (aba === "comprar" || aba === "vender") abaLoja = aba;
+    confirmaVenderTudo = false;
     if (dlg.id === merc?.id) fecharDialogo();
     desenharLoja(true);
     abrirModal("modalLoja");
@@ -1639,6 +1647,7 @@
   // Redesenha só quando o que a loja mostra muda (moedas, mochila, carga, aba): a interface se atualiza a cada
   // passo de criatura, e redesenhar apagaria o número que o jogador está digitando no seletor de quantidade.
   let assinaturaLoja = "";
+  let confirmaVenderTudo = false; // "Vender tudo" à espera do sim
   function desenharLoja(forcar = false) {
     const p = jogador();
     if (!p) return;
@@ -1646,9 +1655,11 @@
     const g = contar(p.inventario);
     const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
     const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
-    const vendaveis = Object.entries(typeof VALORES_VENDA !== "undefined" ? VALORES_VENDA : {}).filter(([id]) => g.get(id));
+    // Todo item da mochila se vende (cada raridade de um equipamento é uma linha, com o próprio valor).
+    const vendaveis = [...g.keys()].map((id) => [id, typeof valorDeVenda === "function" ? valorDeVenda(id) : 0]).filter(([, v]) => v > 0);
     const livres = vendaveis.map(([id]) => Math.min(g.get(id), livreParaSair(id)));
-    const ass = JSON.stringify([abaLoja, lojaAtual, falaLoja, p.moedas, p.inventario.length, vendaveis.map(([id]) => g.get(id)), livres, peso, cap]);
+    const tudo = typeof Mundo !== "undefined" && Mundo.vendaDeTudo ? Mundo.vendaDeTudo(ID) : [];
+    const ass = JSON.stringify([abaLoja, lojaAtual, falaLoja, p.moedas, p.inventario.length, vendaveis.map(([id]) => g.get(id)), livres, peso, cap, confirmaVenderTudo]);
     if (!forcar && ass === assinaturaLoja && corpo.innerHTML) return;
     assinaturaLoja = ass;
     // Foco: o mesmo botão (ou seletor) depois de redesenhar.
@@ -1683,6 +1694,15 @@
           <button type="button" class="btn primario" data-comprar="${esc(id)}" ${falta > 0 ? `disabled title="Faltam ${falta} moedas"` : ""} aria-label="Comprar ${esc(nomeDoItem(id))} por ${preco} moedas${falta > 0 ? `; faltam ${falta}` : ""}">${falta > 0 ? `faltam ${falta}` : `${preco} ${moeda}`}</button>${linhaQtd}</li>`;
       }
     } else {
+      // Vender tudo (menos poções e flechas): pede confirmação antes.
+      if (tudo.length) {
+        const qtd = tudo.reduce((s, v) => s + v.quantidade, 0), total = tudo.reduce((s, v) => s + v.quantidade * v.valor, 0);
+        lista += confirmaVenderTudo
+          ? `<li class="item-loja vender-tudo"><span><strong>Vender ${qtd} ${qtd === 1 ? "item" : "itens"} por ${total} moedas?</strong><span>Equipamentos guardados na mochila também entram. Poções, flechas e o que a missão pede ficam.</span></span>
+            <span class="linha-qtd"><button type="button" class="btn perigo" data-vender-tudo="sim">Vender tudo · +${total} ${moeda}</button><button type="button" class="btn secundario" data-vender-tudo="nao">Cancelar</button></span></li>`
+          : `<li class="item-loja vender-tudo"><span><strong>Vender todos os itens</strong><span>${qtd} ${qtd === 1 ? "item" : "itens"} da mochila, menos poções e flechas</span></span>
+            <button type="button" class="btn primario" data-vender-tudo="pedir" aria-label="Vender todos os itens da mochila, menos poções e flechas, por ${total} moedas">Vender tudo · +${total} ${moeda}</button></li>`;
+      }
       vendaveis.forEach(([id, valor], i) => {
         const n = g.get(id);
         const livre = livres[i];
@@ -1707,7 +1727,7 @@
         lista += `<li class="item-loja${linhaQtd ? " com-qtd" : ""}"><span class="icone">${htmlItem(id)}</span><span><strong>${nome}</strong><span>${esc(temTxt)}</span></span>
           ${botao}${linhaQtd}</li>`;
       });
-      if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">Você não tem nada que o mercador compre. Ele aceita recursos: peles, presas, ferrões, linho, ervas, odres, peixe e as pedras preciosas.</li>';
+      if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">A mochila está vazia. O mercador compra qualquer item: recursos, equipamentos, poções e flechas.</li>';
     }
     corpo.innerHTML = `${falaLoja ? `<p class="fala-modal">${esc(falaLoja)}</p>` : ""}
       <div class="saldo">${moeda}<span>${p.moedas} moedas</span></div>
@@ -1718,6 +1738,90 @@
       <ul class="lista-loja" role="tabpanel">${lista}</ul>
       <p class="nota" style="color:var(--tinta-suave)">Carga: ${kg(peso)} / ${kg(cap)} kg. Flechas são vendidas em lotes de ${typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5}. Fique ao lado do mercador para negociar.</p>`;
     if (focoAntes) (corpo.querySelector(focoAntes) || corpo.querySelector(`[data-aba-loja=${abaLoja}]`))?.focus({ preventScroll: true });
+  }
+
+  // ----- Depósito (DP) -----
+  // Um baú só para todas as cidades (p.deposito). Aba Guardar: a mochila (1, X, tudo de cada item e "Guardar
+  // tudo", menos poções e flechas); aba Retirar: o baú (1, X, tudo, até o que a carga aguenta).
+  let abaDeposito = "guardar", falaDeposito = "", assinaturaDeposito = "";
+  function abrirDeposito(guardaId, aba) {
+    const p = jogador();
+    const guarda = typeof npcs !== "undefined"
+      ? (typeof guardaId === "string" && npcs[guardaId]) || (p && Mundo.guardaDoDepositoProximo?.(p)) || Object.values(npcs).find((n) => n.papel === "deposito" && n.area === p?.area)
+      : null;
+    $("#depositoTitulo").textContent = nomeCurto(guarda?.nome || "Depósito");
+    porFigura($("#depositoRetrato"), visualDe(guarda?.id || "deposito_canaa"), 44, 44);
+    falaDeposito = falaRecente(guarda?.id);
+    if (aba === "guardar" || aba === "retirar") abaDeposito = aba;
+    if (dlg.id === guarda?.id) fecharDialogo();
+    desenharDeposito(true);
+    abrirModal("modalDeposito");
+  }
+  function desenharDeposito(forcar = false) {
+    const p = jogador();
+    if (!p) return;
+    const corpo = $("#depositoCorpo");
+    const bau = contar(p.deposito || []);
+    const mochila = contar(p.inventario);
+    const cap = typeof capacidadeCarga === "function" ? capacidadeCarga(p) : 0;
+    const peso = typeof pesoCarregado === "function" ? pesoCarregado(p) : 0;
+    const espacos = typeof REGRAS_DEPOSITO !== "undefined" ? REGRAS_DEPOSITO.espacos : 2000;
+    const usados = (p.deposito || []).length;
+    const ass = JSON.stringify([abaDeposito, falaDeposito, [...bau], [...mochila], peso, cap]);
+    if (!forcar && ass === assinaturaDeposito && corpo.innerHTML) return;
+    assinaturaDeposito = ass;
+    const ativo = document.activeElement;
+    const focoAntes = corpo.contains(ativo)
+      ? ativo.closest(".qtd-sel")?.dataset.qtd ? `.qtd-sel[data-qtd="${ativo.closest(".qtd-sel").dataset.qtd}"] input`
+        : ativo.dataset.qtdAcao ? `[data-qtd-acao="${ativo.dataset.qtdAcao}"]`
+          : ativo.dataset.dep ? `[data-dep="${ativo.dataset.dep}"][data-item="${ativo.dataset.item || ""}"][data-quantidade="${ativo.dataset.quantidade || ""}"]` : null
+      : null;
+    // Uma linha por item: o botão de 1, o seletor X e o de tudo (acao: "depositar" ou "retirar").
+    const linha = (acao, id, n, max, texto) => {
+      const nome = esc(nomeDoItem(id));
+      const verbo = acao === "depositar" ? "Guardar" : "Retirar";
+      let botao, linhaQtd = "";
+      if (!max) botao = `<button type="button" class="btn primario" disabled title="${acao === "depositar" ? "A missão pede este item" : "Não cabe na mochila"}">${acao === "depositar" ? "Guardado p/ missão" : "Mochila cheia"}</button>`;
+      else {
+        botao = `<button type="button" class="btn primario" data-dep="${acao}" data-item="${esc(id)}" data-quantidade="1" aria-label="${verbo} um ${nome}">${verbo} 1</button>`;
+        if (max > 1) {
+          const chave = `${acao}:${id}`;
+          const x = qtdEscolhida(chave, max, Math.max(2, Math.floor(max / 2)));
+          linhaQtd = `<div class="linha-qtd">${max > 2 ? htmlQtd(chave, x, max, `Quantidade: ${nomeDoItem(id)}`) + htmlAcaoQtd(chave, x, "secundario", ` data-dep="${acao}" data-item="${esc(id)}"`) : ""}`
+            + `<button type="button" class="btn secundario" data-dep="${acao}" data-item="${esc(id)}" data-quantidade="${max}" aria-label="${verbo} ${max} ${nome}">${verbo} ${max === n ? "tudo" : max} (${max})</button></div>`;
+        }
+      }
+      return `<li class="item-loja${linhaQtd ? " com-qtd" : ""}"><span class="icone">${htmlItem(id)}</span><span><strong>${nome}</strong><span>${esc(texto)}</span></span>${botao}${linhaQtd}</li>`;
+    };
+    let lista = "";
+    if (abaDeposito === "guardar") {
+      const livreBau = Math.max(0, espacos - usados);
+      const tudo = [...mochila.keys()].filter((id) => !["consumivel", "municao"].includes(info(id)?.tipo));
+      if (tudo.length && livreBau) lista += `<li class="item-loja vender-tudo"><span><strong>Guardar tudo</strong><span>Toda a mochila, menos poções e flechas (e o que a missão pede)</span></span>
+        <button type="button" class="btn primario" data-dep="tudo">Guardar tudo</button></li>`;
+      for (const [id, n] of mochila) {
+        const max = Math.min(n, livreParaSair(id), livreBau);
+        lista += linha("depositar", id, n, max, `Na mochila: ${n} · ${kg((typeof pesoItem === "function" ? pesoItem(id) : 0) * n)} kg`);
+      }
+      if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">A mochila está vazia.</li>';
+    } else {
+      const folga = cap - peso + 0.0001;
+      for (const [id, n] of bau) {
+        const pu = typeof pesoItem === "function" ? pesoItem(id) : 0;
+        const max = Math.min(n, pu > 0 ? Math.floor(folga / pu) : n);
+        lista += linha("retirar", id, n, max, `No depósito: ${n} · ${kg(pu)} kg cada`);
+      }
+      if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">O depósito está vazio. Guarde aqui o que pesa: materiais, equipamentos e saques.</li>';
+    }
+    corpo.innerHTML = `${falaDeposito ? `<p class="fala-modal">${esc(falaDeposito)}</p>` : ""}
+      <div class="saldo"><span>Depósito: ${usados} / ${espacos} itens</span></div>
+      <div class="abas-modal" role="tablist">
+        <button type="button" class="aba-modal" role="tab" data-aba-deposito="guardar" aria-selected="${abaDeposito === "guardar"}">Guardar</button>
+        <button type="button" class="aba-modal" role="tab" data-aba-deposito="retirar" aria-selected="${abaDeposito === "retirar"}">Retirar</button>
+      </div>
+      <ul class="lista-loja" role="tabpanel">${lista}</ul>
+      <p class="nota" style="color:var(--tinta-suave)">Carga: ${kg(peso)} / ${kg(cap)} kg. O depósito é o mesmo em todas as cidades e o peso dele não conta.</p>`;
+    if (focoAntes) (corpo.querySelector(focoAntes) || corpo.querySelector(`[data-aba-deposito=${abaDeposito}]`))?.focus({ preventScroll: true });
   }
 
   // ----- Mural de caçadas (atalaia) -----
@@ -2689,7 +2793,7 @@
       [k("W", "A", "S", "D") + " " + k("setas"), "Andar"],
       [k("Q", "E", "Z", "C"), "Andar na diagonal"],
       [k("F"), "Ação ao lado: falar, embarcar, desembarcar ou seguir a rota"],
-      [k("Enter"), "Escrever no console: diga oi, comprar, vender, viajar, caçadas, embarcar, preço, missão ou tchau a quem está perto (ou clique nas palavras entre colchetes); Esc volta ao jogo"],
+      [k("Enter"), "Escrever no console: diga oi, comprar, vender, depósito, viajar, caçadas, embarcar, preço, missão ou tchau a quem está perto (ou clique nas palavras entre colchetes); Esc volta ao jogo"],
       ["Clique no chão", "Anda até lá (contorna obstáculos); num personagem ou saque, vai até ele"],
       ["Clique no minimapa", "Anda até aquele ponto, por longe que seja (a cruz de ouro marca o destino)"],
       ["Clique no inimigo", "Escolhe o alvo, vai até ele e ataca sozinho a cada 2 s"],
@@ -2724,10 +2828,10 @@
       <p>Arraste o cabeçalho de uma janela para a outra coluna ou outra posição. Os botões do cabeçalho minimizam (ou dois cliques no título) e fecham; o menu de três pontos move pelo teclado. O menu Janelas, no topo, reabre as janelas fechadas, escolhe o lugar da conversa e restaura o layout. A alça na borda de cima da conversa muda a altura dela.</p>` : "";
     const secItens = `${secJanelas}
       <h3>Itens</h3>
-      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele (ou botão direito nele: Guardar na mochila). Botão direito num item da mochila ou da bolsa (Shift + F10 no teclado) abre o menu dele: a descrição, beber ou equipar e jogar no chão um, alguns ou todos. Arrastar um item para o mundo também o joga no chão; o que você jogou não volta ao pisar em cima: clique nele para buscá-lo. Botão direito numa tecla de atalho a esvazia. O equipamento é um boneco: cabeça, colar, mão da arma, armadura, mão do escudo, pernas, pés, anel e munição. A mão da arma leva a espada, o arco ou a funda; o arco usa as duas mãos (guarda o escudo). As flechas ficam empilhadas no espaço de munição. Clique na mochila do boneco para abrir o painel Mochila.</p>`;
+      <p>Arraste um item para o espaço de equipamento ou para uma tecla de atalho. Ou toque no item e depois no destino. Duplo clique equipa e usa poções. Para guardar, arraste o equipamento de volta para a mochila ou dê duplo clique nele (ou botão direito nele: Guardar na mochila). Botão direito num item da mochila ou da bolsa (Shift + F10 no teclado) abre o menu dele: a descrição, beber ou equipar e destruir um, alguns ou todos (pede confirmação: o item some de vez). O saque das criaturas vai direto para a mochila; só o que não couber cai no chão (pise em cima para pegar). Botão direito numa tecla de atalho a esvazia. O equipamento é um boneco: cabeça, colar, mão da arma, armadura, mão do escudo, pernas, pés, anel e munição. A mão da arma leva a espada, o arco ou a funda; o arco usa as duas mãos (guarda o escudo). As flechas ficam empilhadas no espaço de munição. Clique na mochila do boneco para abrir o painel Mochila.</p>`;
     const secToque = `
       <h3>Toque</h3>
-      <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho. Toque longo num item da mochila ou da bolsa abre o menu dele (descrição, beber ou equipar, jogar no chão) e numa peça vestida, o menu com Guardar; nos outros, mostra a descrição.</p>`;
+      <p>Toque no chão para andar até lá (o caminho contorna obstáculos). Toque num personagem para ir até ele e conversar, num saque para ir buscá-lo e num inimigo para escolher o alvo: você vai até ele e ataca sozinho. Para andar livre, encoste o polegar em qualquer ponto da metade esquerda do mundo e arraste: o joystick nasce ali e segue o dedo em qualquer ângulo; mexer o joystick cancela a caminhada. À direita: atacar, flecha, poção, oração e o botão de ação, que muda conforme o que está ao lado (falar, cais, pesca, rota). Os painéis abrem pela barra inferior. Toque num item e depois no espaço de equipamento ou na tecla de atalho. Toque longo num item da mochila ou da bolsa abre o menu dele (descrição, beber ou equipar, destruir) e numa peça vestida, o menu com Guardar; nos outros, mostra a descrição.</p>`;
     // No toque, a seção de toque vem primeiro.
     const toque = comToque || mm("(pointer: coarse)");
     // Vigor: as faixas e a volta saem de REGRAS_VIGOR (dados/mundo.js).
@@ -2744,8 +2848,9 @@
       <p>Caçadas: depois da missão principal de cada região, o atalaia oferece rondas (voltam 20 h depois da entrega) e grandes caçadas
         (voltam 6 d 20 h depois). Até 3 ao mesmo tempo; cada abate conta para todas as que pedem aquela criatura. Entregue a qualquer
         atalaia e troque os pontos de tarefa por melhorias.</p>
-      <p>Saques: cada criatura tem a sua tabela, com itens comuns e drops raros (1%) e muito raros (0,1%). A cor e o brilho no chão
-        mostram a raridade (comum, incomum, raro, épico, relíquia); equipamentos raros ou melhores trazem atributos aleatórios.</p>
+      <p>Saques: cada criatura tem a sua tabela, com itens comuns e drops raros (1%) e muito raros (0,1%). O saque e as moedas
+        vão direto para a mochila; o que não couber cai no chão, para buscar depois. Erva, odre, madeira, argila, resina e minério
+        também vêm das criaturas. A cor e o brilho do item mostram a raridade (comum, incomum, raro, épico, relíquia); equipamentos raros ou melhores trazem atributos aleatórios.</p>
       <p>Criaturas: cada região tem feras, pragas e inimigos com comportamentos próprios — matilhas que cercam, fuga com
         reforço, arqueiros que mantêm distância, curandeiros (marca CURA: derrube-os primeiro), investida (o chão fica
         vermelho na linha dela: saia da área marcada) e fúria — e alguns causam veneno, sangramento, atordoamento ou medo
@@ -2768,7 +2873,7 @@
       <p>Analisador de caçada: o relógio começa no seu primeiro golpe e mostra XP, saque (moedas e o valor de venda dos itens
         recolhidos), lucro (menos poções, flechas e perdas na morte), abates e mortes, por sessão e por hora, e quanto falta para
         o próximo nível. Zere quando quiser; recarregar a página também zera.</p>
-      <p>Cidades: toda cidade tem um mercador (vende provisões e compra recursos), um guia de caravanas e um cais. O guia leva a qualquer cidade aberta, cobrando pela distância. No cais, a passagem do barco leva ao Mar das Rotas, que liga todas as cidades: navegue até o cais de uma cidade aberta para desembarcar. A pé, as rotas ligam as regiões de graça. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. No mar, pesque nos pontos com ondulação.</p>
+      <p>Cidades: toda cidade tem um mercador (vende provisões e compra qualquer item; "Vender tudo" vende a mochila inteira, menos poções e flechas), um guarda do depósito, um guia de caravanas e um cais. O depósito é um baú só para todas as cidades, com espaço para ${typeof REGRAS_DEPOSITO !== "undefined" ? REGRAS_DEPOSITO.espacos : 2000} itens: o que guardar numa cidade, retire em qualquer outra. O guia leva a qualquer cidade aberta, cobrando pela distância. No cais, a passagem do barco leva ao Mar das Rotas, que liga todas as cidades: navegue até o cais de uma cidade aberta para desembarcar. A pé, as rotas ligam as regiões de graça. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. No mar, pesque nos pontos com ondulação.</p>
       <div class="acoes-modal">
         <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${comToque}">${comToque ? "Ocultar" : "Mostrar"} controles de toque</button>
         <button type="button" class="btn secundario" data-som aria-pressed="${!!window.Som?.ligado}">Som: ${window.Som?.ligado ? "ligado" : "desligado"}</button>
@@ -3581,7 +3686,7 @@
       const d = e.target.closest?.("[data-dica]");
       if (!d || e.pointerType === "mouse") return;
       const x0 = e.clientX, y0 = e.clientY;
-      // Item da mochila/bolsa: o toque longo abre o menu do item (descrição, usar e jogar no chão).
+      // Item da mochila/bolsa: o toque longo abre o menu do item (descrição, usar e destruir).
       // Peça vestida no boneco: o toque longo abre o menu dela (o que dá e Guardar).
       toqueLongo = { t: setTimeout(() => {
         if (d.matches(".slot[data-item]")) abrirMenuItem(d.dataset.item, d);
@@ -3623,9 +3728,10 @@
   function esconderDica() { $("#dicaItem").classList.remove("visivel"); }
 
   // ------------------------------------------------------------------
-  // Quantidades (seletor − n +) e menu do item: usar e jogar no chão
+  // Quantidades (seletor − n +) e menu do item: usar e destruir
   // ------------------------------------------------------------------
-  // Valor de cada seletor entre um redesenho e outro, pela chave "<ação>:<item>" (vender, comprar, largar).
+  // Valor de cada seletor entre um redesenho e outro, pela chave "<ação>:<item>" (vender, comprar, destruir,
+  // depositar, retirar).
   const quantidades = new Map();
   const kg = (n) => (typeof textoKg === "function" ? textoKg(n) : String(n));
   const contarNaMochila = (id, p = jogador()) => (p?.inventario || []).filter((x) => x === id).length;
@@ -3645,7 +3751,7 @@
     const [acao, id] = chave.split(/:(.*)/s);
     const moeda = imgGlifo("ui_moeda", "px g16");
     if (acao === "vender") {
-      const total = (typeof VALORES_VENDA !== "undefined" ? VALORES_VENDA[id] || 0 : 0) * n;
+      const total = (typeof valorDeVenda === "function" ? valorDeVenda(id) : 0) * n;
       return { html: `Vender ${n} · +${total} ${moeda}`, texto: `Vender ${n} ${nomeDoItem(id)} por ${total} moedas` };
     }
     if (acao === "comprar") {
@@ -3653,7 +3759,9 @@
       const lote = id === "flechas" ? `${n * (typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5)} flechas` : `${n}`;
       return { html: `Comprar ${lote} · ${preco * n} ${moeda}`, texto: `Comprar ${id === "flechas" ? lote : `${n} ${nomeDoItem(id)}`} por ${preco * n} moedas` };
     }
-    return { html: `Jogar ${n}`, texto: `Jogar ${n} ${nomeDoItem(id)} no chão` };
+    if (acao === "depositar") return { html: `Guardar ${n}`, texto: `Guardar ${n} ${nomeDoItem(id)} no depósito` };
+    if (acao === "retirar") return { html: `Retirar ${n}`, texto: `Retirar ${n} ${nomeDoItem(id)} do depósito` };
+    return { html: `Destruir ${n}`, texto: `Destruir ${n} ${nomeDoItem(id)}` };
   }
   function htmlAcaoQtd(chave, n, classe, extra = "") {
     const r = rotuloQtd(chave, n);
@@ -3698,7 +3806,7 @@
       const sel = e.target.closest?.(".qtd-sel");
       if (sel) definirQtd(sel, e.target.value);
     });
-    // Enter no número: faz a ação do seletor (vender, comprar ou jogar essa quantidade).
+    // Enter no número: faz a ação do seletor (vender, comprar, destruir, guardar ou retirar essa quantidade).
     document.addEventListener("keydown", (e) => {
       const sel = e.key === "Enter" && e.target.closest?.(".qtd-sel");
       if (!sel) return;
@@ -3708,18 +3816,19 @@
     });
   }
 
-  // Menu do item (botão direito, toque longo ou Shift+F10 num item da mochila/bolsa; ou ao soltar uma pilha no
-  // mundo): descrição, usar (beber mesmo com a vida cheia, equipar) e jogar no chão 1, X ou tudo.
-  let menuItem = null; // { id, ancora (elemento ou {x, y} da tela), casa (casa do mundo onde soltar) }
-  function abrirMenuItem(id, ancora, casa = null) {
+  // Menu do item (botão direito, toque longo ou Shift+F10 num item da mochila/bolsa): descrição, usar (beber
+  // mesmo com a vida cheia, equipar) e destruir 1, X ou tudo (pede confirmação: o item some de vez, não vai
+  // para o chão).
+  let menuItem = null; // { id, ancora (elemento ou {x, y} da tela), confirmar (quantidade a destruir, à espera do sim) }
+  function abrirMenuItem(id, ancora) {
     if (!info(id) || !contarNaMochila(id)) return;
     esconderDica();
     if (selecao) selecionar(null);
     const reabrir = menuItem?.id === id;
     // rect: onde o menu nasceu (o espaço da mochila é recriado quando ela muda; o menu fica no lugar).
     const rect = ancora instanceof Element ? ancora.getBoundingClientRect() : { left: ancora.x, right: ancora.x, top: ancora.y, bottom: ancora.y };
-    menuItem = { id, ancora, casa, rect };
-    if (!reabrir) quantidades.delete(`largar:${id}`);
+    menuItem = { id, ancora, rect, confirmar: 0 };
+    if (!reabrir) quantidades.delete(`destruir:${id}`);
     desenharMenuItem(true);
     teclado(false);
   }
@@ -3787,15 +3896,20 @@
     let usar = "";
     if (id === "pocao" || id === "pocao_fe") usar = `<button type="button" class="btn primario" data-menu-usar>Beber</button>`;
     else if (slotDe(id)) usar = `<button type="button" class="btn primario" data-menu-usar>Equipar</button>`;
-    const chave = `largar:${id}`;
-    let largar;
-    if (!livre) largar = "";
-    else if (livre === 1) largar = `<button type="button" class="btn" data-menu-largar="1">Jogar no chão</button>`;
+    const chave = `destruir:${id}`;
+    const confirmar = Math.min(menuItem.confirmar || 0, livre);
+    let destruir;
+    if (!livre) destruir = "";
+    else if (confirmar) {
+      destruir = `<p class="menu-aviso">Destruir ${confirmar > 1 ? `${confirmar}× ` : ""}${esc(nomeDoItem(id))}? O item some de vez.</p>`
+        + `<button type="button" class="btn perigo" data-menu-confirmar="${confirmar}">Destruir</button>`
+        + `<button type="button" class="btn secundario" data-menu-cancelar>Cancelar</button>`;
+    } else if (livre === 1) destruir = `<button type="button" class="btn secundario" data-menu-destruir="1">Destruir</button>`;
     else {
       const x = qtdEscolhida(chave, livre, Math.max(2, Math.floor(livre / 2)));
-      largar = `<button type="button" class="btn secundario" data-menu-largar="1">Jogar 1</button>`
-        + `<button type="button" class="btn secundario" data-menu-largar="${livre}">Jogar ${reserva ? "as livres" : "tudo"} (${livre})</button>`
-        + (livre > 2 ? `<span class="menu-x">${htmlQtd(chave, x, livre, `Quantidade a jogar no chão: ${nomeDoItem(id)}`)}${htmlAcaoQtd(chave, x, "")}</span>` : "");
+      destruir = `<button type="button" class="btn secundario" data-menu-destruir="1">Destruir 1</button>`
+        + `<button type="button" class="btn secundario" data-menu-destruir="${livre}">Destruir ${reserva ? "as livres" : "tudo"} (${livre})</button>`
+        + (livre > 2 ? `<span class="menu-x">${htmlQtd(chave, x, livre, `Quantidade a destruir: ${nomeDoItem(id)}`)}${htmlAcaoQtd(chave, x, "secundario")}</span>` : "");
     }
     const reservaTxt = reserva
       ? (() => { const res = Mundo.reservaDeMissao?.(p, id); return `<p class="menu-reserva">${reserva === n ? "Todos guardados" : `${reserva} guardados`} para a missão “${esc(res?.missao || "")}” (entrega a ${esc(res?.npc || "")}).</p>`; })()
@@ -3806,11 +3920,11 @@
       + `<button type="button" class="menu-fechar" data-menu-fechar aria-label="Fechar o menu"><img class="px g16" src="${glifoURL("ui_fechar", 2)}" alt=""></button></div>`
       + `<p class="menu-info">${esc([atributoItem(id, p), pesoTxt].filter(Boolean).join(" · "))}</p>${reservaTxt}`
       + (usar ? `<div class="menu-grupo">${usar}</div>` : "")
-      + (largar ? `<div class="menu-grupo" role="group" aria-label="Jogar no chão"><span class="menu-rotulo">Jogar no chão${menuItem.casa ? " (onde você soltou)" : " (ao seu lado)"}</span>${largar}</div>` : "");
+      + (destruir ? `<div class="menu-grupo" role="group" aria-label="Destruir"><span class="menu-rotulo">Destruir (para liberar espaço)</span>${destruir}</div>` : "");
     m.setAttribute("aria-label", `Ações: ${nomeDoItem(id)}`);
     m.classList.add("aberto");
     posicionarMenuItem();
-    if (focar) setTimeout(() => (m.querySelector("[data-menu-largar], [data-menu-usar]") || m.querySelector("button"))?.focus({ preventScroll: true }), 0);
+    if (focar) setTimeout(() => (m.querySelector("[data-menu-confirmar], [data-menu-usar], [data-menu-destruir]") || m.querySelector("button"))?.focus({ preventScroll: true }), 0);
   }
   function posicionarMenuItem() {
     const m = $("#menuItem"), a = menuItem.ancora;
@@ -3823,13 +3937,11 @@
     m.style.left = `${Math.round(x)}px`;
     m.style.top = `${Math.round(Math.max(8, y))}px`;
   }
-  // Joga no chão: na casa onde o item foi solto no mundo (se for ao lado), senão aos pés do personagem.
-  function largarItem(id, quantidade, casa) {
-    const cmd = { tipo: "largarItem", item: id, quantidade };
-    if (casa) Object.assign(cmd, { x: casa.x, y: casa.y });
-    const r = executar(cmd);
+  // Destrói (depois do sim no menu): o item some da mochila de vez.
+  function destruirItem(id, quantidade) {
+    const r = executar({ tipo: "destruirItem", item: id, quantidade });
     if (r?.ok) fecharMenuItem();
-    else if (menuItem) desenharMenuItem(false);
+    else if (menuItem) { menuItem.confirmar = 0; desenharMenuItem(false); }
     atualizar();
     return r;
   }
@@ -3853,10 +3965,14 @@
         else desenharMenuItem(false);
         return;
       }
-      const b = e.target.closest("[data-menu-largar], [data-qtd-acao]");
+      if (e.target.closest("[data-menu-cancelar]")) { menuItem.confirmar = 0; return desenharMenuItem(true); }
+      const sim = e.target.closest("[data-menu-confirmar]");
+      if (sim) return destruirItem(id, Number(sim.dataset.menuConfirmar) || 1);
+      const b = e.target.closest("[data-menu-destruir], [data-qtd-acao]");
       if (!b || b.disabled) return;
-      const q = b.dataset.qtdAcao ? quantidadeDe(b.dataset.qtdAcao) : Number(b.dataset.menuLargar) || 1;
-      largarItem(id, q, menuItem.casa);
+      // Primeiro clique: pede a confirmação (destruir não tem volta).
+      menuItem.confirmar = b.dataset.qtdAcao ? quantidadeDe(b.dataset.qtdAcao) : Number(b.dataset.menuDestruir) || 1;
+      desenharMenuItem(true);
     });
     m.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fecharMenuItem(true); }
@@ -3881,43 +3997,6 @@
       // Teclado (Shift+F10, tecla de menu): ancora no espaço; mouse: também.
       if (eq) abrirMenuEquip(eq.dataset.equipSlot, eq);
       else abrirMenuItem(it.dataset.item, it);
-    });
-  }
-
-  // Arrastar um item da mochila ou da bolsa para o mundo joga no chão (na casa solta, se for ao lado; senão
-  // aos pés do personagem). Pilha: abre o menu para escolher 1, X ou tudo. Equipamento vestido: guardar antes.
-  function ligarChao() {
-    const palco = $("#palco");
-    const arrastandoItem = (e) => Array.from(e.dataTransfer?.types || []).some((t) => t === "text/item" || t === "text/equip");
-    // O mundo: o mapa e o que flutua sobre ele, menos painéis, janelas e alvos de soltar (equipamento, atalho, mochila).
-    const noMundo = (e) => !!e.target.closest?.("#game-root")
-      || !e.target.closest?.(".painel, .perg, .console, #folha, [data-equip-slot], [data-atalho], .zona-soltar");
-    palco.addEventListener("dragover", (e) => {
-      if (!arrastandoItem(e) || !noMundo(e)) return palco.classList.remove("alvo-chao");
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      palco.classList.add("alvo-chao");
-    });
-    palco.addEventListener("dragleave", (e) => { if (!palco.contains(e.relatedTarget)) palco.classList.remove("alvo-chao"); });
-    document.addEventListener("dragend", () => palco.classList.remove("alvo-chao"));
-    palco.addEventListener("drop", (e) => {
-      palco.classList.remove("alvo-chao");
-      if (!arrastandoItem(e) || !noMundo(e)) return;
-      e.preventDefault();
-      const item = e.dataTransfer.getData("text/item"), slotEq = e.dataTransfer.getData("text/equip");
-      if (slotEq) {
-        const vestido = jogador()?.equipamento?.[slotEq];
-        mensagem(`Tire do corpo antes de jogar no chão: arraste ${vestido ? nomeDoItem(vestido) : "a peça"} para a mochila.`, "perigo");
-        return;
-      }
-      if (!item || !contarNaMochila(item)) return;
-      // Só vale a casa onde soltou se estiver ao alcance (a lógica põe o item ao lado do jogador se não estiver),
-      // para o menu não prometer "onde você soltou" e o item cair em outro lugar.
-      const sob = window.Jogo?.casaNaTela?.(e.clientX, e.clientY) || null;
-      const eu = jogador();
-      const casa = sob && eu && Math.max(Math.abs(sob.x - eu.x), Math.abs(sob.y - eu.y)) <= ALCANCE_INTERACAO ? sob : null;
-      if (livreParaSair(item) > 1) abrirMenuItem(item, { x: e.clientX, y: e.clientY }, casa);
-      else largarItem(item, 1, casa);
     });
   }
 
@@ -4044,6 +4123,7 @@
     $("#mapaCoord").textContent = `${p.x}, ${p.y}`;
     atualizarNivelDoMapa();
     if (modalAberto?.id === "modalLoja") desenharLoja();
+    if (modalAberto?.id === "modalDeposito") desenharDeposito();
     if (modalAberto?.id === "modalMural") desenharMural();
     if (modalAberto?.id === "modalBestiario") desenharBestiario();
     if (modalAberto?.id === "modalMana") desenharMana();
@@ -4182,10 +4262,29 @@
         const qtdLoja = (b) => (b.dataset.qtdAcao ? quantidadeDe(b.dataset.qtdAcao) : Number(b.dataset.quantidade) || 1);
         const comprar = e.target.closest("[data-comprar]");
         if (comprar && !comprar.disabled) { executar({ tipo: "comprar", item: comprar.dataset.comprar, quantidade: qtdLoja(comprar) }); desenharLoja(); return; }
+        const vTudo = e.target.closest("[data-vender-tudo]");
+        if (vTudo) {
+          const passo = vTudo.dataset.venderTudo;
+          if (passo === "sim") executar({ tipo: "venderTudo" });
+          confirmaVenderTudo = passo === "pedir";
+          desenharLoja(true);
+          $("#lojaCorpo [data-vender-tudo]")?.focus({ preventScroll: true });
+          return;
+        }
         const vender = e.target.closest("[data-vender]");
         if (vender && !vender.disabled) { executar({ tipo: "vender", item: vender.dataset.vender, quantidade: qtdLoja(vender) }); desenharLoja(); return; }
+        // Depósito: guardar ou retirar 1, X (seletor) ou tudo; "Guardar tudo"; abas.
+        const dep = e.target.closest("[data-dep]");
+        if (dep && !dep.disabled) {
+          if (dep.dataset.dep === "tudo") executar({ tipo: "depositarTudo" });
+          else executar({ tipo: dep.dataset.dep, item: dep.dataset.item, quantidade: qtdLoja(dep) });
+          desenharDeposito(true);
+          return;
+        }
+        const abaD = e.target.closest("[data-aba-deposito]");
+        if (abaD) { abaDeposito = abaD.dataset.abaDeposito; desenharDeposito(true); $(`#depositoCorpo [data-aba-deposito=${abaDeposito}]`)?.focus(); return; }
         const abaL = e.target.closest("[data-aba-loja]");
-        if (abaL) { abaLoja = abaL.dataset.abaLoja; desenharLoja(true); $(`#lojaCorpo [data-aba-loja=${abaLoja}]`)?.focus(); return; }
+        if (abaL) { abaLoja = abaL.dataset.abaLoja; confirmaVenderTudo = false; desenharLoja(true); $(`#lojaCorpo [data-aba-loja=${abaLoja}]`)?.focus(); return; }
         // Mural: aba, aceitar/retomar, guardar (sem confirmação: nada se perde) e trocar pontos.
         const abaM = e.target.closest("[data-aba-mural]");
         if (abaM) {
@@ -4356,7 +4455,6 @@
     ligarItens();
     ligarQuantidades();
     ligarMenuItem();
-    ligarChao();
     ligarConsole();
     ligarToque();
     ligarFicha();
@@ -4382,6 +4480,7 @@
     dialogo,
     avancarDialogo,
     abrirLoja,
+    abrirDeposito,
     abrirViagem,
     abrirBarco,
     orar,
@@ -4399,6 +4498,7 @@
   window.atualizarInterface = () => UI.atualizar();
   window.mostrarMensagem = (t) => UI.mensagem(t);
   window.abrirLoja = (id) => UI.abrirLoja(id);
+  window.abrirDeposito = (id) => UI.abrirDeposito(id);
   window.abrirViagem = (id) => UI.abrirViagem(id);
   window.orar = (acao) => UI.orar(acao);
   window.abrirMural = (id) => UI.abrirMural(id ?? null);

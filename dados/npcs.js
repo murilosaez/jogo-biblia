@@ -9,7 +9,71 @@
 // capítulos, "lider" (dá a missão), "apoio" (só conversa) e "mestre" (ensina a Oração). falas: textos próprios.
 // Quem atende numa tenda ou banca fica logo à frente dela; o mercador fica atrás do balcão da loja (dados/mapas.js,
 // estruturas com npc). "barqueiro": fica ao lado do cais da cidade, diz o preço da passagem e embarca quem pagar.
+// "deposito": guarda do depósito da cidade (atende à frente de uma banca); o depósito é um só em todas as cidades
+// (REGRAS_DEPOSITO, dados/mundo.js).
 const DADOS_NPCS = [
+  // Guardas do depósito (um por cidade). Os nomes vêm dos que cuidavam dos depósitos do templo (Ne 12:25; 13:13)
+  // e de Itamar, que fez a conta do material do tabernáculo (Êx 38:21).
+  {
+    id: "deposito_canaa",
+    nome: "Selemias, guarda do depósito",
+    area: "canaan",
+    x: 30,
+    y: 20,
+    papel: "deposito",
+    aparencia: "anciao",
+    falas: { saudacao: "O que você guardar comigo fica guardado em todo depósito: em qualquer cidade é o mesmo baú." },
+  },
+  {
+    id: "deposito_deserto",
+    nome: "Zadoque, guarda do depósito",
+    area: "deserto",
+    x: 150,
+    y: 18,
+    papel: "deposito",
+    aparencia: "sentinela",
+    falas: { saudacao: "No deserto nada se perde comigo. O que guardar aqui, retira em qualquer cidade." },
+  },
+  {
+    id: "deposito_egito",
+    nome: "Pedaías, guarda do depósito",
+    area: "egito",
+    x: 27,
+    y: 101,
+    papel: "deposito",
+    aparencia: "oleiro",
+    falas: { saudacao: "Como José guardou o trigo, guardo o que é seu. Vale em todo depósito." },
+  },
+  {
+    id: "deposito_mar",
+    nome: "Hanã, guarda do depósito",
+    area: "marVermelho",
+    x: 19,
+    y: 94,
+    papel: "deposito",
+    aparencia: "pescador",
+    falas: { saudacao: "Deixe aqui o que pesa na viagem. Em qualquer cidade o baú é o mesmo." },
+  },
+  {
+    id: "deposito_sinai",
+    nome: "Itamar, guarda do depósito",
+    area: "sinai",
+    x: 20,
+    y: 94,
+    papel: "deposito",
+    aparencia: "pastor",
+    falas: { saudacao: "Tudo o que chega aqui fica contado. Guarde e retire em qualquer depósito." },
+  },
+  {
+    id: "deposito_galileia",
+    nome: "Matanias, guarda do depósito",
+    area: "galileia",
+    x: 41,
+    y: 27,
+    papel: "deposito",
+    aparencia: "ancia",
+    falas: { saudacao: "O depósito é um só: o que guardar na Galileia, encontra em Canaã e no Egito." },
+  },
   { id: "viajante1", nome: "Eliabe", area: "canaan", x: 22, y: 18, papel: "missao" },
   { id: "guia_canaa", nome: "Micael, guia de caravanas", area: "canaan", x: 13, y: 17, papel: "guia" },
   // Mestre de vocações (JGB-20): troca de vocação (papel "vocacao"; a 1ª escolha vale em qualquer lugar).

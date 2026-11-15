@@ -18,10 +18,11 @@ Conteúdo do jogo (pasta dados/)
   casas livres que não se alcançam a partir do início da área viram obstáculo.
 - dados/mundo.js: áreas (início, trilha, cais, chegada da viagem e os portos do mar, um por cidade),
   regiões dos capítulos, preços da viagem rápida (REGRAS_VIAGEM) e da passagem do barco (REGRAS_BARCO),
-  ervas, odres, pontos de pesca e portais; o maná diário (REGRAS_MANA: amanhecer, porções, sexta e sábado,
+  pontos de pesca e portais; o maná diário (REGRAS_MANA: amanhecer, porções, sexta e sábado,
   cura) e o descanso do Sábado (REGRAS_DESCANSO: janela, ausência mínima, XP por Sábado, limite e
   multiplicador); o vigor (REGRAS_VIGOR: máximo, janela de combate, carência, ritmo da volta, Sábado mínimo
-  e as faixas com o multiplicador de XP).
+  e as faixas com o multiplicador de XP); a velocidade do personagem (REGRAS_VELOCIDADE: casas por segundo no
+  nível 1, quanto sobe por nível, o teto e o fator da diagonal) e o depósito (REGRAS_DEPOSITO: espaços do baú).
 - dados/npcs.js: personagens, posições, papéis e falas próprias. O mercador atende atrás do balcão da
   loja (conversa-se e compra-se do outro lado do balcão, a 2 casas); guias e atalaias atendem à frente
   de uma tenda ou banca (estruturas com npc em dados/mapas.js); o barqueiro fica ao lado do cais, diz o
@@ -48,9 +49,9 @@ Conteúdo do jogo (pasta dados/)
   TALENTOS: 3 ramos por vocação, 6 talentos por ramo, com fileira, graus, requisito e efeito por grau).
   Os ids dos talentos ficam no save: renomear um devolve os pontos de quem o tinha.
 - dados/oficios.js: os ofícios (REGRAS_OFICIOS: nível máximo, curva de XP, chance de colher a mais, peixe
-  grande, qualidade dos equipamentos e respawn da extração; OFICIOS: os 6 ofícios, de onde vêm os materiais e
-  o XP de cada coleta; RECEITAS: ofício, nível, materiais, produto e XP). Os pontos de extração (madeira,
-  argila, minério e resina) ficam em dados/mundo.js (pontosExtracao) e os itens novos em dados/itens.js.
+  grande e qualidade dos equipamentos; OFICIOS: os 6 ofícios, de onde vêm os materiais e o XP de cada coleta;
+  RECEITAS: ofício, nível, materiais, produto e XP). Nada brota no mapa: erva, odre, madeira, argila, minério e
+  resina caem das criaturas (tabelas de saque em dados/criaturas.js); os itens novos ficam em dados/itens.js.
 - dados/cosmeticos.js: trajes (TRAJES: nome, vocação, gratuito, preço e o visual do boneco), montarias
   (MONTARIAS: jumento, camelo, cavalo e carro) e a paleta das cores do visual (CORES_VISUAL: id, nome e cor;
   PARTES_COR_VISUAL: cabeça, tronco, pernas e detalhe), só de aparência, e a regra da loja (REGRAS_COSMETICOS:
@@ -63,8 +64,10 @@ mana = { porcao, estragaEm, proximaEm }, descanso = { xp, vistoEm, creditadoAte 
 (minutos com fração; sem o campo, o personagem começa cheio — não mudou a versão do save) e status[tipo] =
 { ate, pilhas, dano, intervalo, proximo } com imune[tipo] (até quando o status não pega de novo),
 vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica pronta) e talentos[id] = graus
-(só os da vocação atual; os pontos saem do nível), oficios[id] = { xp } (o nível sai do XP) e
-extracaoRespawn[ponto] (quando o ponto de extração brota de novo) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje).
+(só os da vocação atual; os pontos saem do nível), oficios[id] = { xp } (o nível sai do XP),
+deposito (lista de itens do baú, o mesmo em todas as cidades; sem o campo, começa vazio — não mudou a versão
+do save; os campos antigos ervasRespawn, odresRespawn, ervasColetadas, odresColetados e extracaoRespawn saem
+na carga) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje).
 equipamento = { cabeca, colar, arma, armadura, escudo, pernas, pes, anel, municao } (o boneco; null = vazio) e
 quantidadeMunicao (quantas unidades há na pilha do espaço de munição). Saves antigos são convertidos sozinhos,
 sem perder o que já foi feito. O boneco não pediu versão nova: a carga de todo save (normalizarEquipamento, em
@@ -110,7 +113,8 @@ Controles — teclado e mouse
   (as 8 casas vizinhas contam, inclusive diagonais). O aviso "F · Falar" aparece junto do alvo; ao lado
   de um atalaia ele mostra "F · Caçadas" e abre o mural (o clique no atalaia faz o mesmo).
 - Enter: escrever no console, no dock de baixo. Com alguém por perto, as palavras-chave conversam
-  como nos MMORPGs clássicos: oi e tchau (todos), comprar e vender (mercador), viajar (guia),
+  como nos MMORPGs clássicos: oi e tchau (todos), comprar e vender (mercador), depósito (guarda do
+  depósito), viajar (guia),
   caçadas (atalaia), embarcar e preço (barqueiro), vocação (Jetro), conversar (moradores) e missão
   (quem dá missões, ou quem uma missão manda procurar). Valem sem acento, no meio de uma frase
   ("quanto custa a passagem?") e com alguns sinônimos (olá, loja, trade, barco…); as palavras de cada
@@ -170,12 +174,11 @@ Controles — teclado e mouse
   duas mãos."); a funda usa uma. A munição é uma pilha (as flechas compradas, recolhidas, recebidas ou
   feitas vão para ela quando está vazia ou já tem flechas; elas pesam); o arco gasta primeiro as do espaço de
   munição e depois as da mochila. Colar e anel dão vida ou crítico; as botas de viagem, carga.
-- Jogar no chão: arraste um item da mochila ou da bolsa para o mundo (cai na casa solta, se for ao lado do
-  personagem; senão, ao lado dele, e o menu e a mensagem dizem isso), ou abra o menu do item com o botão direito (Shift + F10 no teclado; toque
-  longo no celular): Beber/Equipar e Jogar 1, Jogar X (− número +) ou Jogar tudo. Uma pilha solta no mundo
-  também abre o menu. O que você jogou fica no chão por 10 minutos e não volta ao pisar em cima: clique no
-  item para buscá-lo (com a mochila cheia, leva o que couber). Equipamento vestido volta à mochila antes; as
-  unidades que uma missão em andamento pede na entrega (ervas, odres, venenos, insígnia) ficam guardadas.
+- Destruir: abra o menu do item com o botão direito (Shift + F10 no teclado; toque longo no celular):
+  Beber/Equipar e Destruir 1, Destruir X (− número +) ou Destruir tudo. Destruir pede confirmação e o item some
+  de vez (nada vai para o chão: o mapa e o futuro servidor não guardam lixo). Para liberar espaço sem perder o
+  item, venda ao mercador ou guarde no depósito. Equipamento vestido volta à mochila antes; as unidades que
+  uma missão em andamento pede na entrega (ervas, odres, venenos, insígnia) ficam guardadas.
 
 Controles — toque (celular e tablet)
 - Aparecem sozinhos em telas de toque (ou pelo botão "Mostrar controles de toque" na ajuda).
@@ -194,7 +197,7 @@ Controles — toque (celular e tablet)
 - Barra inferior: Mochila, Equipamento, Batalha, Missão e Conversa abrem em folhas recolhíveis (o
   analisador de caçada fica na folha Batalha; a folha Conversa é o console, com as abas e a entrada).
   Toque num item e depois no espaço de equipamento ou no atalho; toque longo num item da mochila ou da
-  bolsa abre o menu dele (descrição, beber ou equipar, jogar no chão), e numa peça vestida, o menu Guardar;
+  bolsa abre o menu dele (descrição, beber ou equipar, destruir), e numa peça vestida, o menu Guardar;
   nos outros, mostra a descrição.
 
 Interface e visual
@@ -286,8 +289,10 @@ Interface e visual
 
 Campanha
 Canaã → Deserto → Egito → Mar Vermelho → Monte Sinai → Galileia → Oração.
-- Canaã: Eliabe pede que você afaste o lobo (recompensa: espada de ferro) e traga 3 ervas medicinais.
-- Deserto: Noemi pede 3 odres de água (recompensa: armadura de couro, arco e flechas), 2 amostras de
+- Canaã: Eliabe pede que você afaste o lobo (recompensa: espada de ferro) e traga 3 ervas medicinais (os
+  chacais sempre deixam uma).
+- Deserto: Noemi pede 3 odres de água, que os abutres espalharam (cada abutre deixa um; o bando e as
+  hienas às vezes) — recompensa: armadura de couro, arco e flechas —, 2 amostras de
   veneno de escorpião e a insígnia do chefe dos saqueadores.
 - Egito (Moisés): afaste o guarda egípcio — recompensa: escudo de bronze. Arão também está na vila.
 - Mar Vermelho (Arão): vença o soldado perseguidor — recompensa: espada temperada.
@@ -295,14 +300,14 @@ Canaã → Deserto → Egito → Mar Vermelho → Monte Sinai → Galileia → O
 - Galileia (Pedro): vença o salteador da estrada; depois converse com Jesus para aprender a Oração.
 Cada rota a leste só abre depois que o capítulo anterior é concluído. As missões exigem que os itens
 pedidos (ervas, odres, venenos, insígnia) estejam na mochila no momento da entrega.
-Ervas existem só em Canaã e odres só no Deserto; ambos reaparecem 18 s depois de coletados, num lugar
-aleatório das zonas de coleta da região.
+Nada brota no mapa: erva, odre e os materiais dos ofícios (madeira, argila, minério e resina) caem das
+criaturas, direto na mochila.
 
 Mapas e vilas
 Cada região tem 160×120 casas, com vilas e acampamentos (Vila de Canaã, Acampamento de Noemi, Gósen,
 Acampamento à beira-mar, Refidim e Cafarnaum), estradas, áreas de caça, lagos e rios. Toda cidade tem
-um mercador numa banca, um guia de caravanas e um atalaia em tendas, e um cais ao norte (no Egito, na
-margem do Nilo; na Galileia, no lago). As bancas vazias de Canaã e do Deserto estão reservadas para o
+um mercador numa loja, um guarda do depósito numa banca, um guia de caravanas e um atalaia em tendas, e um
+cais ao norte (no Egito, na margem do Nilo; na Galileia, no lago). As bancas vazias de Canaã e do Deserto estão reservadas para o
 ferreiro. Cada vila tem moradores para conversar.
 O minimapa mostra 80×60 casas em volta do jogador; clicar nele anda até lá (veja Controles).
 
@@ -318,13 +323,19 @@ Combate
   1,5 × o dano.
 - Corpo a corpo, conversas, compras e saques funcionam nas 8 casas vizinhas — para você e para os
   inimigos, que também atacam na diagonal (um golpe a cada 1,2 s).
-- Inimigos derrotados reaparecem em 5 s. Saques no chão (moedas e itens) somem depois de 10 minutos,
+- Inimigos derrotados reaparecem em 5 s. O saque vai direto para a mochila e as moedas para a bolsa; só o
+  que não couber na carga cai no chão (pise em cima para pegar). Saques no chão somem depois de 10 minutos,
   exceto os itens que uma missão em andamento ainda pede.
 
 Saques e raridades
 - Cada criatura tem uma tabela de saque (dados/criaturas.js): cada linha é sorteada à parte, com chance
   "sempre" (100%), "comum" (25%), "incomum" (8%), "raro" (1%), "muito_raro" (0,1%) ou um número.
-  Os itens que as missões pedem (pele, veneno, insígnia) caem sempre: a campanha não depende de sorte.
+  Os itens que as missões pedem (pele, veneno, insígnia, erva, odre) caem sempre de alguma criatura: a
+  campanha não depende de sorte. Os materiais dos ofícios também vêm daqui: erva (chacais, lobos, javalis),
+  odre (abutres, curandeiros e arqueiros do bando, hienas, o chefe), madeira (javalis, ursos, leões, vespas,
+  corvos, salteadores e mercenários), argila (rãs, crocodilos e soldados do Egito), resina (cabras, águias e
+  leopardos do Sinai) e minério de cobre (guardiões e fundibulários do Sinai). Com o ofício que usa o
+  material, às vezes cai 1 a mais, e cada unidade dá XP ao ofício.
   Cada criatura tem um recurso comum (presa, ferrão, linho, ponta de lança, bracelete), poções, um
   equipamento a 3–5%, um equipamento raro ou melhor a 1% e uma pedra do peitoral (Êx 28) a 0,1%.
 - Raridades: comum, incomum (verde), raro (azul), épico (roxo) e relíquia (dourado). No chão, o item
@@ -431,6 +442,20 @@ Peso e carga
   equipamento (+1 a +5). O equipamento inicial pesa 5,2 kg: sobram 30 kg no nível 1. Nível 10: 62 kg.
 - A carga aparece em "x / y kg" (com vírgula) no painel Mochila: âmbar acima de 90%, vermelha cheia.
 
+Velocidade
+- O personagem anda 4 casas por segundo no nível 1 (250 ms por casa) e fica um pouco mais rápido a cada
+  nível (+0,04 casa/s): 5 casas/s no nível 26, 6 no nível 51 e o teto de 7,5 do nível 89 em diante. Na
+  diagonal o passo demora 1,3 ×. Os números ficam em dados/mundo.js (REGRAS_VELOCIDADE) e a janela de
+  habilidades mostra a velocidade atual.
+
+Depósito (DP)
+- Toda cidade tem um guarda do depósito numa banca: Selemias (Canaã), Zadoque (Deserto), Pedaías (Egito),
+  Hanã (Mar Vermelho), Itamar (Monte Sinai) e Matanias (Galileia). O baú é um só: o que você guarda numa
+  cidade está em todas. Cabem 2.000 itens (cada unidade conta 1) e o peso do depósito não conta na carga.
+- Converse com o guarda (ou diga "depósito"): aba Guardar (1, X ou tudo de cada item, e Guardar tudo, menos
+  poções e flechas) e aba Retirar (1, X ou tudo, até o que a carga aguenta). Unidades que uma missão pede
+  na entrega ficam na mochila.
+
 Habilidades
 Corpo, distância, defesa e Oração sobem por uso, do nível 0 ao 100.
 - XP por uso: golpe corpo a corpo 2, flecha 2, golpe recebido 1 (defesa), oração 3.
@@ -464,11 +489,14 @@ Mercadores (um em cada cidade)
 Hadassa (Canaã), Azarias (Deserto), Senefer (Egito), Quenaz (Mar Vermelho), Mesulão (Monte Sinai) e
 Eliaquim (Galileia). Todos vendem poção de vida 12 · poção de fé 18 · 5 flechas 8; os equipamentos
 variam: escudo de madeira 35 (todos menos o do Egito), armadura de couro 65 e arco de madeira 80 (todos
-menos a de Canaã); Hadassa (Canaã) vende também a funda (60). Todos compram pele de lobo (5), erva (2), odre (3), peixe (6), veneno de escorpião (4),
-insígnia do bando (6), presa de lobo (10), ferrão de escorpião (12), linho egípcio (8), ponta de lança (9),
-bracelete de cobre (16) e as pedras do peitoral (150 a 200).
+menos a de Canaã); Hadassa (Canaã) vende também a funda (60). Todos compram qualquer item (VALORES_VENDA, em
+dados/itens.js): recursos (pele de lobo 5, erva 2, odre 3, peixe 6, veneno 4, insígnia 6, presa 10, ferrão
+12, linho 8, ponta de lança 9, bracelete 16, pedras do peitoral 150 a 200), armas, escudos, armaduras e as
+peças do boneco (sempre abaixo do preço da loja; o equipamento que caiu incomum vale 1,5 ×, raro 2,5 ×, épico
+4 × e relíquia 7 ×), poções (5 e 7) e flechas (1 cada).
 - Vender: com mais de uma unidade, Vender 1, Vender X (− número +, até o que você tem) ou Vender tudo; o
-  total em moedas aparece no botão antes de confirmar. Só a mochila conta (o vestido não é vendido) e cada
+  total em moedas aparece no botão antes de confirmar. No topo da aba Vender, "Vender todos os itens" vende a
+  mochila inteira de uma vez (pede confirmação), menos poções e flechas. Só a mochila conta (o vestido não é vendido) e cada
   raridade de um equipamento é um item à parte. Unidades que uma missão pede na entrega ficam guardadas.
 - Comprar: poções e flechas têm o mesmo seletor (até 100 de uma vez, ou o que as moedas e a carga permitem).
 
@@ -573,16 +601,17 @@ Tecla O ou o botão Ofícios, no topo. Seis ofícios sobem de nível (1 a 30) à
 personagem: colhendo materiais e fabricando. Fabrique em qualquer lugar, com os materiais da mochila (o
 equipamento vestido não conta); a receita abre no nível do ofício e a janela mostra o que falta.
     Pescador ...... pesca (+8 XP; peixe grande +12); peixe seco, óleo de peixe e peixe defumado
-    Ferreiro ...... minério de cobre nas penhas do Sinai (+5); lingote de bronze, escudo de bronze e espada temperada
-    Carpinteiro ... madeira nos olivais de Canaã e nas figueiras da Galileia (+4); flechas, escudo de madeira,
+    Ferreiro ...... minério de cobre dos guardiões e fundibulários do Sinai (+5); lingote de bronze, escudo de bronze e espada temperada
+    Carpinteiro ... madeira das feras de Canaã e das criaturas da Galileia (+4); flechas, escudo de madeira,
                     arco de madeira e arco composto
-    Oleiro ........ argila nas margens do Nilo (+4); frasco, jarro, lamparina e ânfora
+    Oleiro ........ argila das rãs, crocodilos e soldados do Egito (+4); frasco, jarro, lamparina e ânfora
     Tecelão ....... só fabrica (linho, couro, penas e braceletes das criaturas); tecido, túnica, armadura de
                     couro e manto bordado
-    Perfumista .... ervas de Canaã (+2) e resina das acácias do Sinai (+4); poção de vida, incenso, poção de
+    Perfumista .... ervas das feras de Canaã (+2) e resina das cabras, águias e leopardos do Sinai (+4); poção de vida, incenso, poção de
                     fé e óleo da unção
-- Pontos de extração: pise no ponto (madeira, argila, minério ou resina) para colher; ele brota de novo em
-  45 s. Cada nível do ofício dá +2% de chance de colher 1 a mais (até 40%); vale também para a pesca.
+- Materiais: nada brota no mapa; erva, madeira, argila, minério e resina caem das criaturas, direto na
+  mochila, e cada unidade dá XP ao ofício. Cada nível do ofício dá +2% de chance de cair 1 a mais (até 40%);
+  vale também para a pesca.
 - Pescador: a partir do nível 5, a pesca pode trazer um peixe grande (4%, +1% por nível, até 25%).
 - XP: do nível 1 ao 2, 10 XP; do 10 ao 11, 251 XP. Cada receita rende o seu XP a cada fabricação.
 - Equipamento fabricado (escudos, espadas, arcos, túnica e armadura) pode sair incomum ou melhor: 3% por
@@ -630,11 +659,11 @@ Batalha no celular). Tecla X minimiza ou restaura (e reabre a janela, se ela est
 no navegador.
 - O relógio começa no seu primeiro golpe e corre até você zerar (botão Zerar) ou recarregar a página;
   trocar de área, viajar ou morrer não zeram.
-- Por sessão e por hora: XP (dos abates), saque (moedas recolhidas + valor de venda dos itens recolhidos,
-  pelo preço dos mercadores; equipamento não tem preço de venda e só é contado), lucro (saque − poções e
+- Por sessão e por hora: XP (dos abates), saque (moedas do saque + valor de venda dos itens do saque, pelo
+  preço dos mercadores, que vale também para os equipamentos), lucro (saque − poções e
   flechas gastas, pelo preço da loja, − moedas perdidas na morte) e abates; também as mortes, as espécies
   mais caçadas e o tempo até o próximo nível no ritmo atual. As taxas por hora aparecem depois de 1 minuto.
-- O item que você deixou cair ao morrer, ou que jogou no chão, não conta como saque quando você o recolhe.
+- O item que você deixou cair ao morrer não conta como saque quando você o recolhe.
 
 Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
@@ -642,30 +671,33 @@ Para desenvolvedores
 - Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p), bestiarioPorFamilia(p),
   resumoBestiario(p), visaoEspecie(p, especie), bonusAmuleto(p, e), Mundo.analisador(id), textoRelogio(ms),
   estadoMissaoNpc(p, npcId) (balão sobre o NPC: "missao", "andamento", "entregar", "mural" para o
-  atalaia com o mural aberto e já usado, ou null), coletaveisDaArea(areaId), Mundo.consumirAviso(id),
+  atalaia com o mural aberto e já usado, ou null), Mundo.consumirAviso(id),
   Mundo.recargaAtaque(id), textoEspera(ms), visaoTarefa(p, tarefaId), tarefasDoMural(p, npcId),
   tarefasDoJogador(p), tarefasDoInimigo(p, inimigoId), ofertasDeTroca(p), estadoMana(p, agora),
   estadoDescanso(p, agora), estadoVigor(p, agora) (minutos com a volta da ausência em curso, texto "40:00",
   %, faixa, minutos até cair de faixa), textoVigor(minutos), faixaVigor(minutos), fichaDeHabilidades(p, agora)
-  (a janela de habilidades: nível e XP em %, vida, fé, carga, vigor, as 4 habilidades e os 6 ofícios, cada
+  (a janela de habilidades: nível e XP em %, vida, fé, carga, velocidade, vigor, as 4 habilidades e os 6 ofícios, cada
   um com nível, XP, falta, % para baixo e a dica), visaoStatus(alvo, agora), barraHabilidades(p, agora), visaoVocacao(p),
-  visaoTalentos(p), pontosTalentoLivres(p), visaoOficios(p), cosmeticosDoJogador(p), visualDoJogador(p), extracoesDaArea(areaId), Mundo.extracaoDisponivel(id, area, pontoId),
-  Mundo.aliados(id), textoKg(kg) ("12,35"), Mundo.quantidadeLivre(id, item) (unidades que podem ser vendidas
-  ou jogadas no chão), Mundo.reservaDeMissao(p, item) ({ quantidade, missao, npc }), infoItem(id) (item com raridade,
+  visaoTalentos(p), pontosTalentoLivres(p), visaoOficios(p), cosmeticosDoJogador(p), visualDoJogador(p), velocidadeDoJogador(p) ({ casasPorSegundo, reto, diagonal } em ms por casa),
+  Mundo.aliados(id), textoKg(kg) ("12,35"), Mundo.quantidadeLivre(id, item) (unidades que podem ser vendidas,
+  destruídas ou guardadas no depósito), valorDeVenda(item) (com a raridade), Mundo.vendaDeTudo(id), Mundo.reservaDeMissao(p, item) ({ quantidade, missao, npc }), infoItem(id) (item com raridade,
   atributos, dano e defesa já somados), raridadeItem(id), textoAtributos(id); constante ALCANCE_ARCO.
-- Inventário: comandos { tipo: "largarItem", item, quantidade, x?, y? } (vira um saque com largado: true e
-  quantidade, se mais de 1, em p.saqueNoChao; devolve saqueId), { tipo: "vender", item, quantidade },
+- Inventário: comandos { tipo: "destruirItem", item, quantidade } (o item some; nada vai para o chão),
+  { tipo: "vender", item, quantidade }, { tipo: "venderTudo" } (a mochila, menos poções e flechas),
   { tipo: "comprar", item, quantidade } e { tipo: "usarPocao" | "usarPocaoFe", mesmoCheio } de Mundo.executar.
-  coletarSaque de uma pilha devolve quantidade e, se a mochila encheu no meio, restante. Os campos largado
-  e quantidade são limpos na carga do save (sem versão nova). O teste 72 confere pesos, carga, chão, reserva
-  de missão, poções e quantidades.
+  Depósito: { tipo: "depositar", item, quantidade }, { tipo: "depositarTudo" } e { tipo: "retirar", item,
+  quantidade }, ao lado de um guarda (Mundo.guardaDoDepositoProximo(p)); p.deposito é a lista do baú.
+  coletarSaque de uma pilha devolve quantidade e, se a mochila encheu no meio, restante. O campo largado
+  (saves antigos) sai e a quantidade é limpa na carga do save (sem versão nova). O teste 72 confere pesos,
+  carga, destruir, reserva de missão, poções, quantidades, venda de tudo e o depósito.
 - Janela de habilidades e vigor: fichaDeHabilidades(p, agora) e estadoVigor(p, agora) são puras (o painel só
   lê). O vigor gasta no laço de tempo (Mundo.atualizar, passoVigor) e volta em Mundo.salvar (creditarVigor, a
   mesma presença do descanso); composicaoXpAbate(p, e, campeao, agora) dá { xp, semVigor, fatorVigor, faixa }
   e os ataques que derrotam devolvem também xpVigor (a parte do vigor, positiva ou negativa). O teste 74
   confere a janela, o gasto, a volta e o Sábado, as faixas com o XP (campeão, descanso, vocação) e o save.
-- Saques: os ataques que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o
-  som) e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
+- Saques: o saque vai direto para a mochila (criarSaque; o que não cabe vai para p.saqueNoChao). Os ataques
+  que derrotam devolvem saquesRaros ([{ saqueId, item, raridade }], para o brilho e o som; saqueId só quando o
+  item ficou no chão), saqueNaMochila, moedasSaque, oficioSubiu e anuncios (textos para o Registro). sortearSaque(e, aleatorio) e sortearRaridade(minima, aleatorio)
   são puras; o teste 49 simula 60 mil abates por criatura e confere a frequência de cada linha da tabela.
 - Vocações: comandos { tipo: "escolherVocacao", vocacao }, { tipo: "escolherEspecializacao", especializacao }
   e { tipo: "usarHabilidade", habilidade, alvoId } de Mundo.executar. usarHabilidade devolve alvos
@@ -689,11 +721,11 @@ Para desenvolvedores
   node tests/logica.test.js 64e e veja a tabela.
 - Ofícios: comando { tipo: "fabricar", receita, quantidade } (quantidade: número ou "todos") de
   Mundo.executar; devolve feitos, itens e oficioSubiu ({ oficio, nivel }) quando sobe de nível, que também
-  vem na pesca e ao pisar num ponto de extração (com extracao, item e quantidade). nivelOficio(p, oficio),
+  vem na pesca e no abate que deixa cair um material de ofício. nivelOficio(p, oficio),
   progressoOficio(p, oficio), podeFabricar(p, receitaId) e as chances (chanceColetaExtra, chancePeixeGrande,
   chanceQualidade) são puras. Os testes 65 a 65d conferem os dados e a economia (materiais de caça, coleta ou
-  outra receita, nunca da loja; mercadoria vale mais que os materiais), a pesca, as ervas e a extração, a
-  fabricação e o save.
+  outra receita, nunca da loja; mercadoria vale mais que os materiais), a pesca, os materiais das criaturas,
+  a fabricação e o save.
 - Status: aplicarStatus(alvo, { tipo, ...ajustes }, agora), statusAtivo(alvo, tipo, agora),
   passoDosStatus(alvo, agora) e combinacoesNoGolpe(alvo, agora) são puras e valem para o jogador e para
   qualquer criatura; Mundo.aplicarStatusNaCriatura(id, inimigoId, ef) aplica numa criatura viva. Os testes

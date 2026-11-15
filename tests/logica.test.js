@@ -323,6 +323,21 @@ function lutar(j, inimigoId, { maxPocoes = 3, tipo = "corpo", semCampeao = false
   return { vitoria: false, duracao: 180, pocoes, danoRecebido, golpes, mensagem: "tempo esgotado" };
 }
 
+// Caça a criatura até o objetivo "coletar" da missão chegar à meta (o saque vai direto para a mochila).
+function cacarParaMissao(j, inimigoId, missaoId, limite = 8) {
+  for (let i = 0; i < limite; i++) {
+    const estado = j.p.missoes[missaoId];
+    const meta = j.g("MISSOES")[missaoId].etapas[estado.etapa].objetivos[0].quantidade;
+    if ((estado.progresso[0] || []).length >= meta) return i;
+    esperarCurar(j);
+    const r = lutar(j, inimigoId, { semCampeao: true });
+    assert.ok(r.vitoria, `derrota contra ${inimigoId}: ${r.mensagem}`);
+    pegarSaques(j);
+    j.avancar(5000);
+  }
+  assert.fail(`${missaoId}: ${inimigoId} não rendeu os itens em ${limite} abates`);
+}
+
 // Campanha completa com um jogador que só faz o obrigatório.
 function jogarCampanha(semente) {
   const j = carregarJogo({ semente });
@@ -345,7 +360,7 @@ function jogarCampanha(semente) {
   equiparMelhor(j);
   assert.strictEqual(j.p.equipamento.arma, "espada_ferro");
   falar(j, "viajante1");
-  for (const erva of j.g("coletaveisDaArea")("canaan").slice(0, 3)) assert.ok(pisarEm(j, "canaan", erva).itemColetado);
+  cacarParaMissao(j, "chacal1", "ervas");
   falar(j, "viajante1");
   assert.strictEqual(j.p.missoes.ervas.status, "concluida");
 
@@ -353,7 +368,7 @@ function jogarCampanha(semente) {
   atravessar(j, "canaan", j.g("areas").canaan.passagem, 1, 0);
   assert.strictEqual(j.p.area, "deserto");
   falar(j, "noemi1");
-  for (const odre of j.g("coletaveisDaArea")("deserto").slice(0, 3)) assert.ok(pisarEm(j, "deserto", odre).itemColetado);
+  cacarParaMissao(j, "abutre1", "deserto");
   falar(j, "noemi1");
   equiparMelhor(j);
   assert.strictEqual(j.p.equipamento.armadura, "armadura_couro");
@@ -635,36 +650,46 @@ teste("4. ataque manual tem recarga compartilhada (corpo e distância)", () => {
   assert.ok(j.g("INTERVALO_AUTO_ATAQUE") > recarga, "autoataque não esbarra na recarga");
 });
 
-teste("5. ervas só em Canaã, odres só no Deserto; helper coletaveisDaArea", () => {
+teste("5. nada brota no mapa: erva, odre e materiais caem das criaturas direto na mochila; o que não cabe vai ao chão", () => {
   const j = carregarJogo();
   j.entrar();
-  const coletaveis = j.g("coletaveisDaArea");
-  igual(
-    coletaveis("canaan").map((c) => c.item),
-    Array(6).fill("erva"),
-  );
-  igual(
-    coletaveis("deserto").map((c) => c.item),
-    Array(6).fill("odre_agua"),
-  );
-  for (const c of coletaveis("deserto")) {
-    assert.ok(c.id && Number.isInteger(c.x) && Number.isInteger(c.y) && c.textura, "formato {id,x,y,item,textura}");
-  }
-  for (const area of ["mar", "egito", "marVermelho", "sinai", "galileia"]) {
-    igual(coletaveis(area), [], `${area} não tem coletáveis`);
-    for (const o of j.g("odres")) assert.strictEqual(j.M.coletavelDisponivel(ID, area, o.id), false);
-  }
-  assert.strictEqual(j.M.coletavelDisponivel(ID, "canaan", "odre1"), false);
-  // Pisar onde ficaria um odre no Egito não coleta nada.
   const p = j.p;
-  p.missoes.deserto.status = "concluida";
-  const mapa = j.g("mapas").egito;
-  const odre = j.g("odres").find((o) => mapa[o.y][o.x] === 0);
-  assert.ok(odre);
-  const antes = p.inventario.length;
-  const r = pisarEm(j, "egito", odre);
-  assert.ok(!r.itemColetado);
-  assert.strictEqual(p.inventario.length, antes);
+  // Sem coleta no mapa: os dados e as funções da coleta sumiram.
+  for (const nome of ["ervas", "odres", "pontosExtracao", "coletaveisDaArea", "extracoesDaArea", "COLETAVEIS_POR_AREA"])
+    assert.throws(() => j.g(nome), /is not defined/, `${nome} não existe mais`);
+  assert.ok(!j.M.coletavelDisponivel && !j.M.extracaoDisponivel && !j.M.coletarRecurso);
+  for (const area of Object.keys(j.g("DADOS_MAPAS"))) assert.ok(!("zonasColeta" in j.g("DADOS_MAPAS")[area]), `${area}: sem zonas de coleta`);
+  for (const campo of ["ervasColetadas", "odresColetados", "ervasRespawn", "odresRespawn", "extracaoRespawn"]) assert.ok(!(campo in p), `save sem ${campo}`);
+  // Cada material vem de alguma criatura (erva e odre, que as missões pedem, sempre de alguma).
+  const criaturas = j.g("DADOS_CRIATURAS");
+  const chance = j.g("chanceSaque");
+  for (const item of ["erva", "odre_agua", "madeira", "argila", "resina", "minerio_cobre"]) {
+    const linhas = criaturas.flatMap((c) => c.saque.itens.filter((l) => l.item === item));
+    assert.ok(linhas.length >= 2, `${item}: cai de pelo menos 2 criaturas`);
+    if (item === "erva" || item === "odre_agua") assert.ok(linhas.some((l) => chance(l.chance) === 1), `${item}: alguma criatura deixa sempre`);
+  }
+  // O abate guarda o saque na mochila e as moedas na bolsa; nada fica no chão.
+  const chacal = j.g("inimigos").chacal1;
+  const moedas = p.moedas, ervas = j.M.contarItem(ID, "erva");
+  const r = j.M.derrotarInimigo(p, chacal);
+  assert.ok(j.M.contarItem(ID, "erva") > ervas, "a erva foi para a mochila");
+  assert.ok(p.moedas > moedas, "as moedas foram para a bolsa");
+  igual(p.saqueNoChao.filter((s) => s.area === "canaan"), [], "nada no chão");
+  assert.ok(r.saqueNaMochila && r.moedasSaque > 0 && /Saque na mochila: .*Erva medicinal/.test(r.mensagem), r.mensagem);
+  // Material de ofício dá XP ao ofício que o usa.
+  assert.ok(p.oficios.perfumista.xp > 0, "a erva rende XP de Perfumista");
+  // Mochila cheia: o que não cabe cai no chão, na casa da criatura, e pisar em cima recolhe depois.
+  while (j.g("pesoCarregado")(p) + 3 <= j.g("capacidadeCarga")(p)) p.inventario.push("couro_grosso");
+  while (j.g("pesoCarregado")(p) + 0.1 <= j.g("capacidadeCarga")(p)) p.inventario.push("pena_ave");
+  j.M.reaparecerInimigo(ID, "chacal1");
+  const r2 = j.M.derrotarInimigo(p, chacal);
+  const noChao = p.saqueNoChao.filter((s) => s.area === "canaan" && s.item === "erva");
+  assert.ok(noChao.length >= 1 && noChao.every((s) => s.x === chacal.x && s.y === chacal.y), "a erva caiu no chão");
+  assert.match(r2.mensagem, /Mochila cheia .*Ficou no chão: Erva medicinal/);
+  j.M.removerItens(p, "couro_grosso", 2);
+  posicionarAoLado(j, "canaan", noChao[0]);
+  const pegou = j.exec({ tipo: "coletarSaque", saqueId: noChao[0].id });
+  assert.ok(pegou.ok, pegou.mensagem);
 });
 
 teste("6. veneno pode ser aplicado de novo depois de expirar", () => {
@@ -890,7 +915,6 @@ teste("9. inimigos longe das vilas e tudo alcançável (BFS)", () => {
     }
     for (const t of j.g("PORTAIS").filter((t) => t.area === area))
       assert.ok(alcancavel(vis, t), `portal ${t.x},${t.y} em ${area}`);
-    for (const c of j.g("coletaveisDaArea")(area)) assert.ok(alcancavel(vis, c), `coletável ${c.id}`);
     const a = areas[area];
     const portos = Object.values(a.portos || {}).flatMap((pt) => [pt.cais, pt.embarque]);
     for (const ponto of [a.passagem, a.cais, a.chegada, a.chegadaViagem, ...portos].filter(Boolean)) {
@@ -909,7 +933,10 @@ teste("10. missões exigem os itens na mochila", () => {
   const p = j.p;
   p.missoes.lobo.status = "concluida";
   falar(j, "viajante1");
-  for (const erva of j.g("coletaveisDaArea")("canaan").slice(0, 3)) pisarEm(j, "canaan", erva);
+  for (let i = 0; i < 3; i++) {
+    j.M.derrotarInimigo(p, j.g("inimigos").chacal1);
+    j.M.reaparecerInimigo(ID, "chacal1");
+  }
   assert.strictEqual(p.missoes.ervas.progresso[0].length, 3);
   j.M.removerItens(p, "erva", 3); // vendeu as ervas
   const pocoes = j.M.contarItem(ID, "pocao");
@@ -919,8 +946,12 @@ teste("10. missões exigem os itens na mochila", () => {
 
   // Odres, venenos e insígnia.
   falar(j, "noemi1");
-  for (const odre of j.g("coletaveisDaArea")("deserto").slice(0, 3)) pisarEm(j, "deserto", odre);
-  j.M.removerItens(p, "odre_agua", 3);
+  for (let i = 0; i < 3; i++) {
+    j.M.derrotarInimigo(p, j.g("inimigos").abutre1);
+    j.M.reaparecerInimigo(ID, "abutre1");
+  }
+  assert.strictEqual(p.missoes.deserto.progresso[0].length, 3);
+  j.M.removerItens(p, "odre_agua", j.M.contarItem(ID, "odre_agua"));
   falar(j, "noemi1");
   assert.strictEqual(p.missoes.deserto.etapa, 0);
   p.inventario.push("odre_agua", "odre_agua", "odre_agua");
@@ -1141,8 +1172,6 @@ teste("18. API usada por game.js continua disponível", () => {
     "mapas",
     "npcs",
     "inimigos",
-    "ervas",
-    "odres",
     "pontosPesca",
     "PORTAIS",
     "ITENS",
@@ -1159,8 +1188,10 @@ teste("18. API usada por game.js continua disponível", () => {
     "INTERVALO_AUTO_ATAQUE",
     "TEMPO_RESPAWN_INIMIGO",
     "ALCANCE_ARCO",
-    "coletaveisDaArea",
     "estatisticasCombate",
+    "velocidadeDoJogador",
+    "valorDeVenda",
+    "REGRAS_DEPOSITO",
     "textoMissaoAtual",
     "Storage",
     "Mundo",
@@ -1182,7 +1213,6 @@ teste("18. API usada por game.js continua disponível", () => {
     "executar",
     "atualizar",
     "obterVidaInimigo",
-    "coletavelDisponivel",
     "pescaDisponivel",
     "reaparecerInimigo",
     "equiparItem",
@@ -1191,6 +1221,8 @@ teste("18. API usada por game.js continua disponível", () => {
     "contarItem",
     "consumirAviso",
     "recargaAtaque",
+    "vendaDeTudo",
+    "guardaDoDepositoProximo",
   ]) {
     assert.strictEqual(typeof j.M[f], "function", f);
   }
@@ -1204,6 +1236,11 @@ teste("18. API usada por game.js continua disponível", () => {
     "coletarSaque",
     "comprar",
     "vender",
+    "venderTudo",
+    "destruirItem",
+    "depositar",
+    "depositarTudo",
+    "retirar",
     "viajar",
     "pescar",
     "usarPocao",
@@ -1670,7 +1707,7 @@ teste("28. motor: falar, chegar, derrotar, coletar e entregar, com variáveis e 
   assert.match(j.g("textoMissaoAtual")(p), /Eliabe/);
   for (const id of ["lobo", "ervas"]) p.missoes[id].status = "concluida";
   assert.match(j.g("textoMissaoAtual")(p), /^Canaã · Lobos: 1\/2\.$/);
-  assert.match(golpe().mensagem, /\+40 XP\. Dois lobos! Saque no chão/);
+  assert.match(golpe().mensagem, /\+40 XP\. Dois lobos! Saque na mochila: Pele de lobo/);
   assert.doesNotMatch(golpe().mensagem, /Dois lobos/, "sem repetirAviso, não repete");
   igual(m().progresso, [2]);
   falar(j, "anciaoTeste");
@@ -1807,8 +1844,9 @@ teste("30. migração v6 → v7 no meio das etapas, sem perder progresso", () =>
   p = j.entrar();
   igual(p.missoes.ervas.progresso, [["erva1", "erva3"], 0]);
   p.area = "canaan";
-  assert.match(j.g("textoMissaoAtual")(p), /Colete ervas medicinais: 2\/3\./);
-  assert.ok(pisarEm(j, "canaan", j.g("ervas")[1]).itemColetado);
+  assert.match(j.g("textoMissaoAtual")(p), /Ervas medicinais dos chacais: 2\/3\./);
+  assert.ok(j.M.derrotarInimigo(p, j.g("inimigos").chacal1).saqueNaMochila, "a erva do chacal vai para a mochila e conta");
+  assert.ok(!("ervasColetadas" in p), "o campo antigo sai do save");
   assert.match(falar(j, "viajante1").mensagem, /Que Deus o recompense!/);
   assert.strictEqual(p.missoes.ervas.status, "concluida");
 
@@ -1820,8 +1858,8 @@ teste("30. migração v6 → v7 no meio das etapas, sem perder progresso", () =>
   }));
   p = j.entrar();
   igual(p.missoes.deserto, { status: "em_andamento", etapa: 0, progresso: [["odre1", "odre2"], 0] });
-  assert.strictEqual(falar(j, "noemi1").mensagem, "Noemi: Ainda faltam odres. Você encontrou 2/3.");
-  pisarEm(j, "deserto", j.g("odres")[2]);
+  assert.strictEqual(falar(j, "noemi1").mensagem, "Noemi: Ainda faltam odres. Você recuperou 2/3. Cada abutre que você derruba larga um.");
+  j.M.derrotarInimigo(p, j.g("inimigos").abutre1);
   assert.match(falar(j, "noemi1").mensagem, /^Noemi: A água salvou a caravana!/);
   assert.strictEqual(p.missoes.deserto.etapa, 1);
 
@@ -2034,7 +2072,12 @@ teste("33. caçadas e troca: dados coerentes, todo mural completo e invariantes 
       assert.strictEqual(typeof o.nome, "string", `${onde}: nome da melhoria`);
     } else {
       assert.ok(ITENS[o.item], `${onde}: item`);
-      assert.ok(!(o.item in j.g("PRECOS_LOJA")) && !(o.item in j.g("VALORES_VENDA")), `${onde}: pontos nunca viram moedas`);
+      assert.ok(!(o.item in j.g("PRECOS_LOJA")), `${onde}: a loja não vende item da troca`);
+      // Todo item se vende; o da troca só porque também cai das criaturas, e por menos que as moedas da caçada.
+      if (o.item in j.g("VALORES_VENDA")) {
+        assert.ok(j.g("DADOS_CRIATURAS").some((c) => c.saque.itens.some((l) => l.item === o.item)), `${onde}: vendável só se também cair das criaturas`);
+        assert.ok(j.g("VALORES_VENDA")[o.item] < o.preco, `${onde}: vale menos em moedas que em pontos`);
+      }
     }
     if (o.requer?.missao) assert.ok(MISSOES[o.requer.missao], `${onde}: missão`);
   }
@@ -2397,9 +2440,9 @@ teste("37. troca de pontos: recusas sem mudar nada, itens, alforjes e estados da
   assert.ok(trocar("alforje_viagem").ok);
   assert.strictEqual(carga(), cargaAntes + 10);
   assert.strictEqual(p.pontosTarefa, 110);
-  // O Azarias não compra (nem vende) itens da troca.
+  // O Azarias não vende itens da troca; comprar, compra (todo item se vende), por bem menos que os pontos.
   posicionarAoLado(j, "deserto", npcs.mercador1);
-  assert.strictEqual(j.exec({ tipo: "vender", item: "escudo_ferro" }).ok, false);
+  assert.ok(j.g("valorDeVenda")("escudo_ferro") > 0 && j.g("valorDeVenda")("escudo_ferro") < 100);
   assert.strictEqual(j.exec({ tipo: "comprar", item: "couraca_escamas" }).ok, false);
   assert.strictEqual(j.M.contarItem(ID, "escudo_ferro"), 1);
   // ofertasDeTroca: os quatro estados.
@@ -2774,7 +2817,7 @@ teste("41. XP: curva cresce depois do nível 10 e criatura muito mais fraca rend
   assert.match(r.mensagem, /\+4 XP \(criatura fraca para o seu nível\)/);
 });
 
-teste("42. grupos de criaturas, renascimento e coleta em lugar aleatório, flecha em qualquer direção", () => {
+teste("42. grupos de criaturas, renascimento em lugar aleatório, flecha em qualquer direção", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
@@ -2801,12 +2844,6 @@ teste("42. grupos de criaturas, renascimento e coleta em lugar aleatório, flech
     assert.deepStrictEqual([copia.inicioX, copia.inicioY], [copia.x, copia.y]);
   }
   assert.ok(posicoes.size > 1, "renasce em lugares diferentes");
-  // Erva coletada brota noutro lugar livre.
-  const erva = j.g("ervas")[0];
-  const antes = `${erva.x},${erva.y}`;
-  pisarEm(j, "canaan", { ...erva });
-  assert.notStrictEqual(`${erva.x},${erva.y}`, antes);
-  assert.strictEqual(j.g("mapas").canaan[erva.y][erva.x], 0);
   // Flecha: acerta fora da linha/coluna/diagonal, respeita o alcance circular e os obstáculos.
   const tiro = (dx, dy, bloquear) => {
     const mapa = j.g("mapas").canaan;
@@ -2983,7 +3020,7 @@ teste("44. mapas: tendas e bancas dos comerciantes, estruturas com colisão, vil
     assert.ok(Arte.PIXEL_PATTERNS[Arte.visualDe(n.id)] && Arte.visualDe(n.id).startsWith("pj_morador_"), `${n.id}: visual do morador`);
 });
 
-teste("45. mapas: moradores conversam em rodízio, coleta brota nas zonas e o barco sai do cais certo", () => {
+teste("45. mapas: moradores conversam em rodízio, um depósito por cidade e o barco sai do cais certo", () => {
   const j = carregarJogo();
   j.entrar();
   const npcs = j.g("npcs");
@@ -2993,19 +3030,15 @@ teste("45. mapas: moradores conversam em rodízio, coleta brota nas zonas e o ba
   assert.ok(falas.every((r) => !r.abrirLoja && !r.abrirViagem && !r.abrirMural));
   igual(falas.map((r) => r.mensagem), [...zila.falas.linhas, zila.falas.linhas[0]].map((l) => `Zila: ${l}`));
   assert.strictEqual(j.g("estadoMissaoNpc")(j.p, "zila_canaa"), null, "morador sem balão de missão");
-  // Coleta: depois de pega, a erva brota de novo numa casa livre de uma zona de coleta.
-  const zonas = j.g("DADOS_MAPAS").canaan.zonasColeta;
-  const ervas = j.g("ervas");
+  // Depósito: toda cidade tem um guarda, numa banca, que abre a janela do depósito.
   const p = j.p;
-  for (let i = 0; i < 8; i++) {
-    const erva = ervas[i % ervas.length];
-    p.ervasRespawn[erva.id] = 0;
-    p.inventario = [];
-    const r = pisarEm(j, "canaan", erva);
-    assert.strictEqual(r.itemColetado, erva.id, r.mensagem);
-    const naZona = zonas.some((z) => Math.max(Math.abs(erva.x - z.x), Math.abs(erva.y - z.y)) <= z.raio);
-    assert.ok(naZona, `${erva.id} brotou fora das zonas (${erva.x},${erva.y})`);
-    assert.strictEqual(j.g("mapas").canaan[erva.y][erva.x], 0, "brota em casa livre");
+  for (const origem of j.g("REGRAS_VIAGEM").ordem) {
+    const guardas = Object.values(npcs).filter((n) => n.area === origem && n.papel === "deposito");
+    assert.strictEqual(guardas.length, 1, `${origem}: um guarda do depósito`);
+    const banca = j.g("estruturasPorArea")[origem].find((e) => e.npc === guardas[0].id);
+    assert.ok(banca && banca.tipo === "banca", `${origem}: o guarda atende numa banca`);
+    const r = falar(j, guardas[0].id);
+    assert.strictEqual(r.abrirDeposito, guardas[0].id, r.mensagem);
   }
   // Cais: toda cidade tem o seu; embarca (pagando a passagem) no ponto de embarque dela no mar.
   const areas = j.g("areas");
@@ -3300,13 +3333,28 @@ teste("49. tabelas de saque: simulação de muitos abates bate com as chances, d
   assert.ok(r.saquesRaros.length, "drop raro marcado");
   assert.ok(r.anuncios.includes("Drop muito raro (0,1%)! Lobo deixou cair: Sárdio."), r.anuncios.join(" | "));
   assert.ok(r.anuncios.some((t) => /^Drop raro \(1%\)! Lobo deixou cair: Escudo de madeira \((Raro|Épico|Relíquia)\)\.$/.test(t)), r.anuncios.join(" | "));
+  // O saque foi direto para a mochila (o destaque só aponta para o chão quando o item não coube).
   for (const s of r.saquesRaros) {
     assert.ok(ordem.indexOf(s.raridade) >= ordem.indexOf("incomum"));
-    assert.ok(p.saqueNoChao.some((c) => c.id === s.saqueId && c.item === s.item), "o destaque aponta para o saque no chão");
+    assert.ok(s.saqueId === undefined && p.inventario.includes(s.item), "o destaque está na mochila");
   }
+  assert.ok(p.inventario.includes("pedra_sardio"), "a pedra muito rara caiu com o sorteio forçado, na mochila");
+  assert.match(r.mensagem, /Saque na mochila: .*Sárdio/);
+  // Mochila cheia: o drop raro fica no chão, com o destaque apontando para ele, e entra na mochila ao pegar.
+  const pesoDe = j.g("pesoItem");
+  while (j.g("pesoCarregado")(p) + pesoDe("couro_grosso") <= j.g("capacidadeCarga")(p)) p.inventario.push("couro_grosso");
+  while (j.g("pesoCarregado")(p) + pesoDe("pena_ave") <= j.g("capacidadeCarga")(p)) p.inventario.push("pena_ave");
+  r = null;
+  for (let tentativa = 0; tentativa < 400 && !r?.saquesRaros?.length; tentativa++) {
+    let n = 0;
+    j.definirAleatorio(() => (n++ % 2 === 0 ? 0.0005 : 0.97));
+    r = abaterSemLimpar(j, "lobo1");
+  }
+  j.definirAleatorio(aleatorioComSemente(5));
+  for (const s of r.saquesRaros) assert.ok(p.saqueNoChao.some((c) => c.id === s.saqueId && c.item === s.item), "o destaque aponta para o saque no chão");
   const sardio = p.saqueNoChao.find((s) => s.item === "pedra_sardio");
-  assert.ok(sardio, "a pedra muito rara caiu com o sorteio forçado");
-  // E entra na mochila pelo caminho normal, com o nome da pedra.
+  assert.ok(sardio, "sem espaço, a pedra ficou no chão");
+  j.M.removerItens(p, "pena_ave", 50);
   posicionarAoLado(j, sardio.area, sardio);
   const c = j.exec({ tipo: "coletarSaque", saqueId: sardio.id });
   assert.ok(c.ok && /Sárdio/.test(c.mensagem), c.mensagem);
@@ -3639,13 +3687,15 @@ teste("53. campeões (JGB-6): 5% ao renascer, modificadores no nome, mais fortes
   p.campeoes.hiena1 = ["feroz"];
   p.vidaInimigos.hiena1 = 1;
   p.nivel = 5;
+  const moedasAntes = p.moedas;
   const r = abaterSemLimpar(j, "hiena1");
   assert.strictEqual(r.xpGanho, e.xpRecompensa * CAMPEAO.xp);
   assert.ok(r.campeao && r.anuncios.some((t) => /^Campeão derrotado: Hiena Feroz!/.test(t)), r.anuncios.join(" | "));
   assert.match(r.mensagem, /Você derrotou Hiena Feroz!/);
   assert.ok(!p.campeoes.hiena1, "deixa de ser campeã depois de derrotada");
-  const moedas = p.saqueNoChao.find((s) => s.moedas && s.x === e.x && s.y === e.y);
-  assert.strictEqual(moedas.moedas, e.saque.moedas * CAMPEAO.moedas);
+  // As moedas reforçadas vão direto para a bolsa.
+  assert.strictEqual(r.moedasSaque, e.saque.moedas * CAMPEAO.moedas);
+  assert.strictEqual(p.moedas - moedasAntes, e.saque.moedas * CAMPEAO.moedas);
   // Saque reforçado na média: muitas rolagens com reforço rendem ~2× itens e nenhum equipamento comum.
   const sortear = j.g("sortearSaque");
   const rng = aleatorioComSemente(3);
@@ -3717,8 +3767,8 @@ teste("54. raros nomeados (JGB-6): janela de aparição, anúncio, não renascem
   const r = abaterSemLimpar(j, e.id);
   assert.ok(r.nomeado && r.anuncios.some((t) => /^Presa-Cinzenta foi derrotado!/.test(t)));
   assert.doesNotMatch(r.mensagem, /reaparecerá/);
-  const equip = p.saqueNoChao.filter((s) => s.x === e.x && s.y === e.y && s.item && /^(espada|escudo)/.test(s.item));
-  assert.ok(equip.some((s) => ["raro", "epico", "reliquia"].includes(j.g("raridadeItem")(s.item))), "equipamento raro ou melhor garantido");
+  const equip = p.inventario.filter((item) => /^(espada|escudo)/.test(item));
+  assert.ok(equip.some((item) => ["raro", "epico", "reliquia"].includes(j.g("raridadeItem")(item))), "equipamento raro ou melhor garantido, na mochila");
   assert.strictEqual(j.M.reaparecerInimigo(ID, e.id), false, "não renasce pelo tempo");
   j.avancar(10 * 60_000);
   j.atualizar();
@@ -4151,18 +4201,19 @@ teste("57. analisador de caçada (JGB-10): XP/h, saque/h, lucro, abates, mortes 
   assert.ok(j.exec({ tipo: "usarPocao" }).ok);
   assert.strictEqual(A().gastos, 0, "poção antes da sessão não conta");
 
-  // 2. Abate: começa o relógio (no golpe), conta XP, abate e espécie. Saque recolhido entra pelo valor de venda.
+  // 2. Abate: começa o relógio (no golpe), conta XP, abate e espécie. O saque (direto na mochila) entra pelo
+  // valor de venda, e as moedas, na hora.
   const inicio = j.agora + 1000; // abaterSemLimpar avança 1 s antes do golpe
+  const mochilaAntes = [...p.inventario];
+  const moedasAntes = p.moedas;
   const r1 = abaterSemLimpar(j, "lobo1");
   a = A();
   igual([a.ativo, a.xp, a.abates, a.especies], [true, r1.xpGanho, 1, [{ especie: "lobo", nome: "Lobo", abates: 1 }]]);
-  const doChao = p.saqueNoChao.filter((s) => s.area === p.area);
-  const moedasChao = doChao.reduce((t, s) => t + (s.moedas || 0), 0);
-  const valorChao = doChao.filter((s) => s.item).reduce((t, s) => t + (g("VALORES_VENDA")[g("baseItem")(s.item)] || 0), 0);
-  assert.ok(doChao.length, "o lobo deixou saque");
-  pegarSaques(j);
-  a = A();
-  igual([a.moedas, a.valorItens, a.saque, a.itens], [moedasChao, valorChao, moedasChao + valorChao, doChao.filter((s) => s.item).length]);
+  const novos = [...p.inventario];
+  for (const item of mochilaAntes) novos.splice(novos.indexOf(item), 1);
+  assert.ok(novos.length && !p.saqueNoChao.some((s) => s.area === p.area), "o lobo deixou saque, na mochila");
+  const valorNovos = novos.reduce((t, item) => t + g("valorDeVenda")(item), 0);
+  igual([a.moedas, a.valorItens, a.saque, a.itens], [p.moedas - moedasAntes, valorNovos, p.moedas - moedasAntes + valorNovos, novos.length]);
   assert.ok(a.saque > 0, "pele de lobo vale 5");
 
   // 3. Taxas por hora só depois de 1 minuto, e batem com a conta.
@@ -5523,21 +5574,20 @@ function darItens(j, item, n) {
   for (let i = 0; i < n; i++) j.p.inventario.push(item);
 }
 
-teste("65. ofícios (JGB-24): 6 ofícios, receitas coerentes, materiais de caça e coleta, extração alcançável e economia", () => {
+teste("65. ofícios (JGB-24): 6 ofícios, receitas coerentes, materiais de caça e pesca, nada brota no mapa e economia", () => {
   const j = carregarJogo();
   const [OF, REC, R, ITENS, VENDA, LOJA] = ["OFICIOS", "RECEITAS", "REGRAS_OFICIOS", "ITENS", "VALORES_VENDA", "PRECOS_LOJA"].map(j.g);
   igual(Object.keys(OF), ["pescador", "ferreiro", "carpinteiro", "oleiro", "tecelao", "perfumista"]);
-  // De onde vem cada item: saque das criaturas, coleta (ervas, odres, pesca, extração) ou outra receita.
+  // De onde vem cada item: saque das criaturas (também erva, odre e os materiais dos ofícios), pesca ou outra receita.
   const doSaque = new Set(Object.values(j.g("inimigos")).flatMap((e) => e.saque.itens.map((l) => l.item)));
-  const extracoes = j.g("pontosExtracao");
-  const coletados = new Set(["erva", "odre_agua", "peixe", "peixe_grande", ...extracoes.map((pt) => pt.item)]);
+  const coletados = new Set(["peixe", "peixe_grande"]);
   const fabricados = new Set(Object.values(REC).map((r) => r.produto.item));
   const exclusivosDaTroca = new Set(j.g("DADOS_TROCA_PONTOS").map((o) => o.item).filter((i) => i && !(i in LOJA)));
   assert.ok(exclusivosDaTroca.has("escudo_ferro"), "itens exclusivos da troca");
   for (const [id, o] of Object.entries(OF)) {
     assert.ok(o.nome && o.descricao && o.onde, `${id}: textos`);
     assert.ok(new RegExp(`glifo\\("of_${o.icone}"`).test(FONTE_SPRITES), `${id}: glifo of_${o.icone}`);
-    for (const [item, xp] of Object.entries(o.coleta)) assert.ok(ITENS[item] && xp > 0 && coletados.has(item), `${id}: coleta ${item}`);
+    for (const [item, xp] of Object.entries(o.coleta)) assert.ok(ITENS[item] && xp > 0 && (coletados.has(item) || doSaque.has(item)), `${id}: coleta ${item}`);
     const receitas = Object.values(REC).filter((r) => r.oficio === id);
     assert.ok(receitas.length >= 3, `${id}: 3+ receitas`);
     assert.ok(receitas.some((r) => r.nivel === 1), `${id}: receita no nível 1`);
@@ -5552,40 +5602,27 @@ teste("65. ofícios (JGB-24): 6 ofícios, receitas coerentes, materiais de caça
       assert.ok(doSaque.has(item) || coletados.has(item) || fabricados.has(item), `${rid}: ${item} não vem de caça, coleta nem receita`);
       assert.ok(!(item in LOJA), `${rid}: ${item} vem da loja (comprar e fabricar não pode virar lucro)`);
     }
-    // Mercadoria: vale mais que os materiais, sem exagero.
+    // Mercadoria: vale mais que os materiais, sem exagero. O que a loja também vende (poções, flechas, armadura de
+    // couro) fica abaixo do preço da loja (teste 72e): fabricar compensa por não precisar comprar.
     const custo = Object.entries(r.materiais).reduce((s, [item, q]) => s + (VENDA[item] || 0) * q, 0);
     const valor = (VENDA[r.produto.item] || 0) * r.produto.quantidade;
-    if (valor && custo) assert.ok(valor >= custo * 1.05 && valor <= custo * 3, `${rid}: vende ${valor} com materiais de ${custo}`);
+    const daLoja = r.produto.item in LOJA || r.produto.item === "flecha";
+    if (valor && custo && !daLoja) assert.ok(valor >= custo * 1.05 && valor <= custo * 3, `${rid}: vende ${valor} com materiais de ${custo}`);
   }
   for (const item of [...coletados, ...fabricados].filter((i) => !["erva", "odre_agua", "peixe"].includes(i))) {
     assert.ok(new RegExp(`item\\("${item}"`).test(FONTE_SPRITES) || ITENS[item].tipo !== "recurso", `${item}: sprite`);
   }
-  // Pontos de extração: ids únicos, casa livre, alcançável a pé a partir do início da área e longe de NPCs.
-  igual(new Set(extracoes.map((pt) => pt.id)).size, extracoes.length);
-  const mapas = j.g("mapas");
-  for (const pt of extracoes) {
-    assert.ok(OF[j.g("OFICIO_DA_COLETA")[pt.item]], `${pt.id}: o item rende XP a um ofício`);
-    assert.strictEqual(mapas[pt.area][pt.y][pt.x], 0, `${pt.id}: casa livre`);
-    const ini = j.g("areas")[pt.area].inicio;
-    const vis = new Set([`${ini.x},${ini.y}`]);
-    const fila = [ini];
-    while (fila.length) {
-      const c = fila.shift();
-      for (const [dx, dy] of VIZINHOS.slice(0, 4)) {
-        const k = `${c.x + dx},${c.y + dy}`;
-        if (mapas[pt.area][c.y + dy]?.[c.x + dx] === 0 && !vis.has(k)) { vis.add(k); fila.push({ x: c.x + dx, y: c.y + dy }); }
-      }
-    }
-    assert.ok(vis.has(`${pt.x},${pt.y}`), `${pt.id}: alcançável`);
-    assert.ok(!Object.values(j.g("npcs")).some((n) => n.area === pt.area && distanciaJ(n, pt) < 3), `${pt.id}: longe de NPC`);
+  // Nada brota no mapa: cada material de ofício cai de 2+ criaturas (e rende XP ao ofício que o usa).
+  assert.throws(() => j.g("pontosExtracao"), /is not defined/);
+  for (const item of ["madeira", "argila", "minerio_cobre", "resina", "erva"]) {
+    assert.ok(OF[j.g("OFICIO_DA_COLETA")[item]], `${item}: rende XP a um ofício`);
+    assert.ok(Object.values(j.g("inimigos")).filter((e) => !e.base && e.saque.itens.some((l) => l.item === item)).length >= 2, `${item}: 2+ criaturas`);
   }
-  // Cada matéria-prima de extração tem 3+ pontos.
-  for (const item of new Set(extracoes.map((pt) => pt.item))) assert.ok(extracoes.filter((pt) => pt.item === item).length >= 3, `${item}: 3+ pontos`);
   // Curva: 10 XP do 1 ao 2, crescendo; o máximo é alcançável.
   igual([j.g("xpParaSubirOficio")(1), j.g("xpParaSubirOficio")(10) > j.g("xpParaSubirOficio")(9)], [10, true]);
 });
 
-teste("65b. ofícios: pesca vira Pescador (XP, peixe grande, peixe extra), ervas e extração dão XP, respawn e mochila cheia", () => {
+teste("65b. ofícios: pesca vira Pescador (XP, peixe grande, peixe extra); material das criaturas dá XP, 1 a mais e mochila cheia", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
@@ -5606,35 +5643,31 @@ teste("65b. ofícios: pesca vira Pescador (XP, peixe grande, peixe extra), ervas
   assert.ok(r.ok && r.item === "peixe_grande" && r.quantidade === 2 && p.inventario.length === antes + 2, r.mensagem);
   igual(p.oficios.pescador.xp, g("xpTotalOficio")(10) + 12 + 8);
   assert.ok(g("chancePeixeGrande")(4) === 0 && g("chancePeixeGrande")(5) > 0 && g("chancePeixeGrande")(30) <= 0.25);
-  // Ervas: +2 XP de Perfumista.
-  const erva = g("coletaveisDaArea")("canaan")[0];
-  r = pisarEm(j, "canaan", erva);
-  assert.ok(r.itemColetado && /\+2 XP de Perfumista/.test(r.mensagem), r.mensagem);
-  igual(p.oficios.perfumista.xp, 2);
-  // Extração: madeira em Canaã (+4 XP de Carpinteiro); o ponto some e brota de novo.
+  // Erva do chacal: +2 XP de Perfumista, direto na mochila.
   j.definirAleatorio(() => 0.99);
-  const madeira = g("pontosExtracao").find((pt) => pt.item === "madeira" && pt.area === "canaan");
-  igual(g("extracoesDaArea")("canaan").map((c) => c.item).every((i) => i === "madeira"), true);
-  r = pisarEm(j, "canaan", madeira);
-  assert.ok(r.ok && r.extracao === madeira.id && r.quantidade === 1 && /\+4 XP de Carpinteiro/.test(r.mensagem), r.mensagem);
-  assert.strictEqual(p.inventario.filter((i) => i === "madeira").length, 1);
-  assert.ok(!j.M.extracaoDisponivel(ID, "canaan", madeira.id), "o ponto descansa");
-  r = pisarEm(j, "canaan", madeira);
-  assert.ok(!r.extracao, "sem colher de novo antes do respawn");
-  j.avancar(g("REGRAS_OFICIOS").respawnExtracao);
-  assert.ok(j.M.extracaoDisponivel(ID, "canaan", madeira.id), "brotou");
-  // Nível alto: às vezes 2 (sorteio 0); sobe de nível e avisa.
+  p.inventario = p.inventario.filter((i) => i !== "erva");
+  r = j.M.derrotarInimigo(p, g("inimigos").chacal1);
+  assert.ok(r.saqueNaMochila && p.inventario.filter((i) => i === "erva").length === 1, r.mensagem);
+  igual(p.oficios.perfumista.xp, 2);
+  // Madeira do javali (+4 XP de Carpinteiro). Nível alto: às vezes 1 a mais (sorteio 0); sobe de nível e avisa.
   p.oficios.carpinteiro.xp = g("xpTotalOficio")(15) - 1;
+  p.campeoes = {};
   j.definirAleatorio(() => 0);
-  r = pisarEm(j, "canaan", madeira);
-  assert.ok(r.quantidade === 2 && r.oficioSubiu?.nivel === 15 && /Carpinteiro subiu para o nível 15/.test(r.mensagem), r.mensagem);
-  // Mochila cheia: não colhe e o ponto continua lá.
-  j.avancar(g("REGRAS_OFICIOS").respawnExtracao);
+  const madeiraAntes = p.inventario.filter((i) => i === "madeira").length;
+  r = j.M.derrotarInimigo(p, g("inimigos").javali1);
+  assert.strictEqual(p.inventario.filter((i) => i === "madeira").length - madeiraAntes, 2, "1 a mais pelo nível do ofício");
+  assert.ok(r.oficioSubiu?.oficio === "carpinteiro" && r.oficioSubiu.nivel === 15, JSON.stringify(r.oficioSubiu));
+  igual(p.oficios.carpinteiro.xp, g("xpTotalOficio")(15) - 1 + 8);
+  // Mochila cheia: o material cai no chão e não rende XP (até ser recolhido). No nível máximo, o abate não
+  // sobe de nível (a carga não cresce no meio).
+  p.nivel = g("NIVEL_MAXIMO");
+  j.M.reaparecerInimigo(ID, "javali1");
   while (j.M.adicionarItem(p, "anfora"));
-  r = pisarEm(j, "canaan", madeira);
-  assert.ok(!r.extracao && /Mochila cheia/.test(r.mensagem) && j.M.extracaoDisponivel(ID, "canaan", madeira.id), r.mensagem);
-  // Ponto de outra área não conta.
-  assert.ok(!j.M.extracaoDisponivel(ID, "egito", madeira.id));
+  while (j.M.adicionarItem(p, "pena_ave"));
+  const xpAntes = p.oficios.carpinteiro.xp;
+  r = j.M.derrotarInimigo(p, g("inimigos").javali1);
+  assert.ok(p.saqueNoChao.some((s) => s.item === "madeira") && /Mochila cheia/.test(r.mensagem), r.mensagem);
+  igual(p.oficios.carpinteiro.xp, xpAntes);
 });
 
 teste("65c. fabricar: nível, materiais, todos, mochila cheia, qualidade dos equipamentos, XP e visão da janela", () => {
@@ -5710,15 +5743,15 @@ teste("65c. fabricar: nível, materiais, todos, mochila cheia, qualidade dos equ
   igual([g("nivelOficio")(p, "tecelao"), p.oficios.tecelao.xp, g("progressoOficio")(p, "tecelao").maximo], [30, g("xpTotalOficio")(30), true]);
 });
 
-teste("65d. ofícios no save: recarrega igual, v14 recebe o aviso, XP e relógios corrompidos são normalizados", () => {
+teste("65d. ofícios no save: recarrega igual, v14 recebe o aviso, XP corrompido é normalizado e o relógio da extração sai", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p;
   p.oficios.ferreiro.xp = 250;
-  p.extracaoRespawn.minerio1 = j.agora + 10_000;
+  p.extracaoRespawn = { minerio1: j.agora + 10_000 }; // save de antes: os pontos de extração não existem mais
   j.g("Storage").flush();
   const q = carregarJogo({ store: j.store, inicio: j.agora }).entrar();
-  igual([q.oficios.ferreiro.xp, q.extracaoRespawn.minerio1, Object.keys(q.oficios)], [250, j.agora + 10_000, ["pescador", "ferreiro", "carpinteiro", "oleiro", "tecelao", "perfumista"]]);
+  igual([q.oficios.ferreiro.xp, "extracaoRespawn" in q, Object.keys(q.oficios)], [250, false, ["pescador", "ferreiro", "carpinteiro", "oleiro", "tecelao", "perfumista"]]);
   // Corrompido: XP negativo, texto, enorme; ofício inventado; relógio no futuro distante; ponto inventado.
   const k = carregarJogo();
   k.entrar();
@@ -5730,7 +5763,7 @@ teste("65d. ofícios no save: recarrega igual, v14 recebe o aviso, XP e relógio
     [q2.oficios.pescador.xp, q2.oficios.ferreiro.xp, q2.oficios.oleiro.xp, q2.oficios.alfaiate, q2.oficios.tecelao.xp],
     [0, 0, k.g("xpTotalOficio")(30), undefined, 12],
   );
-  igual(q2.extracaoRespawn, { minerio1: k.agora + k.g("REGRAS_OFICIOS").respawnExtracao });
+  assert.ok(!("extracaoRespawn" in q2), "o relógio dos pontos de extração sai do save");
   // Save v14: aviso da novidade, uma vez.
   const m = carregarJogo();
   m.entrar();
@@ -5742,9 +5775,8 @@ teste("65d. ofícios no save: recarrega igual, v14 recebe o aviso, XP e relógio
   delete dados.extracaoRespawn;
   m.store[chave] = JSON.stringify(dados);
   const q3 = carregarJogo({ store: m.store }).entrar();
-  assert.ok(q3.avisosPendentes.some((a) => a.id === "atualizacao_15") && q3.oficios.pescador.xp === 0 && objetoVazio(q3.extracaoRespawn));
+  assert.ok(q3.avisosPendentes.some((a) => a.id === "atualizacao_15") && q3.oficios.pescador.xp === 0 && !("extracaoRespawn" in q3));
 });
-const objetoVazio = (o) => o && typeof o === "object" && !Object.keys(o).length;
 
 teste("66. Oração rápida: F1 cura na hora, do nível 25 tira veneno e sangramento sempre, cura de grupo só do Levita", () => {
   const j = carregarJogo();
@@ -6281,103 +6313,63 @@ teste("72. inventário (a): pesos reais em kg, carga ajustada e textos com vírg
   assert.ok(g("itemValido")("armadura_couro@reliquia.defesa3.critico3.vida20.carga8"), "carga +8 de um save antigo continua válida");
 });
 
-teste("72. inventário (b): jogar no chão 1, X ou tudo; o que foi jogado volta só clicando", () => {
+teste("72. inventário (b): destruir 1, X ou tudo (nada vai ao chão); o largado dos saves antigos vira saque comum", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p, M = j.M, g = (n) => j.g(n);
-  const largar = (item, quantidade, x, y) => j.exec({ tipo: "largarItem", item, quantidade, x, y });
+  const destruir = (item, quantidade) => j.exec({ tipo: "destruirItem", item, quantidade });
   const conta = (id) => M.contarItem(ID, id);
   p.inventario.push(...Array(10).fill("pele_lobo"), ...Array(30).fill("flecha"), "erva");
   // Recusas sem mudar nada: quantidade inválida, mais do que tem, item que não tem ou inválido.
   const antes = json(p);
   for (const [item, q] of [["pele_lobo", 0], ["pele_lobo", -2], ["pele_lobo", 1.5], ["pele_lobo", "abc"], ["pele_lobo", 11], ["pele_lobo", Infinity],
     ["presa_lobo", 1], ["nada", 1], ["constructor", 1], ["__proto__", 1], [undefined, 1], [null, 1]]) {
-    const r = largar(item, q);
+    const r = destruir(item, q);
     assert.ok(!r.ok && r.mensagem, `${item} × ${q}`);
   }
-  assert.match(largar("pele_lobo", 11).mensagem, /^Você só tem 10× Pele de lobo\.$/);
-  assert.match(largar("pele_lobo", 0).mensagem, /Quantidade inválida/);
+  assert.match(destruir("pele_lobo", 11).mensagem, /^Você só tem 10× Pele de lobo\.$/);
+  assert.match(destruir("pele_lobo", 0).mensagem, /Quantidade inválida/);
   // Equipamento vestido: precisa voltar à mochila antes.
-  assert.match(largar("espada_madeira", 1).mensagem, /^Tire do corpo antes de jogar no chão: guarde Espada de madeira na mochila\.$/);
+  assert.match(destruir("espada_madeira", 1).mensagem, /^Tire do corpo antes de destruir: guarde Espada de madeira na mochila\.$/);
   igual(p, antes, "as recusas não mudam o save");
+  // O comando antigo de jogar no chão não existe mais.
+  assert.ok(!j.exec({ tipo: "largarItem", item: "erva", quantidade: 1 }).ok && !M.largarItem);
 
-  // 1 unidade, sem casa pedida: cai numa vizinha reta livre (à vista, não sob o personagem).
-  let r = largar("erva");
-  assert.ok(r.ok, r.mensagem);
-  assert.match(r.mensagem, /^Você jogou no chão: Erva medicinal\. Para pegar de volta, clique no item \(ele some em 10 minutos\)\.$/);
-  let s = p.saqueNoChao.find((x) => x.id === r.saqueId);
-  igual([s.item, s.largado, "quantidade" in s, g("distanciaChebyshev")(p, s), conta("erva")], ["erva", true, false, 1, 0]);
-  assert.ok(s.x === p.x || s.y === p.y, "vizinha reta");
-  // X unidades numa casa vizinha pedida (a do arrastar para o mundo); de novo na mesma casa, a pilha cresce.
-  const casa = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy })).find((c) => M.casaParaFicar(p.area, c.x, c.y));
-  r = largar("pele_lobo", 4, casa.x, casa.y);
-  assert.ok(r.ok && r.quantidade === 4 && /4× Pele de lobo/.test(r.mensagem), r.mensagem);
-  s = p.saqueNoChao.find((x) => x.id === r.saqueId);
-  igual([s.x, s.y, s.quantidade, conta("pele_lobo")], [casa.x, casa.y, 4, 6]);
-  r = largar("pele_lobo", 2, casa.x, casa.y);
-  igual([r.saqueId, s.quantidade, conta("pele_lobo"), p.saqueNoChao.filter((x) => x.item === "pele_lobo").length], [s.id, 6, 4, 1], "a pilha cresce");
-  // Tudo (30 flechas), pedindo uma casa longe demais: cai ao lado do personagem.
-  r = largar("flecha", 30, p.x + 5, p.y);
-  const fl = p.saqueNoChao.find((x) => x.id === r.saqueId);
-  igual([r.ok, conta("flecha"), fl.quantidade, g("distanciaChebyshev")(p, fl) <= 1], [true, 0, 30, true]);
-  // Casa de transição (trilha, cais, portal) nunca recebe o item.
-  const trilha = g("areas").canaan.passagem;
-  assert.ok(M.casaDeTransicao("canaan", trilha.x, trilha.y));
-  posicionarAoLado(j, "canaan", trilha);
-  r = largar("pele_lobo", 1, trilha.x, trilha.y);
-  s = p.saqueNoChao.find((x) => x.id === r.saqueId);
-  assert.ok(r.ok && !(s.x === trilha.x && s.y === trilha.y), "não cai na trilha");
-  const portal = g("PORTAIS").find((t) => t.area === "deserto");
-  assert.ok(M.casaDeTransicao("deserto", portal.x, portal.y) && !M.casaDeTransicao("deserto", portal.x - 1, portal.y));
-  // No barco não há chão.
-  const area = p.area;
+  // 1, X e tudo: some da mochila e nada aparece no chão (também no barco).
+  const chao = p.saqueNoChao.length;
+  let r = destruir("erva");
+  igual([r.ok, r.mensagem, conta("erva")], [true, "Você destruiu: Erva medicinal.", 0]);
+  r = destruir("pele_lobo", 4);
+  igual([r.ok, r.quantidade, r.mensagem, conta("pele_lobo")], [true, 4, "Você destruiu: 4× Pele de lobo.", 6]);
   p.area = "mar";
-  assert.ok(!largar("pele_lobo", 1).ok);
-  p.area = area;
+  r = destruir("flecha", 30);
+  igual([r.ok, conta("flecha")], [true, 0]);
+  p.area = "canaan";
+  assert.strictEqual(p.saqueNoChao.length, chao, "nada vai para o chão");
 
-  // Pisar em cima não recolhe o que foi jogado; clicar ao lado recolhe (coletarSaque), sem contar como saque novo.
-  const pilha = p.saqueNoChao.find((x) => x.item === "flecha");
-  const a = M.estado[ID].analisador;
-  a.inicio = j.agora;
-  const ao = posicionarAoLado(j, p.area, pilha);
-  const passo = j.exec({ tipo: "mover", dx: pilha.x - ao.x, dy: pilha.y - ao.y });
-  assert.ok(passo.ok && !passo.itensColetados, "o passo não recolhe o largado");
-  igual([p.x, p.y, conta("flecha")], [pilha.x, pilha.y, 0]);
-  r = j.exec({ tipo: "coletarSaque", saqueId: pilha.id });
-  // (boneco, teste 73: as flechas recolhidas voltam à pilha do espaço de munição, vazio aqui)
-  igual([r.ok, r.itemColetado, r.quantidade, g("flechasDoJogador")(p), p.quantidadeMunicao, r.mensagem], [true, pilha.id, 30, 30, 30, "Você pegou: 30× Flecha."]);
-  igual([a.itens, a.valorItens], [0, 0], "o analisador não conta o que o jogador jogou fora");
-  // Pilha maior que a folga: leva o que couber e o resto fica no chão.
-  const peles = p.saqueNoChao.find((x) => x.item === "pele_lobo" && x.quantidade === 6);
-  posicionarAoLado(j, p.area, peles);
-  while (g("pesoCarregado")(p) + 3 * g("pesoItem")("pele_lobo") <= g("capacidadeCarga")(p)) p.inventario.push("pocao");
-  r = j.exec({ tipo: "coletarSaque", saqueId: peles.id });
-  assert.ok(r.ok && r.quantidade >= 1 && r.restante === 6 - r.quantidade && /no chão/.test(r.mensagem), r.mensagem);
-  assert.strictEqual(peles.quantidade > 1 ? peles.quantidade : 1, r.restante);
-  assert.ok(p.saqueNoChao.includes(peles), "o resto continua no chão");
-
-  // Save: o largado e a pilha voltam iguais; campos corrompidos são limpos na carga (sem versão nova).
+  // Save antigo com itens jogados no chão: viram saque comum (pisar em cima recolhe; pilha com quantidade).
   g("Storage").flush();
-  const q = carregarJogo({ store: j.store, inicio: j.agora }).entrar();
-  igual(q.saqueNoChao.find((x) => x.id === peles.id), json(peles));
   const chave = Object.keys(j.store).find((c) => c.startsWith("save_"));
   const dados = JSON.parse(j.store[chave]);
   dados.saqueNoChao.push(
     { id: "x1", area: "canaan", x: 25, y: 22, item: "erva", criadoEm: j.agora, largado: "sim", quantidade: 0 },
     { id: "x2", area: "canaan", x: 25, y: 22, moedas: 5, criadoEm: j.agora, largado: true, quantidade: 7 },
-    { id: "x3", area: "canaan", x: 25, y: 22, item: "erva", criadoEm: j.agora, largado: true, quantidade: 2.5 },
+    { id: "x3", area: "canaan", x: 25, y: 22, item: "erva", criadoEm: j.agora, largado: true, quantidade: 3 },
   );
   j.store[chave] = JSON.stringify(dados);
-  const r2 = carregarJogo({ store: j.store, inicio: j.agora }).entrar().saqueNoChao.filter((x) => x.id.startsWith("x"));
-  igual(r2.map((x) => [x.id, x.largado, x.quantidade]), [["x1", undefined, undefined], ["x2", undefined, undefined], ["x3", true, undefined]]);
+  const k = carregarJogo({ store: j.store, inicio: j.agora });
+  const q = k.entrar();
+  const velhos = q.saqueNoChao.filter((x) => x.id.startsWith("x"));
+  igual(velhos.map((x) => [x.id, x.largado, x.quantidade]), [["x1", undefined, undefined], ["x2", undefined, undefined], ["x3", undefined, 3]]);
   assert.strictEqual(g("VERSAO_SAVE"), 16, "sem versão nova do save");
-  // Some em 10 minutos, como os outros saques.
-  j.avancar(10 * 60 * 1000 + 6000);
-  j.atualizar();
-  assert.ok(!p.saqueNoChao.some((x) => x.largado), "o largado expira");
+  // Pisar em cima recolhe a pilha toda (e o resto, se a mochila encher).
+  const ao = posicionarAoLado(k, "canaan", { x: 25, y: 22 });
+  const passo = k.exec({ tipo: "mover", dx: 25 - ao.x, dy: 22 - ao.y });
+  assert.ok(passo.ok && passo.itensColetados?.length === 3, passo.mensagem);
+  assert.strictEqual(k.M.contarItem(ID, "erva"), 4);
 });
 
-teste("72. inventário (c): itens que a missão pede não saem pela venda nem pelo chão (o excedente sai)", () => {
+teste("72. inventário (c): itens que a missão pede não saem pela venda, pela destruição nem pelo depósito (o excedente sai)", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p, M = j.M;
@@ -6387,12 +6379,19 @@ teste("72. inventário (c): itens que a missão pede não saem pela venda nem pe
   igual(M.reservaDeMissao(p, "erva"), { quantidade: 3, missao: j.g("MISSOES").ervas.nome, npc: "Eliabe" });
   assert.strictEqual(M.quantidadeLivre(ID, "erva"), 2);
   assert.strictEqual(M.quantidadeLivre(ID, "pele_lobo"), 0);
-  let r = j.exec({ tipo: "largarItem", item: "erva", quantidade: 3 });
+  let r = j.exec({ tipo: "destruirItem", item: "erva", quantidade: 3 });
   assert.ok(!r.ok && r.reservado, r.mensagem);
-  assert.strictEqual(r.mensagem, `A missão “${j.g("MISSOES").ervas.nome}” pede 3× Erva medicinal na entrega a Eliabe. Você pode jogar no chão até 2.`);
-  assert.ok(j.exec({ tipo: "largarItem", item: "erva", quantidade: 2 }).ok);
-  r = j.exec({ tipo: "largarItem", item: "erva" });
+  assert.strictEqual(r.mensagem, `A missão “${j.g("MISSOES").ervas.nome}” pede 3× Erva medicinal na entrega a Eliabe. Você pode destruir até 2.`);
+  assert.ok(j.exec({ tipo: "destruirItem", item: "erva", quantidade: 2 }).ok);
+  r = j.exec({ tipo: "destruirItem", item: "erva" });
   assert.ok(!r.ok && /Guarde para entregar\.$/.test(r.mensagem), r.mensagem);
+  // Depósito: mesma reserva (guardar tudo também deixa a reserva na mochila).
+  posicionarAoLado(j, "canaan", j.g("npcs").deposito_canaa);
+  p.inventario.push("erva");
+  r = j.exec({ tipo: "depositar", item: "erva", quantidade: 2 });
+  assert.ok(!r.ok && /Você pode guardar até 1\./.test(r.mensagem), r.mensagem);
+  assert.ok(j.exec({ tipo: "depositarTudo" }).ok);
+  igual([M.contarItem(ID, "erva"), p.deposito.filter((x) => x === "erva").length], [3, 1]);
   // Venda: mesma reserva.
   posicionarAoLado(j, "canaan", j.g("npcs").mercador_canaa);
   p.inventario.push("erva");
@@ -6462,15 +6461,24 @@ teste("72. inventário (e): vender 1, X ou tudo e comprar provisões em quantida
   igual([r.moedas, r.mensagem, M.contarItem(ID, "pele_lobo")], [5 * valor, `Você vendeu 5× Pele de lobo por ${5 * valor} moedas (${valor} cada).`, 6]);
   r = j.exec({ tipo: "vender", item: "pele_lobo", quantidade: M.contarItem(ID, "pele_lobo") });
   igual([r.ok, M.contarItem(ID, "pele_lobo"), p.moedas], [true, 0, 12 * valor]);
-  // O vestido não é vendido (só o da mochila) e cada raridade é um item à parte.
-  j.g("VALORES_VENDA").escudo_madeira = 7; // só neste teste: equipamento com preço de venda
+  // Todo item se vende. O vestido não é vendido (só o da mochila) e cada raridade é um item à parte, com o
+  // próprio valor (o do item base × RARIDADES[...].venda).
+  const base = j.g("VALORES_VENDA").escudo_madeira;
   p.inventario.push("escudo_madeira", "escudo_madeira@incomum.defesa1");
   r = j.exec({ tipo: "vender", item: "escudo_madeira", quantidade: 2 });
   assert.ok(!r.ok && /Você só tem 1×/.test(r.mensagem), "o escudo vestido não conta");
-  assert.ok(j.exec({ tipo: "vender", item: "escudo_madeira", quantidade: 1 }).ok);
+  r = j.exec({ tipo: "vender", item: "escudo_madeira", quantidade: 1 });
+  igual([r.ok, r.moedas], [true, base]);
   igual([p.equipamento.escudo, p.inventario.includes("escudo_madeira@incomum.defesa1")], ["escudo_madeira", true]);
-  assert.ok(!j.exec({ tipo: "vender", item: "escudo_madeira@incomum.defesa1" }).ok, "a variante incomum não tem o preço do comum");
-  delete j.g("VALORES_VENDA").escudo_madeira;
+  r = j.exec({ tipo: "vender", item: "escudo_madeira@incomum.defesa1" });
+  igual([r.ok, r.moedas], [true, Math.round(base * j.g("RARIDADES").incomum.venda)], "a variante incomum vale mais");
+  // Todo item de ITENS tem valor de venda, abaixo do preço da loja (comprar e revender nunca dá lucro).
+  for (const id of Object.keys(j.g("ITENS"))) {
+    const v = j.g("VALORES_VENDA")[id];
+    assert.ok(Number.isInteger(v) && v > 0, `${id}: valor de venda`);
+    if (id in j.g("PRECOS_LOJA")) assert.ok(v < j.g("PRECOS_LOJA")[id], `${id}: vende por menos do que custa`);
+  }
+  assert.ok(j.g("VALORES_VENDA").flecha < j.g("PRECOS_LOJA").flechas / j.g("FLECHAS_POR_PACOTE"), "flecha: abaixo do preço do lote");
 
   // Comprar em quantidade: poções e lotes de flechas; sem moedas ou sem carga para tudo, recusa sem mudar nada.
   p.moedas = 200;
@@ -6493,6 +6501,91 @@ teste("72. inventário (e): vender 1, X ou tudo e comprar provisões em quantida
   assert.ok(!r.ok && /^A mochila não comporta tudo: cabem mais \d+\.$/.test(r.mensagem), r.mensagem);
   igual(p, cheia, "a recusa por peso não muda nada");
   igual(antes2.moedas, 200 - 5 * preco.pocao - 4 * preco.flechas - preco.pocao);
+});
+
+teste("72. inventário (f): vender tudo (menos poções e flechas) e o depósito, o mesmo baú em todas as cidades", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const p = j.p, M = j.M, g = (n) => j.g(n);
+  const conta = (id) => M.contarItem(ID, id);
+  // Vender tudo: só ao lado do mercador; deixa poções, flechas e a reserva de missão.
+  p.inventario = ["pocao", "pocao", ...Array(10).fill("flecha"), ...Array(4).fill("pele_lobo"), "espada_ferro", "pedra_sardio"];
+  assert.ok(!j.exec({ tipo: "venderTudo" }).ok, "longe do mercador");
+  posicionarAoLado(j, "canaan", g("npcs").mercador_canaa);
+  const V = g("VALORES_VENDA");
+  igual(M.vendaDeTudo(ID).map((v) => [v.item, v.quantidade, v.valor]), [["pele_lobo", 4, V.pele_lobo], ["espada_ferro", 1, V.espada_ferro], ["pedra_sardio", 1, V.pedra_sardio]]);
+  const moedas = p.moedas;
+  let r = j.exec({ tipo: "venderTudo" });
+  const total = 4 * V.pele_lobo + V.espada_ferro + V.pedra_sardio;
+  igual([r.ok, r.quantidade, r.moedas, p.moedas - moedas], [true, 6, total, total]);
+  igual([...p.inventario].sort(), ["flecha", "flecha", "flecha", "flecha", "flecha", "flecha", "flecha", "flecha", "flecha", "flecha", "pocao", "pocao"]);
+  r = j.exec({ tipo: "venderTudo" });
+  assert.ok(!r.ok && /Não há o que vender/.test(r.mensagem), r.mensagem);
+
+  // Depósito: só ao lado de um guarda; guardar 1, X e tudo; o peso sai da carga.
+  p.inventario.push(...Array(6).fill("couro_grosso"), "espada_ferro");
+  assert.ok(!j.exec({ tipo: "depositar", item: "couro_grosso" }).ok, "longe do guarda");
+  posicionarAoLado(j, "canaan", g("npcs").deposito_canaa);
+  const peso = g("pesoCarregado")(p);
+  for (const q of [0, -1, 2.5, "x", 7]) assert.ok(!j.exec({ tipo: "depositar", item: "couro_grosso", quantidade: q }).ok, `depositar ${q}`);
+  r = j.exec({ tipo: "depositar", item: "couro_grosso" });
+  igual([r.ok, r.mensagem, conta("couro_grosso"), p.deposito], [true, "Guardado no depósito: Couro grosso.", 5, ["couro_grosso"]]);
+  r = j.exec({ tipo: "depositar", item: "couro_grosso", quantidade: 3 });
+  igual([r.quantidade, conta("couro_grosso")], [3, 2]);
+  r = j.exec({ tipo: "depositarTudo" });
+  igual([r.ok, conta("couro_grosso"), conta("espada_ferro"), conta("pocao"), conta("flecha")], [true, 0, 0, 2, 10], "poções e flechas ficam");
+  assert.ok(g("pesoCarregado")(p) < peso - 18, "o depósito não pesa");
+  igual(p.deposito.length, 7);
+  // Em outra cidade, o mesmo baú: retirar 1, X e tudo, até o que a carga aguenta.
+  const guarda = g("npcs").deposito_egito;
+  posicionarAoLado(j, "egito", guarda);
+  assert.strictEqual(falar(j, "deposito_egito").abrirDeposito, "deposito_egito");
+  r = j.exec({ tipo: "retirar", item: "couro_grosso", quantidade: 2 });
+  igual([r.ok, conta("couro_grosso"), p.deposito.filter((x) => x === "couro_grosso").length], [true, 2, 4]);
+  assert.ok(!j.exec({ tipo: "retirar", item: "pele_lobo" }).ok, "o que não está no baú");
+  // Mochila quase cheia: retira só o que couber, e o resto fica no depósito.
+  while (g("pesoCarregado")(p) + 3 + 3 <= g("capacidadeCarga")(p)) p.inventario.push("couro_grosso");
+  r = j.exec({ tipo: "retirar", item: "couro_grosso", quantidade: 4 });
+  assert.ok(r.ok && r.quantidade === 1 && /ficaram no depósito/.test(r.mensagem), r.mensagem);
+  // Espaço do depósito: cheio, recusa.
+  p.deposito = Array(g("REGRAS_DEPOSITO").espacos).fill("pena_ave");
+  r = j.exec({ tipo: "depositar", item: "couro_grosso" });
+  assert.ok(!r.ok && /depósito está cheio/.test(r.mensagem), r.mensagem);
+  // Save: o baú volta igual; item inválido sai; save sem o campo começa vazio (sem versão nova).
+  p.deposito = ["espada_ferro", "pele_lobo", "pele_lobo"];
+  g("Storage").flush();
+  const chave = Object.keys(j.store).find((c) => c.startsWith("save_"));
+  igual(carregarJogo({ store: { ...j.store }, inicio: j.agora }).entrar().deposito, ["espada_ferro", "pele_lobo", "pele_lobo"]);
+  const dados = JSON.parse(j.store[chave]);
+  dados.deposito = ["espada_ferro", "nada", 5, null];
+  const k = carregarJogo({ store: { [chave]: JSON.stringify(dados) }, inicio: j.agora }).entrar();
+  igual(k.deposito, ["espada_ferro"]);
+  delete dados.deposito;
+  igual(carregarJogo({ store: { [chave]: JSON.stringify(dados) }, inicio: j.agora }).entrar().deposito, []);
+  // Palavra-chave: "depósito" (e sinônimos) com o guarda.
+  const palavras = g("palavrasChaveDoNpc")(p, "deposito_egito").map((x) => x.palavra);
+  assert.ok(palavras.includes("depósito"), palavras.join(" "));
+  assert.strictEqual(g("palavraChaveDoTexto")(g("palavrasChaveDoNpc")(p, "deposito_egito"), "quero guardar umas coisas")?.palavra, "depósito");
+});
+
+teste("72. inventário (g): a velocidade do personagem sobe aos poucos com o nível, até o teto", () => {
+  const j = carregarJogo();
+  j.entrar();
+  const v = j.g("velocidadeDoJogador");
+  const R = j.g("REGRAS_VELOCIDADE");
+  igual(v({ nivel: 1 }), { casasPorSegundo: R.base, reto: Math.round(1000 / R.base), diagonal: Math.round(Math.round(1000 / R.base) * R.fatorDiagonal) });
+  let anterior = Infinity;
+  for (let n = 1; n <= j.g("NIVEL_MAXIMO"); n++) {
+    const x = v({ nivel: n });
+    assert.ok(x.reto <= anterior, `nível ${n}: não fica mais lento`);
+    assert.ok(x.casasPorSegundo <= R.maximo && x.diagonal > x.reto, `nível ${n}`);
+    anterior = x.reto;
+  }
+  assert.ok(v({ nivel: 10 }).reto < v({ nivel: 1 }).reto && v({ nivel: 2 }).reto - v({ nivel: 1 }).reto >= -3, "sobe aos poucos");
+  assert.strictEqual(v({ nivel: j.g("NIVEL_MAXIMO") }).casasPorSegundo, R.maximo, "teto");
+  // A ficha mostra a velocidade.
+  const f = j.g("fichaDeHabilidades")(j.p, j.agora);
+  assert.ok(f.velocidade && f.velocidade.reto === v(j.p).reto && /casas\/s$/.test(f.velocidade.texto), JSON.stringify(f.velocidade));
 });
 
 teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, munição em pilha e save antigo sem perder item", () => {
@@ -7217,7 +7310,7 @@ teste("76. arte do mundo: props das vilas (dados, arte e colisão) e vegetação
   assert.ok(a.length === b.length && a.every((v, i) => v === b[i]), "o pedaço do chão é sempre o mesmo");
 });
 
-teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no chão, vigor sem trapaça no relógio e só com golpe", () => {
+teste("77. revisão: pesos novos avisam quem ficou pesado, corte dos saques no chão, vigor sem trapaça no relógio e só com golpe", () => {
   // (a) Save de veterano acima da carga nova: nada some e há um aviso único explicando o que fazer.
   {
     const j = carregarJogo();
@@ -7248,21 +7341,20 @@ teste("77. revisão: pesos novos avisam quem ficou pesado, pilha largada fica no
     j3.entrar();
     assert.ok(j3.p.inventario.includes("espada_ferro") && j3.p.inventario.includes("escudo_madeira"), "equipamento em lista volta para a mochila");
   }
-  // (c) Pilha jogada no chão não sai no corte por quantidade (só pelos 10 minutos).
+  // (c) O corte por quantidade leva os saques mais velhos (nada fica no chão por ser "do jogador": não há mais
+  // jogar no chão), e os 10 minutos levam o resto.
   {
     const j = carregarJogo();
     j.entrar();
     const p = j.p;
-    p.inventario.push(...Array(20).fill("pele_lobo"));
-    assert.ok(j.exec({ tipo: "largarItem", item: "pele_lobo", quantidade: 20 }).ok);
-    const pilha = p.saqueNoChao.find((s) => s.largado);
-    assert.ok(pilha, "a pilha está no chão");
+    p.saqueNoChao.push({ id: "velho", area: p.area, x: 3, y: 3, item: "pele_lobo", criadoEm: j.agora - 1 });
     for (let i = 0; i < 70; i++) p.saqueNoChao.push({ id: `extra${i}`, area: p.area, x: 3, y: 3, item: "pele_lobo", criadoEm: j.agora + i });
     j.M.limparSaques(p, j.agora + 1000);
-    assert.ok(p.saqueNoChao.some((s) => s.id === pilha.id), "a pilha largada continua no chão");
+    assert.ok(!p.saqueNoChao.some((s) => s.id === "velho") && p.saqueNoChao.length === j.g("LIMITE_SAQUES_NO_CHAO"), "o mais velho sai primeiro");
     j.M.limparSaques(p, j.agora + 11 * 60_000);
-    assert.ok(!p.saqueNoChao.some((s) => s.id === pilha.id), "depois de 10 minutos, some");
+    assert.strictEqual(p.saqueNoChao.length, 0, "depois de 10 minutos, some");
   }
+
   // (d) Atrasar e adiantar o relógio não devolve vigor de graça.
   {
     const j = carregarJogo();
@@ -7379,13 +7471,16 @@ teste("79. integração: ajuda e LEIA-ME batem com o menu do item e a janela Ca�
     const fim = fonte.indexOf("\n  function ", i + inicio.length);
     return fonte.slice(i, fim < 0 ? undefined : fim);
   };
-  // (a) A ajuda (?) diz o que o toque longo e o botão direito fazem num item e como jogar no chão.
+  // (a) A ajuda (?) diz o que o toque longo e o botão direito fazem num item e como destruir.
   const ajuda = trecho(ui, "function abrirAjuda(").replace(/\s+/g, " ");
   assert.doesNotMatch(ajuda, /toque longo mostra a descrição\./i, "o toque longo num item abre o menu, não só a descrição");
   assert.match(ajuda, /Toque longo num item da mochila ou da bolsa abre o menu dele/);
   assert.match(ajuda, /Shift \+ F10/, "o menu do item pelo teclado");
-  assert.match(ajuda, /jogar no chão um, alguns ou todos/i);
-  assert.match(ajuda, /Arrastar um item para o mundo também o joga no chão/);
+  assert.match(ajuda, /destruir um, alguns ou todos \(pede confirmação/i);
+  assert.doesNotMatch(ajuda, /jogar no chão|joga no chão/i, "não há mais jogar no chão");
+  assert.match(ajuda, /O saque das criaturas vai direto para a mochila/);
+  assert.match(leia, /Destruir: abra o menu do item com o botão direito/);
+  assert.doesNotMatch(leia, /Jogar no chão:|largarItem/, "o LEIA-ME não fala mais em jogar no chão");
   // (b) O LEIA-ME não fala mais em abas no médio: a Caçada é uma janela que minimiza.
   assert.doesNotMatch(leia, /aba ou folha Batalha no médio/);
   assert.match(leia, /Janela "Caçada" \(coluna da esquerda no largo; coluna da direita, minimizada no começo, no médio; folha Batalha no celular\)\. Tecla X minimiza ou restaura/);
@@ -7402,32 +7497,16 @@ teste("79. integração: ajuda e LEIA-ME batem com o menu do item e a janela Ca�
   assert.match(html, /\.janela>\.painel-cab img\{pointer-events:none;-webkit-user-drag:none\}/);
 });
 
-teste("80. revisão de uso: jogar longe cai ao lado e avisa; equipar sem erro de concordância", () => {
+teste("80. revisão de uso: equipar sem erro de concordância e destruir o vestido pede guardar antes", () => {
   const j = carregarJogo();
   j.entrar();
   const p = j.p, M = j.M;
-  const largar = (item, quantidade, x, y) => j.exec({ tipo: "largarItem", item, quantidade, x, y });
-  p.inventario.push("erva", "erva", "erva", "grevas_bronze");
-  // Casa pedida a 6 casas: cai ao lado e a mensagem diz por quê.
-  let r = largar("erva", 1, p.x - 6, p.y + 4);
-  assert.ok(r.ok, r.mensagem);
-  let s = p.saqueNoChao.find((x) => x.id === r.saqueId);
-  assert.ok(j.g("distanciaChebyshev")(p, s) <= 1, "caiu ao lado do jogador");
-  assert.match(r.mensagem, /^Você jogou no chão: Erva medicinal\. Caiu ao seu lado: só dá para jogar a até 1 casa de você\. Para pegar/);
-  // Casa vizinha livre pedida: cai nela, sem aviso extra.
-  const casa = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy }))
-    .find((c) => M.casaParaFicar(p.area, c.x, c.y) && !M.casaDeTransicao(p.area, c.x, c.y));
-  r = largar("erva", 1, casa.x, casa.y);
-  s = p.saqueNoChao.find((x) => x.id === r.saqueId);
-  igual([r.ok, s.x, s.y, /Caiu ao seu lado/.test(r.mensagem)], [true, casa.x, casa.y, false]);
-  // Sem casa pedida (menu do item): sem aviso extra.
-  r = largar("erva", 1);
-  assert.ok(r.ok && !/Caiu ao seu lado/.test(r.mensagem), r.mensagem);
+  p.inventario.push("grevas_bronze");
   // Equipar: forma neutra (antes "Grevas de bronze equipado").
-  r = M.equiparItem(ID, "grevas_bronze", "pernas");
+  const r = M.equiparItem(ID, "grevas_bronze", "pernas");
   assert.ok(r.ok, r.mensagem);
   assert.match(r.mensagem, /^Equipou: Grevas de bronze \(/);
-  assert.match(largar("grevas_bronze", 1).mensagem, /^Tire do corpo antes de jogar no chão: guarde Grevas de bronze na mochila\.$/);
+  assert.match(j.exec({ tipo: "destruirItem", item: "grevas_bronze", quantidade: 1 }).mensagem, /^Tire do corpo antes de destruir: guarde Grevas de bronze na mochila\.$/);
 });
 
 teste("81. janela Batalha: só as criaturas por perto, da mais perto para a mais longe", () => {

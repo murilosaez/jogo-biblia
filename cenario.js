@@ -1933,7 +1933,6 @@
     const a = typeof areas !== "undefined" ? areas[area] : null;
     for (const k of ["passagem", "cais"]) if (a && a[k]) marca(a[k].x, a[k].y, 1);
     for (const d of (DADOS_MAPAS[area] && DADOS_MAPAS[area].decoracoes) || []) marca(d.x, d.y, 1);
-    if (typeof pontosExtracao !== "undefined") for (const p of pontosExtracao) if (p.area === area) marca(p.x, p.y);
     cacheProibidas[area] = set;
     return set;
   }

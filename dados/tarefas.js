@@ -191,7 +191,8 @@ const DADOS_TAREFAS = [
 //   item (id em dados/itens.js) e quantidade (padrão 1) OU melhoria: { carga } (kg a mais, para sempre, compra
 //   única) com nome e icone (glifo da arte); preco (pontos de tarefa); requer (opcional): { missao?, nivel?, troca? }.
 // Alforjes: +5 kg cada, na escala da carga de dados/itens.js (CARGA_BASE 35 kg + 3 por nível).
-// Itens da troca não entram em PRECOS_LOJA nem em VALORES_VENDA: pontos nunca viram moedas.
+// Itens da troca não entram em PRECOS_LOJA. Os mercadores compram qualquer item (VALORES_VENDA), mas o escudo de ferro
+// e a couraça valem lá bem menos do que custam em pontos (e também caem das criaturas).
 const DADOS_TROCA_PONTOS = [
   { id: "alforje_couro", nome: "Alforje de couro", icone: "ui_alforje", melhoria: { carga: 5 }, preco: 60 },
   { id: "escudo_ferro", item: "escudo_ferro", preco: 150, requer: { missao: "egito" } },
