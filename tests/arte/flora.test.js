@@ -40,7 +40,16 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual })
       igual(typeof PP[k].alto, "boolean", `${k}: alto`);
       assert.ok(PP[k].alturaVisual >= 0, `${k}: alturaVisual`);
     }
-    igual(Object.keys(PP).filter((k) => /^(ob_|es_|dc_)/.test(k)).sort(), Object.keys(VARIANTES).sort(), "nenhuma chave a mais nem a menos");
+    // props das vilas (vieram da revisão do mundo da main): 7 por área, menos os jarros do Egito, que já são obstáculo
+    const props = Object.keys(PP).filter((k) => PP[k].prop);
+    igual(props.length, 41, "41 props de vila");
+    for (const k of props) {
+      assert.ok(/^ob_[A-Za-z]+_(barril|caixotes|carroca|jarros|lenha|cocho|cerca)$/.test(k), `${k}: prop conhecido`);
+      const cerca = k.endsWith("_cerca");
+      igual([PP[k].quadros, PP[k].fecho || 0, PP[k].semEspelho], [cerca ? 4 : 2, cerca ? 2 : 0, true], `${k}: quadros, fecho e semEspelho`);
+      for (let q = 0; q < PP[k].quadros; q++) assert.ok(Arte.pixels(k, { quadro: q }).data.filter(opaco).length > 40, `${k}#${q}: tem desenho`);
+    }
+    igual(Object.keys(PP).filter((k) => /^(ob_|es_|dc_)/.test(k)).sort(), Object.keys(VARIANTES).concat(props).sort(), "nenhuma chave a mais nem a menos");
     // mesmo critério de tests/logica.test.js: regiões, muros de vila e marcos citados em dados/mapas.js
     const MAPAS = vm.runInContext("DADOS_MAPAS", ctx), BIOMAS = Arte.BIOMAS;
     for (const [area, d] of Object.entries(MAPAS)) {

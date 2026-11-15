@@ -885,6 +885,66 @@
     }
   }
 
+  // ----- peças do corpo do boneco (espaços cabeça, pernas e pés do equipamento) e a funda na mão -----
+  // capacete de couro: calota com costura, aba clara e orelheira (sem nasal)
+  ac("capacete", {
+    frente(G, c, P) {
+      const v = P.vista, cx = P.cx, T = P.T, R = couro(c[0]), R2 = couro(c[1] || claro(c[0], 0.3));
+      cupula(G, P, -2, [3, 5, 6, 6, 6, 6, 6], (u, w, X, Y) => {
+        let l = 0.6 - 1.4 * u - w * 0.5;
+        if (v !== "lado" && Math.abs(X - cx + 0.5) < 1) l -= 0.45; // costura do meio
+        else if (v === "lado" && Math.abs((X - cx) - (Y - T) + 1) < 1) l -= 0.4;
+        return luz(R, l, X, Y);
+      });
+      for (let X = cx - 7; X <= cx + 6; X++) G.fino(X, T + 5, luz(R2, 0.85 - ((X - cx + 7) / 13) * 1.3, X, T + 5));
+      if (v === "lado") for (let j = 6; j <= 9; j++) { G.fino(cx - 5, T + j, R[3]); G.fino(cx - 4, T + j, R[2]); G.fino(cx - 3, T + j, R[1]); }
+      else if (v === "frente") for (let j = 6; j <= 8; j++) { G.fino(cx - 7, T + j, R[3]); G.fino(cx - 6, T + j, R[2]); G.fino(cx + 5, T + j, R[2]); G.fino(cx + 6, T + j, R[1]); }
+    },
+  });
+  ac("funda_mao", AC.funda);
+  // Grevas, botas e saiote pintam por cima do corpo já desenhado (camada "meio", antes dos braços): trocam a cor
+  // dos px da perna, do pé ou da saia nas linhas da peça, então seguem o passo e as 3 vistas. A luz vem da
+  // esquerda: o px mais à esquerda de cada trecho é o realce e o mais à direita, a sombra. Montado, não aparecem.
+  function repintar(G, P, y0, y1, meia, f) {
+    if (P.montado || !G.gf) return;
+    for (let Y = y0; Y <= y1; Y++) {
+      for (let X = P.cx - meia; X <= P.cx + meia; X++) {
+        if (!G.gf(X, Y)) continue;
+        const esq = !G.gf(X - 1, Y), dir = !G.gf(X + 1, Y);
+        const cor = f(X, Y, esq ? 0.8 : dir ? -0.7 : 0.1, Y - y0);
+        if (cor) G.fino(X, Y, cor);
+      }
+    }
+  }
+  ac("grevas", {
+    meio(G, c, P) {
+      const R = metal(c[0], c[1] || claro(c[0], 0.4));
+      repintar(G, P, PES - 11, PES - 4, 10, (X, Y, l, j) => (j === 0 ? R[4] : j === 7 ? R[1] : luz(R, l + (j === 3 ? -0.5 : 0), X, Y)));
+    },
+  });
+  ac("botas", {
+    meio(G, c, P) {
+      const R = couro(c[0]), R2 = couro(c[1] || claro(c[0], 0.3));
+      // o cano sobe até o meio da canela (com grevas, só do tornozelo para baixo), dobrado em cima; sola escura
+      const topo = (P.__grevas ? PES - 3 : PES - 7);
+      repintar(G, P, topo, PES, 12, (X, Y, l, j) => (Y === PES ? R[0] : j === 0 ? luz(R2, l + 0.2, X, Y) : luz(R, l, X, Y)));
+    },
+  });
+  AC.grevas.pre = (P) => { P.__grevas = true; };
+  ac("saiote", {
+    meio(G, c, P) {
+      const R = couro(c[0]), ponta = c[1] || "#e8b94a";
+      // tiras de couro de 2 px com o vão escuro entre elas, do quadril até a barra da veste curta
+      const y1 = P.yR + 11;
+      repintar(G, P, P.yR + 3, y1, 10, (X, Y, l) => {
+        const k = (((X - P.cx) % 3) + 3) % 3;
+        if (Y >= PES - 12) return null; // já é perna
+        if (k === 2) return R[0];
+        return Y === y1 - 1 && G.gf(X, Y + 1) ? ponta : luz(R, (k === 0 ? 0.45 : -0.05) + l * 0.4, X, Y);
+      });
+    },
+  });
+
   // -------------------------------------------------------------------
   // Montagem: o esqueleto de arte/humano.js com o equipamento nas camadas.
   // desenhar(g, cfg, quadro, o): o = { ox, oy, montado, limites: [x0, y0, x1, y1] } (o M1 usa no montado).

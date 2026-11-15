@@ -95,7 +95,16 @@ Os tamanhos dos glifos estão em `Arte.TAM_ICONE` (`{ ui: 16, hb: 32, of: 32, ro
 - A cfg de cada humano fica em `sprites.js` (`humano("pj_…", { molde, cores, barba, cabelo, acessorios… })`,
   guardada em `Arte.motor.HUMANOS`); o desenho é a spec de `arte/humano-equip.js`, ativada por
   `definirHumano(spec)`. O equipamento do jogador vira acessório (`LAMINAS`, `CORES_ESCUDO`, `ARCOS`) e
-  armadura (`ARMADURAS`); a chave da textura é `pj_jogador|arma|arco|escudo|armadura|traje|montaria[|c:…]`.
+  armadura (`ARMADURAS`); a chave da textura é `pj_jogador|arma||escudo|armadura|traje|montaria[|e:cabeça.pernas.pés][|c:…]` (o arco e a funda vão em `arma`).
+- Equipamento visível no jogador (boneco, com uma mão para a arma): na mão da arma, espada (madeira, ferro,
+  temperada), arco na mão (o arco usa as duas mãos, então nunca aparece com escudo) ou funda na mão (as duas
+  cordas caem do punho até a bolsa com a pedra; no golpe, gira no alto); escudo (madeira, bronze, ferro);
+  armadura (túnica de pano, armadura de couro com ombreiras, couraça de escamas com ombreiras — as ombreiras
+  ficam por cima dos braços); cabeça (turbante de linho, capacete de couro com costura e aba, elmo de bronze);
+  pernas (saiote de tiras de couro com ponta de bronze; grevas de bronze na canela) e pés (botas de viagem,
+  de cano até o meio da canela). Grevas, botas e saiote seguem o passo e as 3 vistas e usam poucas cores novas (2 tons de
+  bronze; o couro das sandálias que o boneco já tem). Colar, anel e sandálias são pequenos demais para o
+  mundo: aparecem só no painel. Com traje, as peças do corpo não aparecem (como a armadura).
 - Passo: um ciclo de 4 fases por casa, sincronizado à fração do deslize; golpe em 2 tempos (antecipação e
   golpe) com investida de 4 px.
 
@@ -120,16 +129,29 @@ Os tamanhos dos glifos estão em `Arte.TAM_ICONE` (`{ ui: 16, hb: 32, of: 32, ro
   `item("…")` de `sprites.js` (os testes as procuram lá); o desenho é de `arte/itens.js`.
 - Glifos: idem com `glifo("…")` e `arte/icones.js`. A interface usa `Arte.TAM_ICONE` para não reduzir um
   glifo de 32 px a 16.
+- Peças do boneco (ícones dos itens): turbante (voltas do pano em diagonal e a ponta
+  caindo), capacete de couro (calota com costura, aba e orelheiras), elmo de bronze (testeira, abas do rosto
+  e nasal), colar de contas de cornalina (a conta maior no meio), saiote (cinto com fivela e tiras com ponta
+  de bronze), grevas (placa da canela, larga no joelho, com 2 correias), sandálias, botas de viagem (de
+  perfil, cano dobrado e atilhos), anel de selo (chapa oval com a marca) e a mochila do boneco (aba, fivela
+  e alças), com luz de cima e da esquerda e 3 a 4 tons por material.
+- Painel Equipamento (boneco): o espaço vazio mostra o contorno do item que vai nele (`silhueta` em
+  ESPACOS_BONECO, dados/itens.js), apagado; a mão do escudo presa pelo arco mostra o arco apagado sobre um
+  fundo riscado. A figura ao lado é o corpo inteiro do jogador em escala 4 (2 px por pixel de arte).
+- Item que o jogador jogou fora (`game.js` desenharPilha): fica parado no chão (só o saque novo flutua) e, em
+  pilha, o mesmo desenho do item se repete atrás dele, deslocado em pixels inteiros (−5, +2) a partir de 2
+  unidades e (+5, +3) a partir de 5, como um montinho; sem número escrito no mundo (a quantidade aparece no
+  menu do item e na mensagem).
 
 ## 6. Cenário
 
 - **Chão contínuo** (`cenario.js`): pintado por pedaços de 16 × 16 casas (512 × 512 px) a partir das
   coordenadas do mundo, sem azulejo repetido — relva e areia em duas escalas de ruído, estrada de terra de
-  beira irregular, rua de pedra nas vilas, chão pisado em volta de portas e poços, areia molhada na beira da
-  água. A pintura é **fatiada** (`Cenario.pintarFatia`, 4 ms por quadro) e os pedaços longe da câmera são
+  beira irregular, rua de pedra nas vilas, chão pisado em volta de portas e poços; a beira da água tem raso,
+  espuma, areia molhada e areia seca. Paleta curta e beiras nítidas: ver 6.1. A pintura é **fatiada** (`Cenario.pintarFatia`, 4 ms por quadro) e os pedaços longe da câmera são
   liberados; na troca de área as texturas de chão e de prédio da área anterior saem da memória.
 - **Tileset** (`Arte.gerarTileset`, pintores de `arte/terreno.js`): 8 × 15 casas por região para água animada
-  (4 fases, reenviada a cada 250 ms), costa, borda e moldura.
+  (4 fases, em px de arte, reenviada a cada 250 ms), costa, borda e moldura.
 - **Alturas (só visuais)**: parede de prédio com **64 px** (2 casas, `Cenario.ALTURA_PAREDE`), muro com
   **34 px** (`ALTURA_MURO`), árvores de até 3 casas. Colisão, pegadas, interior e linha de visão continuam
   na grade de `logica.js`.
@@ -145,6 +167,87 @@ Os tamanhos dos glifos estão em `Arte.TAM_ICONE` (`{ ui: 16, hb: 32, of: 32, ro
 - **Dia e noite** (`CICLO_DIA`): 40 min por dia, noite até 70% em azul profundo com luz nas fogueiras,
   candeias, interiores e portais. Só aparência.
 
+### 6.1 Mundo no estilo de MMORPG clássico em 2D (revisão da arte do mundo)
+
+Direção: pixel art de MMORPG clássico visto de cima, mundo em casas, paleta curta e rica, bordas nítidas, sem
+anti-serrilhado nem 3D, ambiente do antigo Oriente Próximo. Tudo é original e gerado em código: segue só as
+convenções do gênero (escala das árvores, contorno escuro, luz de cima e da esquerda), sem copiar sprites,
+ícones, layouts ou paletas de jogo nenhum. Capturas: `docs/capturas/arte-antes-depois.jpg` (antes e depois em
+cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noite).
+
+Flora, rochas e terreno têm dois conjuntos de desenho no código: o de `arte/flora.js` e `arte/terreno.js`
+(seções 2 e 10) e o desta revisão, em `sprites.js` e `cenario.js`. Os dois seguem a mesma escala (1 px de arte
+por px de mundo) e a mesma luz (de cima e da esquerda); os props das vilas e a vegetação rasteira em moitas
+existem só nesta revisão.
+
+O que aparece no jogo, por elemento: árvores, arbustos, rochas, estruturas (`es_`) e decorações (`dc_`) usam o
+desenho de `arte/flora.js`; o tileset é o de `arte/terreno.js` e o chão é o fatiado de `cenario.js`, com as
+moitas desta revisão por cima (nas áreas com `vegetacao`, a decoração rasteira do tileset fica desligada). Os
+props das vilas (barril, caixotes, carroça, jarros, lenha, cocho e cerca) são os desta revisão, registrados no
+fim de `arte/flora.js`, sem espelho e sem deslocamento. O segundo desenho continua no código:
+`Arte.MUNDO_DA_MAIN` (um `Set` em `sprites.js`, vazio por padrão) lista as chaves `ob_`/`es_`/`dc_` que devem
+usar o desenho guardado em `Arte.motor.mundoAlternativo`, e `Cenario.usarChao("main" | "fatiado")` troca o
+chão inteiro em execução.
+
+- **Escala de pixel**: 1 px de arte = 1 px de mundo em tudo o que fica no chão e em pé (árvores, pedras, props,
+  decorações do chão, poço, tendas, bancas, a mureta solta, água, a muralha de água do Mar Vermelho e o chão;
+  o teste 78 mede as decorações, o ponto de pesca, o poço, a tenda e a banca). Ficam de fora, de propósito, os
+  sinais e efeitos (setas do portal `mk_setas`, anel de alvo, faíscas e golpes `fx_*`), em traço de 2 px para
+  ler de longe, e o `es_casa`, que não aparece no mundo (as casas onde se entra vêm de `cenario.js`). A câmera segue um alvo em px inteiros e, a cada quadro, quem anda (personagens, barras, nomes,
+  números) vai para px inteiros (`pixelsInteiros` em `game.js`): nada fica a meio pixel de arte do chão, em
+  qualquer zoom. Os ícones da interface usam `image-rendering: pixelated`.
+- **Árvores em escala de MMORPG** (`arvore`, `Copa`, `moldeCopa` em `sprites.js`): a árvore é maior que a casa —
+  a copa (56–68 px) transborda para cima e um pouco para os lados, o tronco fica na casa que bloqueia (a colisão
+  não muda). A copa é feita de cachos de folhas (bolhas recortadas em lobos) sombreados um a um em 5 tons, com
+  a borda escura onde um cacho cai sobre outro, folhas em grupos de 2 px, contorno verde-escuro e a sombra no
+  chão para a direita. 3 variantes por espécie (com espelho e deslocamento por casa): oliveira (dois troncos
+  que se enroscam, copa prateada com azeitonas), acácia (copa chata em guarda-chuva; no Sinai, rala), tamareira
+  (tronco em escamas, folhas que caem com o peso, tâmaras) e figueira (copa larga e fechada, figos).
+- **Arbustos** (`arbustoOb`, `retamaOb`): de uma casa, em cachos com os mesmos 5 tons das árvores; o do Sinai é
+  seco, com os galhos à mostra; a retama do deserto é uma moita de varas finas com as pontas claras e flores
+  amarelas. **Coral** do Mar Vermelho (`coralOb`): galhos grossos que se bifurcam (3, 2 e 1 px) sobre uma laje.
+- **Rochas facetadas** (`rochaArte`, `pedregulho`): contorno de polígono irregular (7 a 10 lados) com a base reta
+  no chão; cada lado é uma face que sobe até o pico (um pouco à esquerda e acima do meio). A luz de cada face
+  mistura a direção dela com o volume da pedra e cai em 4 tons; o plano de cima fica sempre na luz, as cristas
+  viradas para a luz ganham 1 px de realce e as dobras, 1 px escuro; contorno e sombra para a direita.
+  Material por região: calcário com musgo (Canaã), arenito em estratos (deserto), granito com pintas (Mar
+  Vermelho e Sinai), basalto em colunas (Galileia) e o rochedo do mar com a espuma em volta.
+- **Chão** (`pintarPedacoChao` em `cenario.js`, pedaços de 16 × 16 casas): paleta curta por região — o chão
+  quase todo no tom de base, manchas grandes de 1 tom acima e (as manchas do bioma) 1 tom abaixo, de beira
+  nítida, sem pontilhado. Por cima, os motivos em grupos limpos de 2–3 px (folhinhas de relva com a ponta clara
+  e o pé escuro, grãos de areia), juntos em touceiras (um ruído largo decide onde ficam densos) e com chão calmo
+  entre elas. Estrada de terra: tom de base com manchas menores clara e escura, a fileira de fora escura com
+  pontas de relva por cima e a segunda 1 tom abaixo. Seixos claros e raros na relva. Custo: 25–45 ms por pedaço
+  de 512 × 512 px no navegador (antes 90–150 ms), com no máximo 2 pedaços novos por quadro.
+- **Beira da água** (a função `beira`): a linha da água fica sempre dentro da casa de água (a "terra" é
+  interpolada entre os centros das casas e a linha passa em 0,3 ± ruído), então a margem nunca é o degrau reto
+  entre duas casas. Da água para a terra: o raso (2 faixas por cima da água animada), a espuma em px soltos, a
+  fileira escura da areia molhada (a beira definida), a areia molhada, a areia seca (seixos de basalto na
+  Galileia) e 1 px de relva escura onde a relva começa. No canto de uma casa de água cercada de terra, o chão
+  continua.
+- **Água** (`pintarAgua`, tileset animado em 4 fases): base, 5 ondulações de 1 px por casa (vale escuro de 4 a
+  7 px e a crista clara 1 px acima) que derivam 1 px a cada 2 fases, e um brilho de 2 px de vez em quando.
+- **Vegetação rasteira em moitas** (não bloqueia; `PECAS`, `PECAS_MOITA`, `pintarMoitas` em `cenario.js`): pintada
+  no próprio pedaço do chão, em moitas de 2 a 6 peças, como num mapa feito à mão — tufo de capim (5 a 8 folhas
+  de 4 a 10 px, pé escuro e ponta clara), flor (haste, folhas e corola em cruz ou cheia, com o miolo; as cores
+  das flores vêm de `BIOMAS[area].deco`), arbusto baixo (14 a 20 px, 4 tons, contorno e sombra), pedra (topo
+  claro, aresta, face escura, contorno e sombra; com líquen no Sinai), seixos, conchas, cacos de cerâmica e
+  brotos do plantio. Na beira da água: juncos com taboas (Canaã, deserto, Galileia), papiro com a umbela em
+  leque (Nilo) e algas (Mar Vermelho). Os tipos, os pesos e a densidade de cada região ficam em
+  `DADOS_MAPAS[area].vegetacao` (`dados/mapas.js`). As moitas ficam longe das ruas e estradas (9 px, contados da
+  caixa inteira da peça, com contorno e sombra: `CAIXA_PECA`), da água, do chão pisado, dos personagens, portais, cais, decorações e pontos de extração; o sorteio é pela posição do
+  mundo e a peça que passa da borda do pedaço é terminada pelo vizinho (sem emenda). Onde o chão contínuo pinta
+  a vegetação, a decoração antiga em azulejos (`indiceDeco`) não aparece.
+- **Props das vilas** (`PROPS_VILA`, `DESENHO_PROP` em `sprites.js`): barril de aduelas com aros, caixotes de
+  tábuas com a trave em X, carroça de duas rodas (com sacos ou feno), jarros de barro, lenha empilhada (toras de
+  ponta com os anéis), cocho com água e cerca (postes a cada 16 px e travessas de ponta a ponta: emenda com a
+  vizinha; a última da fileira, sem cerca à direita, usa o quadro de fecho com o poste na ponta). Um desenho por região, `ob_<área>_<tipo>`, com a madeira, o barro e a pedra de lá
+  (`MATERIAL_PROPS`). São marcos de `dados/mapas.js` (bloqueiam a casa, ficam no lugar, sem deslocamento
+  sorteado); o teste 76 confere que ficam dentro das vilas, fora das ruas, da frente das portas e da clareira
+  dos personagens, e que não fecham casa nenhuma.
+- **Cenas leves**: a arte dos obstáculos e dos props é gerada só para a área atual (`garantirTextura`), e as
+  imagens do cenário entram em blocos de 16 × 16 casas que ligam e desligam com a câmera (`noBloco`).
+
 ## 7. Nomes, barras, números e movimento
 
 - Todo personagem na tela tem **nome pequeno** (13 px de tela, com contorno) e **barra de vida** de 26 × 4 px
@@ -159,18 +262,32 @@ Os tamanhos dos glifos estão em `Arte.TAM_ICONE` (`{ ui: 16, hb: 32, of: 32, ro
 
 ## 8. Layout da interface
 
-- **Cliente** (a partir de 761 px de largura): topo de 32 px; palco à esquerda com moldura de 4 px e, por
-  baixo dele, a faixa de ação de 48 px (habilidades e atalhos) e o console (Geral, NPCs, Servidor); **uma**
-  coluna à direita de 248 px (232 px até 1023 px) com janelinhas de barra de título de 20 px: Mapa, Estado,
-  Equipamento, Batalha, Mochila, Bolsa, Missão, Caçada. Cada janela minimiza, fecha, muda de altura e de
-  ordem; o estado fica em `localStorage`. O palco ocupa 61,5% da janela em 1600 × 900.
+- **Largo e médio** (a partir de 761 px de largura): o mundo fica no meio, com as **janelas laterais** nas
+  colunas dos lados (Missão, Personagem, Equipamento, Batalha, Mochila, Bolsa, Caçada e Mapa) e o **dock de
+  baixo** de uma ponta à outra (console com as abas Geral, NPCs e Servidor; atalhos e barra de habilidades à
+  direita). Cada janela tem o cabeçalho como alça: arrasta para a outra coluna ou posição, minimiza e fecha; o
+  menu Janelas reabre, escolhe o lugar da conversa e restaura o layout, que fica em `localStorage`
+  (`jornada_janelas`). Uma coluna sem janelas sai e o mundo fica mais largo; nada flutua sobre o mundo. O
+  zoom do mundo é inteiro, e a altura do dock é escolhida para não derrubá-lo. Os padrões por tamanho de tela
+  estão no LEIA-ME.txt ("Janelas laterais" e "Console").
 - **Celular** (até 760 px): palco em tela cheia, caixa de vida, botões de toque e abas inferiores.
 - Skin própria: couro, pergaminho e bronze.
+- Os botões das janelas laterais (menu de três pontos, minimizar e restaurar) são desenhados no CSS em
+  pixels inteiros (`.ic-menu`, `.ic-min` no `index.html`), sem curva nem borrão; fechar usa o glifo
+  `ui_fechar`. O destino da rota aparece no minimapa como uma cruz de ouro `#ffe9a8` de 7 px com contorno
+  sépia `#2a1a14` (presa na borda quando o destino está fora do recorte), e no chão como o quadrado de ouro.
+  O minimapa tem 3 níveis de zoom: os botões + e − e o de centralizar ficam ao lado dele, com a rosa dos
+  ventos, e a roda do mouse sobre o minimapa também troca o nível; o clique que traça a rota vale em qualquer nível.
+- A pega da alça do dock de baixo é uma fileira de pontos de 2 px em bronze (ouro com o ponteiro ou o foco)
+  numa plaquinha de couro de 30 × 6 px; as caixas e os rádios dos menus de janela são quadrados (o rádio tem o
+  miolo de 6 px, a caixa de 8 px), e as teclas dos menus usam a mesma capa de tecla das outras janelas.
 
 ## 9. Paleta por região
 
 Cada região usa só as cores abaixo no chão, nas manchas, nos caminhos, na borda e na decoração (os
-obstáculos e estruturas derivam delas). Fonte: `BIOMAS` em `sprites.js`.
+obstáculos e estruturas derivam delas). Fonte: `BIOMAS` em `sprites.js`. As peças da vegetação rasteira
+(capim, arbusto, pedra, junco) têm 3 a 5 tons por região em `TONS_MOITA` (`cenario.js`) e os props, a madeira,
+o barro e a pedra de cada região em `MATERIAL_PROPS` (`sprites.js`).
 
 ### canaan — Terra de oliveiras e pastores
 

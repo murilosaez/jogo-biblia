@@ -694,7 +694,22 @@
     elipF(g, 20, 14.5 + dy, lado ? 6.5 : 7.5, 7.5, (nx, ny) => (vista === "costas" || ny < -0.35 || (lado && nx < -0.2) ? c.cab[1] : nx + ny > 0.9 ? c.pele[2] : c.pele[1]));
     if (vista !== "costas") for (const x of lado ? [23] : [17, 22]) g.fino(x, 15 + dy, c.o);
     if (q === 4) retF(g, lado ? x0 + w : x0 - 3, 22, 3, 3, c.pele[1]); // mão erguida na ação
+    // Equipamento no boneco de reserva: uma marca simples por peça (o desenho de verdade é de
+    // arte/humano-equip.js), para que arma, escudo, armadura e peças do corpo mudem o boneco mesmo sem a arte.
+    if (cfg.armadura) retF(g, x0 + 1, 23 + dy, w - 2, 8, cfg.armadura === "couraca_escamas" ? "#8a6a3a" : cfg.armadura === "armadura_couro" ? "#7a4a2c" : "#c9d4e0");
+    for (const [nome, cores] of cfg.acessorios || []) {
+      if (nome === "brilho") continue;
+      const cor = (cores && typeof cores[0] === "string" && cores[0]) || "#6b4a2e", cor2 = (cores && typeof cores[1] === "string" && cores[1]) || cor, h = sementeDe(nome) % 5;
+      if (MARCA_CABECA.has(nome)) retF(g, 14, 7 + dy, 12, 4 + (h % 3), (X, Y) => (Y === 7 + dy ? cor2 : cor));
+      else if (nome === "grevas") for (const x of [x0 + 1, x0 + w - 5]) retF(g, x, 38, 4, 5, cor);
+      else if (nome === "botas") for (const x of [x0 + 1, x0 + w - 5]) retF(g, x, 41, 4, 4, cor);
+      else if (nome === "saiote") retF(g, x0, 33 + dy, w, 5 - dy, (X) => (X % 3 === 2 ? cor2 : cor));
+      else if (/^escudo/.test(nome)) retF(g, x0 - 3, 24 + dy, 5, 8, (X, Y) => (Y === 24 + dy ? cor2 : cor));
+      else if (/^(arco|funda)/.test(nome)) { retF(g, x0 + w + 2, 18 + dy, 1, 14, cor); retF(g, x0 + w, 18 + dy + h, 2, 1, cor2); retF(g, x0 + w, 31 + dy - h, 2, 1, cor2); }
+      else retF(g, x0 + w + 1, 12 + h + dy, 2, 22 - h, (X, Y) => (Y < 16 + h + dy ? cor2 : cor)); // haste, lâmina ou volume na mão
+    }
   }
+  const MARCA_CABECA = new Set(["turbante", "elmo", "capacete", "faixa", "bandana", "nemes"]);
 
   // Registra um humano: cfg = { molde, cores, barba, cabelo, porte, gola, capuz, mangaCor, armadura,
   // acessorios, barra (barra da veste na cor do cinto), hostil }.
@@ -760,14 +775,27 @@
     escudo_ferro: ["#8a949c", "#4a5258", "#d4dce2"],
   };
   const ARCOS = { arco_madeira: ["#9a6a3c", "#eadcb6"], arco_composto: ["#6e3a24", "#f0e4c4"] };
+  // Peças do corpo vistas no boneco: [acessório, cores]. Colar e anel são pequenos demais para o mundo.
+  const PECAS_CORPO = {
+    turbante_linho: ["turbante", ["#ddd0b0", "#a8916a"]],
+    capacete_couro: ["capacete", ["#7a4a2c", "#a8703a"]],
+    elmo_bronze: ["elmo", ["#a87234", "#e8b94a"]],
+    saiote_couro: ["saiote", ["#8a5a32", "#e8b94a"]],
+    grevas_bronze: ["grevas", ["#b07a38", "#f2d27a"]],
+    botas_viagem: ["botas", ["#6a4228", "#9a6a3c"]],
+  };
+  const ALIAS_ACESSORIO = { funda_mao: "funda", capacete: "elmo" };
   const base = (id) => String(id || "").split("@")[0];
+  const ehDistancia = (id) => typeof ITENS !== "undefined" && ITENS[base(id)]?.tipo === "arma_distancia";
   // Cores do visual (JGB-49): cabeça, tronco, pernas e detalhe, ids da paleta CORES_VISUAL
   // (dados/cosmeticos.js); null ou ausente = a cor do traje (ou a do boneco sem traje).
   const PARTES_COR = ["cabeca", "tronco", "pernas", "detalhe"];
   const corDaPaleta = (id) => (id && typeof CORES_VISUAL !== "undefined" && CORES_VISUAL.find((x) => x.id === id)?.cor) || null;
   function chaveJogador(eq = {}, visual = {}) {
     const cores = PARTES_COR.map((k) => (corDaPaleta(visual.cores?.[k]) ? visual.cores[k] : ""));
-    const partes = [base(eq.arma), eq.arco ? base(eq.arco) : "", base(eq.escudo), base(eq.armadura), visual.traje || "", visual.montaria || ""];
+    const partes = [base(eq.arma), "", base(eq.escudo), base(eq.armadura), visual.traje || "", visual.montaria || ""];
+    const corpo = ["cabeca", "pernas", "pes"].map((s) => (PECAS_CORPO[base(eq[s])] ? base(eq[s]) : ""));
+    if (corpo.some(Boolean)) partes.push("e:" + corpo.join("."));
     if (cores.some(Boolean)) partes.push("c:" + cores.join("."));
     return "pj_jogador" + (partes.some(Boolean) ? "|" + partes.join("|") : "");
   }
@@ -782,10 +810,17 @@
     const per = corDaPaleta(visual.cores?.pernas), det = corDaPaleta(visual.cores?.detalhe);
     const acessorios = [["bolsa", ["#7a4a30", "#a8703a"]]].concat((traje?.acessorios || []).map(([nome, cores]) =>
       cab && PANOS_CABECA.has(nome) ? [nome, [cab].concat(cores.slice(1))] : [nome, cores]));
-    const arco = base(eq.arco);
-    if (arco === "funda") acessorios.push(["shofar", ["#8a6a42", "#5a3a24", "#a8916a"]]);
-    else if (arco) acessorios.push(["arco_costas", ARCOS[arco] || ARCOS.arco_madeira]);
-    if (eq.arma) acessorios.push(["espada", LAMINAS[base(eq.arma)] || LAMINAS.espada_ferro]);
+    // Peças do corpo (com traje não aparecem: o traje decide a roupa, como com a armadura). As grevas pintam a
+    // canela antes das botas; o turbante toma a cor da cabeça escolhida, como os panos dos trajes.
+    if (!traje) for (const s of ["pernas", "pes", "cabeca"]) {
+      const pc = PECAS_CORPO[base(eq[s])];
+      if (pc) acessorios.push(cab && PANOS_CABECA.has(pc[0]) ? [pc[0], [cab].concat(pc[1].slice(1))] : pc);
+    }
+    // Uma mão para a arma (o arco usa as duas): arco ou funda na mão, ou a espada.
+    const arma = base(eq.arma);
+    if (arma === "funda") acessorios.push(["funda_mao", ["#8a6a42", "#a8a090"]]);
+    else if (ehDistancia(arma)) acessorios.push(["arco_mao", ARCOS[arma] || ARCOS.arco_madeira]);
+    else if (arma) acessorios.push(["espada", LAMINAS[arma] || LAMINAS.espada_ferro]);
     if (eq.escudo) acessorios.push(["escudo_redondo", CORES_ESCUDO[base(eq.escudo)] || CORES_ESCUDO.escudo_madeira]);
     const cores = Object.assign({ H: "#4a2f20", S: "#e0a878", s: "#c68a5c", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", P: "#d4bf8f", p: "#b8a07a", q: "#8a7656", A: "#3b5a9a", F: "#5a3a24" }, traje?.cores);
     if (traje?.cores && !traje.cores.P) { delete cores.P; delete cores.p; delete cores.q; }
@@ -802,6 +837,10 @@
     };
     // a túnica de pano é pano: com a cor do tronco escolhida, ela toma essa cor (fica só a gola dela)
     if (tro && ARMADURAS[cfg.armadura]?.veste) { cfg.gola = cfg.gola || ARMADURAS[cfg.armadura].gola; cfg.armadura = null; }
+    // Peças que a regra nova trouxe (funda na mão, capacete de couro) e que arte/humano-equip.js ainda não
+    // desenha com esse nome usam o desenho mais próximo que ele tem; grevas, botas e saiote esperam o desenho lá.
+    const AC = global.Arte?.motor?.humanoEquipado?.ACESSORIOS;
+    if (AC) cfg.acessorios = acessorios.map((a) => (!AC[a[0]] && ALIAS_ACESSORIO[a[0]] && AC[ALIAS_ACESSORIO[a[0]]] ? [ALIAS_ACESSORIO[a[0]], a[1]] : a));
     if (visual.montaria) registrarMontado(chave, cfg, visual.montaria);
     else humano(chave, cfg);
     return chave;
@@ -1160,6 +1199,17 @@
   item("couro_grosso");
   item("carapaca");
   item("amuleto_faianca");
+  // Peças do corpo do boneco (cabeça, colar, pernas, pés, anel) e a mochila: desenho em arte/itens.js.
+  item("turbante_linho");
+  item("capacete_couro");
+  item("elmo_bronze");
+  item("colar_contas");
+  item("saiote_couro");
+  item("grevas_bronze");
+  item("sandalias_couro");
+  item("botas_viagem");
+  item("anel_selo_bronze");
+  item("mochila");
   // Pedras do peitoral: a mesma lapidação, na cor de cada pedra (campo "pedra" em dados/itens.js).
   for (const [chave, d] of Object.entries(typeof ITENS !== "undefined" ? ITENS : {})) {
     if (!d.pedra) continue;
@@ -1385,14 +1435,15 @@
     desenhar(g, q) {
       const cor = (a) => comAlfa("#e8f2e0", a);
       if (q === 3) { g.elip(8, 8, 3, 1.4, (nx, ny) => (nx * nx + ny * ny > 0.5 ? cor(0.35) : null)); return; }
+      // ondulações de 1 px de arte (como a água) e a sombra do peixe embaixo
       const raios = [2 + q, 5 + q * 0.6];
       for (const r of raios) {
-        for (let a = 0; a < 40; a++) {
-          const t = (a / 40) * Math.PI * 2;
-          g.p(8 + Math.cos(t) * r, 8 + Math.sin(t) * r * 0.5, cor(r > 5 ? 0.45 : 0.85));
+        for (let a = 0; a < 72; a++) {
+          const t = (a / 72) * Math.PI * 2;
+          g.pf(8 + Math.cos(t) * r, 8 + Math.sin(t) * r * 0.5, cor(r > 5 ? 0.45 : 0.85));
         }
       }
-      g.ret(6 + (q % 2), 9, 4, 1, "#245e6a"); g.ret(7 + (q % 2), 8, 2, 1, "#245e6a");
+      g.retf(6.5 + (q % 2) * 0.5, 9, 3, 0.5, "#245e6a"); g.retf(7 + (q % 2) * 0.5, 8.5, 2, 0.5, "#245e6a"); g.pf(5.5 + (q % 2) * 0.5, 8.5, "#245e6a");
     },
   });
   reserva("mk_barco", { w: 26, h: 22, quadros: 2, origem: [0.5, 1], contorno: "amigo" });
@@ -1612,12 +1663,11 @@
 
   // -------------------------------------------------------------------
   // Obstáculos: uma chave por bioma e tipo (ob_<area>_<tipo>), cada quadro uma variante de forma. O desenho
-  // está em arte/flora.js, que parte destas defs (quadros, alto, obstaculo, origem) e troca a célula.
+  // está em arte/flora.js, que parte destas defs (quadros, alto, obstaculo, origem) e troca a célula. Lá há dois
+  // desenhos de vários elementos (o novo e o da revisão da arte do mundo): a escolha é por chave, em
+  // Arte.MUNDO_DA_MAIN.
   // -------------------------------------------------------------------
-  function obstaculo(chave, alto, variantes) {
-    return reserva(chave, { w: 18, h: alto ? 26 : 18, quadros: variantes, alto, obstaculo: true, origem: [0.5, 1] });
-  }
-  // Copa e rocha do desenho antigo: só a moldura e a borda do tileset de reserva ainda as usam.
+  // Copa e rocha do desenho antigo (marco de pedras, moldura e borda do tileset de reserva).
   function copa(g, cx, cy, rx, ry, rampa, semente, recorte = 0.22) {
     for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++)
       for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
@@ -1641,6 +1691,9 @@
         if (veio && Math.abs((x - x0) - (y - y0) * 0.8 - w * 0.2) < 0.6 && ny > -0.7) c = veio;
         g.p(x, y, c);
       }
+  }
+  function obstaculo(chave, alto, variantes) {
+    return reserva(chave, { w: 18, h: alto ? 26 : 18, quadros: variantes, alto, obstaculo: true, origem: [0.5, 1] });
   }
 
   obstaculo("ob_canaan_oliveira", true, 3);
@@ -1676,6 +1729,20 @@
   obstaculo("ob_galileia_barco", false, 1);
   obstaculo("ob_sinai_estandarte", true, 1);
 
+  // Props das vilas (marcos de dados/mapas.js): barril, caixotes, carroça, jarros, lenha, cocho e cerca, um por
+  // região (ob_<area>_<tipo>). Bloqueiam a casa como todo marco e não têm deslocamento nem espelho sorteados; a
+  // cerca emenda com a vizinha e tem 2 quadros a mais com o poste de fecho na ponta direita (fecho = o primeiro
+  // deles). O desenho está em arte/flora.js (seção "revisão da arte do mundo"); aqui ficam as chaves e as defs.
+  const PROPS_VILA = ["barril", "caixotes", "carroca", "jarros", "lenha", "cocho", "cerca"];
+  for (const area of ["canaan", "deserto", "egito", "marVermelho", "sinai", "galileia"]) for (const tipo of PROPS_VILA) {
+    const chave = `ob_${area}_${tipo}`;
+    if (PIXEL_PATTERNS[chave]) continue; // os jarros do Egito já são obstáculo do bioma
+    const largo = tipo === "carroca", cerca = tipo === "cerca";
+    reserva(chave, {
+      w: largo ? 22 : 18, h: tipo === "caixotes" || tipo === "barril" || tipo === "jarros" ? 20 : 18, quadros: cerca ? 4 : 2, fecho: cerca ? 2 : 0, obstaculo: true, prop: true, origem: [0.5, 1],
+    });
+  }
+
   // Tipo de obstáculo por casa: o tipo fixo do mapa (bosque, muro da vila, marco; dados/mapas.js) ou o
   // sorteio por peso do bioma. Tipos com desenho próprio fora do bioma ficam em MARCOS.
   const MARCOS = {
@@ -1691,6 +1758,9 @@
       const doBioma = bio.obstaculos.find((o) => o.tipo === fixo);
       if (doBioma) return { chave: `ob_${area}_${fixo}`, alto: !!doBioma.alto };
       if (MARCOS[fixo]) return MARCOS[fixo];
+      const prop = PIXEL_PATTERNS[`ob_${area}_${fixo}`];
+      // fecho: prop que emenda com o vizinho (a cerca) e é o último da fileira, sem o mesmo prop à direita
+      if (prop?.prop) return { chave: `ob_${area}_${fixo}`, alto: false, prop: true, fecho: !!prop.fecho && tiposObstaculo[area][x + 1 + "," + y] !== fixo };
     }
     const lista = bio.obstaculos.filter((o) => !o.soMarco);
     const total = lista.reduce((s, o) => s + o.peso, 0);
@@ -1900,19 +1970,23 @@
   }
 
   // Água: fases 0–3 (cada casa começa numa fase diferente).
+  // Água em px de arte (1 px de arte = 1 px de mundo, como o resto do cenário): a base, 5 ondulações por tile
+  // (vale escuro de 4 a 7 px e a crista clara 1 px acima, mais curta) que derivam 1 px a cada 2 fases (≈ 500 ms)
+  // e, de vez em quando, um brilho de 2 px.
   function pintarAgua(pin, i, agua, fase, t, clara = false) {
-    const base = clara ? misturar(agua.base, agua.clara, 0.45) : agua.base;
+    const base = clara ? misturar(agua.base, agua.clara, 0.45) : agua.base, L = T * pin.r;
     pin.encher(i, base);
-    // 3 ondulações por tile (vale escuro + crista clara), em posições próprias
-    // de cada tile; derivam 1 px-a a cada 2 fases (≈ 500 ms).
-    for (let k = 0; k < 3; k++) {
-      const x0 = Math.floor(hash2(i, k, 31) * 16), y0 = 2 + Math.floor(hash2(k, i, 32) * 12);
-      const desl = Math.floor((t + hash2(i, k, 33) * 8) / 2) % 16;
-      const len = 3 + (k % 2);
-      for (let d = 0; d < len; d++) pin.set(i, (x0 + desl + d) % 16, y0, agua.escura);
-      for (let d = 1; d < len - 1; d++) pin.set(i, (x0 + desl + d) % 16, y0 - 1, agua.clara);
+    for (let k = 0; k < 5; k++) {
+      const x0 = Math.floor(hash2(i, k, 31) * L), y0 = 3 + Math.floor(hash2(k, i, 32) * (L - 5));
+      const desl = Math.floor((t + hash2(i, k, 33) * 8) / 2) % L;
+      const len = 4 + Math.floor(hash2(k, i, 36) * 4);
+      for (let d = 0; d < len; d++) pin.fino(i, (x0 + desl + d) % L, y0, agua.escura);
+      for (let d = 1; d < len - 1; d++) pin.fino(i, (x0 + desl + d) % L, y0 - 1, agua.clara);
     }
-    if ((t + fase + i) % 7 < 2) pin.set(i, Math.floor(hash2(i, fase, 34) * 16), Math.floor(hash2(fase, i, 35) * 16), agua.brilho);
+    if ((t + fase + i) % 7 < 2) {
+      const X = Math.floor(hash2(i, fase, 34) * (L - 1)), Y = Math.floor(hash2(fase, i, 35) * L);
+      pin.fino(i, X, Y, agua.brilho); pin.fino(i, X + 1, Y, agua.brilho);
+    }
   }
   function pintarCosta(pin, bio, t) {
     const a = bio.agua;
@@ -1929,28 +2003,37 @@
       }
     }
   }
-  // Muralha de água (Mar Vermelho): faixas verticais que descem 1 px por quadro.
+  // Muralha de água (Mar Vermelho), em px de arte como a água ao lado: faixas verticais de 3 px que descem 2 px
+  // por quadro (o ciclo de 16 px fecha em 8 quadros), um fio claro de 1 px na crista de cada onda que desce,
+  // a borda esquerda na luz e a direita na sombra.
   function pintarMuralha(pin, bio, t) {
-    const a = bio.agua, rampa = [a.profunda, a.escura, a.base, a.clara];
-    const corpo = (i, ox) => {
-      for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-        const faixa = Math.floor(hash2(x, 0, 200) * 4);
-        const v = (y - t * 1 + faixa * 5 + 64) % 8;
-        const l = (x < 3 ? 1 : x > 12 ? -1 : 0) * 0.3 + (v < 2 ? 0.5 : v < 5 ? 0 : -0.4);
-        pin.set(i, x, y, tom(rampa, l));
+    const a = bio.agua, rampa = [a.profunda, a.escura, a.base, a.clara], L = T * pin.r;
+    const corpo = (i) => {
+      for (let Y = 0; Y < L; Y++) for (let X = 0; X < L; X++) {
+        const faixa = Math.floor(hash2(Math.floor((X + 1) / 3), 0, 200) * 4);
+        const v = (Y - t * 2 + faixa * 10 + 128) % 16;
+        const l = (X < 5 ? 1 : X > 26 ? -1 : 0) * 0.3 + (v < 3 ? 0.5 : v < 10 ? 0 : -0.4);
+        pin.fino(i, X, Y, v === 0 && (X + faixa) % 3 ? a.clara : tom(rampa, l));
       }
     };
+    const coral = (X) => (hash2(Math.floor(X / 3), 1, 201) < 0.5 ? "#d07a5a" : "#a85a4a");
     // 24: corpo (norte); 25: base norte (espuma + coral); 26: crista sul (espuma em cima); 27: corpo (sul)
     corpo(24); corpo(27);
     corpo(25);
-    for (let x = 0; x < 16; x++) {
-      const o = (x + t) % 3 === 0 ? 1 : 0;
-      pin.set(25, x, 13 - o, a.espuma); pin.set(25, x, 14, a.espuma); pin.set(25, x, 15, hash2(x, 1, 201) < 0.5 ? "#d07a5a" : "#a85a4a");
+    for (let X = 0; X < L; X++) {
+      const o = (X + t * 2) % 5;
+      if (o === 0) pin.fino(25, X, 25, a.espuma); // respingo solto
+      if (o < 3) pin.fino(25, X, 26, a.espuma);
+      pin.fino(25, X, 27, a.espuma); pin.fino(25, X, 28, a.espuma); pin.fino(25, X, 29, misturar(a.espuma, a.clara, 0.4));
+      pin.fino(25, X, 30, coral(X)); pin.fino(25, X, 31, misturar(coral(X), "#3a1a14", 0.35));
     }
     corpo(26);
-    for (let x = 0; x < 16; x++) {
-      const o = (x + t) % 3 === 0 ? 1 : 0;
-      pin.set(26, x, 0, "#a85a4a"); pin.set(26, x, 1, a.espuma); pin.set(26, x, 2 + o, a.espuma);
+    for (let X = 0; X < L; X++) {
+      const o = (X + t * 2) % 5;
+      pin.fino(26, X, 0, misturar(coral(X), "#3a1a14", 0.35)); pin.fino(26, X, 1, coral(X));
+      pin.fino(26, X, 2, a.espuma); pin.fino(26, X, 3, a.espuma);
+      if (o < 3) pin.fino(26, X, 4, a.espuma);
+      if (o === 0) pin.fino(26, X, 5, a.espuma);
     }
   }
 
@@ -2190,6 +2273,12 @@
       const r = area === "egito" ? ruido(x / 10, y / 2, semente) : ruido(x / 6, y / 6, semente);
       return r > 0.62;
     };
+    // Com o chão contínuo (cenario.js), a beira da água (areia, espuma e raso) é pintada por ele, seguindo uma
+    // linha orgânica: a água do Tilemap fica lisa, sem a espuma em degrau nas beiras das casas.
+    // Vale com o chão da main (Cenario.beiraContinua); o chão fatiado desenha a margem por cima da costa do tileset.
+    const beiraContinua = () => area !== "mar" && typeof global.Cenario !== "undefined" && !!global.Cenario.beiraContinua;
+    // A vegetação rasteira em moitas (cenario.js, DADOS_MAPAS.vegetacao) sai nos dois chãos.
+    const moitasNoChao = () => area !== "mar" && typeof global.Cenario !== "undefined" && !!global.Cenario.moitasNoChao;
     function indice(x, y) {
       // moldura externa
       if (x < 0 || y < 0 || x >= COLSm || y >= ROWSm) {
@@ -2208,6 +2297,7 @@
       if (ehBorda(x, y)) {
         if (ehMuralha(x, y)) return y <= 0 ? ID.COSTA + 1 : ID.COSTA + 2;
         if (ehAguaBorda(x, y)) {
+          if (beiraContinua()) return ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
           // costa: espuma nos lados com terra
           let m = 0;
           if (!ehAgua(x, y + 1)) m |= 4;
@@ -2224,7 +2314,7 @@
         // lago ou rio: espuma nos lados com terra (como a costa da borda)
         const terra = (xx, yy) => (xx >= 0 && yy >= 0 && xx < COLSm && yy < ROWSm && !ehAgua(xx, yy) ? 1 : 0);
         const m = terra(x, y - 1) | (terra(x + 1, y) << 1) | (terra(x, y + 1) << 2) | (terra(x - 1, y) << 3);
-        return m ? ID.COSTA + m : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
+        return m && !beiraContinua() ? ID.COSTA + m : ID.AGUA + Math.floor(hash2(x, y, 2) * 4);
       }
       if (ehCaminho(x, y)) {
         const m = (ehCaminho(x, y - 1) ? 1 : 0) | (ehCaminho(x + 1, y) ? 2 : 0) | (ehCaminho(x, y + 1) ? 4 : 0) | (ehCaminho(x - 1, y) ? 8 : 0);
@@ -2244,6 +2334,8 @@
     function indiceDeco(x, y, proibido) {
       if (!mapa || x < 1 || y < 1 || x >= COLSm - 1 || y >= ROWSm - 1 || mapa[y][x]) return -1;
       if (area === "mar") return hash2(x, y, 7) < 0.015 ? ID.DECO : -1;
+      // com o chão contínuo, a vegetação rasteira sai em moitas no próprio chão (cenario.js, DADOS_MAPAS.vegetacao)
+      if (moitasNoChao() && DADOS_MAPAS[area]?.vegetacao) return -1;
       if (ehCaminho(x, y) || (proibido && proibido(x, y))) return -1;
       if (piso && piso[y][x] >= (PISOm.ESTRUTURA ?? 3)) return -1; // chão de prédio (cenario.js pinta o piso)
       // Galileia: a mancha é um campo de flores; cada casa sorteia a sua flor
@@ -2460,9 +2552,9 @@
   function registrarTexturas(scene) {
     for (const chave of Object.keys(PIXEL_PATTERNS)) {
       // sob demanda: portais, variantes do jogador, humanos, criaturas e montarias (criarEntidade gera
-      // só os que aparecem na área)
-      // (e as prévias pv_, as sombras sob medida e as variantes dos raros)
-      if (/^(mk_portal_|pj_|in_|al_|mt_|pv_|fx_sombra_\d)/.test(chave) || chave.includes("~v:")) continue;
+      // só os que aparecem na área), os obstáculos (criarObstaculos e criarOrla geram os da área atual),
+      // as prévias pv_, as sombras sob medida e as variantes dos raros
+      if (/^(mk_portal_|pj_|in_|al_|mt_|ob_|pv_|fx_sombra_\d)/.test(chave) || chave.includes("~v:")) continue;
       garantirTextura(scene, chave);
     }
   }
@@ -2496,6 +2588,9 @@
     garantirSombra, garantirVariante, limparTilesets,
     // Tabela dos efeitos animados (arte/efeitos.js preenche): chave → { quadros, ms, ... }.
     FX: {},
+    // Arte do mundo com dois desenhos em arte/flora.js: as chaves desta lista usam o da revisão da arte do
+    // mundo (árvores de 2 casas, rochas facetadas…); as outras, o desenho novo. Ex.: ["ob_marVermelho_coral"].
+    MUNDO_DA_MAIN: new Set([]),
     // Motor para os arquivos arte/*.js (ver docs/GUIA-DE-ARTE.md, "Contrato").
     motor: {
       Grade, registrar, pixels, limparCaches, PIXEL_PATTERNS, aliasItem, CHEFES, TS_COLS, TS_LINHAS, PALETA, CONTORNO, BIOMAS, SEMANTICA, RES, T, VISTAS,

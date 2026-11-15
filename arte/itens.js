@@ -1,5 +1,5 @@
 // =====================================================================
-// arte/itens.js — itens redesenhados (50 ícones e as pedras do peitoral).
+// arte/itens.js — itens redesenhados (60 ícones e as pedras do peitoral).
 // Pacote A8 do plano de arte.
 //
 // Como o desenho é feito
@@ -1150,6 +1150,152 @@
     elipF(g, 7, 27.2, 3.6, 1.9, (nx, ny) => OURO[nx + ny < -0.2 ? 5 : nx + ny > 0.6 ? 2 : 4]); g.fino(7, 27, OURO[1]);
     faisca(g, 20, 9, BRANCO, true); g.fino(9, 14, BRANCO);
   }, { sombraApoio: [8.2, 14.2, 6.6, 1.1] });
+
+  // ===================================================================
+  // 9. PEÇAS DO CORPO DO BONECO (cabeça, colar, pernas, pés, anel) E A MOCHILA
+  // ===================================================================
+  const cil = (R, X, Y, cx, meia, extra = 0, pont = false) => {
+    const nx = lim((X + 0.5 - cx) / meia, -0.98, 0.98);
+    return sombrear(R, luzN(nx * 0.9, -0.15, Math.sqrt(1 - nx * nx)) + extra, X, Y, pont);
+  };
+  // Turbante de linho: voltas de pano em diagonal, faixa de anil, broche e a ponta caída atrás.
+  item("turbante_linho", (g) => {
+    tubo(g, 23.5, 18, 26.5, 26.5, 2.3, 1.5, LINHO, { tex: (X, Y, t) => (Math.round(t * 9) % 2 ? -0.35 : 0.1) });
+    bola(g, 15.5, 15, 10.5, 8.6, LINHO_BR, {
+      rebote: 0.25,
+      tex: (X, Y) => { const k = ((Math.round(X * 0.6 + Y) % 4) + 4) % 4; return k === 0 ? -0.8 : k === 1 ? 0.3 : 0; },
+    });
+    for (let X = 5; X <= 26; X++) {
+      const Y = Math.round(21.2 - (X - 5) * 0.3);
+      if (g.gf(X, Y) && g.gf(X, Y + 1)) { g.fino(X, Y, ANIL[X < 12 ? 5 : X < 19 ? 4 : 3]); g.fino(X, Y + 1, ANIL[X < 12 ? 3 : X < 19 ? 2 : 1]); }
+    }
+    bola(g, 11.5, 12, 2, 2, OURO, { esp: BRANCO });
+    g.fino(11, 12, "#c2452d");
+  }, { sombraApoio: [8, 12.6, 5.6, 1.1] });
+  // Capacete de couro: calota fervida com costura no meio, aba clara, orelheiras e cravos.
+  item("capacete_couro", (g) => {
+    poli(g, [[6, 17], [11.5, 17], [11, 25.5], [8.5, 27.5], [6, 25]], (X, Y) => sombrear(COURO_ESC, 0.7 - (X - 6) * 0.25 - (Y - 17) * 0.05, X, Y, false));
+    poli(g, [[20.5, 17], [26, 17], [26, 25], [23.5, 27.5], [21, 25.5]], (X, Y) => sombrear(COURO_ESC, 0.2 - (X - 20) * 0.25 - (Y - 17) * 0.05, X, Y, false));
+    bola(g, 16, 17.5, 10.5, 12.5, COURO, { so: (X, Y) => Y < 17, rebote: 0.2, tex: (X, Y) => (X === 16 ? -0.7 : X === 15 ? 0.35 : (X + Y * 3) % 7 === 0 ? -0.2 : 0) });
+    tubo(g, 5.5, 17.6, 26.5, 17.6, 1.5, 1.5, COURO_CL, {});
+    for (let Y = 7; Y < 16; Y += 2) g.fino(17, Y, COURO[5]);
+    pontos(g, [[8, 17], [12, 17], [20, 17], [24, 17]], OURO[5]); pontos(g, [[8, 18], [12, 18], [20, 18], [24, 18]], COURO_ESC[0]);
+    pontos(g, [[8, 24], [23, 24]], OURO[4]);
+  }, { sombraApoio: [8, 14.4, 5.4, 1.1] });
+  // Elmo de bronze: calota polida, testeira de ouro, abas do rosto, nasal e o botão no alto.
+  item("elmo_bronze", (g) => {
+    poli(g, [[12, 17], [20, 17], [20, 26.5], [12, 26.5]], (X, Y) => (Y < 20 ? "#1c1210" : "#2e1c16"));
+    poli(g, [[6, 16], [26, 16], [26, 24], [23, 28.5], [19.5, 28.5], [18.5, 20.5], [13.5, 20.5], [12.5, 28.5], [9, 28.5], [6, 24]], (X, Y, den) => cil(BRONZE, X, Y, 16, 10.6, (!den(X, Y + 1) ? -0.5 : 0) - (Y - 16) * 0.03 + (!den(X - 1, Y) ? 0.3 : 0), true));
+    bola(g, 16, 17, 10.5, 12.3, BRONZE, { so: (X, Y) => Y < 16, esp: BRANCO, dur: 0.97, rebote: 0.3 });
+    tubo(g, 5.5, 16.4, 26.5, 16.4, 1.3, 1.3, OURO, { esp: BRANCO, dur: 0.985 });
+    for (let Y = 18; Y <= 25; Y++) { g.fino(15, Y, BRONZE[Y === 25 ? 3 : 5]); g.fino(16, Y, BRONZE[Y === 25 ? 1 : 3]); }
+    bola(g, 16, 4.3, 2, 2, OURO, { esp: BRANCO });
+    faisca(g, 10, 9, BRANCO, true);
+  }, { sombraApoio: [8, 14.6, 5.4, 1.1] });
+  // Colar de contas: cordão, contas de cornalina e turquesa, e a conta grande de ouro no meio.
+  item("colar_contas", (g) => {
+    const CORN = rampa6("#c2452d", "metal"), TURQ = rampa6("#3fa69a", "metal");
+    const f = (t) => { const a = Math.PI * (0.04 + t * 0.92); return [16 + Math.cos(a) * 10, 9 + Math.sin(a) * 14]; };
+    curva(g, (t) => [16 + Math.cos(Math.PI * (1 + t)) * 10, 9.5 + Math.sin(Math.PI * (1 + t)) * 4.6], 14, () => 0.8, CORDA, {});
+    for (let i = 0; i <= 12; i++) {
+      if (i === 6) continue;
+      const p = f(i / 12);
+      bola(g, p[0], p[1], 1.9, 1.9, i % 2 ? TURQ : CORN, { esp: BRANCO, dur: 0.985, rebote: 0.3 });
+    }
+    const m = f(0.5);
+    bola(g, m[0], m[1] + 0.6, 3.3, 3.3, OURO, { esp: BRANCO, rebote: 0.35 });
+    g.fino(16, 24, CORN[4]); g.fino(15, 24, CORN[5]); g.fino(16, 25, CORN[2]); g.fino(15, 25, CORN[3]);
+  }, { sombraApoio: [8, 14, 5.4, 1] });
+  // Saiote de couro: cinto com fivela e sete tiras de pontas de bronze.
+  item("saiote_couro", (g) => {
+    poli(g, [[5, 9], [27, 9], [27, 15], [5, 15]], (X, Y) => COURO_ESC[Y < 11 ? 0 : 1]);
+    for (let i = 0; i < 7; i++) {
+      const X0 = 5 + i * 3 + (i > 3 ? 1 : 0), comp = Math.round(17 - Math.abs(i - 3) * 1.3), R = i % 2 ? COURO : COURO_CL;
+      for (let j = 0; j < comp; j++) {
+        const Y = 10 + j, ponta = j >= comp - 2, l = 0.25 - (i - 3) * 0.12 - j * 0.02;
+        g.fino(X0, Y, ponta ? OURO[5] : sombrear(R, l + 0.6, X0, Y, false));
+        g.fino(X0 + 1, Y, ponta ? OURO[j === comp - 1 ? 2 : 4] : sombrear(R, l + (j % 4 === 2 ? -0.3 : 0.1), X0 + 1, Y, false));
+        if (j < comp - 1) g.fino(X0 + 2, Y, ponta ? OURO[2] : sombrear(R, l - 0.7, X0 + 2, Y, false));
+      }
+    }
+    tubo(g, 5, 7.6, 27, 7.6, 2.1, 2.1, COURO_ESC, { tex: (X) => (X % 3 === 0 ? 0.35 : 0) });
+    bola(g, 16, 7.6, 2.7, 2.7, OURO, { esp: BRANCO });
+    g.fino(16, 8, COURO_ESC[0]); g.fino(15, 8, OURO[1]);
+  }, { sombraApoio: [8, 14.4, 5.6, 0.9] });
+  // Grevas de bronze: duas placas de canela com a joelheira redonda e as correias de couro.
+  item("grevas_bronze", (g) => {
+    for (const cx of [10, 22]) {
+      torno(g, cx, [[4, 3.2], [6.5, 4.5], [9.5, 4], [14, 3.8], [21, 3], [26, 2.7], [27.5, 3.4], [28.5, 3.2]], BRONZE, {
+        esp: BRANCO, dur: 0.975, rebote: 0.3,
+        cor: (Y) => (Y === 13 || Y === 22 ? COURO_ESC : null),
+        tex: (X, Y) => (Y === 12 || Y === 21 ? 0.35 : Y === 14 || Y === 23 ? -0.5 : 0),
+      });
+      bola(g, cx, 6.8, 2.4, 2.4, OURO, { esp: BRANCO });
+      for (let Y = 10; Y <= 25; Y++) matiz(g, cx, Y, -0.22); // a aresta do meio da placa
+      pontos(g, [[cx - 2, 13], [cx - 1, 22]], OURO[5]);
+    }
+  }, { sombraApoio: [8, 14.6, 5.6, 0.9] });
+  // Sandálias de couro: duas solas vistas de cima, tiras cruzadas e a tira do calcanhar.
+  item("sandalias_couro", (g) => {
+    for (const [cx, cy] of [[10, 15.5], [22, 17]]) {
+      bola(g, cx + 0.4, cy + 0.6, 4.6, 10.6, COURO_ESC, { plano: 0.3 });
+      bola(g, cx, cy, 4.2, 10.2, COURO_CL, { plano: 0.35, tex: (X, Y) => ((X + Y * 2) % 5 === 0 ? -0.25 : 0) });
+      for (const [dy, larg] of [[-6, 3], [-2, 4], [5, 4]]) {
+        const Y = Math.round(cy + dy);
+        for (let X = Math.round(cx) - larg; X < Math.round(cx) + larg; X++) { g.fino(X, Y, COURO_ESC[X < cx ? 4 : 2]); g.fino(X, Y + 1, COURO_ESC[X < cx ? 2 : 0]); }
+      }
+      for (let Y = Math.round(cy) - 9; Y < Math.round(cy) - 6; Y++) g.fino(Math.round(cx) - 1, Y, COURO_ESC[3]);
+      for (let Y = Math.round(cy) - 4; Y < Math.round(cy) - 2; Y++) g.fino(Math.round(cx) - 1, Y, COURO_ESC[3]);
+      g.fino(Math.round(cx) + 3, Math.round(cy) + 5, OURO[5]);
+    }
+  }, { sombraApoio: [8, 14.4, 5.6, 0.9] });
+  // Botas de viagem: o par de perfil, cano dobrado, atilhos de linho e sola grossa.
+  item("botas_viagem", (g) => {
+    const bota = (dx, dy, R, R2) => {
+      const forma = [[9, 4], [18, 4], [18, 16], [24, 18.5], [27.5, 22], [27.5, 27], [8, 27], [8, 18]].map(([x, y]) => [x + dx, y + dy]);
+      poli(g, forma, (X, Y, den) => {
+        const x = X - dx, y = Y - dy;
+        if (y >= 25) return R[x < 12 ? 1 : 0];
+        if (y < 7) return sombrear(R2, 0.75 - (x - 9) * 0.16 - (y === 6 ? 0.6 : 0), X, Y, false);
+        if (y < 17 || x < 18) return cil(R, X, Y, 13.5 + dx, 5.6, (y > 17 ? -0.15 : 0) + (!den(X, Y - 1) ? 0.3 : 0), true);
+        return sombrear(R, 0.55 - (x - 18) * 0.1 - (y - 18) * 0.14 + (!den(X, Y - 1) ? 0.4 : 0), X, Y, true);
+      });
+    };
+    bota(-4, -1, COURO_ESC, COURO);
+    bota(1, 1, COURO, COURO_CL);
+    for (const Y of [10, 13, 16]) pontos(g, [[15, Y], [16, Y + 1], [17, Y]], LINHO[4]);
+    pontos(g, [[16, 19], [17, 20]], LINHO[3]);
+  }, { sombraApoio: [8.4, 14.6, 5.8, 0.9] });
+  // Anel de selo: aro grosso de bronze e a chapa oval de ouro com a marca gravada.
+  item("anel_selo_bronze", (g) => {
+    curva(g, (t) => [16 + Math.cos(Math.PI * 2 * t) * 8.2, 19 + Math.sin(Math.PI * 2 * t) * 6.4], 36, () => 2, BRONZE, { esp: BRANCO, dur: 0.975, rebote: 0.4 });
+    bola(g, 16, 11.6, 6, 4.4, BRONZE, { plano: 0.5 });
+    bola(g, 16, 11, 5.2, 3.6, OURO, { plano: 0.45, esp: BRANCO, dur: 0.99 });
+    pontos(g, [[14, 11], [15, 11], [16, 11], [17, 11], [16, 10], [16, 12], [15, 12]], BRONZE[0]);
+    pontos(g, [[15, 10], [17, 12]], OURO[1]);
+    faisca(g, 9, 22, BRANCO, true);
+  }, { sombraApoio: [8, 14.2, 5.4, 1.1] });
+  // Mochila: bolsa de couro com aba, fivela, bolso lateral e a esteira enrolada por cima.
+  item("mochila", (g) => {
+    curva(g, (t) => [16 + Math.cos(Math.PI * (1 + t)) * 4, 7 + Math.sin(Math.PI * (1 + t)) * 3.6], 10, () => 0.9, COURO_ESC, {});
+    const den = poli(g, [[8, 10], [24, 10], [26.5, 13], [26.5, 26], [24, 28.5], [8, 28.5], [5.5, 26], [5.5, 13]], (X, Y, d) => cil(COURO, X, Y, 16, 11, (!d(X, Y + 1) ? -0.6 : 0) + (Y > 24 ? -0.2 : 0), true));
+    // aba: cai até o meio, com a borda em curva e o pesponto claro
+    for (let X = 6; X <= 26; X++) {
+      const fim = Math.round(19.5 - ((X - 16) / 10.5) ** 2 * 4);
+      for (let Y = 10; Y <= fim; Y++) {
+        if (!den(X, Y)) continue;
+        g.fino(X, Y, Y === fim ? COURO_ESC[0] : cil(COURO_CL, X, Y, 16, 11, Y === 10 ? 0.4 : Y === fim - 2 && X % 2 ? 0.5 : 0, false));
+      }
+    }
+    // correia e fivela
+    for (let Y = 10; Y <= 23; Y++) { g.fino(15, Y, COURO_ESC[4]); g.fino(16, Y, COURO_ESC[2]); }
+    bola(g, 16, 20, 2.4, 2.4, OURO, { esp: BRANCO });
+    g.fino(16, 20, COURO_ESC[0]);
+    // esteira enrolada em cima, amarrada com duas tiras
+    tubo(g, 7.5, 8.2, 24.5, 8.2, 2.7, 2.7, LINHO, { cor: (t) => (Math.abs(t - 0.2) < 0.045 || Math.abs(t - 0.8) < 0.045 ? COURO_ESC : null), tex: (X) => (X % 3 === 0 ? -0.3 : 0) });
+    pontos(g, [[8, 26], [23, 26]], OURO[4]);
+  }, { sombraApoio: [8, 14.6, 5.8, 0.9] });
+
 
   // Conferência na carga: nenhuma chave de item do legado ficou sem desenho novo (o teste do pacote confere de novo).
   Arte.ITENS_NOVOS = FEITOS.slice();
