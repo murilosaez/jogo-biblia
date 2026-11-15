@@ -23,10 +23,15 @@
 //   --atras              jogador ao norte de uma árvore alta, ao norte de uma casa e dentro de uma casa
 //   --tudo               = --tamanhos --deslize --combate --atras
 //   --sem-regioes        não percorre as regiões
-//   --sem-desempenho     não mede o intervalo entre quadros ao andar 30 casas
+//   --sem-desempenho     não mede o intervalo entre quadros ao andar 30 casas, a carga (troca de área, primeiro
+//                        encontro de cada espécie, memória de texturas, reenvio da água) nem o celular emulado
+//                        (390x844 com devicePixelRatio 3; só com --tamanhos)
 //   --largura N --altura N   viewport da execução principal (padrão 1600x900)
 //   --raiz <pasta>       serve o jogo desta pasta (ex.: uma cópia de `git archive HEAD`) em vez do repositório
 //   --cache <pasta>      onde guardar a cópia local do Phaser (padrão: cache-capturar ao lado da saída)
+//   --hora <0..1|real>   hora do dia do jogo em que cada página abre, em fração do ciclo de dia e noite
+//                        (padrão 0.1 = manhã clara; o ciclo segue correndo daí). "real" usa o relógio de
+//                        verdade (a captura pode cair à noite); 0.75 = noite fechada
 //   --estrito            sai com código 2 se houver erro de página ou problema em Arte.validar()
 //
 // Arquivos gravados:
@@ -42,7 +47,7 @@
 //   08-tela-<LxA>.png            (--tamanhos)
 //   relatorio.json               o que foi gravado, erros da página, Arte.validar(), medidas dos sprites
 //                                (tamanho, quadros, cores, tempo de geração), tempos do chão, layout por
-//                                tamanho de tela, deslize, combate e desempenho
+//                                tamanho de tela, deslize, combate, desempenho, carga e desempenhoCelular
 //
 // O Phaser vem de CDN: a ferramenta intercepta o pedido e serve uma cópia local (baixada com curl na
 // primeira vez), então funciona atrás de proxy e sem rede depois da 1ª execução.
@@ -68,7 +73,7 @@ const PREFIXOS = ["in_", "al_", "pj_", "pv_", "mt_", "ob_", "es_", "dc_", "mk_",
 const args = process.argv.slice(2);
 const opc = {
   largura: 1600, altura: 900, regioes: true, desempenho: true, cache: null, raiz: null, soFolhas: false, familias: [],
-  portais: false, tamanhos: false, deslize: false, combate: false, atras: false, comparar: null, estrito: false,
+  portais: false, tamanhos: false, deslize: false, combate: false, atras: false, comparar: null, estrito: false, hora: 0.1,
 };
 const soltos = [];
 for (let i = 0; i < args.length; i++) {
@@ -88,6 +93,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--atras") opc.atras = true;
   else if (a === "--tudo") opc.tamanhos = opc.deslize = opc.combate = opc.atras = true;
   else if (a === "--estrito") opc.estrito = true;
+  else if (a === "--hora") { const v = args[++i]; opc.hora = v === "real" ? null : Number(v); if (opc.hora !== null && !(opc.hora >= 0 && opc.hora < 1)) { console.error("--hora pede um número de 0 a 1 (ou real)"); process.exit(1); } }
   else if (a === "--comparar") { opc.comparar = [args[++i], args[++i]]; }
   else if (a === "-h" || a === "--help") {
     const txt = fs.readFileSync(__filename, "utf8").split("\n");
@@ -492,6 +498,64 @@ function naPaginaInstalar() {
       const s = cena();
       return { x: s.p.x, y: s.p.y, area: s.p.area, sx: s.jogador.x, sy: s.jogador.y, vida: s.p.vida };
     },
+    // ----- carga e memória (etapa "carga") -----
+    // Gera a textura de cada sprite que o jogo só cria no primeiro encontro (criaturas, humanos, montarias,
+    // prévias) e mede o tempo de cada uma: pixels de todos os quadros + canvas + envio da textura.
+    primeiroEncontro() {
+      const s = cena(), out = [];
+      for (const chave of Object.keys(PIXEL_PATTERNS)) {
+        if (!/^(in_|al_|pj_|mt_)/.test(chave) || s.textures.exists(chave)) continue;
+        const def = PIXEL_PATTERNS[chave], t0 = performance.now();
+        Arte.garantirTextura(s, chave);
+        out.push([chave, Math.round((performance.now() - t0) * 10) / 10, def.quadros, def.w * 2 * def.quadros, def.h * 2]);
+      }
+      for (const m of ["jumento", "cavalo", "camelo", "carro"]) {
+        const t0 = performance.now(), chave = Arte.garantirJogador({ arma: "espada_ferro", escudo: "escudo_bronze", armadura: "couraca_escamas" }, { montaria: m });
+        Arte.garantirTextura(s, chave);
+        out.push(["jogador montado: " + m, Math.round((performance.now() - t0) * 10) / 10, PIXEL_PATTERNS[chave].quadros, PIXEL_PATTERNS[chave].w * 2 * PIXEL_PATTERNS[chave].quadros, PIXEL_PATTERNS[chave].h * 2]);
+      }
+      return out;
+    },
+    // Memória das texturas da cena (largura × altura × 4 bytes de cada fonte) e do heap de JS, se o navegador disser.
+    texturas() {
+      const s = cena(), grupos = {};
+      let total = 0, n = 0;
+      for (const [chave, tex] of Object.entries(s.textures.list)) {
+        let b = 0;
+        for (const f of tex.source || []) b += (f.width || 0) * (f.height || 0) * 4;
+        const g = /^ts_/.test(chave) ? "tilesets" : /^(chao_|pc_|cn_chao)/.test(chave) ? "chão contínuo" : /^(pr_|mu_|mv_|po_|cn_)/.test(chave) ? "prédios e muros" : /^(in_|al_)/.test(chave) ? "criaturas" : /^pj_/.test(chave) ? "humanos" : /^(ob_|es_|dc_)/.test(chave) ? "flora e estruturas" : /^fx_/.test(chave) ? "efeitos" : "outros";
+        grupos[g] = (grupos[g] || 0) + b; total += b; n++;
+      }
+      const mb = (b) => Math.round(b / 1048576 * 10) / 10;
+      return { texturas: n, totalMB: mb(total), porGrupoMB: Object.fromEntries(Object.entries(grupos).map(([g, b]) => [g, mb(b)])), heapJsMB: performance.memory ? mb(performance.memory.usedJSHeapSize) : null };
+    },
+    // Reenvio da água: tempo de cada chamada de Arte.animarAgua numa fase nova (repinta as casas animadas e reenvia o tileset).
+    agua(n = 16) {
+      const s = cena(), ms = [];
+      for (let i = 0; i < n; i++) { const t0 = performance.now(); Arte.animarAgua(s, s.areaAtual, 1000 + i); ms.push(performance.now() - t0); }
+      ms.sort((a, b) => a - b);
+      return { area: s.areaAtual, chamadas: n, mediaMs: Math.round(ms.reduce((a, b) => a + b, 0) / n * 100) / 100, maiorMs: Math.round(ms[n - 1] * 100) / 100 };
+    },
+    // Tempo de update() da cena (lógica do quadro: movimento, setDepth de todo mundo, rótulos, translucidez) e de create().
+    medirCena(ligar) {
+      const s = cena(), proto = Object.getPrototypeOf(s);
+      if (ligar) {
+        if (!proto.__capUpdate) {
+          proto.__capUpdate = true; proto.__capCreate = proto.create;
+          // o Phaser guarda a função de update em sys.sceneUpdate na criação da cena: é ela que se embrulha
+          const original = s.sys.sceneUpdate;
+          s.sys.sceneUpdate = function (...a) { const t0 = performance.now(); const r = original.apply(this, a); if (window.__capCena) window.__capCena.update.push(performance.now() - t0); return r; };
+          proto.create = function (...a) { const t0 = performance.now(); const r = proto.__capCreate.apply(this, a); if (window.__capCena) window.__capCena.create.push([this.areaAtual, Math.round(performance.now() - t0)]); return r; };
+        }
+        window.__capCena = { update: [], create: [] };
+        return true;
+      }
+      const m = window.__capCena; window.__capCena = null;
+      if (!m) return null;
+      const u = m.update.slice().sort((a, b) => a - b), r2 = (x) => Math.round(x * 100) / 100;
+      return { update: u.length ? { quadros: u.length, mediaMs: r2(u.reduce((a, b) => a + b, 0) / u.length), p95Ms: r2(u[Math.floor(u.length * 0.95)]), maiorMs: r2(u[u.length - 1]) } : null, create: m.create,
+        entidades: Object.keys(s.entidades || {}).length, objetosNaCena: s.children.list.length };
+    },
     teleportar(area, x, y) {
       const s = cena(), p = Mundo.jogadores[s.p.id] || s.p;
       Mundo.mudarDeArea(p, area, x, y, null);
@@ -762,6 +826,15 @@ async function principal() {
   const arqPhaser = phaserLocal();
   const abrirJogo = async (o, rotulo, nav = browser) => {
     const ctx = await nav.newContext({ viewport: { width: o.w, height: o.h }, deviceScaleFactor: o.dpr || 1, hasTouch: !!o.toque, isMobile: !!o.toque });
+    // hora do dia fixa na abertura: adianta Date.now() o que falta para a fração pedida do ciclo (o jogo lê
+    // CICLO_DIA por Date.now()); o relógio continua andando, só deslocado. Sem isto a captura cai à noite
+    // em quase metade das execuções e as imagens não servem para julgar a arte.
+    if (opc.hora !== null) await ctx.addInitScript((hora) => {
+      const real = Date.now.bind(Date);
+      const ciclo = () => ((typeof CICLO_DIA !== "undefined" && CICLO_DIA.minutos) || 40) * 60000;
+      let salto = null;
+      Date.now = () => { const t = real(); if (salto === null) { const c = ciclo(); salto = ((hora * c - (t % c)) % c + c) % c; } return t + salto; };
+    }, opc.hora);
     const page = await ctx.newPage();
     ouvir(page, rotulo);
     await page.route("**/phaser@3.80.1/dist/phaser.min.js", (r) => r.fulfill({ path: arqPhaser, contentType: "text/javascript" }));
@@ -1048,10 +1121,12 @@ async function principal() {
   });
 
   // ---------- desempenho: maior intervalo entre quadros ao andar 30 casas ----------
-  if (opc.desempenho) await etapa("desempenho", async () => {
+  // Anda 30 casas por rota (ou pelas setas) na página `page` atual, amostrando cada quadro desenhado e o tempo
+  // de update() da cena.
+  const andar30 = async () => {
     const T = await page.evaluate(() => window.__cap.T);
     await fecharJanelas();
-    await page.evaluate(() => window.__cap.iniciar({}));
+    await page.evaluate(() => { window.__cap.medirCena(true); window.__cap.iniciar({}); });
     const como = await page.evaluate(() => {
       const s = window.gameScene, x0 = s.p.x, y0 = s.p.y;
       if (typeof s.calcularRota !== "function" || typeof s.iniciarRota !== "function") return { rota: false };
@@ -1063,13 +1138,73 @@ async function principal() {
       s.iniciarRota(objetivo, null, null);
       return { rota: true, passos: passos.length };
     });
-    if (como.rota) await page.waitForFunction(() => !window.gameScene.rota, null, { timeout: 30000 }).catch(() => {});
+    if (como.rota) await page.waitForFunction(() => !window.gameScene.rota, null, { timeout: 60000 }).catch(() => {});
     else { for (const t of ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"]) await andar(t, 1200); }
     await espera(400);
     const r = await page.evaluate(() => window.__cap.parar());
+    const cenaMs = await page.evaluate(() => window.__cap.medirCena(false));
     const mov = estatisticaDeMovimento(r.dados, T);
-    relatorio.desempenho = { modo: como.rota ? "rota por clique (30 casas)" : "setas (sem rota)", passosDaRota: como.passos || null, casasPelaLogica: r.passos, intervaloEntreQuadros: estatisticaDeQuadros(r.dados), movimento: mov };
-    if (r.passos < 30) relatorio.avisos.push(`desempenho: andou só ${r.passos} casas (pedi 30)`);
+    return { modo: como.rota ? "rota por clique (30 casas)" : "setas (sem rota)", passosDaRota: como.passos || null, casasPelaLogica: r.passos, intervaloEntreQuadros: estatisticaDeQuadros(r.dados),
+      updateDaCena: cenaMs && cenaMs.update, entidades: cenaMs && cenaMs.entidades, objetosNaCena: cenaMs && cenaMs.objetosNaCena, movimento: mov };
+  };
+  if (opc.desempenho) await etapa("desempenho", async () => {
+    relatorio.desempenho = await andar30();
+    if (relatorio.desempenho.casasPelaLogica < 29) relatorio.avisos.push(`desempenho: andou só ${relatorio.desempenho.casasPelaLogica} casas (pedi 30)`);
+  });
+
+  // ---------- carga: troca de área, primeiro encontro de cada espécie, memória de texturas e água ----------
+  if (opc.desempenho && opc.regioes) await etapa("carga", async () => {
+    const carga = relatorio.carga = { nota: "medido no navegador sem WebGL (renderizador Canvas), que roda a 60 q/s; tempos de CPU do próprio jogo" };
+    carga.texturasNoInicio = await page.evaluate(() => window.__cap.texturas());
+    // troca de área: create() da cena (tileset, obstáculos, estruturas, entidades e o chão que a câmera vê)
+    const destinos = await page.evaluate(() => {
+      const out = [];
+      for (const nome of ["DADOS_AREAS_BASE", "DADOS_AREAS_CAPITULOS"]) { let f = null; try { f = eval(nome); } catch (e) { /* nome mudou */ } if (f) for (const [id, a] of Object.entries(f)) { const c = a.chegadaViagem || a.inicio; if (c) out.push({ id, x: c.x, y: c.y }); } }
+      return out;
+    });
+    await page.evaluate(() => window.__cap.medirCena(true));
+    carga.trocaDeArea = {};
+    for (const d of destinos) {
+      const t0 = Date.now();
+      try {
+        await page.evaluate(([a, X, Y]) => window.__cap.teleportar(a, X, Y), [d.id, d.x, d.y]);
+        await page.waitForFunction((a) => window.gameScene && window.gameScene.areaAtual === a && !window.gameScene.trocando && window.gameScene.jogador, d.id, { timeout: 60000 });
+      } catch (e) { relatorio.avisos.push(`carga: ${d.id} não ficou pronta`); continue; }
+      carga.trocaDeArea[d.id] = { ateProntaMs: Date.now() - t0 };
+      await espera(600);
+      if (d.id === "mar" || d.id === "marVermelho" || d.id === "galileia") (carga.agua = carga.agua || []).push(await page.evaluate(() => window.__cap.agua(16)));
+    }
+    const cenaMs = await page.evaluate(() => window.__cap.medirCena(false));
+    for (const [area, ms] of (cenaMs && cenaMs.create) || []) if (carga.trocaDeArea[area]) carga.trocaDeArea[area].createMs = ms;
+    // primeiro encontro: todas as espécies, humanos e montarias que ainda não tinham textura
+    const pe = await page.evaluate(() => window.__cap.primeiroEncontro());
+    const ord = pe.slice().sort((a, b) => b[1] - a[1]);
+    carga.primeiroEncontro = {
+      sprites: pe.length, totalMs: arred(pe.reduce((a, x) => a + x[1], 0)), mediaMs: pe.length ? arred(pe.reduce((a, x) => a + x[1], 0) / pe.length) : 0,
+      maiorMs: ord.length ? ord[0][1] : 0, acimaDe16Ms: pe.filter((x) => x[1] > 16.7).length, acimaDe50Ms: pe.filter((x) => x[1] > 50).length,
+      maisLentos: ord.slice(0, 8).map(([chave, ms, quadros, w, h]) => ({ chave, ms, quadros, textura: `${w}×${h}` })),
+    };
+    carga.texturasComTudoGerado = await page.evaluate(() => window.__cap.texturas());
+  });
+
+  // ---------- celular emulado: 390 × 844 com devicePixelRatio 3 e toque, andando 30 casas ----------
+  if (opc.desempenho && opc.tamanhos) await etapa("desempenho-celular", async () => {
+    const principalDaMedida = page;
+    let cel = null;
+    try {
+      cel = await abrirJogo({ w: 390, h: 844, dpr: 3, toque: true }, "[celular] ", navMedida);
+      page = cel.page;
+      await prontoNaCena();
+      await page.evaluate(naPaginaInstalar);
+      await fecharJanelas();
+      const layout = await page.evaluate(() => window.__cap.layout());
+      const r = await andar30();
+      relatorio.desempenhoCelular = { viewport: [390, 844], devicePixelRatio: 3, canvas: layout.canvas, zoomCamera: layout.zoomCamera,
+        nota: "emulação no computador da captura (Chromium sem WebGL): mede o custo de desenhar o canvas de 1170 × 2058 px e a CPU do jogo, não um aparelho real", ...r,
+        texturas: await page.evaluate(() => window.__cap.texturas()) };
+    } catch (e) { relatorio.avisos.push(`desempenho no celular emulado falhou: ${e.message.split("\n")[0]}`); }
+    if (cel) await cel.ctx.close();
+    page = principalDaMedida;
   });
 
       }

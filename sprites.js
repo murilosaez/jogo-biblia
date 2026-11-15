@@ -1,19 +1,25 @@
 // =====================================================================
-// sprites.js — arte procedural do mundo ("Iluminura viva").
+// sprites.js — motor da arte gerada em código ("Iluminura viva").
 //
-// Tudo aqui é gerado em código: paletas, padrões de pixel (personagens,
-// inimigos, itens, glifos de UI, marcadores, obstáculos, decoração e
-// efeitos), tilesets por área e ícones para a interface.
+// O que mora aqui:
+//   * o motor: Grade (camada de desenho em px de arte), registrar/pixels/canvas, rampa de 6 tons e
+//     sombreamento com pontilhado só na transição, contorno colorido de 1 px, limite de cores, sombras e
+//     variantes sob demanda, ganchos de humano/montado e pintores do tileset (tudo em Arte.motor);
+//   * as tabelas que o jogo e os arquivos de arte leem: PALETA, BIOMAS, VISUAL_*, as cfgs dos humanos,
+//     equipamento, montarias, a lista de chaves de itens, glifos e obstáculos;
+//   * o que não foi redesenhado e é desenhado aqui mesmo: portais, setas, trilha, cais, pesca, balões de
+//     NPC, sombras, pilar de luz, faixa do cartão de título;
+//   * a reserva: um marcador por chave, o boneco e a montaria simples e o tileset antigo, que só aparecem
+//     se um arte/*.js não carregar (e que os testes usam como base de comparação).
+// A arte do jogo mora em arte/*.js (carregados depois deste arquivo): cada um registra por cima das
+// mesmas chaves. Guia: docs/GUIA-DE-ARTE.md.
 //
-// Regras (guia de estilo §1):
-//   * 1 pixel de arte (px-a) = 2 px de mundo (Arte.PX).
-//   * Luz vinda do oeste e de cima: realce em cima/esquerda, sombra
-//     embaixo/direita, sombra projetada para a direita.
-//   * Contorno automático de 1 px de arte, colorido pelo material vizinho e
-//     puxado ao sépia #2a1a14 (amigos, itens) ou ao carmim #4a1416
-//     (inimigos). Chão e decoração não têm contorno.
-//   * Este arquivo é o motor e a arte legada de reserva; a arte nova mora em
-//     arte/*.js e registra por cima das mesmas chaves (Arte.motor).
+// Regras:
+//   * 32 px de arte por casa; 1 px de arte = 1 px de mundo. def.w/def.h são em unidades de 2 px (Arte.PX).
+//   * Luz de cima e da esquerda: realce em cima/esquerda, sombra embaixo/direita, sombra projetada para
+//     a direita e para baixo.
+//   * Contorno automático de 1 px, colorido pelo material vizinho e puxado ao sépia #2a1a14 (amigos,
+//     itens) ou ao carmim #4a1416 (inimigos). Chão e decoração não têm contorno.
 //   * Nada de DOM na carga: canvas/document só dentro das funções.
 //
 // Expõe window.Arte, window.PIXEL_PATTERNS e window.iconeItemURL.
@@ -461,6 +467,15 @@
     return def;
   }
 
+  // Marcador de reserva: as chaves que arte/*.js redesenha continuam registradas aqui só com os campos que o
+  // jogo e os pacotes de arte leem da def (célula, quadros, origem, obstaculo, alto…). O desenho é um losango
+  // discreto, que só aparece se o arquivo de arte daquela família não carregar.
+  function marcador(g) {
+    const cx = g.w >> 1, cy = g.h >> 1, r = Math.max(1, Math.min(6, (Math.min(g.w, g.h) >> 1) - 2));
+    for (let j = -r; j <= r; j++) for (let i = -(r - Math.abs(j)); i <= r - Math.abs(j); i++) g.fino(cx + i, cy + j, Math.abs(i) + Math.abs(j) === r ? "#5a3a24" : "#b08a5a");
+  }
+  const reserva = (chave, def) => registrar(chave, Object.assign({ desenhar: marcador }, def));
+
   // Limite de cores do miolo de um sprite (os px do contorno não contam nem são fundidos).
   const LIMITE_CORES = 64; // arte do mundo, em 32 px por casa
   const LIMITE_UI = 16, LIMITE_GLIFO = 24; // glifos ui_ e hb_/of_ (em qualquer resolução)
@@ -572,24 +587,18 @@
   }
 
   // -------------------------------------------------------------------
-  // Humanos (§6.2, JGB-49): proporção de MMORPG clássico visto de cima. Célula 40 × 48 px de arte
-  // (20 × 24 unidades), pés na linha 45. Cabeça grande de 16 × 15 px (linhas 7–21), tronco de 16 px com
-  // braços de 4 px de cada lado (24 px de ombro a ombro), pernas curtas e firmes, mãos e sandálias à mostra.
-  // 3 vistas × 5 quadros (0 parado, 1 respirar, 2 contato A, 3 contato B, 4 ação/fala):
-  //   quadros 0–4 de lado (virado para a direita; a esquerda é o espelho), 5–9 de frente, 10–14 de costas.
-  //   Andando, game.js toca 2 → 0 → 3 → 0 (o quadro 0 é a passagem): no contato as pernas abrem, o tronco
-  //   desce 1 px e os braços balançam ao contrário das pernas.
-  // Moldes: "manto" (veste longa), "curta" (túnica curta, pernas à mostra) e "veu" (veste longa com véu).
+  // Humanos: o desenho é de arte/humano.js + arte/humano-equip.js (célula 48 × 64 px, 3 vistas × 8 quadros),
+  // ativado por definirHumano(spec). Aqui ficam o que esses arquivos e o jogo leem: as cfgs de cada humano
+  // (HUMANOS), as cores (coresHumano), as tabelas de equipamento (ACESSORIOS, ARMADURAS, LAMINAS,
+  // CORES_ESCUDO, ARCOS), as primitivas em px e um boneco de reserva simples (40 × 48 px, 3 vistas × 5 quadros),
+  // que é o que definirHumano(null) devolve e o que aparece se os arquivos de arte não carregarem.
   // Cores (letras): H cabelo, S/s pele e sombra, B barba, R/r/d tronco (claro, médio, escuro), P/p/q parte
-  // de baixo (sem elas, a do tronco), A cinto e detalhes, F sandálias, V/W véu. Cada material vira uma
-  // rampa de 4 tons (realce, base, sombra, sombra funda) com a luz de cima e da esquerda; contorno sépia
-  // (amigos) ou carmim (hostis) de 1 px. Acessórios desenham em cada vista (ACESSORIOS, abaixo).
+  // de baixo (sem elas, a do tronco), A cinto e detalhes, F sandálias, V/W véu.
   // -------------------------------------------------------------------
   const VISTAS = ["lado", "frente", "costas"];
   const QUADROS_POR_VISTA = 5;
   const escuro = (c, t = 0.28) => misturar(c, "#1c1210", t);
   const claro = (c, t = 0.2) => misturar(c, "#fff6e0", t);
-  const BRANCO_OLHO = "#f6efdc";
   // Rampa de 4 tons a partir de uma cor base: a luz puxa para o creme quente e a sombra para o
   // púrpura-sépia (sombra colorida, não cinza).
   function rampaDe(base) {
@@ -638,30 +647,6 @@
       g.fino(X, Y, dir && baixo ? R[3] : dir || baixo ? R[2] : esq || cima ? R[0] : R[1]);
     }
   }
-  // Tom de pano numa faixa [x0, x1]: luz à esquerda, sombra à direita (4 tons).
-  function tomPano(R, X, x0, x1) {
-    const t = (X - x0 + 0.5) / (x1 - x0 + 1);
-    return t < 0.19 ? R[0] : t < 0.64 ? R[1] : t < 0.88 ? R[2] : R[3];
-  }
-
-  // Pose de cada vista/quadro. dy: o tronco desce 1 px ao respirar e no contato dos passos. passo: 1 no
-  // contato A (pé de perto/da esquerda à frente), -1 no B. Mãos: centro [x, y] (a mão ocupa x-2..x+1).
-  function pose(vista, q) {
-    const dy = q >= 1 && q <= 3 ? 1 : 0, passo = q === 2 ? 1 : q === 3 ? -1 : 0;
-    const base = { vista, q, dy, passo, T: 7 + dy, yT: 22 + dy, yC: 31 + dy, yR: 33 + dy };
-    if (vista === "lado") {
-      const maoArma = q === 4 ? [30, 27 + dy] : passo === 1 ? [15, 32 + dy] : passo === -1 ? [26, 32 + dy] : [21, 34 + dy];
-      const maoLonge = passo === 1 ? [26, 31 + dy] : passo === -1 ? [15, 31 + dy] : null;
-      return Object.assign(base, { maoArma, maoEscudo: [27, 30 + dy], maoLonge });
-    }
-    if (vista === "frente") {
-      const maoArma = q === 4 ? [9, 19 + dy] : [9, 34 + dy - passo];
-      return Object.assign(base, { maoArma, maoEscudo: [31, 34 + dy + passo] });
-    }
-    const maoArma = q === 4 ? [31, 19 + dy] : [31, 34 + dy + passo];
-    return Object.assign(base, { maoArma, maoEscudo: [9, 34 + dy - passo] });
-  }
-
   function coresHumano(cfg) {
     const c = Object.assign({ o: "#2a1a14", F: "#5a3a24", A: "#7a4a30" }, cfg.cores);
     c.H = c.H || "#4a2f20";
@@ -680,704 +665,39 @@
     return c;
   }
 
-  // ----- cabeça -----
-  // Meia-largura da cabeça de frente/costas por linha (15 linhas, colunas 20 - hw .. 19 + hw) e o perfil
-  // (de lado, virado para a direita) em [x0, x1].
-  const HW_CAB = [4, 6, 7, 7, 8, 8, 8, 8, 8, 8, 8, 7, 7, 6, 4];
-  const PERFIL = [[16, 23], [14, 25], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [13, 26], [14, 26], [14, 26], [15, 25], [17, 24]];
-  // franja (curto, de frente): última linha de cabelo por coluna 12..27
-  const FRANJA = [9, 8, 6, 5, 5, 4, 5, 5, 5, 4, 5, 5, 4, 6, 8, 9];
-  function cabeca(g, cfg, c, P) {
-    const v = P.vista, T = P.T;
-    const veu = cfg.molde === "veu" || !!cfg.capuz;
-    const Vc = cfg.capuz ? cfg.capuz[0] : c.V || "#888888", Wc = cfg.capuz ? cfg.capuz[1] : c.W || escuro(Vc);
-    const V = [claro(Vc, 0.16), Vc, misturar(Vc, Wc, 0.55), Wc];
-    const H = c.cab, Pl = c.pele;
-    const longo = cfg.cabelo === "longo", careca = cfg.cabelo === "careca";
-    const barba = cfg.barba !== false;
-    // tom do cabelo: luz de cima/esquerda, mechas por hash (nada de ruído: traços verticais de 2 px)
-    const tomCab = (X, Y, nx, ny) => {
-      const l = -(0.6 * nx + 0.85 * ny) + ((hash2(X, Y >> 1, 77) - 0.5) * 0.45);
-      return l > 0.62 ? H[0] : l > -0.15 ? H[1] : l > -0.8 ? H[2] : H[3];
-    };
-    const pele = (X, r, x0, x1) => (X <= x0 + 1 && r >= 4 && r <= 11 ? Pl[0] : X >= x1 - 1 || r >= 13 ? Pl[2] : Pl[1]);
-    if (v === "frente" || v === "costas") {
-      const frente = v === "frente";
-      // cabelo comprido atrás dos ombros
-      if (longo && !veu) {
-        if (frente) for (let Y = T + 5; Y <= T + 18; Y++) { retF(g, 11, Y, 3, 1, (X) => (X === 11 ? H[1] : (X + Y) % 3 ? H[2] : H[3])); retF(g, 26, Y, 3, 1, (X) => (X === 28 ? H[3] : (X + Y) % 3 ? H[2] : H[3])); }
-        else for (let Y = T + 10; Y <= T + 19; Y++) { const k = Y > T + 16 ? Y - T - 16 : 0; retF(g, 13 + k, Y, 14 - 2 * k, 1, (X) => tomPano(H, X, 13 + k, 26 - k)); }
-      }
-      if (veu) {
-        // véu: cobre a cabeça e cai sobre os ombros (de costas, até o meio das costas)
-        for (let r = -1; r <= 15; r++) {
-          const hw = r < 0 ? 5 : r < 15 ? Math.min(9, HW_CAB[r] + 1) : 8;
-          for (let X = 20 - hw; X <= 19 + hw; X++) g.fino(X, T + r, tomPano(V, X, 20 - hw, 19 + hw));
-        }
-        const fim = frente ? T + 21 : T + 24;
-        for (let Y = T + 8; Y <= fim; Y++) {
-          const k = frente ? 0 : Math.max(0, Y - (T + 19));
-          if (frente) { retF(g, 10, Y, 4, 1, (X) => (X === 10 ? V[0] : X === 13 ? V[2] : V[1])); retF(g, 26, Y, 4, 1, (X) => (X === 29 ? V[3] : V[2])); }
-          else retF(g, 11 + k, Y, 18 - 2 * k, 1, (X) => ((X - Y) % 6 === 0 ? V[2] : tomPano(V, X, 11 + k, 28 - k)));
-        }
-        if (!frente) return;
-        // rosto na janela do véu, com a franja do cabelo na testa
-        for (let r = 4; r <= 14; r++) {
-          const hw = Math.min(6, HW_CAB[r] - 1);
-          for (let X = 20 - hw; X <= 19 + hw; X++) g.fino(X, T + r, r === 4 ? (X % 2 ? H[1] : H[2]) : pele(X, r, 20 - hw, 19 + hw));
-        }
-        retF(g, 13, T + 2, 14, 1, V[0]);
-      } else {
-        // orelhas
-        if (!careca || true) { retF(g, 11, T + 7, 1, 3, (X, Y) => (Y === T + 8 ? Pl[2] : Pl[1])); retF(g, 28, T + 7, 1, 3, (X, Y) => (Y === T + 8 ? Pl[3] : Pl[2])); }
-        for (let r = 0; r < 15; r++) {
-          const hw = HW_CAB[r], x0 = 20 - hw, x1 = 19 + hw, Y = T + r;
-          for (let X = x0; X <= x1; X++) {
-            const nx = (X - 19.5) / 8, ny = (r - 6) / 7;
-            let cabelo;
-            if (careca) cabelo = false;
-            else if (frente) cabelo = r <= FRANJA[X - 12] && (r <= 5 || X <= 13 || X >= 26);
-            else cabelo = r <= 12 || ((X <= 15 || X >= 24) && r <= 13) || (longo && r <= 14);
-            if (!cabelo && frente && careca && r <= 3) { g.fino(X, Y, r <= 1 && X < 19 ? Pl[0] : pele(X, r, x0, x1)); continue; }
-            g.fino(X, Y, cabelo ? tomCab(X, Y, nx, ny) : frente ? pele(X, r, x0, x1) : Pl[2]);
-          }
-        }
-        if (careca) g.fino(16, T + 2, claro(Pl[0], 0.3));
-        if (!frente) {
-          // nuca e a barba aparecendo dos lados
-          if (barba) { retF(g, 12, T + 10, 2, 4, (X, Y) => (X === 12 ? c.barba[1] : c.barba[2])); retF(g, 26, T + 10, 2, 4, c.barba[2]); }
-          return;
-        }
-      }
-      // sobrancelhas, olhos (pálpebra em cima; embaixo o branco para fora e a pupila para dentro), nariz,
-      // bochechas e boca
-      const sob = veu || careca ? misturar(c.S, "#2a1a14", 0.55) : H[3];
-      retF(g, 15, T + 6, 3, 1, sob); retF(g, 22, T + 6, 3, 1, sob);
-      retF(g, 16, T + 7, 2, 1, c.o); retF(g, 22, T + 7, 2, 1, c.o);
-      g.fino(16, T + 8, BRANCO_OLHO); g.fino(17, T + 8, c.o); g.fino(22, T + 8, c.o); g.fino(23, T + 8, BRANCO_OLHO);
-      g.fino(19, T + 9, Pl[0]); g.fino(20, T + 10, Pl[2]); g.fino(19, T + 10, Pl[1]);
-      g.fino(15, T + 10, c.rosto); g.fino(24, T + 10, c.rosto);
-      if (barba) {
-        // barba cheia: do bigode até abaixo do queixo, com mechas e a boca aberta no meio
-        for (let r = 10; r <= 16; r++) {
-          const Y = T + r;
-          const x0 = r === 10 ? 13 : r <= 14 ? 20 - HW_CAB[r] : r === 15 ? 15 : 17, x1 = 39 - x0;
-          for (let X = x0; X <= x1; X++) {
-            if (r === 10 && X > 14 && X < 25) continue;
-            if (r === 11 && X > 14 && X < 17) continue;
-            if (r === 11 && X > 22 && X < 25) continue;
-            const l = X <= x0 + 1 ? 0 : X >= x1 - 1 || r >= 15 ? 2 : (X + r * 3) % 5 === 0 ? 2 : 1;
-            g.fino(X, Y, c.barba[l]);
-          }
-        }
-        retF(g, 19, T + 12, 2, 1, c.labio); g.fino(18, T + 12, c.barba[3]); g.fino(21, T + 12, c.barba[3]);
-      } else {
-        retF(g, 19, T + 12, 2, 1, c.labio);
-        if (veu) { g.fino(15, T + 7, c.o); g.fino(24, T + 7, c.o); } // cílios
-      }
-      return;
-    }
-    // ----- de lado, virado para a direita -----
-    if (longo && !veu) for (let Y = T + 5; Y <= T + 18; Y++) retF(g, 12, Y, 7, 1, (X) => (X === 12 ? H[1] : (X + Y) % 3 === 0 ? H[3] : H[2]));
-    if (veu) {
-      for (let r = -1; r <= 15; r++) {
-        const [a, b] = r < 0 ? [16, 23] : r < 15 ? PERFIL[r] : [14, 22];
-        for (let X = a - 1; X <= b + (r < 4 ? 1 : 0); X++) g.fino(X, T + r, tomPano(V, X, a - 1, b + 1));
-      }
-      for (let Y = T + 8; Y <= T + 22; Y++) { const k = Y > T + 18 ? Y - T - 18 : 0; retF(g, 11 + k, Y, 9 - k, 1, (X) => tomPano(V, X, 11 + k, 19)); }
-      // janela do rosto
-      for (let r = 4; r <= 14; r++) {
-        const [, b] = PERFIL[r];
-        for (let X = 21; X <= b; X++) g.fino(X, T + r, r === 4 ? H[2] : pele(X, r, 21, b));
-      }
-    } else {
-      for (let r = 0; r < 15; r++) {
-        const [x0, x1] = PERFIL[r], Y = T + r;
-        for (let X = x0; X <= x1; X++) {
-          const nx = (X - 19.5) / 7, ny = (r - 6) / 7;
-          const cabelo = !careca && (r <= 4 || (r === 5 && X <= 23) || (r <= 10 && X <= 19) || (r <= 12 && X <= 16) || (longo && X <= 18));
-          g.fino(X, Y, cabelo ? tomCab(X, Y, nx, ny) : pele(X, r, 20, x1));
-        }
-      }
-      if (careca) g.fino(17, T + 2, claro(Pl[0], 0.3));
-      // orelha
-      retF(g, 19, T + 7, 2, 3, (X, Y) => (X === 20 && Y === T + 8 ? Pl[2] : Pl[1]));
-    }
-    // nariz, olho, sobrancelha, bochecha e boca
-    g.fino(27, T + 9, Pl[1]); g.fino(27, T + 10, Pl[2]);
-    retF(g, 24, T + 7, 2, 1, c.o); g.fino(24, T + 8, BRANCO_OLHO); g.fino(25, T + 8, c.o);
-    retF(g, 23, T + 6, 3, 1, veu || careca ? misturar(c.S, "#2a1a14", 0.55) : H[3]);
-    g.fino(23, T + 10, c.rosto);
-    if (barba) {
-      for (let r = 10; r <= 16; r++) {
-        const x0 = r <= 14 ? 20 : r === 15 ? 21 : 22, x1 = r <= 12 ? 26 : r <= 14 ? PERFIL[r][1] : r === 15 ? 25 : 24;
-        for (let X = x0; X <= x1; X++) {
-          if (r === 10 && X > 21 && X < 25) continue;
-          if (r === 11 && X > 21 && X < 24) continue;
-          g.fino(X, T + r, X === x0 ? c.barba[0] : r >= 15 || X === x1 ? c.barba[2] : (X + r * 3) % 5 === 0 ? c.barba[2] : c.barba[1]);
-        }
-      }
-      g.fino(26, T + 12, c.labio); g.fino(25, T + 12, c.barba[3]);
-    } else {
-      g.fino(26, T + 12, c.labio);
-      if (veu) g.fino(26, T + 7, c.o);
-    }
-  }
-
-  // ----- tronco, braços e pernas -----
-  // Sandália de frente/costas (5 px): peito do pé (ou calcanhar), a tira e a sola.
-  function pe(g, c, x, ergue, frente) {
-    const y = 43 - ergue;
-    for (let i = 0; i < 5; i++) {
-      g.fino(x + i, y, frente ? (i === 0 ? c.pele[0] : i === 4 ? c.pele[2] : c.pele[1]) : i === 4 ? c.pele[3] : c.pele[2]);
-      g.fino(x + i, y + 1, i === 0 ? c.sand[0] : i === 4 ? c.sand[2] : c.sand[1]);
-      g.fino(x + i, y + 2, ergue && !frente ? c.sand[1] : c.sand[2]);
-    }
-    if (frente) g.fino(x + 2, y, c.sand[1]);
-  }
-  // Sandália de lado (6 px, ponta à direita).
-  function peLado(g, c, x, longe) {
-    const s = longe ? [c.sand[1], c.sand[2], c.sand[2]] : c.sand, p = longe ? c.pele[2] : c.pele[1];
-    for (let i = 0; i < 6; i++) {
-      g.fino(x - 2 + i, 43, i >= 4 ? null : i === 2 ? s[1] : p);
-      g.fino(x - 2 + i, 44, i === 5 ? s[1] : i === 0 ? s[0] : i === 3 ? s[1] : p);
-      g.fino(x - 2 + i, 45, s[2]);
-    }
-    g.fino(x + 3, 44, longe ? c.pele[3] : c.pele[2]);
-  }
-  function corpo(g, cfg, c, P) {
-    const v = P.vista, dy = P.dy, L = cfg.porte === "grande" ? 1 : 0;
-    const T = c.tronco, B = c.pernas, longo = cfg.molde !== "curta";
-    const { yT, yC, yR, passo } = P;
-    const barra = cfg.barra ? c.cinto : null;
-    if (v === "lado") {
-      // braço de longe (atrás do corpo) aparece no balanço
-      if (P.maoLonge) {
-        pintarMascara(g, bastao(new Set(), 20, yT + 2, P.maoLonge[0], P.maoLonge[1] - 2, 4), [T[2], T[2], T[3], T[3]]);
-        retF(g, P.maoLonge[0] - 2, P.maoLonge[1] - 1, 4, 3, (X, Y) => (Y === P.maoLonge[1] - 1 ? c.pele[2] : c.pele[3]));
-      }
-      if (cfg.montado) inferiorMontado(g, cfg, c, P);
-      else {
-        // pés: o de perto à frente no contato A, atrás no B; o de longe ao contrário
-        const fPerto = passo === 1 ? 26 : passo === -1 ? 14 : 21, fLonge = passo === 1 ? 14 : passo === -1 ? 26 : 18;
-        if (!longo) {
-          pintarMascara(g, bastao(new Set(), 19, yR + 3, fLonge, 41, 4), [c.pele[2], c.pele[2], c.pele[3], c.pele[3]]);
-          peLado(g, c, fLonge, true);
-          pintarMascara(g, bastao(new Set(), 20, yR + 3, fPerto, 41, 4), c.pele);
-          retF(g, fPerto - 1, 40, 3, 1, c.sand[1]);
-          peLado(g, c, fPerto, false);
-          // saia da túnica
-          for (let Y = yR; Y <= 37; Y++) {
-            const a = 14 - (Y > yR + 1 ? 1 : 0) - (passo && Y > yR + 2 ? 1 : 0), b = 25 + (Y > yR + 1 ? 1 : 0) + (passo && Y > yR + 2 ? 1 : 0);
-            for (let X = a; X <= b; X++) g.fino(X, Y, Y === 37 ? (barra ? barra[1] : B[3]) : (X - a) % 4 === 3 && Y > yR ? B[2] : tomPano(B, X, a, b));
-          }
-        } else {
-          peLado(g, c, fLonge, true);
-          peLado(g, c, fPerto, false);
-          // veste longa: abre em A no passo, com a dobra entre as pernas
-          for (let Y = yR; Y <= 42; Y++) {
-            const t = (Y - yR) / (42 - yR);
-            const abre = passo ? Math.round(t * t * 4) : 0;
-            const a = 14 - Math.round(t) - abre, b = 25 + Math.round(t) + abre;
-            for (let X = a; X <= b; X++) {
-              let cor = tomPano(B, X, a, b);
-              if (passo && t > 0.35 && Math.abs(X - 20) <= (t > 0.75 ? 1 : 0)) cor = B[3];
-              else if (!passo && X === 22 && Y > yR + 2) cor = B[2];
-              if (Y === 42) cor = B[3];
-              else if (Y === 41 && barra) cor = barra[1];
-              g.fino(X, Y, cor);
-            }
-          }
-        }
-      }
-      // tronco (peito um pouco à frente)
-      retF(g, 18, yT - 2, 4, 3, c.pele[2]);
-      for (let Y = yT; Y < yC; Y++) {
-        const i = Y - yT, x0 = (i === 0 ? 15 : 14) - L, x1 = (i === 0 ? 24 : i >= 2 && i <= 5 ? 26 : 25) + L;
-        for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === yC - 1 && X > x0 ? T[2] : tomPano(T, X, x0, x1));
-      }
-      if (cfg.gola) retF(g, 22, yT, 3, 1, cfg.gola);
-      // cinto com a ponta da faixa caindo na frente
-      retF(g, 14 - L, yC, 12 + 2 * L, 2, (X, Y) => (Y === yC ? (X < 17 ? c.cinto[0] : c.cinto[1]) : c.cinto[2]));
-      retF(g, 24, yC + 2, 2, 3, (X) => (X === 24 ? c.cinto[1] : c.cinto[2]));
-      return;
-    }
-    // ----- frente e costas -----
-    const frente = v === "frente";
-    if (cfg.montado) inferiorMontado(g, cfg, c, P);
-    else {
-      // no contato A o pé da esquerda (da tela) fica à frente e o outro sobe 1 px; no B, o contrário
-      const ergueE = passo === -1 ? 1 : 0, ergueD = passo === 1 ? 1 : 0;
-      if (!longo) {
-        for (const [x, ergue, lado] of [[14, ergueE, 0], [22, ergueD, 1]]) {
-          for (let Y = 37; Y <= 42 - ergue; Y++) for (let i = 0; i < 4; i++) {
-            const t = lado ? [c.pele[1], c.pele[1], c.pele[2], c.pele[3]] : [c.pele[0], c.pele[1], c.pele[1], c.pele[2]];
-            g.fino(x + i, Y, Y === 41 - ergue && i > 0 && i < 3 ? c.sand[1] : frente ? t[i] : [c.pele[2], c.pele[2], c.pele[2], c.pele[3]][i]);
-          }
-          pe(g, c, x - (lado ? 0 : 1), ergue, frente);
-        }
-        // saia da túnica, com pregas
-        for (let Y = yR; Y <= 37; Y++) {
-          const k = (Y >= yR + 2 ? 1 : 0) + L, x0 = 12 - k, x1 = 27 + k;
-          for (let X = x0; X <= x1; X++) {
-            let cor = tomPano(B, X, x0, x1);
-            if (Y > yR && (X === 16 || X === 23)) cor = B[2];
-            if (Y === 37) cor = barra ? barra[1] : B[3];
-            g.fino(X, Y, cor);
-          }
-        }
-      } else {
-        pe(g, c, 13, ergueE, frente);
-        pe(g, c, 22, ergueD, frente);
-        for (let Y = yR; Y <= 42; Y++) {
-          const k = Math.min(2, Math.floor((Y - yR + 1) / 3)) + L, bal = Y >= 38 ? -passo : 0;
-          const x0 = 12 - k + bal, x1 = 27 + k + bal;
-          for (let X = x0; X <= x1; X++) {
-            let cor = tomPano(B, X, x0, x1);
-            if (Y > yR + 1 && (X === 16 + bal || X === 23 + bal)) cor = cor === B[0] ? B[1] : B[2];
-            if (Y > yR + 3 && X === 17 + bal) cor = B[0];
-            if (Y === 42) cor = B[3];
-            else if (Y === 41 && barra) cor = barra[1];
-            g.fino(X, Y, cor);
-          }
-        }
-      }
-    }
-    // tronco e cinto
-    retF(g, 18, yT - 2, 4, 3, c.pele[2]);
-    for (let Y = yT; Y < yC; Y++) {
-      const i = Y - yT, x0 = (i === 0 ? 13 : 12) - L, x1 = (i === 0 ? 26 : 27) + L;
-      for (let X = x0; X <= x1; X++) {
-        let cor = tomPano(T, X, x0, x1);
-        if (Y === yC - 1) cor = cor === T[0] ? T[1] : T[2]; // a veste dobra sobre o cinto
-        g.fino(X, Y, cor);
-      }
-    }
-    if (frente) {
-      // decote em V com a gola
-      const gola = cfg.gola || T[3];
-      for (let i = 0; i < 3; i++) { retF(g, 17 + i, yT + i, 6 - 2 * i, 1, i === 0 ? c.pele[2] : c.pele[1]); g.fino(16 + i, yT + i, gola); g.fino(23 - i, yT + i, gola); }
-      retF(g, 19, yT + 3, 2, 1, gola);
-    } else retF(g, 17, yT, 6, 1, T[3]);
-    retF(g, 12 - L, yC, 16 + 2 * L, 2, (X, Y) => (Y === yC ? (X < 15 ? c.cinto[0] : X > 25 ? c.cinto[2] : c.cinto[1]) : X > 25 ? c.cinto[2] : c.cinto[1]));
-    if (frente) {
-      // nó do cinto e as pontas da faixa
-      retF(g, 18, yC, 3, 2, (X, Y) => (Y === yC && X < 20 ? c.cinto[0] : c.cinto[1]));
-      retF(g, 20, yC + 2, 2, 4, (X, Y) => (X === 20 ? c.cinto[1] : c.cinto[2]));
-    } else retF(g, 19, yC, 2, 1, c.cinto[2]);
-  }
-
-  // Montado: veste aberta sobre a sela; de lado, a coxa vai para a frente e a canela desce; de frente e
-  // de costas, as pernas abrem para os lados da montaria.
-  function inferiorMontado(g, cfg, c, P) {
-    const longo = cfg.molde !== "curta", B = c.pernas, yR = P.yR;
-    const perna = longo ? B : c.pele, longe = [perna[2], perna[2], perna[3], perna[3]];
-    if (P.vista === "lado") {
-      pintarMascara(g, bastao(bastao(new Set(), 19, yR + 1, 26, yR + 2, 5), 26, yR + 2, 26, 40, 4), perna);
-      retF(g, 25, 41, 6, 2, (X, Y) => (Y === 41 ? c.sand[0] : X === 30 ? c.sand[2] : c.sand[1]));
-      for (let Y = yR; Y <= yR + 3; Y++) for (let X = 13; X <= 22; X++) g.fino(X, Y, Y === yR + 3 ? B[3] : tomPano(B, X, 13, 22));
-      return;
-    }
-    pintarMascara(g, bastao(bastao(new Set(), 13, yR + 2, 8, yR + 4, 4), 8, yR + 4, 8, 40, 4), P.vista === "frente" ? perna : longe);
-    pintarMascara(g, bastao(bastao(new Set(), 26, yR + 2, 31, yR + 4, 4), 31, yR + 4, 31, 40, 4), P.vista === "frente" ? longe : perna);
-    retF(g, 5, 41, 5, 2, (X, Y) => (Y === 41 ? c.sand[0] : c.sand[1])); retF(g, 30, 41, 5, 2, (X, Y) => (Y === 41 ? c.sand[1] : c.sand[2]));
-    for (let Y = yR; Y <= yR + 3; Y++) for (let X = 10; X <= 29; X++) g.fino(X, Y, Y === yR + 3 ? B[3] : tomPano(B, X, 10, 29));
-  }
-
-  // Braços na frente/costas (os dois) ou o braço de perto (de lado), com as mãos por cima da arma.
-  function mao(g, c, X, Y, dorso) {
-    for (let j = -1; j <= 1; j++) for (let i = -2; i <= 1; i++) {
-      const t = dorso ? (j === 1 || i === 1 ? 3 : 2) : j === -1 && i < 0 ? 0 : j === 1 || i === 1 ? 2 : 1;
-      g.fino(X + i, Y + j, c.pele[t]);
-    }
-  }
-  function bracos(g, cfg, c, P, soMaos) {
-    const v = P.vista, L = cfg.porte === "grande" ? 1 : 0, yT = P.yT;
-    const M = cfg.mangaCor ? rampaDe(cfg.mangaCor) : c.tronco;
-    const punho = (mask, R) => { pintarMascara(g, mask, R); };
-    if (v === "lado") {
-      const [hx, hy] = P.maoArma;
-      if (!soMaos) {
-        const m = bastao(new Set(), 20, yT + 3, hx, hy - 2, 4);
-        for (let i = 0; i < 3; i++) m.add(yT * LM + 19 + i);
-        punho(m, M);
-        // vinco escuro do lado de trás do braço, para ele se soltar do tronco
-        for (const k of m) { const X = k % LM, Y = (k - X) / LM; if (Y > yT + 3 && !m.has(k - 1)) g.fino(X, Y, M[3]); }
-      }
-      mao(g, c, hx, hy, false);
-      return;
-    }
-    const frente = v === "frente";
-    const [ax, ay] = P.maoArma, [ex, ey] = P.maoEscudo;
-    const xa = frente ? 10 - L : 30 + L, xe = frente ? 30 + L : 10 - L;
-    const sombra = [M[1], M[2], M[2], M[3]];
-    // braço com o ombro arredondado (2 px a mais na linha dos ombros, colados ao tronco)
-    const braco = (x, hx, hy) => {
-      const m = bastao(new Set(), x, yT + 3, hx, hy - 2, 4);
-      const ombro = x < 20 ? x : x - 2;
-      for (let i = 0; i < 3; i++) m.add(yT * LM + ombro + i);
-      return m;
-    };
-    if (!soMaos) {
-      punho(braco(xa, ax, ay), frente ? M : sombra);
-      punho(braco(xe, ex, ey), frente ? sombra : M);
-    }
-    mao(g, c, ax, ay, !frente);
-    if (!cfg.duasMaosOcupadas) mao(g, c, ex, ey, !frente);
-  }
-
-  // ----- acessórios: f(g, c, P, cfg) por vista; camada "fundo" (antes do corpo), "meio" (depois do
-  // corpo, antes dos braços) ou "frente" (por cima de tudo). camada pode ser função da vista.
-  // Âncoras (pose): T topo da cabeça, yT ombros, yC cinto, maoArma e maoEscudo.
+  // Acessórios que uma cfg pode citar (o desenho de cada um está em arte/humano-equip.js; nome que só
+  // exista aqui cai na reserva de lá, um bastão na mão).
   const ACESSORIOS = {};
-  function acessorio(nome, camada, f) { ACESSORIOS[nome] = { camada, f }; }
-  const camadaPorVista = (lado, frente, costas) => (v) => (v === "lado" ? lado : v === "frente" ? frente : costas);
+  for (const nome of ["cajado_alto", "cajado_curvo", "cajado_curto", "lanca", "lanca_longa", "ankh", "espada", "espada_curva", "porrete", "escudo_redondo", "escudo_alto", "escudo_oval",
+    "arco_costas", "arco_mao", "capa", "capa_larga", "turbante", "elmo", "faixa", "bandana", "nemes",
+    "colar", "peitoral", "bolsa", "odre", "saco", "jarro", "fardo", "corda", "rede", "shofar", "pele_leopardo", "estola", "brilho", "funda", "remo"]) ACESSORIOS[nome] = {};
 
-  // cajados e lanças: haste na mão da arma
-  function haste(g, P, cores, topo, chao) {
-    const [hx, hy] = P.maoArma;
-    const inclina = P.q === 4 ? (P.vista === "frente" ? -1 : 1) : 0;
-    const x = hx - 1;
-    const y0 = Math.max(P.q === 4 ? 2 : 0, hy - topo), y1 = Math.min(45, hy + chao + (P.q === 4 ? 6 : 0));
-    linF(g, x + inclina * 3, y0, x, y1, cores[0], 1);
-    linF(g, x + inclina * 3 + 1, y0, x + 1, y1, escuro(cores[0], 0.3), 1);
-    return [x + inclina * 3, y0];
-  }
-  acessorio("cajado_alto", "frente", (g, c, P) => { const [x, y] = haste(g, P, c, 27, 14); retF(g, x, y - 1, 2, 2, c[1] || claro(c[0], 0.2)); });
-  acessorio("cajado_curvo", "frente", (g, c, P) => {
-    const [x, y] = haste(g, P, c, 27, 14);
-    const lado = P.vista === "costas" ? 1 : -1;
-    linF(g, x, y, x + lado * 1, y - 3, c[0], 2); linF(g, x + lado, y - 3, x + lado * 4, y - 4, c[1] || c[0], 2); linF(g, x + lado * 5, y - 3, x + lado * 5, y - 1, c[0], 2);
-  });
-  acessorio("cajado_curto", "frente", (g, c, P) => { const [x, y] = haste(g, P, c, 17, 13); elipF(g, x + 1, y - 1, 2.2, 2.2, (nx, ny) => (nx + ny < -0.3 ? "#ffe08a" : "#e8b94a")); });
-  acessorio("lanca", "frente", (g, c, P) => {
-    const [x, y] = haste(g, P, c, 27, 13);
-    for (let i = 0; i < 7; i++) { const w = i < 2 ? 1 : i < 5 ? 2 : 1; retF(g, x + (w > 1 ? 0 : i < 2 ? 0 : 1), y - 7 + i, w, 1, i < 3 ? claro(c[1], 0.25) : c[1]); }
-    retF(g, x - 1, y - 1, 4, 1, escuro(c[1], 0.25));
-  });
-  acessorio("lanca_longa", "frente", (g, c, P) => {
-    const [x, y] = haste(g, P, c, 31, 13);
-    for (let i = 0; i < 8; i++) { const w = i === 0 ? 1 : i < 6 ? 2 : 1; retF(g, x + (w > 1 ? 0 : 0), y - 8 + i, w, 1, i < 3 ? claro(c[1], 0.25) : c[1]); }
-    retF(g, x - 1, y, 4, 1, escuro(c[1], 0.3));
-  });
-  acessorio("ankh", "frente", (g, c, P) => {
-    const [hx, hy] = P.maoArma, x = hx - 1 + (P.q === 4 ? (P.vista === "frente" ? -3 : 3) : 0), y = hy - 18;
-    elipF(g, x + 1, y - 3, 2.2, 2.8, (nx, ny) => (nx * nx + ny * ny < 0.3 ? null : c[0]));
-    retF(g, x - 2, y, 6, 1, c[0]); retF(g, x, y, 2, 4, c[0]);
-  });
-  // espadas: na mão, com a lâmina para cima e para fora do corpo; no golpe vão à frente (de lado) ou ao
-  // alto (frente/costas)
-  function lamina(g, P, c, curva) {
-    const [hx, hy] = P.maoArma;
-    const [esc, cla, guarda, cabo] = [c[0], c[1], c[2] || "#b07a38", c[3] || "#5a3624"];
-    const golpe = P.q === 4;
-    if (P.vista === "lado" && golpe) {
-      retF(g, hx - 4, hy, 3, 1, cabo); retF(g, hx + 2, hy - 2, 1, 5, guarda); g.fino(hx + 2, hy - 2, claro(guarda, 0.3));
-      for (let i = 3; i <= 12; i++) { const yy = hy - (curva && i > 8 ? i - 8 : 0); g.fino(hx + i, yy - 1, cla); g.fino(hx + i, yy, esc); }
-      g.fino(hx + 13, hy - (curva ? 5 : 0) - 1, cla);
-      return;
-    }
-    if (P.vista === "lado") {
-      // de lado, parada ou andando: baixa, com a ponta para a frente e para o chão (fora do tronco)
-      const x = hx + 1, y = hy;
-      retF(g, x - 3, y - 1, 3, 2, cabo); retF(g, x, y - 3, 1, 5, guarda); g.fino(x, y - 3, claro(guarda, 0.3));
-      for (let i = 1; i <= 10; i++) { const X = x + i, Y = y + Math.round(i * 0.75) - (curva && i > 7 ? i - 7 : 0); g.fino(X, Y - 1, cla); g.fino(X, Y, esc); }
-      return;
-    }
-    // direção da lâmina: (sx, -1) por px, para fora do corpo
-    const sx = golpe ? 0 : P.vista === "frente" ? -0.4 : 0.4;
-    const x = hx - 1, gy = hy - 2 - (golpe ? 1 : 0);
-    retF(g, x - 2, gy, 5, 1, guarda); g.fino(x - 2, gy, claro(guarda, 0.3));
-    retF(g, x, gy + 1, 1, 3, cabo); g.fino(x, gy + 4, guarda);
-    for (let i = 1; i <= 11; i++) {
-      const dx = Math.round(sx * i) + (curva && i > 7 ? Math.floor((i - 7) / 2) * (P.vista === "frente" ? -1 : 1) : 0);
-      g.fino(x - 1 + dx, gy - i, cla); g.fino(x + dx, gy - i, esc);
-    }
-    g.fino(x + Math.round(sx * 12) - (sx < 0 ? 1 : 0), gy - 12, cla);
-  }
-  acessorio("espada", "frente", (g, c, P) => lamina(g, P, c, false));
-  acessorio("espada_curva", "frente", (g, c, P) => lamina(g, P, c, true));
-  acessorio("porrete", "frente", (g, c, P) => {
-    const [hx, hy] = P.maoArma, sobe = P.q === 4 ? -5 : 0, ld = P.vista === "lado" && P.q === 4, x = hx - 1;
-    if (ld) { retF(g, x, hy - 1, 9, 2, c[1] || c[0]); elipF(g, x + 11, hy, 3, 3, (nx, ny) => (nx + ny < -0.4 ? claro(c[0], 0.2) : c[0])); return; }
-    retF(g, x, hy - 10 + sobe, 2, 10, c[1] || c[0]);
-    elipF(g, x + 1, hy - 12 + sobe, 3, 3.4, (nx, ny) => (nx + ny < -0.4 ? claro(c[0], 0.2) : nx + ny > 0.6 ? escuro(c[0], 0.2) : c[0]));
-  });
-  // escudos: de frente no braço do escudo; de costas mostram o verso; de lado, à frente do peito
-  function escudo(g, P, cores, forma) {
-    const [fr, aro, cen] = [cores[0], cores[1], cores[2] || cores[0]];
-    const v = P.vista;
-    const [x, y] = P.escudoEm || P.maoEscudo; // montado, o escudo fica pendurado do lado
-    if (v === "lado") {
-      const ry = forma === "alto" ? 9.5 : 7, rx = forma === "alto" ? 2.6 : 3;
-      elipF(g, x + 0.5, y - 1, rx, ry, (nx, ny) => (nx > 0.5 ? aro : nx < -0.55 ? escuro(fr, 0.25) : ny < -0.6 ? claro(fr, 0.2) : fr));
-      return;
-    }
-    const cx = v === "frente" ? x + 0.5 : x - 1.5, cy = y - 3;
-    if (v === "costas") {
-      elipF(g, cx, cy, forma === "alto" ? 6 : 6.5, forma === "alto" ? 9.5 : 6.5, (nx, ny) => (nx * nx + ny * ny > 0.72 ? escuro(aro, 0.1) : nx + ny < -0.6 ? escuro(fr, 0.2) : escuro(fr, 0.35)));
-      retF(g, Math.round(cx) - 4, Math.round(cy) - 1, 8, 2, "#5a3a24");
-      return;
-    }
-    if (forma === "alto") {
-      retF(g, Math.round(cx) - 6, Math.round(cy) - 9, 13, 19, (X, Y, i, j) => (i === 0 || j === 0 ? claro(fr, 0.2) : i === 12 || j === 18 ? escuro(fr, 0.3) : (i + j) % 4 === 0 ? aro : fr));
-      retF(g, Math.round(cx) - 1, Math.round(cy) - 9, 2, 19, cen);
-      return;
-    }
-    if (forma === "oval") {
-      elipF(g, cx, cy, 5, 7.5, (nx, ny, X, Y) => (nx * nx + ny * ny > 0.72 ? escuro(fr, 0.2) : Y % 3 === 0 ? aro : nx + ny < -0.5 ? claro(fr, 0.15) : fr));
-      return;
-    }
-    elipF(g, cx, cy, 6.6, 6.6, (nx, ny) => {
-      const r = Math.sqrt(nx * nx + ny * ny);
-      if (r > 0.8) return nx + ny < -0.3 ? claro(aro, 0.2) : nx + ny > 0.5 ? escuro(aro, 0.2) : aro;
-      if (r < 0.26) return nx + ny < 0 ? claro(cen, 0.35) : cen;
-      return tom([escuro(fr, 0.2), fr, claro(fr, 0.18)], -(nx + ny) * 0.9);
-    });
-  }
-  acessorio("escudo_redondo", "frente", (g, c, P) => escudo(g, P, c, "redondo"));
-  acessorio("escudo_alto", "frente", (g, c, P) => escudo(g, P, c, "alto"));
-  acessorio("escudo_oval", "frente", (g, c, P) => escudo(g, P, c, "oval"));
-  // arco nas costas e arco na mão
-  acessorio("arco_costas", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => {
-    const corda = c[1], dy = P.dy;
-    if (P.vista === "lado") { for (let Y = 18; Y <= 40; Y++) { const t = (Y - 29) / 11; g.fino(Math.round(12 + 3 * t * t), Y + dy, c[0]); g.fino(Math.round(13 + 3 * t * t), Y + dy, escuro(c[0], 0.25)); } linF(g, 15, 18 + dy, 15, 40 + dy, corda); return; }
-    if (P.vista === "frente") { for (let Y = 16; Y <= 36; Y++) { const t = (Y - 26) / 10; g.fino(Math.round(32 - 2 * t * t), Y + dy, c[0]); g.fino(Math.round(33 - 2 * t * t), Y + dy, escuro(c[0], 0.25)); } return; }
-    linF(g, 12, 18 + dy, 27, 38 + dy, (X, Y, i) => (i % 2 ? c[0] : escuro(c[0], 0.2)), 2);
-    linF(g, 15, 16 + dy, 30, 35 + dy, corda);
-  });
-  acessorio("arco_mao", "frente", (g, c, P) => {
-    const [hx0, hy] = P.maoArma, hx = hx0 - 1, v = P.vista, puxa = P.q === 4;
-    if (v === "lado") {
-      const x0 = puxa ? hx + 2 : hx + 1;
-      for (let Y = -11; Y <= 11; Y++) { const t = Y / 11; g.fino(Math.round(x0 + 3 - 3 * t * t), hy - 2 + Y, Y % 4 ? c[0] : escuro(c[0], 0.25)); }
-      linF(g, x0 - (puxa ? 4 : 0), hy - 2, x0, hy - 13, c[1]); linF(g, x0 - (puxa ? 4 : 0), hy - 2, x0, hy + 9, c[1]);
-      if (puxa) linF(g, x0 - 5, hy - 2, x0 + 8, hy - 2, "#c8b48a");
-      return;
-    }
-    const sx = v === "frente" ? -1 : 1;
-    for (let Y = -11; Y <= 11; Y++) { const t = Y / 11; g.fino(Math.round(hx + sx * (3 - 3 * t * t)), hy - 3 + Y, Y % 4 ? c[0] : escuro(c[0], 0.25)); }
-    linF(g, hx, hy - 14, hx, hy + 8, c[1]);
-  });
-  // capas
-  function capa(g, c, P, larga) {
-    const v = P.vista, dy = P.dy, sw = P.passo;
-    const R = [claro(c[0], 0.14), c[0], misturar(c[0], c[1], 0.5), c[1]];
-    if (v === "lado") {
-      for (let Y = 22 + dy; Y <= 43; Y++) { const k = Math.floor((Y - 22) / 5) + (larga ? 1 : 0), x0 = 13 - k - (Y > 36 ? sw : 0); for (let X = x0; X <= 17; X++) g.fino(X, Y, X === 17 ? R[3] : (X + Y) % 6 === 0 ? R[2] : tomPano(R, X, x0, 17)); }
-      return;
-    }
-    if (v === "frente") {
-      const x0 = larga ? 5 : 7, x1 = larga ? 34 : 32;
-      for (let Y = 23 + dy; Y <= 43; Y++) for (let X = x0; X <= x1; X++) g.fino(X, Y, X < x0 + 2 ? R[0] : X > x1 - 2 ? R[3] : R[2]);
-      return;
-    }
-    for (let Y = 21 + dy; Y <= 43; Y++) {
-      const k = Math.floor((Y - 21) / 6) + (larga ? 1 : 0), x0 = 11 - k + (Y > 36 ? sw : 0), x1 = 28 + k + (Y > 36 ? sw : 0);
-      for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 43 ? R[3] : (X - x0) % 5 === 2 && Y > 26 ? R[2] : tomPano(R, X, x0, x1));
-    }
-    retF(g, 12, 21 + dy, 16, 1, R[3]);
-  }
-  acessorio("capa", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => capa(g, c, P, false));
-  acessorio("capa_larga", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => capa(g, c, P, true));
-  // cabeça
-  acessorio("turbante", "frente", (g, c, P) => {
-    const T = P.T, lado = P.vista === "lado", cx = lado ? 19.5 : 20;
-    elipF(g, cx, T + 2.5, 9, 5.2, (nx, ny, X, Y) => (Y > T + 5 ? null : (Y + Math.round(nx * 3)) % 3 === 0 ? escuro(c[0], 0.2) : nx < -0.45 || ny < -0.6 ? claro(c[0], 0.18) : nx > 0.55 ? escuro(c[0], 0.12) : c[0]));
-    if (c[1]) for (let X = Math.round(cx) - 9; X <= Math.round(cx) + 8; X++) g.fino(X, T + 5, c[1]);
-    if (c[2]) retF(g, Math.round(cx) - 4, T - 1, 2, 2, c[2]);
-    if (lado) retF(g, 11, T + 3, 3, 8, (X) => (X === 11 ? c[0] : escuro(c[0], 0.18)));
-    else if (P.vista === "costas") retF(g, 19, T + 6, 3, 6, (X) => (X === 19 ? c[0] : escuro(c[0], 0.2)));
-  });
-  acessorio("elmo", "frente", (g, c, P) => {
-    const T = P.T, v = P.vista, cx = v === "lado" ? 19.5 : 20;
-    elipF(g, cx, T + 5.5, 8.8, 7, (nx, ny, X, Y) => (Y > T + 5 ? null : nx + ny < -0.7 ? claro(c[1], 0.25) : nx < -0.3 && ny < 0 ? c[1] : nx > 0.45 ? escuro(c[0], 0.25) : c[0]));
-    retF(g, Math.round(cx) - 9, T + 5, 18, 1, (X) => (X < cx - 4 ? claro(c[1], 0.1) : c[1]));
-    if (v === "frente") retF(g, 19, T + 6, 2, 4, (X) => (X === 19 ? c[1] : c[0]));
-    if (v === "lado") { retF(g, 15, T + 6, 4, 6, (X) => (X === 15 ? c[1] : c[0])); retF(g, 25, T + 6, 1, 1, c[0]); }
-    if (v === "costas") retF(g, 12, T + 6, 16, 3, (X) => (X < 15 ? c[1] : X > 24 ? escuro(c[0], 0.2) : c[0]));
-    retF(g, Math.round(cx) - 1, T - 2, 2, 2, c[1]);
-  });
-  acessorio("faixa", "frente", (g, c, P) => {
-    const T = P.T, R = [claro(c[0], 0.2), c[0], escuro(c[0], 0.25)];
-    if (P.vista === "lado") { retF(g, 13, T + 4, 14, 2, (X, Y) => (Y === T + 4 ? R[0] : R[1])); retF(g, 11, T + 5, 2, 5, (X) => (X === 11 ? R[1] : R[2])); return; }
-    retF(g, 12, T + 4, 16, 2, (X, Y) => (Y === T + 4 ? (X > 24 ? R[1] : R[0]) : X > 24 ? R[2] : R[1]));
-    if (P.vista === "costas") { retF(g, 18, T + 6, 2, 5, R[1]); retF(g, 21, T + 6, 2, 4, R[2]); }
-  });
-  acessorio("bandana", "frente", (g, c, P) => {
-    const T = P.T, lado = P.vista === "lado";
-    elipF(g, lado ? 19.5 : 20, T + 5, 8.6, 6, (nx, ny, X, Y) => (Y > T + 5 ? null : nx > 0.45 ? escuro(c[0], 0.22) : nx < -0.4 && ny < 0 ? claro(c[0], 0.18) : c[0]));
-    if (lado) { retF(g, 11, T + 5, 2, 3, c[0]); retF(g, 10, T + 7, 2, 4, escuro(c[0], 0.2)); }
-    if (P.vista === "costas") { retF(g, 18, T + 6, 4, 2, c[0]); retF(g, 17, T + 8, 2, 4, escuro(c[0], 0.2)); retF(g, 21, T + 8, 2, 4, c[0]); }
-    if (P.vista === "frente" && c[1]) { g.fino(15, T + 2, c[1]); g.fino(23, T + 3, c[1]); g.fino(18, T + 1, c[1]); }
-  });
-  // nemes (toucado listrado do Egito): topo e abas sobre os ombros
-  acessorio("nemes", "frente", (g, c, P) => {
-    const T = P.T, v = P.vista, faixa = (Y) => ((Y >> 1) % 2 ? c[1] : c[0]);
-    elipF(g, v === "lado" ? 19.5 : 20, T + 5, 9, 6.2, (nx, ny, X, Y) => (Y > T + 5 ? null : nx > 0.6 ? escuro(faixa(Y), 0.15) : faixa(Y)));
-    retF(g, 11, T + 4, 18, 2, (X, Y) => faixa(Y));
-    if (v === "frente") { retF(g, 10, T + 6, 3, 13, (X, Y) => faixa(Y)); retF(g, 27, T + 6, 3, 13, (X, Y) => escuro(faixa(Y), 0.15)); retF(g, 12, T + 5, 16, 1, c[2] || c[1]); }
-    else if (v === "lado") retF(g, 12, T + 6, 7, 12, (X, Y) => (X === 18 ? escuro(faixa(Y), 0.15) : faixa(Y)));
-    else retF(g, 11, T + 6, 18, 13, (X, Y) => (X > 25 ? escuro(faixa(Y), 0.15) : faixa(Y)));
-  });
-  // colar largo (Egito) e peitoral do sumo sacerdote
-  acessorio("colar", "meio", (g, c, P) => {
-    const y = P.yT;
-    if (P.vista === "costas") return;
-    if (P.vista === "lado") { retF(g, 20, y, 7, 3, (X, Y) => ((X + Y) % 2 ? c[0] : c[1])); return; }
-    for (let j = 0; j < 4; j++) for (let X = 14 + j; X <= 25 - j; X++) g.fino(X, y + j, (X + j) % 2 ? c[0] : c[1]);
-  });
-  acessorio("peitoral", "meio", (g, c, P) => {
-    const y = P.yT + 3, pedras = ["#c2452d", "#4fa3a5", "#e8b94a", "#55642c", "#6d8fc4", "#b98ad0"];
-    if (P.vista === "costas") return;
-    const lado = P.vista === "lado", x0 = lado ? 22 : 16, w = lado ? 4 : 8;
-    retF(g, x0, y, w, 8, (X, Y) => (Y === y ? claro(c[0], 0.2) : c[0]));
-    for (let j = 0; j < 3; j++) for (let i = 0; i < (lado ? 1 : 3); i++) retF(g, x0 + 1 + i * 2 + (lado ? 1 : 0), y + 1 + j * 2, 1 + (lado ? 0 : 1) - (lado ? 0 : 1), 1, pedras[(i + j * 3) % 6]);
-    if (!lado) for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) g.fino(x0 + 1 + i * 2 + 1, y + 1 + j * 2, escuro(pedras[(i + j * 3) % 6], 0.2));
-  });
-  // carga e utensílios
-  acessorio("bolsa", "meio", (g, c, P) => {
-    // alforje pendurado na alça que cruza o peito (do ombro esquerdo ao quadril direito)
-    const v = P.vista, y = P.yC + 1, alca = escuro(c[0], 0.2);
-    const x = v === "lado" ? 14 : v === "frente" ? 23 : 13;
-    if (v === "frente") linF(g, 14, P.yT, x + 1, y - 1, (X, Y, i) => (i % 3 ? alca : c[1] || c[0]));
-    else if (v === "costas") linF(g, 26, P.yT, x + 2, y - 1, alca);
-    else linF(g, 21, P.yT, x + 2, y - 1, alca);
-    retF(g, x, y, 4, 5, (X, Y) => (Y === y ? c[1] || c[0] : X === x + 3 || Y === y + 4 ? escuro(c[0], 0.25) : X === x ? claro(c[0], 0.12) : c[0]));
-    g.fino(x + 1, y + 1, c[1] || claro(c[0], 0.2));
-  });
-  acessorio("odre", camadaPorVista("meio", "meio", "fundo"), (g, c, P) => {
-    const x = P.vista === "lado" ? 15 : P.vista === "frente" ? 27 : 12;
-    elipF(g, x + 1, 36, 3, 4, (nx, ny) => (nx + ny < -0.4 ? c[1] || claro(c[0], 0.2) : nx + ny > 0.5 ? escuro(c[0], 0.25) : c[0]));
-    retF(g, x, 30, 2, 3, c[1] || c[0]);
-  });
-  acessorio("saco", camadaPorVista("fundo", "meio", "meio"), (g, c, P) => {
-    const [x, y] = P.maoEscudo, cx = P.vista === "lado" ? 13 : x + (P.vista === "frente" ? 1 : -2);
-    const cy = P.vista === "lado" ? 33 : y + 4;
-    elipF(g, cx, cy, 3.8, 4.2, (nx, ny) => (nx + ny < -0.4 ? c[1] || claro(c[0], 0.2) : nx + ny > 0.5 ? escuro(c[0], 0.25) : c[0]));
-    retF(g, Math.round(cx) - 1, cy - 5, 2, 2, escuro(c[0], 0.2));
-  });
-  acessorio("jarro", camadaPorVista("frente", "frente", "meio"), (g, c, P) => {
-    const [x, y] = P.maoEscudo, cx = P.vista === "lado" ? 28 : x + (P.vista === "frente" ? 1 : -2), cy = P.vista === "lado" ? 31 : y + 1;
-    elipF(g, cx, cy, 4.2, 4.6, (nx, ny) => tom([c[1], c[0], c[2] || claro(c[0], 0.2)], -(0.6 * nx + 0.8 * ny)));
-    retF(g, Math.round(cx) - 2, cy - 6, 4, 2, c[1]); retF(g, Math.round(cx) - 3, cy - 7, 6, 1, c[0]);
-    g.fino(Math.round(cx) - 2, cy - 1, c[2] || claro(c[0], 0.3));
-  });
-  acessorio("fardo", camadaPorVista("fundo", "fundo", "frente"), (g, c, P) => {
-    const dy = P.dy, R = [claro(c[0], 0.15), c[0], c[1] || escuro(c[0], 0.2), escuro(c[0], 0.35)];
-    if (P.vista === "lado") { retF(g, 9, 20 + dy, 7, 13, (X, Y) => (Y % 4 === 0 ? R[2] : tomPano(R, X, 9, 15))); return; }
-    if (P.vista === "frente") { retF(g, 10, 17 + dy, 20, 6, (X, Y) => (Y === 17 + dy ? R[0] : tomPano(R, X, 10, 29))); return; }
-    retF(g, 11, 19 + dy, 18, 15, (X, Y) => (Y % 4 === 0 ? R[2] : tomPano(R, X, 11, 28)));
-    linF(g, 14, 19 + dy, 14, 33 + dy, "#5a3a24"); linF(g, 25, 19 + dy, 25, 33 + dy, "#5a3a24");
-  });
-  acessorio("corda", "meio", (g, c, P) => {
-    const y = P.yT + 5, x = P.vista === "frente" ? 26 : P.vista === "costas" ? 14 : 17;
-    elipF(g, x, y, 4.2, 4.2, (nx, ny) => { const r = nx * nx + ny * ny; return r < 0.22 ? null : (Math.round(r * 6) % 2 ? c[0] : c[1]); });
-  });
-  acessorio("rede", camadaPorVista("fundo", "meio", "meio"), (g, c, P) => {
-    const y = P.yT, x0 = P.vista === "frente" ? 26 : P.vista === "costas" ? 6 : 9;
-    for (let j = 0; j < 14; j++) for (let i = 0; i < 8; i++) if ((i + j) % 3 === 0 || (i - j + 30) % 3 === 0) g.fino(x0 + i, y + j, (i + j) % 2 ? c[0] : escuro(c[0], 0.2));
-  });
-  acessorio("shofar", "meio", (g, c, P) => {
-    if (P.vista === "costas") return;
-    const x = P.vista === "frente" ? 23 : 16, y = P.yC + 2;
-    linF(g, x, y, x + 5, y + 2, c[0], 2); g.fino(x - 1, y - 1, c[1]); g.fino(x, y - 1, c[1]); g.fino(x + 6, y + 2, c[2]); g.fino(x + 6, y + 3, c[2]);
-  });
-  acessorio("pele_leopardo", "meio", (g, c, P) => {
-    const y = P.yT, mancha = (X, Y) => (X * 3 + Y * 5) % 7 === 0;
-    if (P.vista === "costas") { retF(g, 21, y, 6, 10, (X, Y) => (mancha(X, Y) ? "#3a2414" : "#d8a040")); return; }
-    const x0 = P.vista === "frente" ? 12 : 16;
-    retF(g, x0, y, 7, 10, (X, Y) => (mancha(X, Y) ? "#3a2414" : X === x0 ? "#f0c868" : "#d8a040"));
-  });
-  acessorio("estola", "meio", (g, c, P) => {
-    // manto sobre um ombro, caindo pelo lado direito do corpo
-    const dy = P.dy, [M, m, n] = c, y0 = 22;
-    if (P.vista === "frente") {
-      for (let Y = y0; Y <= 42; Y++) {
-        const x0 = Y < 32 ? Math.round(15 + (Y - y0) * 0.8) : 23, x1 = Y < y0 + 2 ? x0 + 4 : 28;
-        for (let X = x0; X <= x1; X++) g.fino(X, Y + (Y < 34 ? dy : 0), X === x0 ? M : X >= x1 - 1 ? n : m);
-      }
-    } else if (P.vista === "costas") {
-      for (let Y = y0; Y <= 42; Y++) { const x0 = 11, x1 = Y < 32 ? Math.round(23 - (Y - y0) * 0.4) : 18; for (let X = x0; X <= x1; X++) g.fino(X, Y + (Y < 34 ? dy : 0), X === x0 ? M : X === x1 ? n : m); }
-    } else for (let Y = y0; Y <= 42; Y++) for (let X = 16; X <= 22; X++) g.fino(X, Y + (Y < 34 ? dy : 0), X === 16 ? M : X === 22 ? n : m);
-  });
-  // efeitos de mão
-  acessorio("brilho", "frente", (g, c, P) => {
-    if (P.q !== 1 && P.q !== 4) return;
-    const [hx0, hy] = P.maoArma, hx = hx0 - 1, y = hy - (c[1] || 0);
-    g.fino(hx, y - 4, c[0]); g.fino(hx - 2, y - 2, c[0]); g.fino(hx + 2, y - 3, c[0]); g.fino(hx, y - 6, claro(c[0], 0.5)); g.fino(hx + 3, y - 6, claro(c[0], 0.3));
-  });
-  acessorio("funda", "frente", (g, c, P) => {
-    const [hx, hy] = P.maoArma;
-    const pos = [[31, 3], [24, 1], [13, 3], [22, 5], [34, 5]][P.q];
-    const px = P.vista === "costas" ? 40 - pos[0] : pos[0];
-    linF(g, hx - 1, hy - 1, px, pos[1] + 2, c[0]); elipF(g, px, pos[1], 1.6, 1.6, c[1] || "#8a8478");
-  });
-
-  // Armaduras do jogador (por cima da veste): couro (colete com ombreiras e rebites) e escamas.
-  // f desenha o colete (antes dos braços); ombros, as ombreiras (por cima dos braços).
+  // Armaduras do jogador: a túnica de pano só troca as cores da veste (veste, gola); couro e escamas são
+  // desenhados por cima do tronco em arte/humano-equip.js.
   const ARMADURAS = {
     tunica_pano: { veste: { R: "#c9d4e0", r: "#a8b8c8", d: "#7f90a4" }, gola: "#3b5a9a" },
-    armadura_couro: {
-      f: (g, P) => {
-        const v = P.vista, L = ["#b07a42", "#8a5a34", "#5e3a22", "#3e2416"], y0 = P.yT + 1, y1 = P.yC + 2;
-        const x0 = v === "lado" ? 14 : 12, x1 = v === "lado" ? 26 : 27;
-        for (let Y = y0; Y <= y1; Y++) for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === y1 ? L[3] : (Y - y0) % 4 === 3 ? L[2] : tomPano(L, X, x0, x1));
-        if (v === "frente") { for (const [x, y] of [[14, 3], [25, 3], [14, 7], [25, 7]]) g.fino(x, y0 + y, "#e8b94a"); retF(g, 18, y0, 4, 2, "#f0d0a0"); }
-      },
-      ombros: (g, P) => {
-        const L = ["#b07a42", "#8a5a34", "#5e3a22"], y = P.yT - 1;
-        if (P.vista === "lado") { elipF(g, 20, y + 3, 3.4, 2.6, (nx, ny) => (nx + ny < -0.3 ? L[0] : ny > 0.4 ? L[2] : L[1])); return; }
-        elipF(g, 9.5, y + 3, 3.6, 2.6, (nx, ny) => (nx + ny < -0.3 ? L[0] : ny > 0.4 ? L[2] : L[1]));
-        elipF(g, 30.5, y + 3, 3.6, 2.6, (nx, ny) => (ny > 0.3 || nx > 0.3 ? L[2] : L[1]));
-      },
-    },
-    couraca_escamas: {
-      f: (g, P) => {
-        const v = P.vista, E = ["#e2b264", "#b07a38", "#7a4a24"], y0 = P.yT + 1, y1 = P.yC - 1;
-        const x0 = v === "lado" ? 14 : 12, x1 = v === "lado" ? 26 : 27;
-        for (let Y = y0; Y <= y1; Y++) for (let X = x0; X <= x1; X++) { const fila = (Y - y0) >> 1, off = fila % 2; g.fino(X, Y, (X + off) % 3 === 0 && (Y - y0) % 2 ? E[2] : (Y - y0) % 2 ? E[1] : X < x0 + 3 ? E[0] : misturar(E[0], E[1], 0.4)); }
-        for (let X = x0 - 1; X <= x1 + 1; X += 2) retF(g, X, P.yC + 2, 1, 5, X % 4 === 1 ? E[1] : E[2]);
-      },
-      ombros: (g, P) => {
-        const E = ["#e2b264", "#b07a38", "#7a4a24"], y = P.yT - 1;
-        if (P.vista === "lado") { elipF(g, 20, y + 3, 3.4, 2.6, (nx, ny) => (nx + ny < -0.3 ? E[0] : ny > 0.4 ? E[2] : E[1])); return; }
-        elipF(g, 9.5, y + 3, 3.6, 2.6, (nx, ny) => (nx + ny < -0.3 ? E[0] : ny > 0.4 ? E[2] : E[1]));
-        elipF(g, 30.5, y + 3, 3.6, 2.6, (nx, ny) => (ny > 0.3 || nx > 0.3 ? E[2] : E[1]));
-      },
-    },
+    armadura_couro: {},
+    couraca_escamas: {},
   };
 
-  // Desenha um humano numa vista e quadro.
+  // Boneco de reserva (40 × 48 px): cabeça, veste nas cores da cfg, pernas e pés; no passo as pernas abrem.
   function desenharHumano(g, cfg, quadro) {
-    const vista = VISTAS[Math.floor(quadro / QUADROS_POR_VISTA)] || "lado";
-    const q = quadro % QUADROS_POR_VISTA;
-    const P = pose(vista, q);
-    // montado: as duas mãos seguram as rédeas à frente do corpo
-    if (cfg.montado && q !== 4) {
-      if (vista === "lado") P.maoArma = [25, 31 + P.dy];
-      else { P.escudoEm = P.maoEscudo; P.maoArma = vista === "frente" ? [15, 33 + P.dy] : [26, 33 + P.dy]; P.maoEscudo = vista === "frente" ? [26, 33 + P.dy] : [15, 33 + P.dy]; }
+    const vista = VISTAS[Math.floor(quadro / QUADROS_POR_VISTA)] || "lado", q = quadro % QUADROS_POR_VISTA;
+    const c = coresHumano(cfg), dy = q >= 1 && q <= 3 ? 1 : 0, passo = q === 2 ? 2 : q === 3 ? -2 : 0;
+    const longa = cfg.molde !== "curta", lado = vista === "lado", x0 = lado ? 15 : 13, w = lado ? 10 : 14;
+    for (const [x, d] of [[x0 + 1, passo], [x0 + w - 5, -passo]]) {
+      retF(g, x + (lado ? d : 0), 34, 4, 9 - (lado ? 0 : Math.max(0, d)), c.pele[1]);
+      retF(g, x + (lado ? d : 0), 43 - (lado ? 0 : Math.max(0, d)), lado ? 5 : 4, 2, c.sand[1]);
     }
-    const c = coresHumano(cfg);
-    const acs = (cfg.acessorios || []).map(([nome, cores]) => [ACESSORIOS[nome], cores, nome]).filter((a) => a[0]);
-    const camada = (a) => (typeof a.camada === "function" ? a.camada(vista) : a.camada);
-    for (const [a, cores] of acs) if (camada(a) === "fundo") a.f(g, cores, P, cfg);
-    corpo(g, cfg, c, P);
-    const arm = cfg.armadura && ARMADURAS[cfg.armadura];
-    if (arm && arm.f) arm.f(g, P);
-    if (cfg.extraCorpo) cfg.extraCorpo(g, P, c);
-    for (const [a, cores] of acs) if (camada(a) === "meio") a.f(g, cores, P, cfg);
-    cabeca(g, cfg, c, P);
-    bracos(g, cfg, c, P, false);
-    if (arm && arm.ombros) arm.ombros(g, P);
-    for (const [a, cores] of acs) if (camada(a) === "frente") a.f(g, cores, P, cfg);
-    // a mão da arma por cima do cabo
-    if (acs.some(([a]) => camada(a) === "frente")) bracos(g, cfg, c, P, true);
-    if (cfg.extra) cfg.extra(g, P, c);
+    retF(g, x0, 22 + dy, w, (longa ? 20 : 13) - dy, (X) => (X < x0 + 2 ? c.tronco[0] : X >= x0 + w - 3 ? c.tronco[2] : c.tronco[1]));
+    retF(g, x0, 31 + dy, w, 2, c.cinto[1]);
+    elipF(g, 20, 14.5 + dy, lado ? 6.5 : 7.5, 7.5, (nx, ny) => (vista === "costas" || ny < -0.35 || (lado && nx < -0.2) ? c.cab[1] : nx + ny > 0.9 ? c.pele[2] : c.pele[1]));
+    if (vista !== "costas") for (const x of lado ? [23] : [17, 22]) g.fino(x, 15 + dy, c.o);
+    if (q === 4) retF(g, lado ? x0 + w : x0 - 3, 22, 3, 3, c.pele[1]); // mão erguida na ação
   }
 
   // Registra um humano: cfg = { molde, cores, barba, cabelo, porte, gola, capuz, mangaCor, armadura,
-  // acessorios, barra (barra da veste na cor do cinto), hostil, duasMaosOcupadas, extra(g, P, c) }.
+  // acessorios, barra (barra da veste na cor do cinto), hostil }.
   //
   // Ganchos (Arte.motor): HUMANOS guarda a cfg de cada humano registrado e MONTADOS a de cada jogador
   // montado já gerado. definirHumano(spec) / definirMontado(spec) trocam o esqueleto: re-registram
@@ -1385,7 +705,7 @@
   //   spec = { w, h (em unidades), quadrosPorVista, ciclo, quadroAcao, busto, retratoQuadro, sombra,
   //            alturaCabeca, desenhar(g, cfg, quadro[, montaria]) } + qualquer campo de def (limiteCores…).
   // A spec recebe a cfg ORIGINAL (cores, molde, armadura, acessorios…): é ela quem aplica ARMADURAS,
-  // ACESSORIOS etc. definirHumano(null) / definirMontado(null) voltam ao desenho legado.
+  // ACESSORIOS etc. definirHumano(null) / definirMontado(null) voltam ao boneco e à montaria de reserva.
   const HUMANOS = {}, MONTADOS = {};
   let specHumano = null, specMontado = null;
   function defDeSpec(spec, extra, desenhar) {
@@ -1489,10 +809,10 @@
   garantirJogador({});
 
   // -------------------------------------------------------------------
-  // Montarias (JGB-27, redesenhadas na JGB-49): jumento, camelo, cavalo e carro, só visuais. Célula de
-  // 56 × 64 px de arte (28 × 32 unidades), chão na linha 61; 3 vistas × 5 quadros como os humanos (no
-  // passo, as pernas vão em pares diagonais e o corpo desce 1 px). O cavaleiro é o boneco do jogador com
-  // cfg.montado, desenhado entre a parte de trás ("fundo") e a da frente ("frente") da montaria.
+  // Montarias (só visuais): jumento, cavalo, camelo e carro. O desenho é de arte/montado.js (célula 72 × 96 px,
+  // 3 vistas × 8 quadros, ativado por definirMontado) sobre o esqueleto de arte/quadrupede.js. Aqui ficam as
+  // cores de cada montaria (MONTARIAS_ARTE; a geometria é do desenho de reserva antigo e não é mais lida) e uma
+  // montaria de reserva (56 × 64 px, 3 vistas × 5 quadros) com o boneco de reserva em cima.
   // -------------------------------------------------------------------
   const CHAO_MT = 61, W_MT = 28, H_MT = 32;
   const MONTARIAS_ARTE = {
@@ -1521,262 +841,29 @@
       manta: ["#e2774f", "#c2452d", "#8e2a1f"], franja: "#e8b94a", listra: "#3b5a9a", couro: ["#a8703a", "#7a4a24", "#4f3220"], sela: [24, 27],
     },
   };
-  const tomAnimal = (a, ventre = true) => (nx, ny) => (ventre && ny > 0.62 ? a.ventre : tom(a.pelo, -(0.45 * nx + 0.95 * ny) + 0.1));
-  // Perna de lado: coxa/antebraço (larg px) até o joelho, canela mais fina, boleto e casco (ou pata larga).
-  function pernaMt(g, a, x, sw, dy, longe, tras) {
-    const R = longe ? [a.pelo[2], a.pelo[2], a.pelo[3], a.pelo[3]] : a.pelo;
-    const p = a.pernas, kx = x + Math.round(sw / 2) + (tras ? -1 : 0), fx = x + sw;
-    const m = bastao(new Set(), x, p.topo + dy, kx, p.joelho, p.larg);
-    bastao(m, kx, p.joelho, fx, CHAO_MT - 3, Math.max(2, p.larg - 1));
-    pintarMascara(g, m, R);
-    if (a.meia && !longe && tras) retF(g, fx - 1, CHAO_MT - 6, 3, 3, (X) => (X === fx - 1 ? "#f4ecdc" : "#d8ccb6"));
-    if (a.patas) retF(g, fx - 2, CHAO_MT - 2, 5, 2, (X, Y) => (Y === CHAO_MT - 2 ? claro(a.casco, longe ? 0 : 0.2) : a.casco));
-    else retF(g, fx - 2, CHAO_MT - 3, 4, 3, (X, Y) => (Y === CHAO_MT - 3 ? claro(a.casco, longe ? 0.05 : 0.25) : X === fx + 1 ? escuro(a.casco, 0.3) : a.casco));
-  }
-  function mantaLado(g, a, sx, sy) {
-    const [M0, M1, M2] = a.manta, [C0, C1, C2] = a.couro;
-    // manta (com a franja embaixo) e a sela de couro por cima
-    for (let Y = sy - 1; Y <= sy + 6; Y++) for (let X = sx - 7; X <= sx + 6; X++) {
-      let cor = X <= sx - 6 ? M0 : X >= sx + 5 ? M2 : M1;
-      if (Y === sy + 5) cor = a.franja;
-      if (Y === sy + 6) cor = X % 2 ? a.franja : null;
-      if (a.listra && (Y === sy + 1 || Y === sy + 3) && Y < sy + 5) cor = a.listra;
-      if (cor) g.fino(X, Y, cor);
+  // Montaria de reserva: corpo, pescoço e cabeça em elipses na cor do pelo, quatro pernas; o carro é uma caixa
+  // de madeira com roda. Devolve [x, y] do quadril do cavaleiro.
+  function desenharMontaria(g, tipo, vista, q) {
+    const a = MONTARIAS_ARTE[tipo] || MONTARIAS_ARTE.jumento, P = a.pelo, lado = vista === "lado";
+    const dy = q >= 1 && q <= 3 ? 1 : 0, passo = q === 2 ? 2 : q === 3 ? -2 : 0;
+    const tomP = (nx, ny) => (ny > 0.5 ? P[2] : nx + ny < -0.5 ? P[0] : P[1]);
+    if (tipo === "carro") {
+      retF(g, 12, 38 + dy, 32, 14, (X, Y) => (Y < 40 + dy ? "#c8a070" : X > 40 ? "#6a4a2e" : "#a8784a"));
+      elipF(g, lado ? 20 : 28, 54, 7, 7, (nx, ny) => (nx * nx + ny * ny > 0.55 ? "#5a3a24" : "#a8784a"));
+      return [28, 45 + dy];
     }
-    retF(g, sx - 5, sy - 2, 10, 2, (X, Y) => (Y === sy - 2 ? C0 : X > sx + 2 ? C2 : C1));
-    retF(g, sx + 4, sy - 4, 2, 3, (X) => (X === sx + 4 ? C0 : C1));
-    retF(g, sx - 6, sy - 3, 2, 2, C1);
-    linF(g, sx + 1, sy + 6, sx + 1, sy + 10, C2); // loro do estribo
-  }
-  function animalLado(g, a, q) {
-    const passo = q === 2 ? 1 : q === 3 ? -1 : 0, dy = q >= 1 && q <= 3 ? 1 : 0;
-    const [cx, cy0, rx, ry] = a.corpo, cy = cy0 + dy;
-    const tomP = tomAnimal(a);
-    const xa = Math.round(a.anca[0]) + 1, xp = Math.round(a.peito[0]) - 1;
-    // pernas de longe (mais escuras): par diagonal ao contrário das de perto
-    pernaMt(g, a, xp - 2, 4 * -passo, dy, true, false);
-    pernaMt(g, a, xa + 2, 4 * passo, dy, true, true);
-    // cauda
-    if (a.cauda === "longa") {
-      for (let k = 0; k < 17; k++) { const x = Math.round(a.anca[0] - a.anca[2] + 1 - k * 0.32 + (k > 10 ? -passo : 0)); retF(g, x - 1, cy - 5 + k, 3 + (k > 4 && k < 13 ? 1 : 0), 1, (X) => (X === x - 1 ? a.crina[0] : (X + k) % 3 ? a.crina[1] : a.crina[2])); }
-    } else {
-      const x0 = Math.round(a.anca[0] - a.anca[2]);
-      linF(g, x0 + 1, cy - 4, x0 - 1, cy + 5, a.pelo[2], 2);
-      elipF(g, x0 - 0.5, cy + 7, 1.8, 2.6, (nx, ny) => (nx < -0.2 ? a.crina[0] : a.crina[1]));
-    }
-    // corpo: anca, barriga e peito
-    elipF(g, a.anca[0], a.anca[1] + dy, a.anca[2], a.anca[3], tomP);
-    elipF(g, cx, cy, rx, ry, tomP);
-    elipF(g, a.peito[0], a.peito[1] + dy, a.peito[2], a.peito[3], tomP);
-    if (a.corcova) { const [hx, hy, hrx, hry] = a.corcova; elipF(g, hx, hy + dy, hrx, hry, (nx, ny) => tom(a.pelo, -(0.5 * nx + 0.9 * ny) + 0.15)); }
-    // pescoço, crina e cabeça
-    for (let i = 0; i < a.pescoco.length - 1; i++) for (let t = 0; t <= 1; t += 0.125) {
-      const [x0, y0, r0] = a.pescoco[i], [x1, y1, r1] = a.pescoco[i + 1];
-      elipF(g, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t + dy, r0 + (r1 - r0) * t, r0 + (r1 - r0) * t, tomAnimal(a, false));
-    }
-    const [tx, ty, trx, try_] = a.testa, [fx, fy, frx, fry] = a.focinho2;
-    for (let t = 0; t <= 1; t += 0.2) elipF(g, tx + (fx - tx) * t, ty + (fy - ty) * t + dy, trx + (frx - trx) * t, try_ + (fry - try_) * t, tomAnimal(a, false));
-    elipF(g, fx, fy + dy, frx, fry, (nx, ny) => (nx + ny < -0.6 ? claro(a.focinho, 0.15) : a.focinho));
-    if (a.mancha) for (let t = 0.1; t <= 0.7; t += 0.15) g.fino(Math.round(tx + (fx - tx) * t + 1), Math.round(ty + (fy - ty) * t + dy - 2), "#f4ecdc");
-    g.fino(Math.round(fx + frx - 1), Math.round(fy + dy - 1), escuro(a.focinho, 0.5)); // narina
-    linF(g, Math.round(fx), Math.round(fy + fry + dy - 1), Math.round(fx + frx - 1), Math.round(fy + fry + dy - 1), escuro(a.focinho, 0.45)); // boca
-    const ox = Math.round(tx - 0.5), oy = Math.round(ty + dy - 1);
-    retF(g, ox, oy, 2, 1, "#1c1210"); g.fino(ox, oy - 1, "#1c1210"); g.fino(ox + 1, oy, "#3a2a24"); g.fino(ox, oy, "#fff6e0");
-    for (const [ex, ey] of a.orelhas) {
-      if (a.orelhaLonga) { linF(g, ex, ey + dy + 9, ex - 2, ey + dy, a.pelo[1], 2); g.fino(ex - 1, ey + dy + 3, "#d89a8a"); g.fino(ex - 2, ey + dy, a.crina[1]); }
-      else { linF(g, ex, ey + dy + 4, ex - 1, ey + dy, a.pelo[1], 2); g.fino(ex - 1, ey + dy, a.pelo[2]); }
-    }
-    // crina ao longo do pescoço (e o topete)
-    if (a.crina && !a.corcova) {
-      const pts = a.pescoco;
-      for (let i = 0; i < pts.length - 1; i++) for (let t = 0; t <= 1; t += 0.2) {
-        const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t + dy, r = pts[i][2];
-        const X = Math.round(x - r * 0.75), Y = Math.round(y - r * 0.75);
-        retF(g, X, Y, 2, 2, a.crina[1]); g.fino(X - 1, Y + 1, a.crina[2]); if ((i + t * 5) % 2 < 1) g.fino(X + 1, Y + 2, a.crina[1]);
-        g.fino(X, Y, a.crina[0]);
-      }
-      retF(g, Math.round(tx) - 1, Math.round(ty + dy - try_), 2, 2, a.crina[1]);
-    } else if (a.corcova) { retF(g, 44, 25 + dy, 2, 6, a.crina[1]); g.fino(47, 18 + dy, a.crina[1]); }
-    if (a.cruz) { linF(g, 18, cy - ry + 1, 33, cy - ry, a.pelo[3]); linF(g, 34, cy - ry - 1, 33, cy - ry + 5, a.pelo[3]); }
-    // pernas de perto
-    pernaMt(g, a, xp - 1, 4 * passo, dy, false, false);
-    pernaMt(g, a, xa, 4 * -passo, dy, false, true);
-    // manta, sela, cabeçada e rédeas
-    const [sx, sy0] = a.sela, sy = sy0 + dy;
-    mantaLado(g, a, sx, sy);
-    const [C0, , C2] = a.couro;
-    linF(g, Math.round(tx), Math.round(ty + dy - try_ + 1), Math.round(fx - 1), Math.round(fy + dy + 1), C2);
-    linF(g, Math.round(fx), Math.round(fy + dy - fry + 1), Math.round(fx), Math.round(fy + dy + fry - 1), C2);
-    // rédeas com folga: descem da boca e sobem até a mão do cavaleiro
-    const mx = Math.round((fx + sx + 6) / 2), my = Math.max(Math.round(fy + dy + 1), sy - 2) + 3;
-    linF(g, Math.round(fx - 1), Math.round(fy + dy + 1), mx, my, C0); linF(g, mx, my, sx + 6, sy - 2, C0);
-    return [sx, sy];
-  }
-  // De frente: o lombo e as patas de trás atrás do cavaleiro; peito, pescoço, cabeça e patas da frente
-  // por cima dele. Cabeça de frente (comprida, as orelhas em pé), pintada como uma forma só: luz da esquerda, focinho
-  // embaixo, olhos nos lados, narinas, topete e a cabeçada com o frontal colorido.
-  function cabecaFrenteMt(g, a, xs, y0, curta) {
-    const P = a.pelo, F = [claro(a.focinho, 0.18), a.focinho, escuro(a.focinho, 0.25), escuro(a.focinho, 0.45)];
-    const camelo = !!a.corcova, jumento = !!a.orelhaLonga;
-    const HW = curta ? [3, 4, 5, 5, 5, 4, 4, 4, 4, 4, 3, 3] : [5, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 4, 4, 4, 4, 3];
-    const n = HW.length, fz = n - (curta ? 4 : 5);
-    // orelhas
-    for (const s of [-1, 1]) {
-      const ox = xs + s * (jumento ? 5 : 4) - (s > 0 ? 2 : 0), comp = jumento ? 7 : camelo ? 2 : 5;
-      const m = bastao(new Set(), ox + 1, y0, ox + 1 + s * (jumento ? 5 : 1), y0 - comp, 2);
-      pintarMascara(g, m, s < 0 ? [P[0], P[1], P[2], P[2]] : [P[1], P[2], P[3], P[3]]);
-      if (jumento) { g.fino(ox + s + (s < 0 ? 1 : 0), y0 - 4, "#d89a8a"); g.fino(ox + 1 + s * 5, y0 - comp, a.crina[1]); }
-    }
-    for (let i = 0; i < n; i++) {
-      const hw = HW[i], x0 = xs - hw, x1 = xs + hw - 1, Y = y0 + i;
-      for (let X = x0; X <= x1; X++) g.fino(X, Y, i >= fz ? tomPano(F, X, x0, x1) : tomPano(P, X, x0, x1));
-    }
-    if (a.mancha) retF(g, xs - 1, y0 + 1, 2, fz - 1, (X, Y) => (X === xs - 1 ? "#f4ecdc" : "#d8ccb6"));
-    // olhos nos lados, narinas, topete
-    const ye = y0 + 3;
-    retF(g, xs - HW[3], ye, 1, 2, "#1c1210"); g.fino(xs - HW[3] + 1, ye, "#fff6e0");
-    retF(g, xs + HW[3] - 1, ye, 1, 2, "#1c1210");
-    g.fino(xs - 2, y0 + n - 2, F[3]); g.fino(xs + 1, y0 + n - 2, F[3]);
-    if (!camelo) retF(g, xs - 2, y0 - 1, 4, 3, (X, Y) => (Y === y0 - 1 ? a.crina[0] : (X + Y) % 2 ? a.crina[1] : a.crina[2]));
-    else retF(g, xs - 2, y0 + n - 1, 4, 1, F[2]); // beiço caído do camelo
-    // cabeçada
-    const C = a.couro[2];
-    for (let X = xs - HW[1]; X <= xs + HW[1] - 1; X++) g.fino(X, y0 + 1, C);
-    for (let X = xs - HW[fz]; X <= xs + HW[fz] - 1; X++) g.fino(X, y0 + fz, C);
-    retF(g, xs - 1, y0 + 1, 2, 1, a.franja);
-  }
-  function animalFrente(g, a, q, parte) {
-    const passo = q === 2 ? 1 : q === 3 ? -1 : 0, dy = q >= 1 && q <= 3 ? 1 : 0;
-    const P = a.pelo, tomP = (nx, ny) => tom(P, -(0.55 * nx + 0.85 * ny) + 0.15);
-    const camelo = !!a.corcova, jumento = !!a.orelhaLonga, pequeno = !!a.pequeno;
-    const yb = (camelo ? 38 : jumento ? 44 : 42) + dy, xs = 28;
-    const perna = (x, ergue, longe, topo) => {
-      const R = longe ? [P[2], P[2], P[3], P[3]] : [P[0], P[1], P[1], P[2]];
-      pintarMascara(g, bastao(new Set(), x, topo, x, CHAO_MT - 3 - ergue, a.pernas.larg + 1), R);
-      if (camelo) retF(g, x - 3, CHAO_MT - 2 - ergue, 6, 2, (X, Y) => (Y === CHAO_MT - 2 - ergue ? claro(a.casco, 0.2) : a.casco));
-      else retF(g, x - 2, CHAO_MT - 3 - ergue, 5, 3, (X, Y) => (Y === CHAO_MT - 3 - ergue ? claro(a.casco, 0.2) : X === x + 2 ? escuro(a.casco, 0.3) : a.casco));
-    };
-    if (parte === "fundo") {
-      // o corpo visto de frente vai para trás: o lombo largo (com a manta) e as patas de trás dos lados
-      perna(xs - 10, passo === -1 ? 1 : 0, true, yb + 4); perna(xs + 9, passo === 1 ? 1 : 0, true, yb + 4);
-      elipF(g, xs, yb + 2, pequeno ? 9 : 14, pequeno ? 6 : 8, (nx, ny) => (ny > 0.55 ? a.ventre : tomP(nx, ny)));
-      if (camelo) elipF(g, xs, yb - 5, 8, 6, tomP);
-      if (pequeno) return [xs, yb];
-      const [M0, M1, M2] = a.manta, ym = yb - (camelo ? 9 : 6);
-      for (let Y = ym; Y <= ym + 10; Y++) for (let X = xs - 14; X <= xs + 13; X++) {
-        let cor = X < xs - 11 ? M0 : X > xs + 10 ? M2 : M1;
-        if (Y === ym + 9) cor = a.franja;
-        if (Y === ym + 10) cor = X % 2 ? a.franja : null;
-        if (a.listra && (Y === ym + 3 || Y === ym + 5)) cor = a.listra;
-        if (cor) g.fino(X, Y, cor);
-      }
-      return [xs, ym];
-    }
-    // patas da frente, peito largo e a cabeça baixa diante do cavaleiro
-    perna(xs - 6, passo === 1 ? 1 : 0, false, yb + 10); perna(xs + 5, passo === -1 ? 1 : 0, false, yb + 10);
-    elipF(g, xs, yb + 10, pequeno ? 7 : camelo ? 7.5 : 10, 5, tomP);
-    if (camelo) elipF(g, xs, yb + 5, 4, 5, tomP); // pescoço
-    cabecaFrenteMt(g, a, xs, yb + (camelo ? -1 : pequeno ? 3 : -3), pequeno || camelo);
-  }
-  // De costas: cabeça e orelhas atrás do cavaleiro; garupa, cauda e patas de trás por cima dele.
-  function animalCostas(g, a, q, parte) {
-    const passo = q === 2 ? -1 : q === 3 ? 1 : 0, dy = q >= 1 && q <= 3 ? 1 : 0;
-    const P = a.pelo, tomP = (nx, ny) => tom(P, -(0.55 * nx + 0.85 * ny) + 0.15);
-    const camelo = !!a.corcova, jumento = !!a.orelhaLonga;
-    const yb = (camelo ? 38 : jumento ? 44 : 42) + dy, xs = 28;
-    if (parte === "fundo") {
-      const hy = yb - (camelo ? 19 : 14);
-      elipF(g, xs, hy + 3, 5, 5, tomP);
-      for (const s of [-1, 1]) linF(g, xs + s * 3 - (s > 0 ? 1 : 0), hy, xs + s * (jumento ? 6 : 4) - (s > 0 ? 1 : 0), hy - (jumento ? 10 : 5), s < 0 ? P[1] : P[2], 2);
-      if (!camelo) retF(g, xs - 1, hy - 2, 2, 12, (X) => (X === xs - 1 ? a.crina[0] : a.crina[1]));
-      elipF(g, xs, yb - 2, 12, 6, tomP);
-      if (camelo) elipF(g, xs, yb - 6, 8, 6, tomP);
-      const [M0, M1, M2] = a.manta, ym = yb - (camelo ? 9 : 6);
-      for (let Y = ym; Y <= ym + 10; Y++) for (let X = xs - 14; X <= xs + 13; X++) {
-        let cor = X < xs - 11 ? M0 : X > xs + 10 ? M2 : M1;
-        if (Y === ym + 9) cor = a.franja;
-        if (Y === ym + 10) cor = X % 2 ? a.franja : null;
-        if (a.listra && (Y === ym + 3 || Y === ym + 5)) cor = a.listra;
-        if (cor) g.fino(X, Y, cor);
-      }
-      return [xs, ym];
-    }
-    const perna = (x, ergue) => {
-      pintarMascara(g, bastao(new Set(), x, yb + 8, x, CHAO_MT - 3 - ergue, a.pernas.larg + 1), P);
-      if (camelo) retF(g, x - 3, CHAO_MT - 2 - ergue, 6, 2, a.casco);
-      else retF(g, x - 2, CHAO_MT - 3 - ergue, 5, 3, (X, Y) => (Y === CHAO_MT - 1 - ergue ? escuro(a.casco, 0.2) : a.casco));
-    };
-    perna(xs - 7, passo === 1 ? 1 : 0); perna(xs + 6, passo === -1 ? 1 : 0);
-    // garupa redonda com o vinco no meio
-    for (const s of [-1, 1]) elipF(g, xs + s * 5 - (s > 0 ? 1 : 0), yb + 5, 8, 7.5, (nx, ny) => tom(P, -(0.55 * nx + 0.85 * ny) + (s < 0 ? 0.3 : -0.05)));
-    linF(g, xs, yb, xs, yb + 11, P[3]); linF(g, xs - 1, yb, xs - 1, yb + 11, P[2]);
-    if (a.cauda === "longa") for (let Y = yb - 1; Y <= yb + 17; Y++) { const w = Y < yb + 2 ? 2 : Y < yb + 13 ? 4 : 3, x = xs - (w >> 1) + (Y > yb + 11 ? passo : 0); retF(g, x, Y, w, 1, (X) => (X === x ? a.crina[0] : (X + Y) % 3 ? a.crina[1] : a.crina[2])); }
-    else { retF(g, xs - 1, yb, 2, 9, (X) => (X === xs - 1 ? P[1] : P[2])); elipF(g, xs, yb + 11, 2, 2.8, (nx) => (nx < 0 ? a.crina[0] : a.crina[1])); }
-  }
-  // Carro: cavalo à frente, caixa de vime e a roda de raios; o cavaleiro vai de pé dentro.
-  function roda(g, cx, cy, r, q) {
-    elipF(g, cx, cy, r, r, (nx, ny) => { const d = Math.sqrt(nx * nx + ny * ny); return d > 0.8 ? (nx + ny < -0.4 ? "#a8703a" : d > 0.93 ? "#3e2a1a" : "#7a5530") : d < 0.24 ? (nx + ny < 0 ? "#e8b94a" : "#b07a38") : null; });
-    for (let k = 0; k < 4; k++) { const ang = (k / 4) * Math.PI + (q % 2) * 0.4; linF(g, cx - Math.cos(ang) * (r - 1.2), cy - Math.sin(ang) * (r - 1.2), cx + Math.cos(ang) * (r - 1.2), cy + Math.sin(ang) * (r - 1.2), "#6b4a2e"); }
-  }
-  function carroVista(g, vista, q, parte) {
-    const cav = MONTARIAS_ARTE.cavalo, dy = q >= 1 && q <= 3 ? 1 : 0;
-    const vime = (X, Y, x0) => ((X + Y) % 3 === 0 ? "#7a5530" : (X - Y) % 4 === 0 ? "#c8964e" : X < x0 + 2 ? "#c08a48" : "#9a6a38");
-    if (vista === "lado") {
-      if (parte === "fundo") {
-        // cavalo à frente (direita), menor, puxando pelo varal
-        const pequeno = Object.assign({}, cav, {
-          corpo: [41, 45, 8, 4.8], anca: [34.5, 44, 5, 5], peito: [47.5, 44.5, 4.5, 5], pernas: { topo: 48, joelho: 54, larg: 3 },
-          pescoco: [[48.5, 40.5, 3.6], [50.5, 36.5, 3], [52, 33, 2.7]], testa: [53, 30.5, 2.8, 2.6], focinho2: [54.5, 34, 2.2, 2], orelhas: [[51, 27]],
-          sela: [41, 41], meia: false,
-        });
-        const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
-        for (let k = 0; k < 11; k++) retF(g, Math.round(29.5 - k * 0.25), 41 + k + dy, 2, 1, k % 3 ? cav.crina[1] : cav.crina[2]);
-        elipF(g, pequeno.anca[0], pequeno.anca[1] + dy, pequeno.anca[2], pequeno.anca[3], tomAnimal(cav));
-        elipF(g, 41, 45 + dy, 8, 4.8, tomAnimal(cav));
-        elipF(g, 47.5, 44.5 + dy, 4.5, 5, tomAnimal(cav));
-        for (const [x, s, longe, tras] of [[45, -passo, true, false], [35, passo, true, true], [47, passo, false, false], [33, -passo, false, true]]) pernaMt(g, pequeno, x, 3 * s, dy, longe, tras);
-        for (let t = 0; t <= 1; t += 0.2) elipF(g, 48.5 + 3.5 * t, 40.5 - 7.5 * t + dy, 3.6 - t, 3.6 - t, tomAnimal(cav, false));
-        elipF(g, 53, 31 + dy, 2.8, 2.6, tomAnimal(cav, false)); elipF(g, 54.5, 34 + dy, 2.2, 2, cav.focinho);
-        g.fino(52, 30 + dy, "#1c1210"); linF(g, 51, 28 + dy, 50, 25 + dy, cav.pelo[1], 2);
-        for (let t = 0; t <= 1; t += 0.25) retF(g, Math.round(47.5 + 3.5 * t), Math.round(38 - 7 * t + dy), 2, 2, cav.crina[1]);
-        // arreio e varal
-        retF(g, 44, 40 + dy, 3, 9, (X) => (X === 44 ? "#e8b94a" : "#b07a38"));
-        linF(g, 14, 47 + dy, 44, 44 + dy, "#6b4a2e", 2);
-        linF(g, 54, 34 + dy, 26, 36 + dy, "#4f3220");
-        return [14, 47 + dy];
-      }
-      // caixa do carro por cima das pernas do cavaleiro e a roda
-      for (let Y = 37 + dy; Y <= 50 + dy; Y++) { const x0 = Y < 40 + dy ? 4 + (40 + dy - Y) : 4, x1 = 26; for (let X = x0; X <= x1; X++) g.fino(X, Y, Y === 37 + dy || X === x1 ? "#e8b94a" : Y === 50 + dy ? "#5e3c1c" : vime(X, Y, x0)); }
-      retF(g, 4, 43 + dy, 23, 1, "#b07a38");
-      roda(g, 15, 52, 9, q);
-      return;
-    }
-    if (parte === "fundo") {
-      roda(g, 6, 51, 7.5, q); roda(g, 49, 51, 7.5, q);
-      if (vista === "costas") { elipF(g, 28, 26 + dy, 3.6, 4, tomAnimal(cav, false)); linF(g, 25, 23 + dy, 24, 19 + dy, cav.pelo[1], 2); linF(g, 30, 23 + dy, 31, 19 + dy, cav.pelo[2], 2); }
-      return [28, 49 + dy];
-    }
-    for (let Y = 41 + dy; Y <= 52 + dy; Y++) for (let X = 11; X <= 44; X++) g.fino(X, Y, Y === 41 + dy ? "#e8b94a" : Y === 52 + dy ? "#5e3c1c" : X === 11 ? "#c8964e" : X === 44 ? "#6b4a2e" : vime(X, Y, 11));
-    retF(g, 11, 46 + dy, 34, 1, "#b07a38");
-    if (vista === "frente") {
-      // o cavalo, menor, de frente diante da caixa
-      const pequeno = Object.assign({}, cav, { pequeno: true, pernas: { topo: 46, joelho: 54, larg: 3 } });
-      animalFrente(g, pequeno, q, "frente");
-    }
-  }
-  function desenharMontaria(g, tipo, vista, q, parte) {
-    if (tipo === "carro") return carroVista(g, vista, q, parte);
-    const a = MONTARIAS_ARTE[tipo] || MONTARIAS_ARTE.jumento;
-    if (vista === "lado") return parte === "fundo" ? animalLado(g, a, q) : null;
-    if (vista === "frente") return animalFrente(g, a, q, parte);
-    return animalCostas(g, a, q, parte);
+    for (const [x, d] of lado ? [[14, passo], [20, -passo], [34, -passo], [39, passo]] : [[21, passo], [32, -passo]])
+      retF(g, x + (lado ? d : 0), 46, 3, CHAO_MT - 46 - (lado ? 0 : Math.max(0, d)), x === 20 || x === 34 ? P[3] : P[2]);
+    if (lado) { elipF(g, 27, 42 + dy, 14, 7, tomP); elipF(g, 42, 33 + dy, 4.5, 8, tomP); elipF(g, 46, 26 + dy, 5, 4, tomP); return [25, 36 + dy]; }
+    elipF(g, 28, 42 + dy, 9, 9, tomP);
+    if (vista === "frente") elipF(g, 28, 48 + dy, 4.5, 6, tomP); else elipF(g, 28, 30 + dy, 4, 5, tomP);
+    return [28, 36 + dy];
   }
   // Montaria sozinha (para a loja): de lado, parada.
   for (const tipo of ["jumento", "cavalo", "camelo", "carro"])
-    registrar("mt_" + tipo, { w: W_MT, h: H_MT, quadros: 1, contorno: "amigo", origem: [0.5, 1], desenhar(g) { desenharMontaria(g, tipo, "lado", 0, "fundo"); desenharMontaria(g, tipo, "lado", 0, "frente"); } });
+    registrar("mt_" + tipo, { w: W_MT, h: H_MT, quadros: 1, contorno: "amigo", origem: [0.5, 1], desenhar(g) { desenharMontaria(g, tipo, "lado", 0); } });
 
-  // Jogador montado: montaria (fundo) + boneco sentado (ou de pé no carro) + montaria (frente).
-  // A sela devolve [x, y] onde fica o quadril (linha yR = 33 do boneco); no carro, o chão da caixa.
+  // Jogador montado: arte/montado.js pela spec; sem ela, a montaria de reserva com o boneco de reserva em cima.
   function registrarMontado(chave, cfg, tipo) {
     MONTADOS[chave] = { cfg, tipo };
     if (specMontado) {
@@ -1789,12 +876,11 @@
       humano: true, montado: tipo, retratoQuadro: QUADROS_POR_VISTA, busto: [6, 0, 16, 14], limiteCores: 32,
       desenhar(g, quadro) {
         const vista = VISTAS[Math.floor(quadro / QUADROS_POR_VISTA)], q = quadro % QUADROS_POR_VISTA;
-        const [sx, sy] = desenharMontaria(g, tipo, vista, q, "fundo");
+        const [sx, sy] = desenharMontaria(g, tipo, vista, q);
         const r = new Grade(20, 24);
         desenharHumano(r, cav, quadro - (q >= 1 && q <= 3 ? q : 0)); // montado não dá passos: balança com a montaria
         const ox = Math.round(sx) - 20, oy = Math.round(sy) - (tipo === "carro" ? 45 : 33);
         for (let Y = 0; Y < r.h; Y++) for (let X = 0; X < r.w; X++) { const c = r.d[Y * r.w + X]; if (c) g.fino(X + ox, Y + oy, c); }
-        desenharMontaria(g, tipo, vista, q, "frente");
       },
     });
   }
@@ -1802,8 +888,6 @@
   humano("pj_eliabe", {
     molde: "manto", cabelo: "curto",
     cores: { H: "#e8dcc0", S: "#cf9466", s: "#b07548", B: "#e8dcc0", R: "#b08a5a", r: "#8a6a42", d: "#5e4630", A: "#8e2a1f", F: "#5e4630" },
-    // faixa de linho claro descendo pela veste e tira vermelha na testa
-    extraCorpo: (g, P) => { if (P.vista === "frente") retF(g, 15, P.yT + 2, 2, 41 - P.yT - 2, (X) => (X === 15 ? "#f4ead2" : "#d8ccae")); },
     acessorios: [["faixa", ["#8e2a1f"]], ["cajado_curvo", ["#7a5530", "#9a7048"]]],
   });
   humano("pj_micael", {
@@ -1870,184 +954,12 @@
   // A pegada (largura × altura em casas) bloqueia a passagem; o desenho sobe acima dela.
   // A base da arte fica na penúltima linha; a última é margem. Cada quadro é uma variante.
   // -------------------------------------------------------------------
-  // casa: 0 adobe claro · 1 pedra de Canaã · 2 basalto da Galileia · 3 tijolo de barro do Egito
-  const CORES_CASA = [
-    { parede: ["#a8845a", "#c8a272", "#e0c090"], teto: ["#b08a5a", "#cfae74", "#e6cf9c"], junta: "#8a6a42", pedra: false },
-    { parede: ["#8a7a62", "#a8987a", "#c8b898"], teto: ["#8a7a5e", "#a8966f", "#c2b088"], junta: "#6e604c", pedra: true },
-    { parede: ["#363432", "#4c4a48", "#6a6662"], teto: ["#5a4a3a", "#7a6448", "#94805e"], junta: "#262422", pedra: true },
-    { parede: ["#87502f", "#a8683f", "#c8865a"], teto: ["#a8865e", "#c8a272", "#dcbc8a"], junta: "#6a3c22", tijolo: true },
-  ];
-  registrar("es_casa", {
-    w: 52, h: 52, quadros: CORES_CASA.length, origem: [0.5, 1], estrutura: true,
-    desenhar(g, v) {
-      const c = CORES_CASA[v], b = 50, topo = 20, x0 = 3, x1 = 48;
-      g.sombra(30, b + 0.5, 25, 2.2);
-      // parede da frente com textura do material
-      for (let y = topo; y <= b; y++)
-        for (let x = x0; x <= x1; x++) {
-          const luz = x < x0 + 3 ? 2 : x > x1 - 4 ? 0 : 1;
-          let cor = c.parede[luz];
-          if (c.pedra) {
-            const fila = Math.floor((y - topo) / 5), off = fila % 2 ? 4 : 0;
-            if ((y - topo) % 5 === 4 || (x + off) % 8 === 0) cor = c.junta;
-            else if (hash2(Math.floor((x + off) / 8), fila, 300 + v) < 0.3) cor = c.parede[Math.max(0, luz - 1)];
-          } else if (c.tijolo) {
-            const fila = Math.floor((y - topo) / 3), off = fila % 2 ? 3 : 0;
-            if ((y - topo) % 3 === 2 || (x + off) % 6 === 0) cor = c.junta;
-          } else if (hash2(x, y, 301) < 0.06) cor = c.parede[Math.max(0, luz - 1)];
-          g.p(x, y, cor);
-        }
-      // teto plano visto de cima (com mureta) e as pontas das vigas
-      g.ret(x0 - 1, topo - 9, x1 - x0 + 3, 9, (x, y) => (y === topo - 9 || x === x0 - 1 || x === x1 + 1 ? c.teto[0] : y === topo - 8 ? c.teto[2] : c.teto[1]));
-      g.lin(x0 - 1, topo - 1, x1 + 1, topo - 1, c.teto[0]);
-      for (let x = x0 + 3; x < x1; x += 7) { g.p(x, topo + 1, "#5a3a24"); g.p(x + 1, topo + 1, "#4a3020"); }
-      // porta em arco com folha de madeira
-      const px = x0 + 13;
-      for (let y = b - 16; y <= b; y++)
-        for (let x = px; x < px + 9; x++) {
-          const nx = (x - (px + 4)) / 4.6, ny = (y - (b - 11)) / 5;
-          if (y < b - 11 && nx * nx + ny * ny > 1) continue;
-          g.p(x, y, x === px || y === b - 16 ? "#2a1a14" : x < px + 3 ? "#5a3a24" : "#7a5530");
-        }
-      g.p(px + 6, b - 7, "#e8b94a");
-      // janela com treliça
-      g.ret(x1 - 13, topo + 7, 6, 5, "#2a1a14");
-      for (let k = 0; k < 6; k += 1.5) { g.linf(x1 - 13 + k, topo + 7, x1 - 13 + k + 2.5, topo + 11.5, "#6b4a2e"); g.linf(x1 - 10.5 + k, topo + 7, x1 - 13 + k, topo + 11.5, "#5a3a24"); }
-      g.lin(x1 - 14, topo + 12, x1 - 6, topo + 12, c.teto[2]);
-      // escada externa até o terraço (adobe e pedra)
-      if (v < 2) for (let i = 0; i < 6; i++) g.ret(x1 - 4 + Math.floor(i / 2), b - 4 - i * 5, 4, 2, c.teto[i % 2 ? 1 : 2]);
-      // jarro e degrau na soleira
-      g.ret(px - 1, b, 11, 1, c.parede[0]);
-      g.elip(px - 5, b - 2, 2, 2.5, (nx, ny) => tom(["#8e4a2a", "#b5663a", "#d88a58"], -(nx + ny)));
-      // detalhe em 32 px: tábuas e cravos da porta, verga de madeira, persianas da janela, reboco gasto
-      for (let x = px + 1.5; x < px + 8.5; x += 1.5) g.linf(x, b - 10, x, b - 0.5, "#4a3020");
-      for (const y of [b - 9, b - 3]) for (let x = px + 1; x < px + 8.5; x += 2) g.pf(x, y, "#c9a46a");
-      g.retf(px - 1, b - 17, 11, 1, "#5a3a24"); g.linf(px - 1, b - 17, px + 9.5, b - 17, "#7a5530");
-      for (const sx of [x1 - 15, x1 - 7]) { g.ret(sx, topo + 6, 2, 7, "#6b4a2e"); for (let y = topo + 6.5; y < topo + 13; y += 1) g.linf(sx, y, sx + 1.5, y, "#8a6a42"); g.linf(sx, topo + 6, sx, topo + 12.5, "#4a3020"); }
-      for (let k = 0; k < 12; k++) {
-        const x = x0 + 2 + hash2(k, v, 321) * (x1 - x0 - 4), y = topo + 2 + hash2(v, k, 322) * (b - topo - 6);
-        if (Math.abs(x - (px + 4)) < 7 && y > b - 18) continue;
-        g.linf(x, y, x + 1, y + 0.5, misturar(c.parede[0], c.junta, 0.5));
-      }
-      // no terraço: forno de barro (tabun) com fumaça e um vaso de planta
-      g.elip(x0 + 9, topo - 5, 3, 2.4, (nx, ny) => tom(["#7a4a2a", "#a8683f", "#c8865a"], -(nx + ny)));
-      g.retf(x0 + 8.5, topo - 7.5, 1, 0.5, "#2a1a14");
-      g.elip(x1 - 6, topo - 4, 1.6, 1.4, "#b5663a"); g.elip(x1 - 6, topo - 6, 2.2, 1.6, (nx, ny) => (nx + ny < 0 ? "#7a8a3f" : "#55642c"));
-    },
-    depois(g, v) {
-      // fumaça do forno (sem contorno), em fiapos de 1 px
-      const x0 = 3 + 9, topo = 20 - 8;
-      for (let k = 0; k < 6; k++) g.pf(x0 - 0.5 + Math.sin(k * 1.3 + v) * 0.8, topo - k * 1.2, comAlfa("#e8e2d4", 0.5 - k * 0.07));
-    },
-  });
+  // O desenho (4 variantes de casa e de tenda, 2 de banca) está em arte/flora.js.
+  reserva("es_casa", { w: 52, h: 52, quadros: 4, origem: [0.5, 1], estrutura: true, contorno: "amigo" });
 
-  // tenda: 0 pano cru · 1 listras vermelhas · 2 listras índigo · 3 pelo de cabra escuro
-  const CORES_TENDA = [
-    { pano: ["#a8916a", "#c8b48a", "#e0d0a8"], listra: "#b8a07a" },
-    { pano: ["#b8a07a", "#d8c49a", "#eadcb6"], listra: "#a8402e" },
-    { pano: ["#b8a07a", "#d8c49a", "#eadcb6"], listra: "#3b5a9a" },
-    { pano: ["#2e2420", "#46382e", "#5e4c3e"], listra: "#8a7a62" },
-  ];
-  registrar("es_tenda", {
-    w: 52, h: 44, quadros: CORES_TENDA.length, origem: [0.5, 1], estrutura: true,
-    desenhar(g, v) {
-      const c = CORES_TENDA[v], b = 42, cumeeira = 9, beiral = 24;
-      g.sombra(29, b + 0.5, 25, 2);
-      // cordas e estacas
-      for (const [x0, x1] of [[4, 1], [47, 50]]) { g.lin(x0, beiral, x1, b, "#8a6a42"); g.p(x1, b, "#5a3a24"); }
-      // teto: desce da cumeeira até o beiral, com listras
-      for (let y = cumeeira; y <= beiral; y++) {
-        const t = (y - cumeeira) / (beiral - cumeeira), meia = Math.round(15 + t * 9);
-        for (let x = 26 - meia; x <= 25 + meia; x++) {
-          const lado = x < 26 - meia + 3 ? 2 : x > 25 + meia - 4 ? 0 : 1;
-          let cor = c.pano[lado];
-          if ((y - cumeeira) % 5 === 3) cor = c.listra;
-          if (y === beiral) cor = c.pano[0];
-          g.p(x, y, cor);
-        }
-      }
-      // paredes de pano até o chão, com a entrada aberta no meio
-      for (let y = beiral + 1; y <= b; y++)
-        for (let x = 3; x <= 48; x++) {
-          const entrada = x >= 21 && x <= 30;
-          let cor = x < 6 ? c.pano[2] : x > 45 ? c.pano[0] : c.pano[1];
-          if ((x - 3) % 9 === 0) cor = c.pano[0];
-          if (entrada) cor = y < beiral + 3 ? c.pano[0] : "#1c1210";
-          g.p(x, y, cor);
-        }
-      // aba enrolada sobre a entrada e varas do beiral
-      g.ret(20, beiral + 1, 12, 2, c.listra);
-      for (const x of [3, 20, 31, 48]) g.lin(x, beiral, x, b, "#6b4a2e");
-      g.lin(23, cumeeira - 3, 23, cumeeira, "#6b4a2e"); g.lin(28, cumeeira - 3, 28, cumeeira, "#6b4a2e");
-      // tapete na soleira
-      g.ret(22, b, 8, 1, "#8e2a1f");
-    },
-  });
-
-  // banca: 0 com mercadorias · 1 vazia (espaço reservado para uma loja futura)
-  registrar("es_banca", {
-    w: 52, h: 46, quadros: 2, origem: [0.5, 1], estrutura: true,
-    desenhar(g, v) {
-      const b = 44, toldo = 6, balcao = 31;
-      g.sombra(29, b + 0.5, 25, 2);
-      // fundo de pano escuro entre os postes
-      g.ret(5, toldo + 9, 42, balcao - toldo - 9, (x, y) => ((x + y) % 7 === 0 ? "#4a3a30" : "#3a2c24"));
-      // prateleira dos fundos com jarros (mercadorias) ou panos dobrados (vazia)
-      g.lin(6, balcao - 7, 45, balcao - 7, "#7a5530");
-      if (v === 0) {
-        for (const [x, cor] of [[9, "#b5663a"], [14, "#c8b070"], [19, "#8e4a2a"], [33, "#b5663a"], [38, "#d88a58"], [42, "#8e4a2a"]])
-          g.elip(x, balcao - 10, 2, 2.6, (nx, ny) => (nx + ny < -0.4 ? misturar(cor, "#ffffff", 0.25) : cor));
-      } else {
-        g.ret(10, balcao - 10, 8, 3, "#c8b48a"); g.lin(10, balcao - 10, 17, balcao - 10, "#e0d0a8");
-        g.ret(34, balcao - 9, 7, 2, "#a8916a");
-      }
-      // balcão de madeira
-      g.ret(3, balcao, 46, b - balcao + 1, (x, y) => (y === balcao ? "#c9a46a" : y === balcao + 1 ? "#a8844f" : (x - 3) % 11 === 0 ? "#5e4630" : x < 6 ? "#9a7048" : "#7a5530"));
-      // mercadorias no balcão
-      if (v === 0) {
-        g.elip(11, balcao - 1, 3, 1.5, "#e8b94a"); g.p(10, balcao - 2, "#ffe08a");
-        g.ret(17, balcao - 3, 6, 3, "#8e2a1f"); g.lin(17, balcao - 3, 22, balcao - 3, "#c2452d");
-        g.ret(25, balcao - 2, 5, 2, "#55642c"); g.p(26, balcao - 3, "#7a8a3f");
-        for (let i = 0; i < 3; i++) g.elip(35 + i * 4, balcao - 2, 1.6, 1.6, i % 2 ? "#c2452d" : "#d9a35c");
-      } else {
-        g.ret(20, balcao - 2, 10, 2, "#d4bf8f"); g.lin(20, balcao - 2, 29, balcao - 2, "#eadcb6");
-      }
-      // postes e toldo listrado com bainha recortada
-      for (const x of [4, 47]) g.lin(x, toldo, x, b, "#5e4630");
-      for (let y = toldo; y < toldo + 9; y++)
-        for (let x = 1; x <= 50; x++) {
-          const listra = Math.floor((x - 1) / 4) % 2 === 0;
-          const cor = y === toldo ? "#5e1a14" : listra ? (v === 0 ? "#c2452d" : "#3b5a9a") : "#eadcb6";
-          g.p(x, y, y > toldo + 6 && (x % 4 === 0) ? null : cor);
-        }
-      g.lin(1, toldo + 1, 50, toldo + 1, "#f3e4c0");
-    },
-  });
-
-  registrar("es_poco", {
-    w: 20, h: 28, quadros: 1, origem: [0.5, 1], estrutura: true,
-    desenhar(g) {
-      const b = 26;
-      g.sombra(12, b, 9, 1.6);
-      // cilindro de pedra
-      for (let y = 15; y <= b; y++)
-        for (let x = 2; x <= 17; x++) {
-          const fila = Math.floor((y - 15) / 3), off = fila % 2 ? 2 : 0;
-          let cor = x < 5 ? "#c8b898" : x > 14 ? "#7a6a54" : "#a8987a";
-          if ((y - 15) % 3 === 2 || (x + off) % 5 === 0) cor = "#6e604c";
-          g.p(x, y, cor);
-        }
-      // borda e água escura
-      g.elip(9.5, 14.5, 8.5, 3, "#d2c2a2");
-      g.elip(9.5, 14.5, 6, 1.8, "#1d4f5c");
-      g.p(8, 14, "#4fa3a5");
-      // armação, travessa, corda e balde
-      g.lin(3, 14, 3, 3, "#6b4a2e"); g.lin(16, 14, 16, 3, "#6b4a2e");
-      g.lin(2, 3, 17, 3, "#8a6a42"); g.lin(2, 2, 17, 2, "#5e4630");
-      g.lin(10, 4, 10, 9, "#c9a46a");
-      g.ret(9, 9, 3, 3, "#7a5530"); g.lin(9, 9, 11, 9, "#a8844f");
-    },
-  });
+  reserva("es_tenda", { w: 52, h: 44, quadros: 4, origem: [0.5, 1], estrutura: true, contorno: "amigo" });
+  reserva("es_banca", { w: 52, h: 46, quadros: 2, origem: [0.5, 1], estrutura: true, contorno: "amigo" });
+  reserva("es_poco", { w: 20, h: 28, quadros: 1, origem: [0.5, 1], estrutura: true, contorno: "amigo" });
 
   // ----- Moradores das vilas (papel "ambiente"; aparencia em dados/npcs.js) -----
   humano("pj_morador_aguadeira", {
@@ -2106,10 +1018,6 @@
     acessorios: [["rede", ["#c9b48a"]], ["saco", ["#4fa3a5", "#a9dccf"]]],
   });
   // Barqueiro do cais: túnica curta azul-mar, faixa na cabeça, rolo de corda e o remo na mão.
-  acessorio("remo", "frente", (g, c, P) => {
-    const [x, y] = haste(g, P, c, 26, 15);
-    retF(g, x - 1, y - 2, 4, 6, c[1]); retF(g, x - 1, y - 2, 1, 6, claro(c[1], 0.3)); retF(g, x + 2, y - 2, 1, 6, escuro(c[1], 0.3));
-  });
   humano("pj_morador_barqueiro", {
     molde: "curta",
     cores: { H: "#2a1a10", S: "#a8683e", s: "#82502e", B: "#2a1a10", R: "#3f7f9a", r: "#2f6680", d: "#1f4a5e", A: "#c8b48a", F: "#6a4a2e" },
@@ -2139,7 +1047,6 @@
     molde: "curta", hostil: true, barba: false,
     cores: { H: "#1e1a1a", S: "#b97a4c", s: "#93603a", R: "#f0e8d8", r: "#d8ccb4", d: "#b0a48c", A: "#e8b94a", F: "#4f3220" },
     // peito nu com colar largo, saiote de linho e nemes listrado
-    extraCorpo: (g, P, c) => { const x0 = P.vista === "lado" ? 14 : 12, x1 = P.vista === "lado" ? 26 : 27; retF(g, x0, P.yT, x1 - x0 + 1, P.yC - P.yT, (X, Y) => (Y === P.yC - 1 ? c.pele[2] : tomPano(c.pele, X, x0, x1))); },
     mangaCor: "#b97a4c",
     acessorios: [["colar", ["#e8b94a", "#3b5a9a"]], ["nemes", ["#f0e8d8", "#3b5a9a", "#e8b94a"]], ["escudo_alto", ["#8a5a32", "#e8dcc0", "#5e3c1c"]], ["lanca", ["#6b4a2e", "#b07a38"]]],
   });
@@ -2156,317 +1063,8 @@
     acessorios: [["turbante", ["#1e1a1a"]], ["escudo_oval", ["#a88a5a", "#7d6a4a"]], ["lanca_longa", ["#4a3222", "#a8b4bc"]]],
   });
 
-  // ----- Quadrúpede e aracnídeo (20×14) -----
-  // lobo: desenhado pelo quadrúpede (abaixo), com a pelagem cinza e o ventre claro
-  registrar("in_escorpiao", {
-    w: 20, h: 14, quadros: 5, contorno: "hostil",
-    desenhar(g, q) {
-      const A = "#9a5e24", B = "#c98a3a", C = "#e8b45e", F = "#c2452d", O = "#2a1a14";
-      const osc = q === 1 || q === 3 ? 1 : 0, ataque = q === 4;
-      // patas
-      const lp = q === 2 ? 1 : 0;
-      for (const x of [7, 9, 11]) { g.p(x - 1 + lp, 11, A); g.p(x - 2 + lp, 12, A); g.p(x + 1 - lp, 11, A); }
-      // corpo segmentado
-      g.elip(10, 9, 4.6, 2, esfera([A, B, C]));
-      for (const x of [8, 10, 12]) g.p(x, 9, A);
-      // cauda em arco sobre o corpo (5 segmentos)
-      const cauda = ataque ? [[6, 8], [4, 7], [3, 5], [4, 3], [6, 3]] : [[6, 8], [4, 7], [3, 5], [3 + osc, 3], [5 + osc, 2]];
-      cauda.forEach(([x, y], i) => { g.ret(x, y, 2, 2, i % 2 ? B : C); g.p(x + 1, y + 1, A); });
-      const [fx, fy] = cauda[4];
-      g.p(fx + 2, fy + 1, F); g.p(fx + 2, fy + 2, F);
-      // pinças
-      const ab = ataque ? 0 : 1;
-      g.ret(14, 7, 2, 2, B); g.ret(16, 6 - ab, 2, 2, C); g.ret(16, 9 + ab, 2, 2, B); g.p(18, 6 - ab, C); g.p(18, 10 + ab, A);
-      g.p(14, 8, O);
-    },
-  });
 
 
-  // ----- Criaturas novas (JGB-7): cada uma com o seu sprite -----
-  // Quadrúpede genérico (5 quadros: parado, respiração, passo, passo, bote). o: cores e formas.
-  // Desenhado em 32 px por casa (coordenadas em unidades de meia casa/8, com meia unidade de precisão):
-  // coxa e ombro arredondados, canela fina, pata ou casco, peito e quadril, pescoço, focinho afilado.
-  function quadrupede(chave, o) {
-    const W = o.w || 20, H = o.h || 14;
-    return registrar(chave, {
-      w: W, h: H, quadros: 5, contorno: o.contorno || "hostil",
-      desenhar(g, q) {
-        const [A, B, C] = o.pelo, V = o.ventre || C, N = "#2a1a14";
-        const resp = q === 1 ? 0.5 : 0, bote = q === 4 ? 2 : 0;
-        const passo = q === 2 ? 1 : q === 3 ? -1 : 0;
-        const chao = H - 1.5, perna = o.perna || 3;
-        const cy = chao - perna - o.ry + 0.5; // centro do corpo
-        const cx = o.cx || W / 2 - 1;
-        const tomPelo = (nx, ny) => (ny > 0.5 ? V : tom([A, B, C], -(0.4 * nx + 0.9 * ny) + (o.corcunda ? nx * 0.3 : 0)));
-        const casco = o.casco || escuroT(A, 0.3);
-        // perna: coxa (elipse), canela (1,5 un. de largura) que se inclina no passo e pata
-        const perna1 = (x, d, longe) => {
-          const cor = longe ? [escuroT(A, 0.15), A] : [B, C];
-          const topo = cy + o.ry * 0.25, joelho = chao - perna * 0.45;
-          g.elip(x, topo + 0.4, 1.05, Math.max(1.1, o.ry * 0.62), (nx, ny) => (nx < -0.3 ? cor[1] : cor[0]));
-          g.linf(x - 0.5, joelho - 1, x - 0.5 + d * 0.5, chao - 0.5, cor[0]);
-          g.linf(x, joelho - 1, x + d * 0.5, chao - 0.5, longe ? cor[0] : escuroT(cor[0], 0.18));
-          g.retf(x - 0.5 + d * 0.5, chao - 0.5, o.casco ? 1 : 1.5, 1, casco);
-          g.pf(x - 0.5 + d * 0.5, chao - 0.5, claroT(casco, 0.25));
-        };
-        const tras = cx - o.rx + 1.6, frente = cx + o.rx - 1.6;
-        perna1(tras + 1, -passo, true); perna1(frente, passo, true);
-        // cauda (cadeia de bolinhas)
-        const tx = cx - o.rx + 0.3;
-        const cadeia = (pts, r0, r1, cor) => pts.forEach(([x, y], i) => g.elip(x, y, r0 + ((r1 - r0) * i) / Math.max(1, pts.length - 1), r0 + ((r1 - r0) * i) / Math.max(1, pts.length - 1), cor));
-        const bal = q === 1 || q === 3 ? 0.5 : 0;
-        if (o.cauda === "tufo") { cadeia([[tx, cy - 0.5], [tx - 1, cy], [tx - 2, cy + 0.8], [tx - 3, cy + 1.6 - bal]], 0.7, 0.5, B); g.elip(tx - 3.6, cy + 2.2 - bal, 1.1, 1.2, o.tufo || A); }
-        else if (o.cauda === "longa") cadeia([[tx, cy], [tx - 1, cy - 0.3], [tx - 2, cy - 0.8], [tx - 3, cy - 1.6 - bal], [tx - 3.6, cy - 2.6 - bal], [tx - 3.8, cy - 3.6 - bal]], 0.7, 0.5, B);
-        else if (o.cauda === "peluda") { cadeia([[tx, cy - 0.5], [tx - 1, cy + 0.2], [tx - 2, cy + 1 - bal], [tx - 2.6, cy + 2 - bal]], 0.8, 1.1, B); g.pf(tx - 2.8, cy + 3 - bal, C); }
-        else if (o.cauda === "curta") cadeia([[tx, cy - 0.6], [tx - 0.8, cy - 1.2]], 0.7, 0.6, B);
-        // corpo: tronco, quadril e peito
-        g.elip(cx, cy + resp * 0.5, o.rx, o.ry, tomPelo);
-        g.elip(cx - o.rx * 0.5, cy - 0.2, o.rx * 0.48, o.ry * 1.02, tomPelo);
-        g.elip(cx + o.rx * 0.55, cy + 0.1 + resp * 0.5, o.rx * 0.48, o.ry * 1.08, tomPelo);
-        if (o.manchas) for (const [x, y] of o.manchas) { g.elip(cx + x + 0.5, cy + y + 0.5, 0.75, 0.6, o.corMancha || N); g.pf(cx + x + 0.75, cy + y + 0.5, escuroT(B, 0.05)); }
-        if (o.listras) for (const x of o.listras) { g.linf(cx + x, cy - o.ry + 0.5, cx + x - 0.5, cy + 0.5, o.corMancha || A); g.linf(cx + x + 0.5, cy - o.ry + 0.5, cx + x, cy + 0.5, o.corMancha || A); }
-        perna1(tras, passo, false); perna1(frente - 1, -passo, false);
-        // pescoço e cabeça
-        const hx = cx + o.rx + (o.pescoco || 0) + bote, hy = cy - (o.alturaCabeca || 2);
-        for (let t = 0; t <= 1; t += 0.25) g.elip(cx + o.rx * 0.7 + (hx - 0.6 - cx - o.rx * 0.7) * t + bote * 0, cy - 0.4 + (hy + 0.4 - cy) * t, 1.4, 1.4 + (1 - t) * 0.6, tomPelo);
-        if (o.juba) g.elip(hx - 1, hy + 0.5, o.cabeca + 1.6, o.cabeca + 1.6, (nx, ny, x, y) => tom(o.juba, -(0.55 * nx + 0.8 * ny) + (hash2(x, y, 5) - 0.5) * 0.6));
-        g.elip(hx, hy, o.cabeca, o.cabeca * 0.92, esfera([A, B, C]));
-        const fl = o.focinho || 2, cf = o.corFocinho || B;
-        // focinho afilado e mandíbula
-        g.elip(hx + 0.6 + fl * 0.55, hy + 0.65, fl * 0.75 + 0.3, 0.95, (nx, ny) => (ny < -0.4 ? claroT(cf, 0.12) : ny > 0.5 ? escuroT(cf, 0.2) : cf));
-        g.retf(hx + fl + 0.5, hy, 1, 1, N); // nariz
-        g.pf(hx + fl + 0.5, hy, claroT(N, 0.4));
-        g.linf(hx + 1, hy + 1.5, hx + fl + 0.5, hy + 1.5, escuroT(cf, 0.4));
-        // olho com íris, pupila e brilho
-        const ox = hx + 0.5, oy = hy - 1;
-        g.retf(ox - 0.5, oy, 1.5, 1, o.olho || "#e8b94a");
-        g.pf(ox + 0.5, oy, "#1c1210"); g.pf(ox, oy, claroT(o.olho || "#e8b94a", 0.55));
-        g.linf(ox - 0.5, oy - 0.5, ox + 1, oy - 0.5, escuroT(A, 0.2));
-        if (o.presas) { g.retf(hx + fl - 0.5, hy + 1.5, 0.5, 1, "#f6efdc"); g.retf(hx + fl, hy + 1.5, 0.5, 1.5, "#f6efdc"); }
-        if (o.barbicha) { g.linf(hx + 1, hy + 2, hx + 0.5, hy + 3.5, o.barbicha); g.linf(hx + 1.5, hy + 2, hx + 1, hy + 3.5, escuroT(o.barbicha, 0.2)); }
-        // orelhas (triângulos), com o dentro rosado
-        const orelha = (x, y, alt, larg, cor, dentro) => { for (let k = 0; k <= alt * 2; k++) { const w = larg * (1 - k / (alt * 2 + 1)); g.retf(x - w / 2, y - k / 2, Math.max(0.5, w), 0.5, cor); } if (dentro) g.retf(x - 0.25, y - alt / 2, 0.5, alt / 2, dentro); };
-        if (o.orelhas === "pontudas") { orelha(hx - 1.2, hy - 1.6, 2, 1.6, A, null); orelha(hx + 0.3, hy - 1.6, 2.2, 1.6, B, "#c88a7a"); }
-        else if (o.orelhas === "grandes") { orelha(hx - 1.4, hy - 1.6, 3.2, 1.8, A, null); orelha(hx + 0.4, hy - 1.6, 3.4, 1.8, B, "#c88a7a"); }
-        else if (o.orelhas === "redondas") { g.elip(hx - 1.2, hy - 2, 1, 0.9, A); g.elip(hx + 0.6, hy - 2.1, 1, 0.9, B); g.pf(hx + 0.6, hy - 2, "#c88a7a"); }
-        if (o.chifres) {
-          const ch = o.chifres;
-          const arco = (x0, y0, esc) => { for (let k = 0; k <= 8; k++) { const t = k / 8; g.retf(x0 - 2.6 * t * t - 0.5 * t, y0 - 3.4 * t, 0.5 + (1 - t) * 0.6, 0.5, k % 3 === 0 ? escuroT(ch, 0.2) : esc ? escuroT(ch, 0.1) : ch); } };
-          arco(hx - 0.6, hy - 1.4, true); arco(hx + 0.4, hy - 1.4, false);
-          g.pf(hx - 1.5, hy - 3.5, claroT(ch, 0.35));
-        }
-        // pelagem em traços sobre o lombo
-        const sem = sementeDe(chave);
-        for (let i = 0; i < 18; i++) {
-          const t = hash2(i, 3, sem), u = hash2(i, 4, sem);
-          const x = cx - o.rx * 0.8 + t * o.rx * 1.6, y = cy - o.ry * 0.8 + u * o.ry * 1.0;
-          if (((x - cx) / o.rx) ** 2 + ((y - cy) / o.ry) ** 2 > 0.75) continue;
-          g.linf(x, y, x + 0.5, y + 0.5, u < 0.4 ? claroT(C, 0.12) : escuroT(B, 0.18));
-        }
-      },
-    });
-  }
-  // Aliados do Pastor (JGB-20): cão pastor e ovelha, com o contorno dos amigos.
-  quadrupede("al_cao", {
-    w: 20, h: 14, pelo: ["#5a3a24", "#8a5a34", "#b07a48"], ventre: "#efe2c4", rx: 4.6, ry: 2.4, cabeca: 2.2, focinho: 2,
-    corFocinho: "#efe2c4", orelhas: "pontudas", cauda: "peluda", perna: 4, contorno: "amigo",
-  });
-  quadrupede("al_ovelha", {
-    w: 20, h: 14, pelo: ["#cfc6b4", "#e8e2d4", "#f8f4ea"], ventre: "#e8e2d4", rx: 5, ry: 3, cabeca: 1.8, focinho: 1,
-    corFocinho: "#3a3028", olho: "#2a1a14", orelhas: "pontudas", cauda: "curta", perna: 2, casco: "#3a3028", contorno: "amigo",
-  });
-  quadrupede("in_lobo", {
-    w: 20, h: 14, pelo: ["#5a4c40", "#857565", "#a89a86"], ventre: "#d0c2a8", rx: 4.8, ry: 2.5, cabeca: 2.2, focinho: 2.4,
-    corFocinho: "#9a8a76", orelhas: "pontudas", cauda: "peluda", perna: 4, olho: "#e8b94a",
-  });
-  quadrupede("in_chacal", {
-    w: 20, h: 14, pelo: ["#9a6a34", "#c08a48", "#dcae6c"], ventre: "#ecd4a4", rx: 4.6, ry: 2.2, cabeca: 2, focinho: 3,
-    orelhas: "grandes", cauda: "peluda", perna: 4,
-  });
-  quadrupede("in_javali", {
-    w: 20, h: 14, pelo: ["#3e2a1e", "#5a3e2a", "#7a5a3e"], ventre: "#6a5040", rx: 5.6, ry: 3, cabeca: 2.4, focinho: 2,
-    corFocinho: "#8a6a5a", orelhas: "pontudas", cauda: "curta", perna: 2, presas: true, olho: "#c2452d",
-    listras: [-3, -1, 1], corMancha: "#2e1e14", corcunda: true,
-  });
-  quadrupede("in_urso", {
-    w: 22, h: 16, pelo: ["#3a2418", "#5a3a24", "#7a5636"], ventre: "#6a4a32", rx: 6.2, ry: 3.8, cabeca: 3, focinho: 2,
-    corFocinho: "#a07a52", orelhas: "redondas", cauda: "curta", perna: 3, alturaCabeca: 2, corcunda: true,
-  });
-  quadrupede("in_leao", {
-    w: 22, h: 16, pelo: ["#a0702e", "#c8963e", "#e4be6a"], ventre: "#f0d89a", rx: 5.8, ry: 2.8, cabeca: 2.4, focinho: 2,
-    juba: ["#5e3818", "#8a5222", "#a8682e"], cauda: "tufo", tufo: "#5e3818", perna: 4, orelhas: "redondas",
-  });
-  quadrupede("in_hiena", {
-    w: 20, h: 14, pelo: ["#7a6a52", "#a08e6e", "#c4b08a"], ventre: "#d8c8a4", rx: 4.8, ry: 2.6, cabeca: 2.2, focinho: 2,
-    corFocinho: "#3e3428", orelhas: "redondas", cauda: "peluda", perna: 4, corcunda: true,
-    manchas: [[-3, -1], [-1, 0], [1, -1], [2, 1], [-2, 1], [3, -1]], corMancha: "#3e3428",
-  });
-  quadrupede("in_cabra", {
-    w: 20, h: 16, pelo: ["#8a8478", "#b4ae9e", "#dcd6c6"], ventre: "#ece6d6", rx: 4.6, ry: 2.6, cabeca: 2, focinho: 2,
-    orelhas: "pontudas", chifres: "#5a4a3a", barbicha: "#6a6458", cauda: "curta", perna: 5, alturaCabeca: 3, casco: "#3a3028",
-  });
-  quadrupede("in_leopardo", {
-    w: 22, h: 14, pelo: ["#b0782a", "#d8a040", "#f0c868"], ventre: "#f4e2b0", rx: 5.8, ry: 2.4, cabeca: 2, focinho: 1,
-    orelhas: "redondas", cauda: "longa", perna: 4, olho: "#9ad06a",
-    manchas: [[-4, -1], [-2, 0], [0, -1], [2, 0], [3, -1], [-3, 1], [1, 1], [4, 1], [-1, -2]], corMancha: "#3a2414",
-  });
-  registrar("in_crocodilo", {
-    w: 26, h: 13, quadros: 5, contorno: "hostil",
-    desenhar(g, q) {
-      const A = "#34502a", B = "#4e7238", C = "#729450", V = "#c8c890";
-      const passo = q === 2 ? 1 : q === 3 ? -1 : 0, boca = q === 4 ? 2 : q === 1 ? 1 : 0;
-      // cauda grossa que afina, com cristas
-      for (let i = 0; i < 8; i++) { const h = i < 3 ? 1 : i < 6 ? 2 : 3; g.ret(i, 9 - h, 1, h, i % 2 ? A : B); if (i % 2) g.p(i, 8 - h, C); }
-      // patas curtas, abertas para os lados
-      for (const [x, d] of [[9, passo], [16, -passo]]) { g.ret(x + d, 10, 2, 2, A); g.p(x + d - 1, 11, A); }
-      // corpo baixo e largo
-      g.elip(13, 7.5, 6.4, 3, (nx, ny) => (ny > 0.45 ? V : tom([A, B, C], -(0.3 * nx + 0.9 * ny))));
-      for (const x of [9, 11, 13, 15, 17]) { g.p(x, 5, C); g.p(x, 6, A); }
-      for (const [x, d] of [[10, -passo], [17, passo]]) g.ret(x + d, 10, 2, 2, B);
-      // cabeça larga e focinho comprido
-      g.ret(18, 5, 4, 4, B); g.p(19, 4, C); g.p(20, 4, C); g.p(20, 5, "#e8b94a");
-      g.ret(22, 6 - boca, 4, 2, B); g.p(25, 6 - boca, A);
-      g.ret(22, 8 + boca, 4, 1, A);
-      g.p(23, 8 - boca, "#f6efdc"); g.p(25, 8 - boca, "#f6efdc");
-      if (boca) g.ret(22, 8 - boca + 1, 4, boca, "#a83a3a");
-    },
-  });
-  function serpente(chave, o) {
-    return registrar(chave, {
-      w: 20, h: 14, quadros: 5, contorno: "hostil",
-      desenhar(g, q) {
-        const [A, B, C] = o.cores, V = o.ventre;
-        const fase = q * 1.2, bote = q === 4 ? 2 : 0, resp = q === 1 ? 1 : 0;
-        const escama = (nx, ny, x, y) => (ny > 0.35 ? V : ny < -0.45 ? C : (x + y) % 2 ? B : escuroT(B, 0.08));
-        // corpo em tubo ondulado (onda em S), afinando para a cauda, com o desenho do dorso
-        const fimCorpo = o.capuz ? 11.5 : 14.5;
-        for (let x = 1; x <= fimCorpo; x += 0.5) {
-          const y = 10.3 + Math.sin((x + fase) * 0.75) * 1.4;
-          const r = x < 4 ? 0.45 + (x - 1) * 0.2 : 1.05;
-          g.elip(x, y, 0.75, r, escama);
-          if (o.padrao && Math.floor(x * 2) % 6 === 0 && x > 2) { g.pf(x, y - 0.5, o.padrao); g.pf(x - 0.5, y, o.padrao); g.pf(x + 0.5, y, o.padrao); g.pf(x, y + 0.5 - 0.5, o.padrao); }
-        }
-        if (o.capuz) {
-          // naja: a frente do corpo se ergue, com o capuz aberto (largo) e a cabeça no alto
-          const bx = 12.5 + bote / 2, topo = 2 - resp;
-          for (let y = topo + 3; y <= 10.5; y += 0.5) g.elip(bx + 0.2 * Math.sin(y), y, 1, 0.6, (nx, ny, X, Y) => (nx > 0.3 ? V : Y % 2 ? B : A));
-          g.elip(bx + 0.5, topo + 4.2, 3.2, 3.1, (nx, ny) => tom([A, B, C], -(0.4 * nx + 0.8 * ny)));
-          // as "lentes" do capuz
-          for (let k = 0; k < 4; k++) g.linf(bx - 2 + k * 1.2, topo + 2.5, bx - 1.5 + k * 1.2, topo + 6.5, escuroT(B, 0.18));
-          g.pf(bx - 1, topo + 3.5, o.capuz); g.pf(bx + 2, topo + 3.5, o.capuz); g.retf(bx, topo + 5.5, 1, 1.5, escuroT(o.capuz, 0.1));
-          g.elip(bx + 1.2, topo + 0.9, 1.9, 1.2, (nx, ny) => (ny > 0.4 ? V : nx < -0.3 ? C : B));
-          g.retf(bx + 2, topo + 0.5, 1, 0.5, o.olho); g.pf(bx + 2, topo + 0.5, "#fff6e0");
-          if (q === 4 || q === 1) { g.linf(bx + 3, topo + 1.5, bx + 4.5, topo + 1, "#c2452d"); g.pf(bx + 5, topo + 0.5, "#c2452d"); g.pf(bx + 5, topo + 1.5, "#c2452d"); }
-          return;
-        }
-        // víbora: cabeça triangular baixa, um pouco erguida
-        const hx = 15 + bote, hy = 8 - resp;
-        g.elip(14.5 + bote / 2, 9.5 - resp / 2, 0.9, 1.4, escama);
-        g.elip(hx + 1.6, hy + 1, 2.1, 1.4, (nx, ny) => (ny > 0.45 ? V : ny < -0.3 ? C : B));
-        g.elip(hx + 3.4, hy + 1.2, 1, 0.9, B);
-        g.linf(hx + 0.5, hy + 0.5, hx + 2.5, hy, escuroT(B, 0.25));
-        g.retf(hx + 2, hy + 0.5, 1, 0.5, o.olho || "#e8b94a"); g.pf(hx + 2.5, hy + 0.5, "#1c1210"); g.pf(hx + 2, hy + 0.5, "#fff6e0");
-        g.pf(hx + 4, hy + 1, escuroT(B, 0.4));
-        if (q === 4 || q === 1) { g.linf(hx + 4.5, hy + 1.5, hx + 5.5, hy + 1.5, "#c2452d"); g.pf(hx + 6, hy + 1, "#c2452d"); g.pf(hx + 6, hy + 2, "#c2452d"); }
-      },
-    });
-  }
-  serpente("in_vibora", { cores: ["#8a6a3e", "#b4925a", "#d6b882"], ventre: "#e8d8b0", padrao: "#4f3a22", ponta: "#4f3a22" });
-  serpente("in_naja", { cores: ["#24221e", "#3e3a30", "#5e584a"], ventre: "#c8b88a", capuz: "#c8b88a", olho: "#e2774f" });
-  function ave(chave, o) {
-    return registrar(chave, {
-      w: 20, h: 16, quadros: 5, contorno: "hostil",
-      desenhar(g, q) {
-        const [A, B, C] = o.penas, N = "#2a1a14";
-        const asa = q === 1 || q === 3 ? -3 : q === 2 ? 2 : 0, voo = q === 2 || q === 3 ? -1 : 0, bico = q === 4 ? 1 : 0;
-        const cy = 8 + voo, cv = o.curvado ? 1 : 0;
-        // asa de trás: penas em leque (traços finos)
-        for (let k = 0; k < 5; k++) g.linf(7 - k * 0.3, cy, 2.5 - k * 0.2 + k * 0.4, cy + asa - 1 + k * 0.4, k % 2 ? A : escuroT(A, 0.15));
-        // cauda em penas
-        for (let k = 0; k < 4; k++) g.linf(5.5, cy + 1.5 + k * 0.4, 2.5, cy + 2 + k * 0.7, k % 2 ? A : B);
-        // corpo
-        g.elip(9, cy + 1, 4.2, 2.6, (nx, ny, x, y) => (ny > 0.5 ? (o.peito || B) : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
-        for (let k = 0; k < 6; k++) g.pf(8 + (k % 3) * 1.5, cy + 2.5 + Math.floor(k / 3) * 0.5, escuroT(o.peito || B, 0.15));
-        // asa da frente: rêmiges uma a uma, com a ponta escura
-        for (let i = 0; i < 7; i++) {
-          const x0 = 9.5 - i * 0.9, y0 = cy + (asa * i) / 6;
-          g.linf(x0, y0, x0 + 1.5, y0 + 1.5, i % 2 ? B : C);
-          g.linf(x0 - 0.5, y0 + 0.5, x0 + 1, y0 + 2, i === 6 ? escuroT(A, 0.2) : i % 2 ? A : B);
-        }
-        // pescoço e cabeça
-        g.elip(12.5, cy - 0.5 + cv * 0.5, 1.3, 1.6, esfera(o.cabeca ? [o.cabeca[0], A, B] : [A, B, C]));
-        g.elip(14, cy - 2 + cv, 2, 1.8, esfera(o.cabeca || [A, B, C]));
-        if (o.colar) g.elip(12.3, cy + 0.3, 1.6, 0.8, (nx, ny, x, y) => ((x + y) % 2 ? o.colar : escuroT(o.colar, 0.1)));
-        g.retf(14.5, cy - 3 + cv, 1, 1, o.olho || "#e8b94a"); g.pf(15, cy - 2.5 + cv, "#1c1210"); g.pf(14.5, cy - 3 + cv, "#fff6e0");
-        // bico curvo
-        const by = cy - 2 + cv + bico;
-        g.retf(16, by, 1.5, 1, o.bico); g.retf(17.5, by + 0.5, 0.5, 1, escuroT(o.bico, 0.25)); g.pf(16, by, claroT(o.bico, 0.35));
-        if (bico) g.retf(16, by + 1, 1.5, 0.5, escuroT(o.bico, 0.3));
-        // garras
-        for (const x of [9, 11]) { g.linf(x + 0.5, cy + 3, x + 0.5, cy + 4, o.pes || "#e8b94a"); g.retf(x, cy + 4, 1.5, 0.5, o.pes || "#e8b94a"); }
-        g.sombra(10, 14.5, 3, 0.7);
-      },
-    });
-  }
-  ave("in_abutre", { penas: ["#2e2420", "#4a3a30", "#6a5646"], peito: "#8a7462", cabeca: ["#b0605a", "#d88a7a", "#f0b0a0"], colar: "#e8dcc0", bico: "#d8c8a0", curvado: true });
-  ave("in_aguia", { penas: ["#4a2e18", "#6e4a28", "#946a3e"], peito: "#7a5230", cabeca: ["#c8c0b0", "#ece6da", "#ffffff"], bico: "#e8b94a" });
-  ave("in_corvo", { penas: ["#121018", "#24202e", "#3a3448"], peito: "#2a2636", bico: "#3a3438", olho: "#c2452d", pes: "#3a3438" });
-  function enxame(chave, o) {
-    return registrar(chave, {
-      w: 20, h: 18, quadros: 5, contorno: null,
-      desenhar(g, q) {
-        // insetos de 3 px (corpo, cabeça escura e asa clara) que mudam de lugar a cada quadro (zumbido);
-        // no bote, o enxame se adensa à frente. Uma nuvem leve marca a área do enxame.
-        g.elip(10, 10, 8.5, 6.5, comAlfa(o.nuvem, 0.22));
-        const pts = o.pontos;
-        for (let i = 0; i < pts.length; i++) {
-          const [x0, y0] = pts[i];
-          const dx = Math.round(Math.sin(i * 2.1 + q * 1.7) * 1.4) + (q === 4 ? 2 : 0), dy = Math.round(Math.cos(i * 1.3 + q * 2.3) * 1.2);
-          const x = x0 + dx, y = y0 + dy;
-          g.p(x, y, o.cores[0]); g.p(x + 1, y, o.cores[1]); g.p(x - 1, y, "#1c1210");
-          g.p(x, y - 1, comAlfa("#ffffff", (i + q) % 2 ? 0.85 : 0.45));
-        }
-      },
-    });
-  }
-  enxame("in_gafanhotos", {
-    cores: ["#5a7a1e", "#a8b848"], nuvem: "#c8c070",
-    pontos: [[4, 6], [7, 4], [10, 6], [13, 4], [16, 7], [5, 10], [9, 9], [12, 11], [7, 14], [15, 13], [3, 13], [11, 15], [17, 10], [8, 7], [14, 9], [6, 12]],
-  });
-  enxame("in_vespas", {
-    cores: ["#f0c040", "#2a1a14"], nuvem: "#f0d880",
-    pontos: [[4, 6], [8, 4], [11, 7], [15, 5], [5, 10], [10, 11], [14, 10], [7, 14], [16, 13], [3, 13], [12, 15], [17, 8], [9, 8]],
-  });
-  registrar("in_ra", {
-    w: 16, h: 12, quadros: 5, contorno: "hostil",
-    desenhar(g, q) {
-      const A = "#2e5a22", B = "#4a8a32", C = "#7ab84a", V = "#d8e0a0";
-      const salto = q === 2 ? -2 : q === 4 ? -1 : 0, papo = q === 1 ? 1 : 0;
-      g.ret(2, 9 + Math.min(0, salto + 1), 3, 2, A); g.ret(11, 9 + Math.min(0, salto + 1), 3, 2, A); // patas de trás
-      g.elip(8, 7 + salto, 4.5, 3, (nx, ny) => (ny > 0.5 ? V : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
-      for (const [x, y] of [[6, 6], [9, 5], [7, 8]]) g.p(x, y + salto, A);
-      g.ret(9, 10 + Math.min(0, salto + 1), 2, 1, B); g.ret(5, 10 + Math.min(0, salto + 1), 2, 1, B);
-      g.elip(10, 4 + salto, 1.4, 1.4, esfera([A, C, "#c8e070"])); g.p(10, 4 + salto, "#2a1a14");
-      g.elip(6, 4 + salto, 1.4, 1.4, esfera([A, C, "#c8e070"])); g.p(6, 4 + salto, "#2a1a14");
-      if (papo) g.elip(8, 9 + salto, 1.6, 1, "#f0f0c0");
-      if (q === 4) g.lin(9, 8 + salto, 14, 7 + salto, "#d86a7a");
-    },
-  });
-  registrar("in_caranguejo", {
-    w: 20, h: 12, quadros: 5, contorno: "hostil",
-    desenhar(g, q) {
-      const A = "#8a2a1a", B = "#c2452d", C = "#e8784a", N = "#2a1a14";
-      const lado = q === 2 ? 1 : q === 3 ? -1 : 0, pinca = q === 4 ? 0 : 1, resp = q === 1 ? 1 : 0;
-      for (const x of [5, 7, 12, 14]) { g.lin(x + lado, 8, x + lado + (x < 10 ? -2 : 2), 10, A); }
-      g.elip(10 + lado, 7, 5, 2.6, (nx, ny) => (ny > 0.5 ? A : tom([A, B, C], -(0.4 * nx + 0.9 * ny))));
-      g.p(8 + lado, 4 - resp, N); g.p(12 + lado, 4 - resp, N); g.p(8 + lado, 5, B); g.p(12 + lado, 5, B);
-      // pinças erguidas
-      for (const [x, s] of [[3, -1], [17, 1]]) {
-        g.lin(x + lado - s, 6, x + lado, 4, B);
-        g.ret(x + lado - 1, 2 - pinca, 3, 2, C); g.p(x + lado + s, 1 - pinca, C); g.p(x + lado, 3 - pinca, A);
-      }
-    },
-  });
   // Humanos hostis novos.
   humano("in_arqueiro_bando", {
     molde: "curta", hostil: true,
@@ -2487,7 +1085,6 @@
     molde: "curta", hostil: true,
     cores: { H: "#1e1a1a", S: "#a86e44", s: "#86542e", B: "#2a2420", R: "#c8b48a", r: "#a8916a", d: "#7d6a4a", A: "#c2452d", F: "#2a1a14" },
     // tapa-olho e faixa vermelha na cintura
-    extra: (g, P) => { if (P.vista === "frente") { retF(g, 15, P.T + 6, 4, 3, "#1e1a1a"); linF(g, 12, P.T + 5, 27, P.T + 4, "#1e1a1a"); } else if (P.vista === "lado") { retF(g, 23, P.T + 6, 3, 3, "#1e1a1a"); linF(g, 19, P.T + 5, 23, P.T + 6, "#1e1a1a"); } },
     acessorios: [["bandana", ["#c2452d", "#e2774f"]], ["corda", ["#a8916a", "#7d6a4a"]], ["espada_curva", ["#a8b4bc", "#e4ecf0", "#5a3a24"]]],
   });
   humano("in_auriga", {
@@ -2522,199 +1119,47 @@
   });
 
   // -------------------------------------------------------------------
-  // Itens (§6.6): célula 16×16, arte de até 12×12 apoiada na linha 14
+  // Itens: célula 32 × 32 px (16 × 16 unidades), origem [0.5, 0.75]. O desenho de cada um está em arte/itens.js,
+  // que registra por cima com a mesma chave; as chamadas item("…") ficam aqui porque são a lista de chaves de
+  // item que os testes e arte/itens.js conferem.
   // -------------------------------------------------------------------
-  // Cada ícone ganha uma sombra de apoio suave (camada de sombra: sem contorno).
-  function item(chave, desenhar, extra = {}) {
-    const comSombra = (g, q) => { g.sombra(8.5, 14.6, 4.6, 0.9, "#1c1210", 0.22); desenhar(g, q); };
-    return registrar(chave, Object.assign({ w: 16, h: 16, contorno: "amigo", origem: [0.5, 0.75], desenhar: comSombra }, extra));
+  function item(chave, extra = {}) {
+    return reserva(chave, Object.assign({ w: 16, h: 16, contorno: "amigo", origem: [0.5, 0.75] }, extra));
   }
-  function laminaDiagonal(g, cores, comprimento) {
-    const [esc, med, cla, guarda, cabo] = cores;
-    // cabo (embaixo à esquerda) e pomo
-    g.lin(3, 12, 4, 11, cabo); g.p(2, 13, guarda);
-    // guarda perpendicular
-    g.p(4, 9, guarda); g.p(5, 10, guarda); g.p(6, 11, guarda); g.p(3, 8, guarda); g.p(7, 12, guarda);
-    // lâmina: fio de luz em cima/esquerda, sombra embaixo/direita
-    const x1 = 5 + comprimento, y1 = 10 - comprimento;
-    g.lin(6, 9, x1, y1, med);
-    g.lin(6, 8, x1 - 1, y1, cla);
-    g.lin(7, 9, x1, y1 + 1, esc);
-    g.p(x1, y1, cla);
-  }
-  item("pocao", (g) => {
-    g.elip(8, 10.5, 4.5, 4.5, "#a9c2e8");
-    g.elip(8, 10.8, 3.5, 3.4, esfera(["#8e2a1f", "#c2452d", "#e2774f"]));
-    g.ret(7, 4, 2, 2, "#a9c2e8"); g.ret(7, 3, 2, 1, "#b07a3e"); g.p(7, 2, "#d9a35c");
-    g.p(6, 8, "#f6efdc");
-  });
-  item("pocao_fe", (g) => {
-    g.ret(5, 6, 6, 9, "#a9c2e8"); g.apagar(5, 6); g.apagar(10, 6); g.apagar(5, 14); g.apagar(10, 14);
-    g.ret(6, 7, 4, 7, (x, y) => tom(["#22356a", "#3b5a9a", "#7fa3e0"], -((x - 7.5) * 0.5 + (y - 10) * 0.35)));
-    g.ret(7, 3, 2, 3, "#a9c2e8"); g.ret(7, 2, 2, 1, "#b07a3e");
-    g.p(6, 8, "#e4ecf0");
-  });
-  item("veneno_escorpiao", (g) => {
-    g.elip(8, 11, 5, 3.4, esfera(["#4f3220", "#7d522b", "#b07a3e"]));
-    g.ret(7, 6, 2, 2, "#7d522b"); g.ret(7, 5, 2, 1, "#4f3220");
-    g.p(10, 7, "#a8c84a"); g.p(10, 8, "#6a8a2a");
-    g.lin(6, 10, 8, 10, "#c2452d"); g.p(9, 11, "#c2452d");
-  });
-  // Folha lanceolada preenchida entre (x0,y0) e (x1,y1); luz do lado de cima/esquerda.
-  function folha(g, x0, y0, x1, y1, larg, cores) {
-    const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
-    for (let y = Math.floor(Math.min(y0, y1) - larg); y <= Math.ceil(Math.max(y0, y1) + larg); y++)
-      for (let x = Math.floor(Math.min(x0, x1) - larg); x <= Math.ceil(Math.max(x0, x1) + larg); x++) {
-        const px = x + 0.5 - x0, py = y + 0.5 - y0;
-        const t = (px * dx + py * dy) / (len * len);
-        if (t < 0 || t > 1) continue;
-        const lado = (px * dy - py * dx) / len;
-        const w = Math.sin(Math.PI * Math.min(1, t * 1.15)) * larg;
-        if (Math.abs(lado) > w) continue;
-        g.p(x, y, lado * (dy > 0 ? 1 : -1) < -0.2 ? cores[2] : Math.abs(lado) < 0.5 ? cores[1] : cores[0]);
-      }
-  }
-  item("erva", (g) => {
-    const E = "#55642c", M = "#7a8a3f", C = "#a7b25a";
-    g.lin(8, 14, 8, 9, E);
-    folha(g, 8, 11, 3, 6, 1.6, [E, M, C]);
-    folha(g, 8, 11, 13, 6, 1.6, [E, M, C]);
-    folha(g, 8, 10, 8, 2, 1.5, [E, M, C]);
-    g.p(8, 2, "#efe6cf"); g.p(9, 3, "#efe6cf");
-  });
-  item("odre_agua", (g) => {
-    g.elip(8, 10.5, 4.6, 4, esfera(["#4f3220", "#7d522b", "#b07a3e", "#d9a35c"]));
-    g.ret(7, 5, 2, 2, "#7d522b"); g.ret(7, 4, 2, 1, "#b07a3e");
-    g.lin(4, 7, 6, 6, "#d9a35c"); g.lin(10, 6, 12, 7, "#d9a35c");
-    g.p(11, 12, "#4fa3a5");
-  });
-  item("espada_madeira", (g) => laminaDiagonal(g, ["#8a6038", "#b48452", "#d9a35c", "#4f3220", "#4f3220"], 6));
-  item("espada_ferro", (g) => laminaDiagonal(g, ["#6e7a84", "#a8b4bc", "#e4ecf0", "#b07a38", "#5a3624"], 7));
-  item("espada_temperada", (g) => laminaDiagonal(g, ["#5a7896", "#8fb0cc", "#e8f0f8", "#e8b94a", "#5a3624"], 8));
-  item("escudo_madeira", (g) => {
-    g.elip(8, 9, 5.5, 5.5, (nx, ny, x) => (nx * nx + ny * ny > 0.68 ? "#4f3220" : tom(["#7d522b", "#b07a3e"], -(0.6 * nx + 0.8 * ny)) ));
-    for (const x of [6, 10]) g.lin(x, 5, x, 13, "#7d522b");
-    g.ret(7, 8, 2, 2, "#b07a38"); g.p(7, 8, "#d29e52");
-  });
-  item("escudo_bronze", (g) => {
-    g.elip(8, 9, 5.5, 5.5, (nx, ny) => { const r = Math.sqrt(nx * nx + ny * ny); return r > 0.82 ? "#7a4a24" : r > 0.55 ? tom(["#b07a38", "#d29e52"], -(nx + ny)) : r > 0.3 ? "#b07a38" : "#f2d27a"; });
-  });
+  item("pocao");
+  item("pocao_fe");
+  item("veneno_escorpiao");
+  item("erva");
+  item("odre_agua");
+  item("espada_madeira");
+  item("espada_ferro");
+  item("espada_temperada");
+  item("escudo_madeira");
+  item("escudo_bronze");
   // Escudo de ferro (troca de pontos de tarefa): ferro frio, aro escuro, 4 rebites e umbo.
-  item("escudo_ferro", (g) => {
-    g.elip(8, 9, 5.5, 5.5, (nx, ny) => {
-      const r = Math.sqrt(nx * nx + ny * ny);
-      if (r > 0.8) return "#4a5258";
-      if (r < 0.3) return "#d4dce2";
-      return tom(["#6e7a84", "#8a949c", "#b4bec6"], -(nx + ny) * 0.7);
-    });
-    for (const [x, y] of [[8, 4], [12, 9], [8, 13], [3, 9]]) g.p(x, y, "#d4dce2");
-  });
-  item("tunica_pano", (g) => {
-    const l = ["#a8916a", "#d4bf8f", "#eadcb6"];
-    g.ret(3, 4, 10, 3, (x, y) => tom(l, -((x - 8) * 0.15 + (y - 6) * 0.3)));
-    g.ret(5, 7, 6, 7, (x, y) => tom(l, -((x - 8) * 0.25 + (y - 10) * 0.12)));
-    g.ret(5, 9, 6, 1, "#3b5a9a");
-    g.ret(7, 4, 2, 1, "#a8916a");
-  });
-  item("armadura_couro", (g) => {
-    const l = ["#4f3220", "#7a4a30", "#a8703a"];
-    g.ret(4, 4, 8, 10, (x, y) => tom(l, -((x - 7.5) * 0.22 + (y - 8) * 0.12)));
-    g.ret(6, 3, 4, 1, "#4f3220"); g.ret(7, 4, 2, 1, "#2a1a14");
-    g.lin(4, 8, 11, 8, "#4f3220"); g.lin(4, 11, 11, 11, "#4f3220");
-    for (const [x, y] of [[5, 5], [10, 5], [5, 12], [10, 12]]) g.p(x, y, "#e8b94a");
-  });
+  item("escudo_ferro");
+  item("tunica_pano");
+  item("armadura_couro");
   // Couraça de escamas (troca de pontos de tarefa): peitoral de bronze escuro; cada escama é um brilho
   // com a sombra logo abaixo, em fileiras desencontradas.
-  item("couraca_escamas", (g) => {
-    const l = ["#7a4a24", "#b07a38", "#d29e52"];
-    g.ret(4, 4, 8, 10, (x, y) => tom(l, -((x - 7.5) * 0.2 + (y - 8) * 0.1)));
-    g.ret(6, 3, 4, 1, "#7a4a24"); g.ret(7, 4, 2, 1, "#2a1a14");
-    for (let y = 6; y <= 12; y += 2) for (let x = 4 + ((y / 2) % 2); x <= 11; x += 2) g.p(x, y, "#7a4a24");
-    for (let y = 5; y <= 11; y += 2) for (let x = 5 - ((y + 1) / 2) % 2; x <= 11; x += 2) g.p(x, y, "#d29e52");
-    g.ret(3, 4, 1, 3, "#7a4a24"); g.ret(12, 4, 1, 3, "#7a4a24");
-  });
-  item("arco_madeira", (g) => {
-    g.lin(6, 2, 8, 3, "#9a6a3c"); g.lin(9, 4, 10, 6, "#9a6a3c"); g.lin(10, 7, 10, 9, "#c08f58");
-    g.lin(10, 10, 9, 12, "#9a6a3c"); g.lin(8, 13, 6, 14, "#6b4a2e");
-    g.lin(6, 3, 6, 13, "#eadcb6"); g.p(10, 8, "#6b4a2e");
-  });
-  item("arco_composto", (g) => {
-    g.p(5, 2, "#2a1a14"); g.p(6, 3, "#7d522b"); g.lin(7, 3, 9, 5, "#b07a3e"); g.lin(9, 6, 9, 7, "#eadcb6");
-    g.lin(9, 9, 9, 10, "#eadcb6"); g.p(10, 8, "#7d522b"); g.lin(9, 11, 7, 13, "#b07a3e"); g.p(6, 13, "#7d522b"); g.p(5, 14, "#2a1a14");
-    g.lin(6, 4, 6, 12, "#eadcb6");
-  });
+  item("couraca_escamas");
+  item("arco_madeira");
+  item("arco_composto");
   // Funda: correia de couro com a bolsa da pedra no meio.
-  item("funda", (g) => {
-    g.lin(3, 3, 6, 8, "#8a5a2e"); g.lin(13, 3, 10, 8, "#8a5a2e");
-    g.elip(8, 9.5, 2.6, 2, () => "#6b4a2e"); g.p(8, 9, "#b8ab8a"); g.p(7, 9, "#d8ccb0");
-    g.ret(2, 2, 2, 2, "#c08f58"); g.ret(12, 2, 2, 2, "#c08f58");
-  });
-  item("flecha", (g) => {
-    g.lin(4, 12, 11, 5, "#b07a3e");
-    g.p(12, 4, "#a8b4bc"); g.p(13, 3, "#e4ecf0"); g.p(11, 4, "#a8b4bc"); g.p(12, 5, "#a8b4bc");
-    g.p(3, 12, "#c2452d"); g.p(4, 13, "#c2452d"); g.p(2, 12, "#eadcb6"); g.p(4, 14, "#eadcb6"); g.p(3, 13, "#eadcb6");
-  });
-  item("pele_lobo", (g) => {
-    const l = ["#6a5a4c", "#8a7a6a", "#a89a86"];
-    g.elip(8, 9.5, 4, 4, (nx, ny) => (nx * nx + ny * ny < 0.35 ? "#c8b8a0" : tom(l, -(0.5 * nx + 0.7 * ny))));
-    for (const [x, y] of [[3, 6], [12, 6], [3, 13], [12, 13]]) g.ret(x, y, 2, 1, "#8a7a6a");
-    g.ret(7, 3, 3, 2, "#8a7a6a"); g.p(7, 2, "#6a5a4c"); g.p(9, 2, "#6a5a4c");
-  });
-  item("insignia_bandido", (g) => {
-    g.elip(8, 9.5, 4.5, 4.5, esfera(["#5e3c1c", "#b07a38", "#d29e52"]));
-    g.p(8, 7, "#8a3a4a"); g.ret(7, 8, 3, 1, "#8a3a4a"); g.ret(6, 9, 5, 1, "#6a2a3a"); g.ret(7, 10, 3, 1, "#6a2a3a"); g.p(8, 11, "#6a2a3a");
-    g.p(8, 4, "#5e3c1c"); g.p(7, 3, "#b07a38"); g.p(9, 3, "#b07a38"); g.p(8, 2, "#b07a38");
-  });
+  item("funda");
+  item("flecha");
+  item("pele_lobo");
+  item("insignia_bandido");
   // Saques das tabelas das criaturas.
-  item("presa_lobo", (g) => {
-    // presa curva, base escura e ponta clara
-    for (const [x, y, c] of [[5, 13, "#b8a888"], [6, 12, "#d8cbb0"], [7, 11, "#d8cbb0"], [8, 10, "#eadcb6"], [9, 8, "#eadcb6"], [10, 7, "#f6efdc"], [10, 5, "#f6efdc"], [11, 4, "#ffffff"]]) g.p(x, y, c);
-    for (const [x, y] of [[6, 13], [7, 12], [8, 11], [9, 10], [9, 9], [10, 8], [11, 6], [11, 5]]) g.p(x, y, "#a89a86");
-    g.ret(4, 13, 2, 2, "#8a3a2a"); g.p(5, 12, "#b8a888");
-  });
-  item("ferrao_escorpiao", (g) => {
-    g.elip(7, 11, 3.2, 2.6, esfera(["#4f3220", "#7d522b", "#b07a3e"]));
-    g.lin(9, 9, 11, 6, "#7d522b"); g.lin(10, 9, 12, 6, "#4f3220");
-    g.p(12, 5, "#a8c84a"); g.p(11, 4, "#d8e88a"); g.p(13, 5, "#6a8a2a");
-  });
-  item("linho_egipcio", (g) => {
-    // rolo de linho dobrado
-    g.ret(3, 7, 10, 6, (x, y) => tom(["#b8a888", "#d8cbb0", "#f6efdc"], -((y - 9.5) * 0.45 + (x - 8) * 0.12)));
-    g.lin(3, 9, 12, 9, "#b8a888"); g.lin(3, 11, 12, 11, "#b8a888");
-    g.ret(7, 6, 2, 8, "#3b5a9a"); g.p(7, 6, "#7fa3e0");
-  });
-  item("ponta_lanca", (g) => {
-    for (let i = 0; i < 6; i++) {
-      const w = Math.max(0, 2 - Math.floor(i / 2));
-      g.ret(8 - w, 3 + i, 1 + 2 * w, 1, (x) => (x < 8 ? "#e8b94a" : x > 8 ? "#8a5e2a" : "#b8862b"));
-    }
-    g.ret(7, 9, 3, 4, "#7a4a30"); g.ret(7, 9, 1, 4, "#a8703a"); g.p(8, 13, "#4f3220");
-  });
-  item("bracelete_cobre", (g) => {
-    g.elip(8, 10, 5, 3.6, esfera(["#7a3a1a", "#b8642b", "#e89a5a"]));
-    for (let y = 8; y <= 12; y++) for (let x = 4; x <= 12; x++) if (((x + 0.5 - 8) / 3) ** 2 + ((y + 0.5 - 10) / 1.8) ** 2 < 1) g.apagar(x, y);
-    g.p(8, 7, "#3fa66a"); g.p(5, 9, "#f0c080");
-  });
-  item("pena_ave", (g) => {
-    for (let i = 0; i < 9; i++) { const x = 4 + i, y = 12 - i; g.p(x, y, "#e8dcc0"); }
-    for (let i = 1; i < 8; i++) { const x = 4 + i, y = 12 - i; g.p(x - 1, y - 1, i % 2 ? "#6e4a28" : "#946a3e"); g.p(x + 1, y + 1, i % 2 ? "#4a2e18" : "#6e4a28"); }
-    g.p(12, 3, "#2a1a14"); g.p(11, 4, "#4a2e18");
-  });
-  item("couro_grosso", (g) => {
-    g.ret(3, 6, 10, 7, (x, y) => tom(["#4a3022", "#6e4a32", "#8e6a4a"], -((x - 8) * 0.12 + (y - 9) * 0.4)));
-    for (const [x, y] of [[3, 6], [12, 6], [3, 12], [12, 12]]) g.apagar(x, y);
-    g.lin(4, 8, 11, 8, "#3a2418"); g.p(6, 10, "#a8866a"); g.p(9, 11, "#a8866a"); g.p(2, 9, "#6e4a32"); g.p(13, 9, "#6e4a32");
-  });
-  item("carapaca", (g) => {
-    g.elip(8, 9.5, 5, 3.6, esfera(["#6a4a1e", "#9a7032", "#c89a52"]));
-    g.lin(8, 6, 8, 13, "#4a3214"); g.lin(4, 9, 12, 9, "#4a3214");
-    g.p(6, 7, "#e8c890"); g.p(10, 11, "#4a3214");
-  });
-  item("amuleto_faianca", (g) => {
-    g.lin(4, 3, 8, 7, "#c8b48a"); g.lin(12, 3, 8, 7, "#c8b48a");
-    g.elip(8, 10, 3.2, 3.4, esfera(["#1e6a7a", "#2fa0a8", "#8ad8d0"]));
-    g.p(8, 10, "#1c3a4a"); g.p(7, 10, "#f6efdc"); g.p(9, 10, "#f6efdc"); g.p(8, 12, "#1c3a4a");
-  });
+  item("presa_lobo");
+  item("ferrao_escorpiao");
+  item("linho_egipcio");
+  item("ponta_lanca");
+  item("bracelete_cobre");
+  item("pena_ave");
+  item("couro_grosso");
+  item("carapaca");
+  item("amuleto_faianca");
   // Pedras do peitoral: a mesma lapidação, na cor de cada pedra (campo "pedra" em dados/itens.js).
   for (const [chave, d] of Object.entries(typeof ITENS !== "undefined" ? ITENS : {})) {
     if (!d.pedra) continue;
@@ -2728,115 +1173,27 @@
       g.p(6, 7, "#ffffff"); g.p(7, 6, misturar(d.pedra, "#ffffff", 0.7));
     });
   }
-  item("peixe", (g) => {
-    g.elip(7.5, 9, 4.6, 2.6, (nx, ny) => (ny > 0.45 ? "#eadcb6" : tom(["#2f7680", "#4fa3a5", "#a9dccf"], -(0.4 * nx + 0.9 * ny))));
-    g.lin(2, 7, 3, 8, "#2f7680"); g.lin(2, 11, 3, 10, "#2f7680"); g.p(2, 9, "#2f7680"); g.p(1, 6, "#4fa3a5"); g.p(1, 12, "#4fa3a5");
-    g.p(10, 8, "#2a1a14"); g.lin(6, 6, 8, 6, "#2f7680");
-  });
+  item("peixe");
   // ----- Ofícios (JGB-24): matérias-primas e o que se fabrica -----
-  item("madeira", (g) => {
-    // duas toras empilhadas, com os anéis à mostra
-    for (const [y, x0] of [[11, 3], [7, 4]]) {
-      g.ret(x0, y - 1, 9, 3, (x, yy) => tom(["#5a3622", "#7d522b", "#a8703a"], -((yy - y) * 0.6)));
-      g.elip(x0 + 9.5, y + 0.5, 1.6, 1.6, esfera(["#b07a3e", "#d9a35c", "#efc88a"]));
-      g.p(x0 + 9, y, "#7d522b");
-    }
-    g.p(5, 10, "#4f3220"); g.p(8, 6, "#4f3220");
-  });
-  item("argila", (g) => {
-    g.elip(8, 11, 5.5, 3.4, esfera(["#6a3a22", "#9a5a36", "#c47e52", "#e0a272"]));
-    g.elip(8, 8.5, 3.2, 2.2, esfera(["#7a4428", "#a8643c", "#d08c5c"]));
-    g.p(6, 11, "#5a3018"); g.p(10, 12, "#5a3018"); g.p(7, 7, "#f0c094");
-  });
-  item("minerio_cobre", (g) => {
-    g.elip(8, 10.5, 5.2, 4, esfera(["#3e3a3c", "#5e585a", "#867e7e", "#a8a0a0"]));
-    for (const [x, y] of [[6, 9], [9, 11], [10, 8], [5, 12]]) { g.p(x, y, "#c46a2b"); g.p(x + 1, y, "#e89a5a"); }
-    g.p(8, 13, "#3fa66a");
-  });
-  item("resina", (g) => {
-    // gotas de resina âmbar
-    g.elip(7, 10, 3, 3.4, esfera(["#8a4a10", "#c47a1e", "#e8a83a", "#ffd88a"]));
-    g.elip(11, 12, 1.8, 2, esfera(["#8a4a10", "#c47a1e", "#e8a83a"]));
-    g.lin(7, 4, 7, 6, "#c47a1e"); g.p(6, 8, "#fff2c8");
-  });
-  item("peixe_grande", (g) => {
-    g.elip(8, 9, 6.4, 3.4, (nx, ny) => (ny > 0.4 ? "#eadcb6" : tom(["#2a5a70", "#3f84a0", "#8ac4d8"], -(0.4 * nx + 0.9 * ny))));
-    g.lin(1, 6, 2, 8, "#2a5a70"); g.lin(1, 12, 2, 10, "#2a5a70"); g.p(1, 9, "#2a5a70");
-    g.p(12, 8, "#2a1a14"); g.lin(5, 5, 9, 5, "#2a5a70"); g.p(7, 9, "#c8e4ec");
-  });
-  item("lingote_bronze", (g) => {
-    for (let y = 0; y < 5; y++) g.ret(3 + (4 - y) * 0.5 | 0, 7 + y, 10 - ((4 - y) | 0), 1, (x) => tom(["#7a4a18", "#b8862b", "#e8b94a", "#ffe08a"], -(x - 8) * 0.12 - (2 - y) * 0.35));
-    g.lin(5, 7, 10, 7, "#ffe08a"); g.lin(3, 11, 12, 11, "#5a3410");
-  });
-  item("tecido_linho", (g) => {
-    // peça de tecido dobrada em três
-    for (let i = 0; i < 3; i++) g.ret(3, 6 + i * 2.5 | 0, 10, 2, (x) => tom(["#c8b898", "#e8dcc0", "#fbf5e6"], -(x - 8) * 0.1 + (1 - i) * 0.3));
-    g.lin(3, 13, 12, 13, "#a8987a"); g.p(12, 7, "#3b5a9a"); g.p(12, 10, "#3b5a9a");
-  });
-  item("frasco_barro", (g) => {
-    g.elip(8, 11, 3.2, 3, esfera(["#6a3a22", "#9a5a36", "#c47e52"]));
-    g.ret(7, 5, 2, 4, "#9a5a36"); g.ret(6, 4, 4, 1, "#c47e52"); g.p(7, 10, "#e0a272");
-  });
-  item("oleo_peixe", (g) => {
-    g.elip(8, 10.5, 3.6, 3.4, esfera(["#5a4a1a", "#9a8a2a", "#d0c04a", "#f0e08a"]));
-    g.ret(7, 4, 2, 4, "#c8b48a"); g.ret(6, 3, 4, 1, "#7d522b"); g.p(7, 9, "#fff8c8");
-  });
-  item("peixe_seco", (g) => {
-    g.elip(8, 9, 5, 2.4, (nx, ny) => tom(["#7a5a30", "#a8844a", "#d0b07a"], -(0.4 * nx + 0.9 * ny)));
-    g.lin(2, 7, 3, 9, "#7a5a30"); g.lin(2, 11, 3, 9, "#7a5a30");
-    for (const x of [6, 8, 10]) g.p(x, 9, "#5a3a1a");
-    g.lin(8, 3, 8, 6, "#c8b48a"); g.p(11, 8, "#2a1a14");
-  });
-  item("peixe_defumado", (g) => {
-    g.elip(8, 9.5, 5.6, 2.8, (nx, ny) => tom(["#4a2a14", "#7a4a22", "#a8703a"], -(0.4 * nx + 0.9 * ny)));
-    g.lin(1, 7, 2, 9, "#4a2a14"); g.lin(1, 12, 2, 10, "#4a2a14"); g.p(12, 9, "#2a1a14");
-    g.p(6, 4, "#b8b0a8"); g.p(8, 3, "#d8d0c8"); g.p(10, 5, "#b8b0a8");
-  });
-  item("jarro_barro", (g) => {
-    g.elip(8, 10, 4.6, 4.2, esfera(["#6a3a22", "#9a5a36", "#c47e52", "#e0a272"]));
-    g.ret(6, 3, 4, 3, "#9a5a36"); g.ret(5, 3, 6, 1, "#c47e52");
-    g.lin(11, 5, 12, 8, "#6a3a22"); g.lin(5, 10, 11, 10, "#5a3018");
-  });
-  item("lamparina", (g) => {
-    g.elip(7, 11, 5, 2.4, esfera(["#6a3a22", "#9a5a36", "#c47e52", "#e0a272"]));
-    g.ret(11, 9, 3, 2, "#9a5a36"); g.p(6, 10, "#2a1a14");
-    g.p(13, 7, "#ffe08a"); g.p(13, 8, "#e8a83a"); g.p(12, 7, "#ffd06a"); g.p(13, 6, "#fff2c8");
-  });
-  item("anfora", (g) => {
-    g.elip(8, 9, 3.6, 4.4, esfera(["#6a3a22", "#9a5a36", "#c47e52", "#e0a272"]));
-    g.ret(7, 2, 2, 3, "#9a5a36"); g.lin(6, 3, 5, 6, "#6a3a22"); g.lin(9, 3, 10, 6, "#6a3a22");
-    g.lin(8, 13, 8, 14, "#6a3a22"); g.p(7, 15, "#5a3018"); g.lin(5, 9, 11, 9, "#c8b48a");
-  });
-  item("incenso", (g) => {
-    // pedaços de olíbano num pratinho, com fumaça
-    g.elip(8, 12.5, 5, 1.8, esfera(["#6e5a40", "#a8906a", "#d0bc94"]));
-    for (const [x, y] of [[6, 11], [9, 11], [8, 10]]) g.elip(x, y, 1.4, 1.2, esfera(["#c8a85a", "#e8d08a", "#fff2c8"]));
-    g.p(8, 7, "#d8d0c8"); g.p(9, 5, "#b8b0a8"); g.p(8, 3, "#d8d0c8");
-  });
-  item("oleo_uncao", (g) => {
-    // chifre de óleo (1 Sm 16:13)
-    g.lin(4, 12, 11, 5, (x, y, i) => (i % 3 ? "#e8d8b0" : "#c8b48a"));
-    g.lin(5, 12, 12, 5, "#b8a07a"); g.lin(4, 11, 10, 5, "#fff2c8");
-    g.ret(11, 3, 2, 2, "#7d522b"); g.p(13, 3, "#e8b94a"); g.p(3, 13, "#7a6a4a");
-  });
-  item("manto_bordado", (g) => {
-    g.ret(4, 4, 8, 10, (x, y) => tom(["#5a2a6a", "#7a3a8e", "#a05ab8"], -((x - 8) * 0.1 + (y - 8) * 0.2)));
-    g.apagar(4, 4); g.apagar(11, 4); g.ret(7, 4, 2, 2, "#3a1a44");
-    for (let y = 6; y <= 13; y += 2) { g.p(4, y, "#e8b94a"); g.p(11, y, "#e8b94a"); }
-    g.lin(4, 13, 11, 13, "#e8b94a");
-  });
-  item("moeda", (g, q) => {
-    const larg = [3, 2, 1, 2][q];
-    g.elip(8, 11, larg + 0.01, 3, (nx, ny) => (Math.abs(nx) > 0.75 && larg > 1 ? "#b8862b" : tom(["#b8862b", "#e8b94a", "#ffe08a"], -(0.5 * nx + 0.8 * ny))));
-    if (larg > 1) g.p(8, 11, "#7a5518");
-  }, { quadros: 4 });
-  item("moeda_pilha", (g) => {
-    for (const [x, y] of [[5, 12], [10, 12], [7, 8]]) {
-      g.elip(x + 0.5, y, 3, 2, esfera(["#b8862b", "#e8b94a", "#ffe08a"]));
-      g.lin(x - 2, y + 1, x + 2, y + 1, "#7a5518");
-      g.p(x, y, "#7a5518");
-    }
-  });
+  item("madeira");
+  item("argila");
+  item("minerio_cobre");
+  item("resina");
+  item("peixe_grande");
+  item("lingote_bronze");
+  item("tecido_linho");
+  item("frasco_barro");
+  item("oleo_peixe");
+  item("peixe_seco");
+  item("peixe_defumado");
+  item("jarro_barro");
+  item("lamparina");
+  item("anfora");
+  item("incenso");
+  item("oleo_uncao");
+  item("manto_bordado");
+  item("moeda", { quadros: 4 });
+  item("moeda_pilha");
   const ALIAS_ITEM = { odre: "odre_agua", flechas: "flecha", moedas: "moeda" };
   // Item com raridade ("espada_ferro@raro.dano2") usa a arte do item base.
   const aliasItem = (id) => {
@@ -2845,99 +1202,101 @@
   };
 
   // -------------------------------------------------------------------
-  // Glifos de UI (§6.7) — 8×8 ou 12×12, contorno já desenhado
+  // Glifos: ui_ (interface), hb_ (habilidades) e of_ (ofícios). O desenho de cada um está em arte/icones.js
+  // (ui_ em 16 × 16 px, hb_/of_ em 32 × 32 px); as chamadas glifo("…") ficam aqui porque são a lista de chaves
+  // que os testes e arte/icones.js conferem.
   // -------------------------------------------------------------------
-  function glifo(chave, linhas, cores) {
-    return registrar(chave, { w: linhas[0].length, h: linhas.length, linhas, cores: Object.assign({ k: "#2a1a14" }, cores), contorno: null, origem: [0.5, 0.5] });
+  function glifo(chave, lado = 8) {
+    return reserva(chave, { w: lado, h: lado, contorno: null, origem: [0.5, 0.5] });
   }
-  glifo("ui_coracao", [".kk..kk.", "kRRkkRRk", "kRrRRRrk", "kRRRRRdk", ".kRRRdk.", "..kRdk..", "...kk...", "........"], { R: "#c2452d", r: "#e2774f", d: "#8e2a1f" });
-  glifo("ui_louro", ["k......k", "gk....kg", "Gg.kk.gG", "kGgkkgGk", ".kGggGk.", "..kGGk..", "...kk...", "..kddk.."], { g: "#e8b94a", G: "#b8862b", d: "#7a5518" });
-  glifo("ui_candeia", ["...yk...", "...Yy...", "..kYk...", ".kkkkkk.", "kOoooOok", ".kOOOOkk", "..kkkk..", ".lllll.."], { y: "#ffe08a", Y: "#e8b94a", O: "#7d522b", o: "#b07a3e", l: "#3b5a9a" });
-  glifo("ui_moeda", ["..kkkk..", ".kyYYYk.", "kyYYYYdk", "kYYkkYdk", "kYYkkYdk", "kYYYYddk", ".kddddk.", "..kkkk.."], { y: "#ffe08a", Y: "#e8b94a", d: "#b8862b" });
-  glifo("ui_mochila", ["..kkkk..", ".k....k.", "kkkkkkkk", "kLLLLLLk", "kLkyykLk", "kLLLLLDk", "kLLLLDDk", "kkkkkkkk"], { L: "#a8703a", D: "#7a4a30", y: "#e8b94a" });
-  glifo("ui_bolsa", ["..k..k..", "...kk...", "..kLLk..", ".kLLLLk.", "kLLyyLDk", "kLLLLLDk", ".kLDDDk.", "..kkkk.."], { L: "#a8703a", D: "#7a4a30", y: "#e8b94a" });
-  glifo("ui_pergaminho", [".kkkkkk.", "kPPPPPPk", "kkPlllPk", ".kPPPPPk", ".kPlllPk", ".kPPPPkk", ".kPPPPPk", ".kkkkkk."], { P: "#e6cf9c", l: "#5a3a24" });
-  glifo("ui_espadas", ["k......k", "kIk..kIk", ".kIkkIk.", "..kIIk..", "..kIIk..", ".kBkkBk.", "kBk..kBk", "kk....kk"], { I: "#e4ecf0", B: "#b07a38" });
-  glifo("ui_personagem", ["..kkkk..", ".kHHHHk.", ".kSSSSk.", ".kSkkSk.", "..kSSk..", ".kRRRRk.", "kRRAARRk", "kkkkkkkk"], { H: "#4a2f20", S: "#e0a878", R: "#eadcb6", A: "#3b5a9a" });
+  glifo("ui_coracao");
+  glifo("ui_louro");
+  glifo("ui_candeia");
+  glifo("ui_moeda");
+  glifo("ui_mochila");
+  glifo("ui_bolsa");
+  glifo("ui_pergaminho");
+  glifo("ui_espadas");
+  glifo("ui_personagem");
   // Pena e rosa-dos-ventos aparecem sobre couro escuro (barra do topo, abas
   // do celular) e sobre pergaminho: todo traço tem miolo claro e contorno
   // de tinta, para ler nos dois fundos.
-  glifo("ui_registro", [".....kkk", "....kWWk", "...kWWwk", "..kWWwk.", ".kWwwk..", ".kNkk...", "kNk.....", "kYYYYYk."], { W: "#f3e4c0", w: "#c9b48a", N: "#b07a38", Y: "#e8b94a" });
-  glifo("ui_rosa", ["...k....", "..kRk...", ".kkRkk..", "kDDYddk.", ".kkDkk..", "..kDk...", "...k....", "........"], { R: "#c2452d", Y: "#e8b94a", D: "#e6cf9c", d: "#c9ad78" });
-  glifo("ui_tela_cheia", ["YYY..YYY", "Y......Y", "Y......Y", "........", "........", "Y......Y", "Y......Y", "YYY..YYY"], { Y: "#e6cf9c" });
-  glifo("ui_talentos", ["..kGGk..", ".kGgGGk.", "kGGkGgGk", "kGgGGGGk", ".kkTTkk.", "..kTTk..", "..kTTk..", ".kkkkkk."], { G: "#5f8a3a", g: "#8fbf5a", T: "#7a4a30" });
+  glifo("ui_registro");
+  glifo("ui_rosa");
+  glifo("ui_tela_cheia");
+  glifo("ui_talentos");
   // Ofícios (JGB-24): um glifo por ofício (of_<icone> em dados/oficios.js).
-  glifo("of_pescador", ["......k.", ".....kWk", "..kk.k..", ".kBBkk..", "kBbBBBk.", ".kBBBk..", "..kkk...", "........"], { B: "#3f84a0", b: "#2a1a14", W: "#e6cf9c" });
-  glifo("of_ferreiro", [".kkkkk..", ".kIIIIk.", ".kkkIIk.", "...kNk..", "...kNk..", "...kNk..", "...kNk..", "...kkk.."], { I: "#a8b4bc", N: "#7d522b" });
-  glifo("of_carpinteiro", ["....kkk.", "...kIIk.", "..kIIk..", ".kNkk...", "kNk.....", "kk......", ".kkkkkk.", "kNNNNNNk"], { I: "#a8b4bc", N: "#a8703a" });
-  glifo("of_oleiro", ["..kkkk..", ".kOOOOk.", "kOoOOOOk", "kOOOOOOk", ".kOOOOk.", "..kkkk..", "kkkkkkkk", "kNNNNNNk"], { O: "#c47e52", o: "#e0a272", N: "#7d522b" });
-  glifo("of_tecelao", ["k.k.k.k.", "kLkLkLk.", "LLLLLLL.", "kLkLkLk.", "LLLLLLL.", "kLkLkLk.", "k.k.k.k.", "........"], { L: "#e6cf9c" });
-  glifo("of_perfumista", ["...kk...", "..kYYk..", "...kk...", "..kPPk..", ".kPpPPk.", "kPPPPPPk", ".kPPPPk.", "..kkkk.."], { Y: "#e8b94a", P: "#8a4ac2", p: "#c8a0e8" });
-  glifo("ui_ajuda", ["..kkkk..", ".kYYYYk.", "kYkkkYYk", "kYYYkYYk", "kYYkYYYk", "kYYYYYYk", ".kYkYYk.", "..kkkk.."], { Y: "#e8b94a" });
-  glifo("ui_fechar", ["DD....DD", "DDD..DDD", ".DDDDDD.", "..DDDD..", "..DDDD..", ".DDDDDD.", "DDD..DDD", "DD....DD"], { D: "#e6cf9c" });
-  glifo("ui_menu", ["........", "DDDDDDDD", "DDDDDDDD", "........", "DDDDDDDD", "DDDDDDDD", "........", "DDDDDDDD"], { D: "#e6cf9c" });
-  glifo("ui_cadeado", ["..kkkk..", ".kIkkIk.", ".kIk.kI.", "kkkkkkkk", "kYYYYYdk", "kYYkkYdk", "kYYYkYdk", "kkkkkkkk"], { I: "#a8b4bc", Y: "#e8b94a", d: "#b8862b" });
-  glifo("ui_losango", ["...kk...", "..kYYk..", ".kYyYYk.", "kYyYYYdk", "kYYYYddk", ".kYYddk.", "..kddk..", "...kk..."], { Y: "#e8b94a", y: "#ffe08a", d: "#b8862b" });
-  glifo("ui_escudo_bloq", ["kkkkkkkk", "kBBBBBdk", "kBbBBBdk", "kBBBBBdk", ".kBBBdk.", ".kBBBdk.", "..kBdk..", "...kk..."], { B: "#b9c6d6", b: "#e4ecf0", d: "#6e7a84" });
-  glifo("ui_gota", ["...kk...", "...kk...", "..kVVk..", ".kVvVVk.", "kVvVVVdk", "kVVVVddk", ".kVVddk.", "..kkkk.."], { V: "#a8c84a", v: "#e4f0a8", d: "#6a8a2a" });
-  glifo("ui_estrela_chefe", ["k.k..k.k", "kYkkkYkk", "kYYYYYYk", ".kkYYkk.", "..kYYk..", ".kYyYYk.", "..kYYk..", "...kk..."], { Y: "#e8b94a", y: "#ffe08a" });
-  glifo("ui_ancora", ["...kk...", "..kAAk..", "...kk...", ".kkAAkk.", "...AA...", "k..AA..k", "kA.AA.Ak", ".kAAAAk."], { A: "#6fd0d0" });
-  glifo("ui_peixe", ["........", "k..kkkk.", "kkkAAAAk", "kAkAAAkA", "kAkAAAAk", "kkkaaaak", "k..kkkk.", "........"], { A: "#4fa3a5", a: "#a9dccf" });
-  glifo("ui_dpad_seta", ["...kk...", "..kYYk..", ".kYYYYk.", "kYYYYYYk", "kkkYYkkk", "..kYYk..", "..kYYk..", "..kkkk.."], { Y: "#e6cf9c" });
-  glifo("ui_atacar", ["......kk", ".....kIk", "....kIk.", "k..kIk..", "kk.Ik...", ".kBk....", "kBkkk...", "kk......"], { I: "#e4ecf0", B: "#b07a38" });
-  glifo("ui_flecha", ["....kkkk", ".....kIk", "....kWkk", "...kWk.k", "..kWk...", "Rkkk....", "RRk.....", "kRR....."], { I: "#e4ecf0", W: "#b07a38", R: "#c2452d" });
-  glifo("ui_falar", [".kkkkkk.", "kPPPPPPk", "kPkPkPPk", "kPPPPPPk", ".kkPkkk.", "..kPk...", "..kk....", "........"], { P: "#f3e4c0" });
-  glifo("ui_orar", ["...kk...", "..kSSk..", "..kSSk..", ".kSSSSk.", ".kSSSsk.", "kSSkkSsk", "kRRk.kRk", "kkk..kkk"], { S: "#e0a878", s: "#c68a5c", R: "#eadcb6" });
+  glifo("of_pescador");
+  glifo("of_ferreiro");
+  glifo("of_carpinteiro");
+  glifo("of_oleiro");
+  glifo("of_tecelao");
+  glifo("of_perfumista");
+  glifo("ui_ajuda");
+  glifo("ui_fechar");
+  glifo("ui_menu");
+  glifo("ui_cadeado");
+  glifo("ui_losango");
+  glifo("ui_escudo_bloq");
+  glifo("ui_gota");
+  glifo("ui_estrela_chefe");
+  glifo("ui_ancora");
+  glifo("ui_peixe");
+  glifo("ui_dpad_seta");
+  glifo("ui_atacar");
+  glifo("ui_flecha");
+  glifo("ui_falar");
+  glifo("ui_orar");
   // Caçadas: tabuinha de contagem (riscos cortados por um traço), selo de argila dos pontos de tarefa e alforje.
-  glifo("ui_cacada", [".kkkkkk.", "kMWMWMyk", "kMWMWyWk", "kMWMyMWk", "kMWyWMWk", "kMyMWMWk", "kyWMWMWk", ".kkkkkk."], { W: "#d9a35c", M: "#5a3a24", y: "#f6efdc" });
-  glifo("ui_selo", ["..kkkk..", ".kTtTTkk", "kTtiiiTk", "kTTimiTk", "kTTiiidk", "kTTTTddk", ".kTddkk.", "..kkk..."], { T: "#b5663a", t: "#d88a58", d: "#8e4a2a", i: "#6e3420", m: "#f0c890" });
-  glifo("ui_alforje", [".kkkkkk.", "kkddddkk", "kDDkkDDk", "kDyDkDyk", "kLLLkLLk", "kLLLkLLk", "kLLdkLdk", "kkkkkkkk"], { L: "#a8703a", D: "#7a4a30", d: "#5a3624", y: "#e8b94a" });
+  glifo("ui_cacada");
+  glifo("ui_selo");
+  glifo("ui_alforje");
   // Bestiário (livro de capa de couro com a pegada dourada), amuleto da família e ampulheta do analisador.
-  glifo("ui_bestiario", [".kkkkkk.", "kYLYLYPk", "kLLLLLPk", "kLYYYLPk", "kLYYYLPk", "kLLYLLPk", "kLLLLLPk", ".kkkkkk."], { L: "#7a4a30", Y: "#e8b94a", P: "#f3e4c0" });
-  glifo("ui_amuleto", ["C......C", ".C....C.", "..C..C..", "...kk...", "..kYYk..", ".kYyGYk.", ".kYGGdk.", "..kddk.."], { C: "#c9b48a", Y: "#e8b94a", y: "#ffe08a", d: "#b8862b", G: "#3fa66a" });
+  glifo("ui_bestiario");
+  glifo("ui_amuleto");
   // Habilidades das vocações (JGB-20): um glifo por ícone (hb_<icone> em dados/vocacoes.js).
-  glifo("hb_espada", ["......kW", ".....kWk", "....kWk.", "k..kWk..", "kk.Wk...", ".kBk....", "kBkkk...", "kk......"], { W: "#e4ecf0", B: "#b07a38" });
-  glifo("hb_escudo", ["kkkkkkkk", "kBBBBBdk", "kBbBBBdk", "kBBYBBdk", ".kBBBdk.", ".kBBBdk.", "..kBdk..", "...kk..."], { B: "#b07a38", b: "#d29e52", d: "#6b4a2e", Y: "#e8b94a" });
-  glifo("hb_grito", [".kk...W.", "kRRk.W..", "kRRRk..W", "kRRRk.W.", "kRRRk..W", "kRRk.W..", ".kk...W.", "........"], { R: "#c2452d", W: "#f6efdc" });
-  glifo("hb_escudo_golpe", ["kkkkk.Y.", "kBBBk.YY", "kBbBkYY.", "kBBBk.Y.", ".kBk....", "..k.....", "........", "........"], { B: "#b07a38", b: "#d29e52", Y: "#ffe08a" });
-  glifo("hb_investida", ["........", "W...kk..", "....kWk.", "WWkkWWWk", "....kWk.", "W...kk..", "........", "........"], { W: "#e4ecf0" });
-  glifo("hb_redemoinho", ["..kkkk..", ".kW..Wk.", "kW.kk.Wk", "kW.k..W.", "kW..kWk.", "k.Wk....", ".k.kkkk.", "..k....."], { W: "#e4ecf0" });
-  glifo("hb_coracao", [".kk.kk..", "kRRkRRk.", "kRrRRRk.", "kRRRRRk.", ".kRRRk..", "..kRk...", "...k....", "........"], { R: "#c2452d", r: "#ef6a5e" });
-  glifo("hb_chama", ["...k....", "..kYk...", "..kYk.k.", ".kYOYkYk", ".kYOOYYk", "kYOOROYk", "kYORROYk", ".kkkkkk."], { Y: "#ffe08a", O: "#e8b94a", R: "#c2452d" });
-  glifo("hb_muralha", ["kkkkkkkk", "kSSkSSSk", "kkkkkkkk", "kSSSkSSk", "kkkkkkkk", "kSSkSSSk", "kkkkkkkk", "........"], { S: "#b8ab8a" });
-  glifo("hb_pedra", ["........", "..kkk...", ".kSSsk..", "kSSSssk.", "kSSssdk.", ".kSsdk..", "..kkk...", "........"], { S: "#d8ccb0", s: "#b8ab8a", d: "#8a7a6a" });
-  glifo("hb_testa", [".kkkkk..", "kRRRRRk.", "kRWWWRk.", "kRWkWRk.", "kRWWWRk.", "kRRRRRk.", ".kkkkk..", "........"], { R: "#c2452d", W: "#f6efdc" });
-  glifo("hb_salto", ["kkkk....", "kWWk....", "kWk.....", "k.kW....", "...kW...", "....kW..", ".....kWk", "......kk"], { W: "#e4ecf0" });
-  glifo("hb_chuva", ["S..S..S.", "d..d..d.", "........", ".S..S..S", ".d..d..d", "........", "S..S..S.", "d..d..d."], { S: "#d8ccb0", d: "#8a7a6a" });
-  glifo("hb_pedra_afiada", ["......kR", "....kkR.", "..kSSk..", ".kSSsk..", "kSSsk...", "kSsk....", ".kk.....", "........"], { S: "#d8ccb0", s: "#b8ab8a", R: "#c2452d" });
-  glifo("hb_duas_pedras", [".kkk....", "kSsk....", "kSdk....", ".kk.kkk.", "....kSsk", "....kSdk", ".....kk.", "........"], { S: "#d8ccb0", s: "#b8ab8a", d: "#8a7a6a" });
-  glifo("hb_olho", ["........", "..kkkk..", ".kWWWWk.", "kWWBBWWk", "kWWBkWWk", ".kWWWWk.", "..kkkk..", "........"], { W: "#f6efdc", B: "#4fa3a5" });
-  glifo("hb_pedra_grande", ["..kkkk..", ".kSSssk.", "kSSSsssk", "kSSssddk", "kSsssddk", "kSssdddk", ".kddddk.", "..kkkk.."], { S: "#d8ccb0", s: "#b8ab8a", d: "#8a7a6a" });
-  glifo("hb_cura", ["...kk...", "..kGGk..", "..kGGk..", "kkkGGkkk", "kGGGGGGk", "kkkGGkkk", "..kGGk..", "...kk..."], { G: "#8fd16a" });
-  glifo("hb_candelabro", ["Y.Y.Y.Y.", "N.N.N.N.", "NNNNNNN.", "...N....", "...N....", "..NNN...", ".NNNNN..", "........"], { Y: "#ffe08a", N: "#e8b94a" });
-  glifo("hb_incenso", ["..W.W...", "...W....", "..W.....", "..kkkk..", ".kNNNNk.", ".kNnNNk.", "..kNNk..", "..kkkk.."], { W: "#d8ccb0", N: "#b07a38", n: "#d29e52" });
-  glifo("hb_agua", ["...kk...", "..kBBk..", ".kBbBBk.", ".kBbBBk.", "kBBBBBBk", "kBBBBBdk", ".kBBBdk.", "..kkkk.."], { B: "#6fd0d0", b: "#d8f4f4", d: "#3a8a8a" });
-  glifo("hb_trombeta", ["........", "k.......", "kNk.....", "kNNk....", ".kNNkk..", "..kNNNkk", "...kNNNk", "....kkk."], { N: "#e0c088" });
-  glifo("hb_escudo_luz", ["Y.kkkk.Y", ".kWWWWk.", "kWWYWWWk", "kWYYYWWk", ".kWYWWk.", ".kWWWk..", "..kWk...", "...k...."], { W: "#d8f4f4", Y: "#ffe08a" });
-  glifo("hb_maos", ["k.k..k.k", "kSk..kSk", "kSk..kSk", "kSSkkSSk", "kSSSSSSk", ".kSSSSk.", "..kSSk..", "..kkkk.."], { S: "#e0a878" });
-  glifo("hb_altar", ["..Y..Y..", ".YRY.Y..", "..kkkk..", ".kSSSSk.", "kSSSSSSk", "kSdSSdSk", "kSSSSSSk", "kkkkkkkk"], { Y: "#ffe08a", R: "#c2452d", S: "#b8ab8a", d: "#8a7a6a" });
-  glifo("hb_harpa", ["kkkkk...", "kN..Wk..", "kN.W.Wk.", "kNW.W.Wk", "kN.W.W.k", "kN..W.k.", "kNNNNNk.", "kkkkkk.."], { N: "#b07a38", W: "#f6efdc" });
-  glifo("hb_nuvem", ["..kkk...", ".kWWWkk.", "kWWWWWWk", "kWWWWWWk", ".kkWWkk.", "...kWk..", "...kWk..", "...kWk.."], { W: "#f6efdc" });
-  glifo("hb_gota", ["...kk...", "...kk...", "..kVVk..", ".kVvVVk.", "kVvVVVdk", "kVVVVddk", ".kVVddk.", "..kkkk.."], { V: "#a8c84a", v: "#e4f0a8", d: "#6a8a2a" });
-  glifo("hb_raio", ["....kkk.", "...kYk..", "..kYk...", ".kYYYYk.", "...kYk..", "..kYk...", ".kYk....", ".kk....."], { Y: "#ffe08a" });
-  glifo("hb_balanca", ["...kk...", "kkkkkkkk", "k..kk..k", "Y..kk..Y", "YY.kk.YY", "...kk...", "..kkkk..", ".kkkkkk."], { Y: "#e8b94a" });
-  glifo("hb_onda", ["........", "..kkk...", ".kBBBk..", "kBBkBBk.", "BkkkBBBk", "BBBBBBBk", "kBBBBBBk", "kkkkkkkk"], { B: "#4fa3a5" });
-  glifo("hb_carro", ["Y..Y....", ".YR.Y...", "kkkkkk..", "kNNNNk..", "kkkkkkkk", ".kWk.kWk", "..k...k.", "........"], { Y: "#ffe08a", R: "#c2452d", N: "#c2452d", W: "#e8b94a" });
-  glifo("hb_cao", ["k.....k.", "kk...kk.", "kNkkkNk.", "kNNNNNk.", "kNkNNkNk", "kNNNNNNk", ".kNNdNk.", "..kkkk.."], { N: "#b07a38", d: "#2a1a14" });
-  glifo("hb_cajado", ["..kkkk..", ".kN..Nk.", ".kN..kk.", "..k.kN..", "....kN..", "....kN..", "....kN..", "....kk.."], { N: "#b07a38" });
-  glifo("hb_ovelha", [".kkkkk..", "kWWWWWkk", "kWWWWkSk", "kWWWWkSk", "kWWWWWkk", ".kkkkkk.", ".k.k.k..", ".k.k.k.."], { W: "#f6efdc", S: "#3a3028" });
-  glifo("hb_presa", ["kkkkkkkk", "kRRRRRRk", "kWkRRkWk", ".W.kk.W.", "........", ".W....W.", "kWkkkkWk", "kRRRRRRk"], { R: "#c2452d", W: "#f6efdc" });
-  glifo("hb_rebanho", ["kkk.kkk.", "kWWkkWWk", "kWWkkWWk", "kkkkkkkk", "........", "..kkk...", ".kWWWk..", "..k.k..."], { W: "#f6efdc" });
-  glifo("hb_vara", ["k......k", ".kN..Nk.", "..kNNk..", "...kk...", "..kNNk..", ".kN..Nk.", "kN....Nk", "k......k"], { N: "#b07a38" });
-  glifo("hb_aprisco", ["N.N.N.N.", "NNNNNNNN", "N.N.N.N.", "N.N.N.N.", "NNNNNNNN", "N.N.N.N.", "N.N.N.N.", "........"], { N: "#b07a38" });
+  glifo("hb_espada");
+  glifo("hb_escudo");
+  glifo("hb_grito");
+  glifo("hb_escudo_golpe");
+  glifo("hb_investida");
+  glifo("hb_redemoinho");
+  glifo("hb_coracao");
+  glifo("hb_chama");
+  glifo("hb_muralha");
+  glifo("hb_pedra");
+  glifo("hb_testa");
+  glifo("hb_salto");
+  glifo("hb_chuva");
+  glifo("hb_pedra_afiada");
+  glifo("hb_duas_pedras");
+  glifo("hb_olho");
+  glifo("hb_pedra_grande");
+  glifo("hb_cura");
+  glifo("hb_candelabro");
+  glifo("hb_incenso");
+  glifo("hb_agua");
+  glifo("hb_trombeta");
+  glifo("hb_escudo_luz");
+  glifo("hb_maos");
+  glifo("hb_altar");
+  glifo("hb_harpa");
+  glifo("hb_nuvem");
+  glifo("hb_gota");
+  glifo("hb_raio");
+  glifo("hb_balanca");
+  glifo("hb_onda");
+  glifo("hb_carro");
+  glifo("hb_cao");
+  glifo("hb_cajado");
+  glifo("hb_ovelha");
+  glifo("hb_presa");
+  glifo("hb_rebanho");
+  glifo("hb_vara");
+  glifo("hb_aprisco");
   // Maná (JGB-11): jarro de barro (o ômer) com flocos brancos caindo.
-  glifo("ui_mana", [".W.W..W.", "..kkkk.W", ".kWWWWk.", "kCCCCCCk", "kCcCCCdk", "kCcCCCdk", ".kCCCdk.", "..kkkk.."], { C: "#c98a52", c: "#e0a878", d: "#8e5a2b", W: "#f6efdc" });
-  glifo("ui_ampulheta", ["NNNNNNNN", ".kYYYYk.", "..kYYk..", "...kk...", "...kk...", "..k.Yk..", ".kYYYYk.", "NNNNNNNN"], { N: "#b07a38", Y: "#e8b94a" });
+  glifo("ui_mana");
+  glifo("ui_ampulheta");
 
   // -------------------------------------------------------------------
   // Marcadores (§6.8)
@@ -3036,26 +1395,7 @@
       g.ret(6 + (q % 2), 9, 4, 1, "#245e6a"); g.ret(7 + (q % 2), 8, 2, 1, "#245e6a");
     },
   });
-  registrar("mk_barco", {
-    w: 26, h: 22, quadros: 2,
-    desenhar(g, q) {
-      const b = q;
-      g.sombra(14, 19, 10, 1.6, "#173a44", 0.35);
-      // casco
-      for (let y = 13; y <= 17; y++) {
-        const enc = y - 13;
-        g.ret(2 + enc, y + b, 22 - enc * 2, 1, y === 13 ? "#9a6a3c" : y < 16 ? "#6e4a28" : "#4a3222");
-      }
-      g.ret(1, 12 + b, 24, 1, "#9a6a3c");
-      // mastro e vela creme com faixa lápis
-      g.lin(12, 1 + b, 12, 12 + b, "#4a3222");
-      for (let y = 2; y <= 11; y++) {
-        const l = Math.floor((y - 1) * 0.9);
-        g.ret(13, y + b, l, 1, y === 7 ? "#3b5a9a" : y < 5 ? "#f3e4c0" : "#eadcb6");
-      }
-      g.p(13, 11 + b, "#d4bf8f");
-    },
-  });
+  reserva("mk_barco", { w: 26, h: 22, quadros: 2, origem: [0.5, 1], contorno: "amigo" });
   // Balões sobre NPCs (escudete de pergaminho com glifo).
   function balao(chave, linhasGlifo, cores) {
     registrar(chave, {
@@ -3105,64 +1445,12 @@
     return nova;
   }
   registrar("fx_sombra_lobo", { w: 18, h: 5, contorno: null, origem: [0.5, 0.5], desenhar: (g) => g.elip(9, 2.5, 8, 1.6, comAlfa("#1c1210", 0.3)) });
-  function anel(chave, cor, quadros, tracejado) {
-    registrar(chave, {
-      w: 18, h: 9, quadros, contorno: null, origem: [0.5, 0.5],
-      desenhar(g, q) {
-        const n = 48;
-        for (let i = 0; i < n; i++) {
-          const t = (i / n) * Math.PI * 2;
-          if (tracejado && Math.floor((i + q * 3) / 6) % 2 === 1) continue;
-          g.p(9 + Math.cos(t) * 7.5, 4.5 + Math.sin(t) * 2.8, cor);
-        }
-        if (tracejado) {
-          const r = q % 2;
-          for (const [x, y, dx, dy] of [[0, 0, 1, 1], [17, 0, -1, 1], [0, 8, 1, -1], [17, 8, -1, -1]]) {
-            g.p(x + dx * r, y + dy * r, "#ffe08a"); g.p(x + dx * (r + 1), y + dy * r, "#ffe08a"); g.p(x + dx * r, y + dy * (r + 1), "#ffe08a");
-          }
-        }
-      },
-    });
-  }
-  anel("fx_anel", "#ef6a5e", 4, true);
-  anel("fx_anel_amigo", "#f3e4c0", 1, false);
-  registrar("fx_corte", {
-    w: 16, h: 16, quadros: 2, contorno: null, origem: [0.5, 0.5],
-    desenhar(g, q) {
-      for (let i = 0; i < 14; i++) {
-        const t = -1.2 + (i / 13) * 2.2 + q * 0.3;
-        const r = 6 + (i % 3 === 0 ? 0.5 : 0);
-        g.p(8 + Math.cos(t) * r, 8 + Math.sin(t) * r, i < 5 ? "#e8b94a" : "#f6efdc");
-        if (i > 3 && i < 11) g.p(8 + Math.cos(t) * (r - 1), 8 + Math.sin(t) * (r - 1), "#f6efdc");
-      }
-    },
-  });
-  registrar("fx_faisca", {
-    w: 8, h: 8, quadros: 3, contorno: null, origem: [0.5, 0.5],
-    desenhar(g, q) {
-      const r = [1, 2, 3][q], c = q === 2 ? "#e8b94a" : "#fff6d0";
-      g.p(4, 4 - r, c); g.p(4, 3 + r, c); g.p(4 - r, 4, c); g.p(3 + r, 4, c);
-      if (q < 2) g.ret(3, 3, 2, 2, "#fff6d0");
-      if (q === 1) { g.p(2, 2, c); g.p(5, 5, c); g.p(5, 2, c); g.p(2, 5, c); }
-    },
-  });
-  registrar("fx_brilho", {
-    w: 5, h: 5, quadros: 3, contorno: null, origem: [0.5, 0.5],
-    desenhar(g, q) {
-      const c = "#fff6d0";
-      g.p(2, 2, c);
-      if (q >= 1) { g.p(2, 1, c); g.p(2, 3, c); g.p(1, 2, c); g.p(3, 2, c); }
-      if (q === 2) { g.p(2, 0, comAlfa(c, 0.6)); g.p(2, 4, comAlfa(c, 0.6)); g.p(0, 2, comAlfa(c, 0.6)); g.p(4, 2, comAlfa(c, 0.6)); }
-    },
-  });
-  // Brilho do saque no chão e pilar de luz (brancos: o jogo tinge na cor da raridade).
-  registrar("fx_aura", {
-    w: 28, h: 12, contorno: null, origem: [0.5, 0.5],
-    desenhar: (g) => g.elip(14, 6, 13, 5.2, (nx, ny) => {
-      const d = nx * nx + ny * ny;
-      return comAlfa("#ffffff", d < 0.2 ? 0.75 : d < 0.5 ? 0.45 : 0.2);
-    }),
-  });
+  reserva("fx_anel", { w: 18, h: 9, quadros: 4, contorno: null, origem: [0.5, 0.5] });
+  reserva("fx_anel_amigo", { w: 18, h: 9, quadros: 1, contorno: null, origem: [0.5, 0.5] });
+  reserva("fx_corte", { w: 16, h: 16, quadros: 2, contorno: null, origem: [0.5, 0.5] });
+  reserva("fx_faisca", { w: 8, h: 8, quadros: 3, contorno: null, origem: [0.5, 0.5] });
+  reserva("fx_brilho", { w: 5, h: 5, quadros: 3, contorno: null, origem: [0.5, 0.5] });
+  reserva("fx_aura", { w: 28, h: 12, contorno: null, origem: [0.5, 0.5], quadros: 1 });
   registrar("fx_pilar", {
     w: 8, h: 56, contorno: null, origem: [0.5, 1],
     desenhar(g) {
@@ -3175,32 +1463,10 @@
     },
   });
   registrar("fx_pixel", { w: 1, h: 1, contorno: null, origem: [0.5, 0.5], desenhar: (g) => g.p(0, 0, "#ffffff") });
-  registrar("fx_luz_quente", {
-    w: 24, h: 8, contorno: null, origem: [0.5, 0.5],
-    desenhar: (g) => g.elip(12, 4, 11, 3.5, (nx, ny) => (nx * nx + ny * ny > 0.5 ? "#c88a4a" : "#ffe2a8")),
-  });
-  registrar("fx_bolha", { w: 3, h: 3, contorno: null, origem: [0.5, 0.5], desenhar: (g) => { g.p(1, 0, "#a8c84a"); g.p(0, 1, "#a8c84a"); g.p(2, 1, "#a8c84a"); g.p(1, 2, "#a8c84a"); } });
-  registrar("fx_borboleta", {
-    w: 5, h: 4, quadros: 2, contorno: null, origem: [0.5, 0.5],
-    desenhar(g, q) {
-      g.p(2, 1, "#5a3a24"); g.p(2, 2, "#5a3a24");
-      if (q === 0) { g.ret(0, 0, 2, 2, "#f6efdc"); g.ret(3, 0, 2, 2, "#f6efdc"); g.p(0, 2, "#eadcb6"); g.p(4, 2, "#eadcb6"); }
-      else { g.ret(1, 0, 1, 3, "#eadcb6"); g.ret(3, 0, 1, 3, "#eadcb6"); }
-    },
-  });
-  // Fogueira (3 quadros a 6 fps).
-  registrar("fx_fogueira", {
-    w: 14, h: 14, quadros: 3, origem: [0.5, 1],
-    desenhar(g, q) {
-      g.sombra(8, 12, 6, 1.4);
-      for (const [x, y] of [[2, 11], [5, 12], [8, 12], [11, 11], [3, 10], [10, 10]]) g.ret(x, y, 2, 1, "#6a5a4a");
-      g.lin(3, 11, 10, 9, "#4a3222"); g.lin(4, 9, 10, 11, "#6b4a2e");
-      const h = [5, 6, 4][q], o = [0, 1, -1][q];
-      g.elip(7 + o * 0.3, 10 - h / 2, 2.5, h / 2, "#c2452d");
-      g.elip(7 + o * 0.5, 10 - h / 2 + 0.5, 1.6, h / 2 - 0.6, "#e8b94a");
-      g.p(7 + o, 10 - h, "#ffe08a"); g.p(7, 9, "#ffe08a");
-    },
-  });
+  reserva("fx_luz_quente", { w: 24, h: 8, contorno: null, origem: [0.5, 0.5], quadros: 1 });
+  reserva("fx_bolha", { w: 3, h: 3, contorno: null, origem: [0.5, 0.5], quadros: 1 });
+  reserva("fx_borboleta", { w: 5, h: 4, quadros: 2, contorno: null, origem: [0.5, 0.5] });
+  reserva("fx_fogueira", { w: 14, h: 14, quadros: 3, origem: [0.5, 1], contorno: "amigo" });
   // Faixa de pergaminho do cartão de título (180×36 px-a, pontas enroladas).
   registrar("fx_faixa", {
     w: 180, h: 36, contorno: "amigo", origem: [0.5, 0.5],
@@ -3223,36 +1489,10 @@
     },
   });
 
-  // Decoração plana das vilas (até 3 px-a de altura; vai em casa livre; posições em dados/mapas.js).
-  registrar("dc_tapete", {
-    w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
-    desenhar(g) {
-      g.ret(2, 4, 12, 8, (x, y) => (y === 4 || y === 11 ? "#5e1a14" : (y - 4) % 3 === 0 ? "#e8b94a" : "#8e2a1f"));
-      for (let x = 2; x < 14; x += 2) { g.p(x, 3, "#e8b94a"); g.p(x, 12, "#e8b94a"); }
-    },
-  });
-  registrar("dc_esteira", {
-    w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
-    desenhar(g) {
-      g.ret(2, 5, 12, 7, (x, y) => ((x + (y % 2)) % 2 ? "#c8b070" : "#a8904e"));
-      g.elip(12, 4, 2.5, 1.6, "#8a6a42"); g.p(12, 4, "#5e4630");
-    },
-  });
-  registrar("dc_rede", {
-    w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
-    desenhar(g) {
-      for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) if ((x + y) % 3 === 0 || (x - y + 30) % 3 === 0) g.p(x, y, "#c9b48a");
-      for (const [x, y] of [[3, 3], [13, 4], [4, 12], [12, 12]]) g.p(x, y, "#e6cf9c");
-      g.ret(9, 9, 3, 2, "#4fa3a5"); g.p(12, 9, "#2f7680");
-    },
-  });
-  registrar("dc_fogo_apagado", {
-    w: 16, h: 16, contorno: null, origem: [0.5, 0.5],
-    desenhar(g) {
-      for (let a = 0; a < 8; a++) { const t = (a / 8) * Math.PI * 2; g.ret(7 + Math.cos(t) * 4.5, 8 + Math.sin(t) * 3, 2, 1, a % 2 ? "#8a8070" : "#a39b8a"); }
-      g.ret(6, 7, 4, 2, "#3a2c24"); g.p(7, 7, "#6a5646");
-    },
-  });
+  reserva("dc_tapete", { w: 16, h: 16, contorno: null, origem: [0.5, 0.5], quadros: 1 });
+  reserva("dc_esteira", { w: 16, h: 16, contorno: null, origem: [0.5, 0.5], quadros: 1 });
+  reserva("dc_rede", { w: 16, h: 16, contorno: null, origem: [0.5, 0.5], quadros: 1 });
+  reserva("dc_fogo_apagado", { w: 16, h: 16, contorno: null, origem: [0.5, 0.5], quadros: 1 });
 
   // Mapeamentos (§7)
   const VISUAL_NPC = {
@@ -3295,7 +1535,7 @@
       borda: { tipo: "sebe", rampa: ["#34401f", "#4a5a2a", "#6a7a3a", "#8a9a4a"] },
       moldura: { norte: "colinas", sul: "colinas", leste: "colinas", oeste: "colinas" },
       deco: [{ tipo: "anemona", peso: 3, cor: "#c8402f" }, { tipo: "flor_branca", peso: 3, cor: "#efe6cf" }, { tipo: "flor_amarela", peso: 2, cor: "#e9d36a" }, { tipo: "tufo", peso: 4, cor: "#6e8a3a" }, { tipo: "pedrinha", peso: 2, cor: "#b8ab8a" }],
-      luz: { cor: "#ffd08a", alfa: 0.1, modo: "screen" }, vinheta: { cor: "#1a2410", forca: 0.28 }, sombra: "#2a2a1a",
+      luz: { cor: "#ffd08a", alfa: 0.1, modo: "screen" }, vinheta: { cor: "#1a2410", forca: 0.18 }, sombra: "#2a2a1a",
       particulas: { tipo: "polen", cor: "#f2e6a0", max: 20 },
     },
     deserto: {
@@ -3306,7 +1546,7 @@
       borda: { tipo: "duna", rampa: ["#9a7040", "#b88a50", "#d8b070", "#ecc890"] },
       moldura: { norte: "dunas", sul: "dunas", leste: "dunas", oeste: "dunas" },
       deco: [{ tipo: "pedrinha", peso: 3, cor: "#a8845a" }, { tipo: "tufo_seco", peso: 3, cor: "#9a8550" }, { tipo: "ondulacao", peso: 4, cor: "#cfa863" }, { tipo: "pegadas", peso: 1, cor: "#b08a58" }],
-      luz: { cor: "#ffbf6a", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#3a2410", forca: 0.34 }, sombra: "#5a3424",
+      luz: { cor: "#ffbf6a", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#3a2410", forca: 0.22 }, sombra: "#5a3424",
       particulas: { tipo: "areia", cor: "#f0dcaa", max: 25 },
     },
     mar: {
@@ -3318,7 +1558,7 @@
       borda: { tipo: "mar_profundo", rampa: ["#163e4a", "#1d4f5c", "#245e6a", "#2f7680"] },
       moldura: { norte: "mar", sul: "mar", leste: "praia", oeste: "relva" },
       deco: [{ tipo: "cardume", peso: 1, cor: "#245e6a" }],
-      luz: { cor: "#ffd9a0", alfa: 0.07, modo: "screen" }, vinheta: { cor: "#0a2030", forca: 0.25 }, sombra: "#173a44",
+      luz: { cor: "#ffd9a0", alfa: 0.07, modo: "screen" }, vinheta: { cor: "#0a2030", forca: 0.16 }, sombra: "#173a44",
       particulas: { tipo: "brilho", cor: "#bfe6d6", max: 20 },
     },
     egito: {
@@ -3330,7 +1570,7 @@
       borda: { tipo: "muro_tijolo", rampa: ["#6a3c22", "#87502f", "#a8683f", "#c8865a"], norte: "agua" },
       moldura: { norte: "agua", sul: "campos", leste: "campos", oeste: "campos" },
       deco: [{ tipo: "caco", peso: 2, cor: "#b5663a" }, { tipo: "junco", peso: 3, cor: "#7a9a3a" }, { tipo: "broto", peso: 4, cor: "#6f7a3a" }],
-      luz: { cor: "#ffcc66", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#2a1a08", forca: 0.32 }, sombra: "#4a3020",
+      luz: { cor: "#ffcc66", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#2a1a08", forca: 0.2 }, sombra: "#4a3020",
       particulas: { tipo: "poeira", cor: "#f2d27a", max: 20 },
     },
     marVermelho: {
@@ -3342,18 +1582,18 @@
       borda: { tipo: "praia_granito", rampa: ["#5a2a20", "#7a3426", "#a5503a", "#c87a58"], norte: "muralha", sul: "muralha" },
       moldura: { norte: "muralha", sul: "muralha", leste: "granito", oeste: "granito" },
       deco: [{ tipo: "concha", peso: 3, cor: "#f0e0d0" }, { tipo: "alga", peso: 3, cor: "#6a7a4a" }, { tipo: "poca", peso: 2, cor: "#7a9aa0" }],
-      luz: { cor: "#ff9f78", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#3a2238", forca: 0.4 }, sombra: "#3a2238",
+      luz: { cor: "#ff9f78", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#3a2238", forca: 0.26 }, sombra: "#3a2238",
       particulas: { tipo: "respingo", cor: "#e8f2e0", max: 25 },
     },
     sinai: {
-      chao: { base: "#8f735a", escuro: "#7a6050", claro: "#a68a6c", salpico: "#bca084" },
-      mancha: { base: "#8a6e5e", escuro: "#6a5248" },
+      chao: { base: "#a08266", escuro: "#896d59", claro: "#b89b7c", salpico: "#ccb294" },
+      mancha: { base: "#987a66", escuro: "#7a6052" },
       caminho: { base: "#c2a888", escuro: "#a08a6c", claro: "#d4bea0", borda: "#7a6450" },
       obstaculos: [{ tipo: "penedo", peso: 50 }, { tipo: "arbusto", peso: 20 }, { tipo: "marco", peso: 15 }, { tipo: "acacia", peso: 15, alto: true }],
       borda: { tipo: "paredao", rampa: ["#2e2430", "#3a2a44", "#5a4a4a", "#7a6a62"] },
       moldura: { norte: "penhascos", sul: "penhascos", leste: "penhascos", oeste: "penhascos" },
       deco: [{ tipo: "seixo", peso: 3, cor: "#7a6a5a" }, { tipo: "liquen", peso: 2, cor: "#9aa070" }, { tipo: "tufo", peso: 3, cor: "#7a7f4a" }],
-      luz: { cor: "#c8d0f0", alfa: 0.08, modo: "screen" }, vinheta: { cor: "#10101e", forca: 0.42 }, sombra: "#3a2a44",
+      luz: { cor: "#c8d0f0", alfa: 0.08, modo: "screen" }, vinheta: { cor: "#10101e", forca: 0.26 }, sombra: "#3a2a44",
       particulas: { tipo: "nevoa", cor: "#e8ecf4", max: 12 },
     },
     galileia: {
@@ -3365,16 +1605,19 @@
       borda: { tipo: "muro_basalto", rampa: ["#262422", "#363432", "#4c4a48", "#6e6a64"], norte: "agua" },
       moldura: { norte: "agua", sul: "colinas", leste: "colinas", oeste: "colinas" },
       deco: [{ tipo: "anemona", peso: 3, cor: "#d8443a" }, { tipo: "mostarda", peso: 3, cor: "#e2c044" }, { tipo: "lirio", peso: 2, cor: "#b8a0d0" }, { tipo: "tufo", peso: 3, cor: "#5e7e40" }],
-      luz: { cor: "#ffe0a0", alfa: 0.08, modo: "screen" }, vinheta: { cor: "#1a1408", forca: 0.24 }, sombra: "#2a3a3a",
+      luz: { cor: "#ffe0a0", alfa: 0.08, modo: "screen" }, vinheta: { cor: "#1a1408", forca: 0.16 }, sombra: "#2a3a3a",
       particulas: { tipo: "borboleta", cor: "#f6efdc", max: 15 },
     },
   };
 
   // -------------------------------------------------------------------
-  // Obstáculos (§5.3): altos 18×26 (arte 16×24), baixos 18×18.
-  // A base da arte fica na penúltima linha; a última é margem.
-  // Cada quadro é uma variante de forma.
+  // Obstáculos: uma chave por bioma e tipo (ob_<area>_<tipo>), cada quadro uma variante de forma. O desenho
+  // está em arte/flora.js, que parte destas defs (quadros, alto, obstaculo, origem) e troca a célula.
   // -------------------------------------------------------------------
+  function obstaculo(chave, alto, variantes) {
+    return reserva(chave, { w: 18, h: alto ? 26 : 18, quadros: variantes, alto, obstaculo: true, origem: [0.5, 1] });
+  }
+  // Copa e rocha do desenho antigo: só a moldura e a borda do tileset de reserva ainda as usam.
   function copa(g, cx, cy, rx, ry, rampa, semente, recorte = 0.22) {
     for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++)
       for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
@@ -3399,298 +1642,39 @@
         g.p(x, y, c);
       }
   }
-  function tronco(g, x, yBase, yTopo, cores, largura = 2) {
-    for (let y = yTopo; y <= yBase; y++) {
-      const ondula = Math.round(Math.sin(y * 0.7) * 0.6);
-      g.p(x + ondula, y, cores[1]);
-      if (largura > 1) g.p(x + ondula + 1, y, cores[0]);
-    }
-    g.p(x - 1, yBase, cores[1]); g.p(x + 2, yBase, cores[0]);
-  }
-  function obstaculo(chave, alto, variantes, desenhar) {
-    return registrar(chave, {
-      w: 18, h: alto ? 26 : 18, quadros: variantes, alto, obstaculo: true, origem: [0.5, 1],
-      desenhar(g, v) { desenhar(g, v, alto ? 24 : 16); },
-    });
-  }
 
-  // Canaã
-  obstaculo("ob_canaan_oliveira", true, 3, (g, v, b) => {
-    g.sombra(11, b, 6.5, 1.6);
-    const tr = ["#4a321f", "#6b4a2e"];
-    tronco(g, 8, b, 13, tr);
-    g.p(10, 15, tr[1]); g.p(11, 14, tr[1]);
-    const cp = ["#4a5f2e", "#5f7a3a", "#7d9548", "#a3b468"], s = 30 + v;
-    const o = v === 1 ? 1 : 0;
-    copa(g, 5.5 + o, 9, 4.2, 3.6, cp, s);
-    copa(g, 11.5 - o, 8, 4.4, 4, cp, s + 3);
-    copa(g, 8.5, 11.5 + (v === 2 ? 1 : 0), 5.6, 3.4, cp, s + 6);
-    for (let i = 0; i < 6; i++) {
-      const x = 3 + Math.floor(hash2(i, v, 11) * 12), y = 5 + Math.floor(hash2(i, v, 12) * 8);
-      if (g.g(x, y)) g.p(x, y, "#b9c08a");
-    }
-  });
-  obstaculo("ob_canaan_muro", false, 2, (g, v, b) => {
-    g.sombra(10, b, 8, 1.3);
-    const P = ["#6e5a40", "#9c8460", "#c2ab82", "#d8c8a0"];
-    for (let fila = 0; fila < 3; fila++) {
-      const y0 = b - 11 + fila * 4;
-      let x = 1 + ((fila + v) % 2) * 2;
-      if (fila === 0) x = 1;
-      while (x < 17) {
-        const w = Math.min(17 - x, 3 + Math.floor(hash2(x, fila, 40 + v) * 3));
-        g.ret(x, y0, w, 3, (px, py) => (py === y0 ? P[3] : py === y0 + 2 ? P[1] : px === x ? P[2] : P[2]));
-        g.p(x + w - 1, y0 + 1, P[1]);
-        g.ret(x + w, y0, 1, 3, P[0]);
-        x += w + 1;
-      }
-      g.lin(1, y0 + 3, 16, y0 + 3, P[0]);
-    }
-    for (let x = 1; x < 17; x++) if (hash2(x, v, 41) < 0.35) g.p(x, b - 12, "#6e8a3a");
-  });
-  obstaculo("ob_canaan_rocha", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    rocha(g, 2 + v, b - 9, 13 - v, 10, ["#7c7466", "#a39b8a", "#c8c0ac"], 50 + v);
-    for (let x = 3 + v; x < 9; x++) for (let y = b - 9; y < b - 7; y++) if (g.g(x, y) && hash2(x, y, 51) < 0.7) g.p(x, y, "#6e8a3a");
-  });
+  obstaculo("ob_canaan_oliveira", true, 3);
+  obstaculo("ob_canaan_muro", false, 2);
+  obstaculo("ob_canaan_rocha", false, 2);
 
-  // Deserto
-  obstaculo("ob_deserto_rocha", false, 3, (g, v, b) => {
-    const dim = [[14, 12], [12, 9], [16, 14]][v];
-    g.sombra(10, b, dim[0] / 2 + 1, 1.4);
-    rocha(g, Math.round(9 - dim[0] / 2), b - dim[1] + 1, dim[0], dim[1], ["#6e4228", "#96532f", "#c47a45", "#e0a16a"], 60 + v, { topo: "#edc08a", estratos: true });
-  });
-  obstaculo("ob_deserto_acacia", true, 2, (g, v, b) => {
-    g.sombra(11, b, 6, 1.5);
-    const tr = ["#4a3222", "#6b4a2e"];
-    g.lin(8, b, 8, 12, tr[1]); g.lin(9, b, 9, 13, tr[0]);
-    g.lin(8, 12, 5, 8, tr[1]); g.lin(9, 12, 12, 8, tr[0]);
-    const cp = ["#5a6a2e", "#8a8f4a", "#a8a85e"];
-    for (let y = 4 + v; y <= 8 + v; y++) {
-      const meia = y === 4 + v ? 5 : y === 8 + v ? 6 : 7;
-      for (let x = 9 - meia; x <= 8 + meia; x++) if (hash2(x, y, 70) > 0.08) g.p(x, y, y === 4 + v ? cp[2] : y >= 7 + v ? cp[0] : hash2(x, y, 71) < 0.3 ? cp[2] : cp[1]);
-    }
-  });
-  obstaculo("ob_deserto_retama", false, 2, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    const c = ["#5a5630", "#8c8450", "#a8a068"];
-    for (let i = 0; i < 9; i++) {
-      const x = 4 + i + (i > 4 ? v : 0), alt = 5 + Math.floor(hash2(i, v, 80) * 5);
-      g.lin(x, b, x + (i % 3 === 0 ? -1 : 0), b - alt, i % 2 ? c[1] : c[0]);
-      g.p(x + (i % 3 === 0 ? -1 : 0), b - alt, c[2]);
-    }
-  });
-  obstaculo("ob_deserto_tenda", true, 1, (g, v, b) => {
-    g.sombra(11, b, 8, 1.6);
-    const c = ["#3a2c24", "#4a3a30", "#6a5646"];
-    for (let y = b - 13; y <= b; y++) {
-      const t = (y - (b - 13)) / 13, meia = Math.round(4 + t * 4);
-      for (let x = 9 - meia; x <= 8 + meia; x++) {
-        let cor = x < 9 - meia + 2 ? c[2] : x > 8 + meia - 2 ? c[0] : c[1];
-        if ((y - b) % 4 === 0) cor = "#8a7a68";
-        g.p(x, y, cor);
-      }
-    }
-    g.ret(7, b - 6, 4, 7, "#1c1210"); g.ret(8, b - 7, 2, 1, "#1c1210");
-    g.lin(16, b, 16, b - 15, "#6b4a2e"); g.lin(9, b - 14, 16, b - 15, "#c9a46a");
-  });
+  obstaculo("ob_deserto_rocha", false, 3);
+  obstaculo("ob_deserto_acacia", true, 2);
+  obstaculo("ob_deserto_retama", false, 2);
+  obstaculo("ob_deserto_tenda", true, 1);
 
-  // Mar
-  obstaculo("ob_mar_ilhota", true, 2, (g, v, b) => {
-    g.elip(9, b - 2.5, 8, 3.5, (nx, ny) => (nx * nx + ny * ny > 0.7 ? "#e8f2e0" : tom(["#c9ad78", "#e0c48a", "#f0dcaa"], -(0.5 * nx + 0.9 * ny))));
-    const tr = ["#6a4a2e", "#8a6a42"];
-    for (let y = b - 3; y >= 8; y--) { const x = 7 + Math.round((b - 3 - y) * 0.25); g.p(x, y, tr[(y % 2)]); g.p(x + 1, y, tr[0]); }
-    const tx = 7 + Math.round((b - 11) * 0.25), ty = 7;
-    const f = ["#3e6a2e", "#5a8a3a", "#86ac4e"];
-    const folhas = [[-6, 2], [-4, -3], [0, -4], [5, -2], [6, 3], [-2, 4]];
-    folhas.forEach(([dx, dy], i) => { g.lin(tx, ty, tx + dx, ty + dy, f[i % 2 ? 1 : 2]); g.lin(tx, ty + 1, tx + dx, ty + dy + 1, f[0]); });
-    g.p(tx, ty + 1, "#8e4a2a"); g.p(tx + 1, ty + 2, "#8e4a2a");
-  });
-  obstaculo("ob_mar_rochedo", false, 2, (g, v, b) => {
-    g.elip(9, b - 1.5, 8, 2.2, "#e8f2e0");
-    rocha(g, 3 + v, b - 11, 12 - v, 11, ["#4a4038", "#5d5048", "#7d6a4a", "#a8936a"], 90 + v);
-    for (let x = 2; x < 16; x++) if (hash2(x, v, 91) < 0.5) g.p(x, b - 1, "#e8f2e0");
-  });
-  obstaculo("ob_mar_recife", false, 2, (g, v, b) => {
-    g.elip(9, b - 3, 8, 3.6, "#4fa3a5");
-    for (let i = 0; i < 7; i++) {
-      const x = 3 + i * 2 + (v && i % 2), h = 2 + Math.floor(hash2(i, v, 95) * 4);
-      g.lin(x, b - 2, x, b - 2 - h, i % 2 ? "#a85a4a" : "#d07a5a"); g.p(x + 1, b - 2 - h + 1, "#d07a5a");
-    }
-  });
+  obstaculo("ob_mar_ilhota", true, 2);
+  obstaculo("ob_mar_rochedo", false, 2);
+  obstaculo("ob_mar_recife", false, 2);
 
-  // Egito
-  obstaculo("ob_egito_tamareira", true, 2, (g, v, b) => {
-    g.sombra(11, b, 6, 1.5);
-    const tr = ["#6a4a2e", "#8a6a42"];
-    for (let y = b; y >= 8; y--) { const x = 8 + (v && y < 14 ? 1 : 0); g.p(x, y, y % 2 ? tr[0] : tr[1]); g.p(x + 1, y, tr[0]); }
-    const tx = 8.5 + v, ty = 6;
-    const f = ["#4f6f2e", "#6a8a3a", "#9ab04a"];
-    const arcos = [[-7, 4], [-5, 1], [-1, -4], [4, -2], [7, 2], [6, 6], [-6, 7]];
-    arcos.forEach(([dx, dy], i) => {
-      const n = 7;
-      for (let k = 0; k <= n; k++) {
-        const t = k / n, x = tx + dx * t, y = ty + dy * t + t * t * 3 - 1;
-        g.p(x, y, k > n - 2 ? f[0] : i % 2 ? f[1] : f[2]);
-        if (k > 1 && k < n) g.p(x, y + 1, f[0]);
-      }
-    });
-    g.ret(tx - 1, ty + 1, 3, 2, "#8e4a2a"); g.p(tx - 1, ty + 1, "#b5663a");
-  });
-  obstaculo("ob_egito_coluna", true, 1, (g, v, b) => {
-    g.sombra(11, b, 6, 1.5);
-    const P = ["#9a845c", "#c8b48a", "#e8dcbc"];
-    g.ret(4, b - 1, 10, 2, P[0]); g.ret(4, b - 1, 10, 1, P[1]);
-    g.ret(5, 6, 8, b - 6, (x) => (x <= 6 ? P[2] : x >= 11 ? P[0] : P[1]));
-    for (const yb of [b - 6, 9]) {
-      for (let x = 5; x < 13; x++) g.p(x, yb + ((x % 2) ? 0 : 1), x % 4 < 2 ? "#3b5a9a" : "#b8503a");
-    }
-    // capitel em leque
-    for (let y = 1; y <= 5; y++) { const m = 3 + y; g.ret(9 - m, y, m * 2, 1, y === 1 ? P[2] : y % 2 ? P[1] : "#7a9a5a"); }
-    g.ret(3, 5, 12, 1, P[0]);
-  });
-  obstaculo("ob_egito_tijolos", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7.5, 1.3);
-    const c = ["#87502f", "#a8683f", "#c8865a"];
-    const filas = v ? [[2, 4], [3, 3], [5, 1]] : [[1, 4], [2, 3], [4, 2]];
-    filas.forEach(([x0, n], i) => {
-      const y = b - 2 - i * 3;
-      for (let k = 0; k < n; k++) {
-        const x = x0 + k * 4 + (i % 2) * 1;
-        g.ret(x, y, 4, 3, (px, py) => (py === y ? c[2] : px === x + 3 ? c[0] : c[1]));
-      }
-    });
-    const topo = b - 2 - (filas.length - 1) * 3 - 1;
-    for (let x = filas[2][0]; x < filas[2][0] + filas[2][1] * 4 + 1; x++) if (hash2(x, v, 101) < 0.7) g.p(x, topo, "#d8c070");
-  });
-  obstaculo("ob_egito_jarros", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    const c = ["#6a3420", "#8e4a2a", "#b5663a", "#d88a58"];
-    g.elip(6, b - 5, 3.6, 5, esfera(c));
-    g.ret(5, b - 11, 3, 2, c[1]); g.ret(5, b - 11, 3, 1, "#2a1a14");
-    g.elip(12, b - 3, 3, 3.3, esfera(c));
-    g.ret(11, b - 7, 2, 1, "#2a1a14");
-    g.lin(4, b - 6, 8, b - 6, c[0]);
-  });
+  obstaculo("ob_egito_tamareira", true, 2);
+  obstaculo("ob_egito_coluna", true, 1);
+  obstaculo("ob_egito_tijolos", false, 2);
+  obstaculo("ob_egito_jarros", false, 2);
 
-  // Mar Vermelho
-  obstaculo("ob_marVermelho_granito", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    const c = ["#5a2a20", "#7a3426", "#a5503a", "#c87a58"];
-    for (let y = b - 11; y <= b; y++) for (let x = 2; x < 16; x++) {
-      const lim = (y - (b - 11)) * (v ? 1.4 : 1.1);
-      if (x < 9 - lim || x > 9 + lim * 0.8 + 2) continue;
-      let cor = x < 9 - lim + 2 ? c[3] : y < b - 8 ? c[2] : x > 9 + lim * 0.6 ? c[0] : c[1];
-      if (Math.abs(x - 6 - (y - (b - 11)) * 0.7) < 0.5) cor = c[0];
-      g.p(x, y, cor);
-    }
-  });
-  obstaculo("ob_marVermelho_coral", false, 2, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    const c = ["#8a3a30", "#c8604c", "#e08a6a"];
-    const galhos = (x, y, ang, n, prof) => {
-      if (prof > 3 || n < 1) return;
-      let px = x, py = y;
-      for (let i = 0; i < n; i++) { px += Math.cos(ang); py += Math.sin(ang); g.p(px, py, prof === 0 ? c[0] : prof === 1 ? c[1] : c[2]); }
-      galhos(px, py, ang - 0.6, n - 1, prof + 1);
-      galhos(px, py, ang + 0.6, n - 1, prof + 1);
-    };
-    galhos(9 + v, b, -Math.PI / 2, 4, 0);
-    g.ret(7 + v, b - 1, 4, 2, c[0]);
-  });
-  obstaculo("ob_marVermelho_destrocos", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7.5, 1.2);
-    const c = ["#5e4630", "#8a6a4a", "#a8865e"];
-    g.lin(1, b - 2, 12, b - 6 + v, c[1]); g.lin(1, b - 1, 12, b - 5 + v, c[0]); g.lin(2, b - 3, 11, b - 7 + v, c[2]);
-    g.lin(5, b, 16, b - 2, c[1]); g.lin(5, b - 1, 16, b - 3, c[2]);
-    g.elip(13, b - 7, 2.6, 2.6, (nx, ny) => (nx * nx + ny * ny > 0.4 ? c[0] : null));
-    g.p(13, b - 7, c[2]); g.lin(13, b - 7, 11, b - 4, c[0]);
-  });
+  obstaculo("ob_marVermelho_granito", false, 2);
+  obstaculo("ob_marVermelho_coral", false, 2);
+  obstaculo("ob_marVermelho_destrocos", false, 2);
 
-  // Sinai
-  obstaculo("ob_sinai_penedo", false, 2, (g, v, b) => {
-    const dim = [[16, 14], [12, 10]][v];
-    g.sombra(10, b, dim[0] / 2 + 1, 1.4);
-    rocha(g, Math.round(9 - dim[0] / 2), b - dim[1] + 1, dim[0], dim[1], ["#4e302a", "#6a4038", "#8a5a4a", "#b07a62"], 120 + v, { veio: "#d0a080" });
-  });
-  obstaculo("ob_sinai_arbusto", false, 1, (g, v, b) => {
-    g.sombra(10, b, 6, 1.2);
-    copa(g, 9, b - 4, 5.5, 4, ["#3e4a2a", "#5a6a3a", "#7a8a4a"], 130, 0.3);
-    for (let i = 0; i < 8; i++) { const x = 4 + Math.floor(hash2(i, 1, 131) * 11), y = b - 8 + Math.floor(hash2(i, 2, 131) * 3); if (!g.g(x, y)) g.p(x, y, "#7a8a4a"); }
-  });
-  obstaculo("ob_sinai_marco", false, 1, (g, v, b) => {
-    g.sombra(10, b, 5, 1.2);
-    const c = ["#6a5a4a", "#8a7a6a", "#a89a88"];
-    rocha(g, 4, b - 3, 10, 4, c, 140);
-    rocha(g, 5, b - 7, 8, 4, c, 141);
-    rocha(g, 6, b - 10, 6, 3, c, 142);
-    rocha(g, 7, b - 13, 4, 3, c, 143);
-  });
-  obstaculo("ob_sinai_acacia", true, 1, (g, v, b) => {
-    g.sombra(11, b, 6, 1.5);
-    const tr = ["#4a3222", "#6b4a2e"];
-    g.lin(8, b, 8, 12, tr[1]); g.lin(9, b, 9, 12, tr[0]);
-    g.lin(8, 12, 4, 6, tr[1]); g.lin(9, 12, 13, 5, tr[0]); g.lin(8, 9, 9, 4, tr[1]);
-    g.lin(4, 6, 2, 5, tr[1]); g.lin(13, 5, 15, 4, tr[0]);
-    for (const [x, y] of [[3, 4], [5, 5], [12, 3], [14, 4], [9, 3], [10, 3]]) g.p(x, y, "#7a7a40");
-  });
+  obstaculo("ob_sinai_penedo", false, 2);
+  obstaculo("ob_sinai_arbusto", false, 1);
+  obstaculo("ob_sinai_marco", false, 1);
+  obstaculo("ob_sinai_acacia", true, 1);
 
-  // Galileia
-  obstaculo("ob_galileia_figueira", true, 2, (g, v, b) => {
-    g.sombra(11, b, 7, 1.6);
-    const tr = ["#3e2c20", "#5a4030"];
-    tronco(g, 8, b, 13, tr);
-    const cp = ["#3a5e2a", "#4f7a34", "#6e9a48", "#8ab45e"];
-    copa(g, 8.5, 9.5, 7.6, 5.4, cp, 150 + v, 0.18);
-    for (let i = 0; i < 5; i++) { const x = 3 + Math.floor(hash2(i, v, 152) * 12), y = 6 + Math.floor(hash2(i, v, 153) * 6); if (g.g(x, y)) { g.p(x, y, cp[3]); g.p(x + 1, y + 1, cp[0]); } }
-    for (const [x, y] of [[5, 11], [11, 9], [9, 13]]) g.p(x + v, y, "#5a2e5a");
-  });
-  obstaculo("ob_galileia_basalto_muro", false, 2, (g, v, b) => {
-    g.sombra(10, b, 8, 1.3);
-    // Basalto preto (guia §3.3): pedra no tom escuro da rampa, juntas no
-    // mais escuro e realce claro só no canto de cima/esquerda (luz do oeste).
-    const c = ["#262422", "#363432", "#4c4a48", "#6e6a64"];
-    for (let fila = 0; fila < 3; fila++) {
-      const y0 = b - 11 + fila * 4;
-      let x = 1 + ((fila + v) % 2) * 2;
-      if (fila === 0) x = 1;
-      while (x < 17) {
-        const w = Math.min(17 - x, 3 + Math.floor(hash2(x, fila, 160 + v) * 3));
-        g.ret(x, y0, w, 3, (px, py) => (py === y0 ? (px === x ? c[3] : c[2]) : px === x ? c[2] : c[1]));
-        g.ret(x + w, y0, 1, 3, c[0]);
-        x += w + 1;
-      }
-      g.lin(1, y0 + 3, 16, y0 + 3, c[0]);
-    }
-  });
-  obstaculo("ob_galileia_basalto", false, 2, (g, v, b) => {
-    g.sombra(10, b, 7, 1.3);
-    rocha(g, 2 + v, b - 9, 13 - v, 10, ["#262422", "#363432", "#4c4a48", "#6e6a64"], 170 + v);
-    // vesículas do basalto: furinhos escuros
-    for (let i = 0; i < 6; i++) { const x = 4 + Math.floor(hash2(i, v, 171) * 9), y = b - 7 + Math.floor(hash2(i, v, 172) * 6); if (g.g(x, y)) g.p(x, y, "#262422"); }
-  });
-  obstaculo("ob_galileia_barco", false, 1, (g, v, b) => {
-    g.sombra(10, b, 8.5, 1.3);
-    const c = ["#4a3222", "#6e4a28", "#9a6a3c", "#b8875a"];
-    // casco emborcado: cúpula baixa com tábuas horizontais e quilha clara
-    for (let y = b - 6; y <= b; y++) {
-      const t = (y - (b - 7)) / 7, meia = Math.round(3 + Math.sqrt(t) * 5);
-      for (let x = 9 - meia; x < 9 + meia; x++) {
-        const l = -((x - 9) / meia) * 0.5 - (1 - t) * 0.6;
-        g.p(x, y, (y - b) % 2 === 0 ? c[0] : tom(c, l));
-      }
-    }
-    g.lin(4, b - 7, 13, b - 7, c[3]);
-    g.p(3, b - 7, c[2]); g.p(14, b - 7, c[1]);
-  });
-  // Estandarte vermelho num mastro (hub do Sinai, em casa bloqueada).
-  obstaculo("ob_sinai_estandarte", true, 1, (g, v, b) => {
-    g.sombra(10, b, 4, 1.2);
-    rocha(g, 6, b - 3, 6, 4, ["#6a5a4a", "#8a7a6a", "#a89a88"], 180);
-    g.lin(8, b - 3, 8, 2, "#6b4a2e"); g.p(8, 1, "#e8b94a");
-    g.ret(9, 3, 6, 7, (x, y) => (x === 9 ? "#8e2a1f" : y === 3 ? "#d04a3a" : "#b03a2e"));
-    g.p(14, 10, "#b03a2e"); g.p(12, 10, "#b03a2e");
-  });
+  obstaculo("ob_galileia_figueira", true, 2);
+  obstaculo("ob_galileia_basalto_muro", false, 2);
+  obstaculo("ob_galileia_basalto", false, 2);
+  obstaculo("ob_galileia_barco", false, 1);
+  obstaculo("ob_sinai_estandarte", true, 1);
 
   // Tipo de obstáculo por casa: o tipo fixo do mapa (bosque, muro da vila, marco; dados/mapas.js) ou o
   // sorteio por peso do bioma. Tipos com desenho próprio fora do bioma ficam em MARCOS.
@@ -4125,6 +2109,7 @@
     for (let v = 0; v < 2; v++) pinta(ID.MOLDURA + 4 + v, bio.moldura.oeste, v);
     for (let v = 0; v < 2; v++) pinta(ID.MOLDURA + 6 + v, bio.moldura.leste, v);
     for (let v = 0; v < 2; v++) pinta(ID.MOLDURA + 8 + v, bio.moldura.norte, v);
+    for (let v = 0; v < 2; v++) { pinta(ID.MOLDURA + 10 + v, bio.moldura.oeste, v); pinta(ID.MOLDURA + 12 + v, bio.moldura.leste, v); }
   }
 
   function pintarSombras(pin, bio) {
@@ -4212,6 +2197,9 @@
         if (ehMuralha(x, y)) return y < 0 ? ID.COSTA + 0 : ID.COSTA + 3;
         const v = Math.floor(hash2(x, y, 8) * 4);
         if (y < 0 && x >= 0 && x < COLSm) return bio.moldura.norte === bio.moldura.sul ? ID.MOLDURA + v : ID.MOLDURA + 8 + (v % 2);
+        // no mar a terra de fora encosta na água: a coluna vizinha do mapa é a praia (90–91 oeste, 92–93 leste)
+        if (area === "mar" && x === -1) return ID.MOLDURA + 10 + (v % 2);
+        if (area === "mar" && x === COLSm) return ID.MOLDURA + 12 + (v % 2);
         if (x < 0) return ID.MOLDURA + 4 + (v % 2);
         if (x >= COLSm) return ID.MOLDURA + 6 + (v % 2);
         if (y < 0) return ID.MOLDURA + 8 + (v % 2);

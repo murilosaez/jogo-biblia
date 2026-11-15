@@ -2555,7 +2555,8 @@
   const toqueGrosso = () => mm("(pointer: coarse)");
   const passoGrade = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--slot")) || 40) + 4;
   const LISTAS = {
-    pBatalha: { alvo: "#linhasBatalha", linhas: 5, min: 2, max: 12, passo: () => (toqueGrosso() ? 40 : 26), sobra: 0 },
+    // a Batalha encolhe em tela baixa para a Mochila caber inteira na coluna sem rolar (5 linhas só a partir de 1000 px)
+    pBatalha: { alvo: "#linhasBatalha", get linhas() { return innerHeight >= 1000 ? 5 : innerHeight >= 860 ? 4 : 3; }, min: 2, max: 12, passo: () => (toqueGrosso() ? 40 : 26), sobra: 0 },
     pMochila: { alvo: ".painel-corpo", linhas: 3, min: 1, max: 8, passo: passoGrade, sobra: -4 },
     pBolsa: { alvo: ".painel-corpo", linhas: 2, min: 1, max: 8, passo: passoGrade, sobra: -4 },
   };

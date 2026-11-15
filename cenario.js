@@ -609,6 +609,45 @@
       }
       for (let x = -1; x <= aw; x++) tela.p(ax + x, ay - 1, x < 1 || x >= aw - 1 ? MADEIRA[4] : MADEIRA[3]); // vara de cima
     }
+    // terraço grande: a vida de cima da casa — cama de dormir ao fresco (esteira, manta listrada e rolo de
+    // cabeceira) e feixes de linho postos a secar em fileira (como no terraço de Raabe)
+    if (W >= 6 * T && H >= 4 * T) {
+      const cw = 20, chh = 38;
+      let cx = Math.round(W * (fx + 3 < W / 2 ? 0.6 : 0.3)), cy = Math.round(H * 0.5) - (chh >> 1);
+      if (Math.abs(cx + 10 - fx) < 30 && Math.abs(cy + 19 - fy) < 34) cy = fy > H / 2 ? 46 : Math.min(H - chh - 44, fy + 30);
+      cy = Math.max(46, Math.min(H - chh - 14, cy));
+      const manta = [["#6a2a22", "#9c3e30", "#c86a4c", "#e8dcc0"], ["#2a3e6a", "#3e5a94", "#6a86be", "#e8dcc0"], ["#5a4a22", "#8a7434", "#b8a258", "#efe2c4"]][Math.floor(hash2(s, 8, 23) * 3)];
+      for (let y = 2; y < chh + 2; y++) for (let x = 2; x < cw + 3; x++) if (x >= cw || y >= chh) tela.tom(cx + x, cy + y, SOMBRA, 0.3);
+      tela.ret(cx, cy, cw, chh, (x, y, i, j) => {
+        if (i === 0 || j === 0) return "#e2c890"; if (i === cw - 1 || j === chh - 1) return "#8a6a3c";
+        if (j < 12) return (i + j) % 3 === 0 ? "#b89658" : j % 2 ? "#d4b478" : "#c6a468"; // esteira de palha à mostra
+        const f = Math.floor((j - 12) / 4) % 3, dobra = j === 12 ? 1 : 0;
+        let c = f === 0 ? manta[1] : f === 1 ? manta[3] : manta[2];
+        if (dobra) c = manta[0]; else if ((j - 12) % 4 === 0) c = esc(c, 0.14);
+        if (i < 3) c = cla(c, 0.14); else if (i > cw - 5) c = esc(c, 0.16);
+        return c;
+      });
+      // rolo de cabeceira
+      tela.ret(cx + 3, cy + 3, cw - 6, 6, (x, y, i, j) => (j === 0 ? "#f4ead0" : j === 5 ? "#9a8a68" : i === 0 || i === cw - 7 ? "#b8a888" : j < 3 ? "#e6dabc" : "#cfc2a0"));
+      for (let x = 4; x < cw - 2; x++) tela.tom(cx + x, cy + 9, SOMBRA, 0.3);
+      // feixes de linho: hastes douradas amarradas ao meio, deitadas lado a lado junto ao parapeito norte
+      const nf = Math.min(6, Math.floor((W - 150) / 14)), lx0 = Math.round(W * 0.5) - nf * 7 + (fx + 3 < W / 2 ? -20 : 20), ly0 = 17;
+      if (!(fy < 48 && Math.abs(fx + 3 - lx0 - nf * 7) < nf * 7 + 22))
+        for (let q = 0; q < nf; q++) {
+          const bx = lx0 + q * 14, by = ly0 + Math.round((hash2(q, s, 30) - 0.5) * 4);
+          for (let y = 1; y < 18; y++) for (let x = 1; x < 11; x++) if (x >= 8 || y >= 16) tela.tom(bx + x + 1, by + y + 1, SOMBRA, 0.26);
+          tela.ret(bx, by, 9, 16, (x, y, i, j) => {
+            const aperto = Math.abs(j - 8) < 2 ? 1 : 0;
+            if (aperto && (i === 0 || i === 8)) return null;
+            if (j === 8) return "#7a4a2a"; if (j === 7) return "#a8703e";
+            const h = hash2(x, y >> 1, s + 31);
+            let c = i % 2 ? (h < 0.4 ? "#b89240" : "#cfa850") : h < 0.3 ? "#e8cc7c" : "#dcb964";
+            if (j < 2) c = h < 0.5 ? "#8a9a4a" : "#a8a850"; // pontas ainda verdes
+            if (i === 0) c = cla(c, 0.18); else if (i === 8) c = esc(c, 0.22);
+            return c;
+          });
+        }
+    }
     // escada de mão encostada no parapeito leste (acesso pelo lado de fora)
     const lx = W - 14;
     for (let y = 12; y < 38; y++) { tela.p(lx, y, MADEIRA[4]); tela.p(lx + 1, y, MADEIRA[2]); tela.p(lx + 7, y, MADEIRA[3]); tela.p(lx + 8, y, MADEIRA[1]); tela.tom(lx + 9, y + 1, SOMBRA, 0.25); }

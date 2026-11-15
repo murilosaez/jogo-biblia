@@ -746,6 +746,29 @@
     for (let v = 0; v < 2; v++) pinta(ID.MOLDURA + 4 + v, bio.moldura.oeste, v);
     for (let v = 0; v < 2; v++) pinta(ID.MOLDURA + 6 + v, bio.moldura.leste, v);
     for (let v = 0; v < 2; v++) pinta(ID.MOLDURA + 8 + v, bio.moldura.norte, v);
+    // 90–91 (oeste) e 92–93 (leste): a coluna de terra que encosta na água do mar — praia de beira ondulada,
+    // areia molhada, espuma e água rasa (d = distância em px até a água)
+    const ag = bio.agua || BIOMAS.mar.agua, rAreia = relvaDe("#e2c07c", "#cfa863", "#efd598");
+    const beira = (i, tipo, v, leste) => {
+      pinta(i, tipo, v);
+      const b = new Array(AREA).fill(null), areia = texAreia(rAreia, 832, 840 + v);
+      for (let Y = 0; Y < L; Y++) {
+        // as curvas valem 0 em Y = 0 nas duas variantes: as casas emendam na vertical em qualquer ordem
+        const s1 = Math.sin((Y / L) * TAU * (v ? 2 : 1)), s2 = Math.sin((Y / L) * TAU * (v ? 1 : 3));
+        const agua = 5 + Math.round(s1 * 2.4 * (v ? -1 : 1)), seca = 17 + Math.round(s2 * 3.2 + s1 * 2);
+        for (let X = 0; X < L; X++) {
+          const d = leste ? X : L - 1 - X, h = hash2(X, Y, 841 + v);
+          let c = null;
+          if (d < agua - 1) c = d < agua - 3 && (X + Y) % 2 ? ag.base : h < 0.12 ? ag.brilho : ag.clara;
+          else if (d < agua + 1) c = h < 0.75 ? ag.espuma : misturar(ag.espuma, ag.clara, 0.5);
+          else if (d < agua + 4) c = misturar(areia[Y * L + X], "#8a6a48", d === agua + 1 ? 0.42 : h < 0.5 ? 0.3 : 0.22);
+          else if (tipo !== "praia" && d < seca + (h < 0.3 ? 1 : 0) - (h > 0.85 ? 1 : 0)) c = d >= seca - 1 && h > 0.5 ? misturar(areia[Y * L + X], "#8a9a52", 0.5) : areia[Y * L + X];
+          if (c) b[Y * L + X] = c;
+        }
+      }
+      for (let k = 0; k < AREA; k++) if (b[k]) pin.fino(i, k & 31, k >> 5, esc(b[k]));
+    };
+    for (let v = 0; v < 2; v++) { beira(ID.MOLDURA + 10 + v, bio.moldura.oeste, v, false); beira(ID.MOLDURA + 12 + v, bio.moldura.leste, v, true); }
   };
 
   // -------------------------------------------------------------------

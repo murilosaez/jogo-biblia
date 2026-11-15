@@ -5881,59 +5881,127 @@ teste("67. cosméticos (JGB-27): trajes por vocação e montarias só visuais, c
   assert.doesNotMatch(ui, /\.cosmeticos\.(possui|traje|montaria)\s*=/, "a interface não escreve em p.cosmeticos");
 });
 
-teste("68. arte em 32 px por casa: contrato de vistas e quadros dos humanos, equipamento visível, criaturas e itens na resolução", () => {
+teste("68. arte em 32 px por casa: contrato final de vistas, quadros e células de humanos, criaturas, montado, itens e glifos", () => {
   const j = carregarJogo();
-  const Arte = carregarArte(j.ctx), PP = j.ctx.PIXEL_PATTERNS;
+  const Arte = carregarArte(j.ctx), PP = j.ctx.PIXEL_PATTERNS, M = Arte.motor;
   assert.strictEqual(Arte.RES, 2, "2 px de arte por unidade (32 por casa)");
   assert.match(FONTE_GAME, /const PIXELS_ARTE_POR_CASA = 32;/);
-  // Quadros por vista: 8 no contrato novo (arte/*.js), 5 no desenho legado.
-  const qpvDe = (def) => def.quadrosPorVista || 5;
-  // Humanos: 3 vistas (lado, frente, costas) × quadros por vista; célula = def.w × 2 px.
+  const QPV = 8; // contrato final: 3 vistas × 8 quadros (parado, respirar, 4 fases do passo, antecipação, golpe)
+  // caixa do desenho opaco (a sombra de chão é translúcida e não conta)
+  const caixa = (px) => {
+    let y0 = px.h, y1 = -1, x0 = px.w, x1 = -1;
+    for (let y = 0; y < px.h; y++) for (let x = 0; x < px.w; x++) {
+      const c = px.data[y * px.w + x];
+      if (c && c.length === 7) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+    }
+    return { y0, y1, x0, x1, h: y1 - y0 + 1, w: x1 - x0 + 1 };
+  };
+  const quadro = (k, n) => Arte.pixels(k, { quadro: n }).data.join();
+  const contrato = (k) => {
+    const def = PP[k];
+    igual([def.direcoes, def.quadrosPorVista, def.quadros, def.ciclo, def.quadroAcao], [3, QPV, 24, [2, 3, 4, 5], [6, 7]], `${k}: 3 vistas × 8 quadros`);
+    assert.ok(def.sombra && def.sombra.w > 0 && def.sombra.h > 0, `${k}: sombra de chão declarada`);
+    // as 3 vistas são desenhos diferentes; o passo (4 fases) e o golpe (2 tempos) mudam o quadro em cada vista
+    assert.ok(quadro(k, 0) !== quadro(k, QPV) && quadro(k, QPV) !== quadro(k, 2 * QPV) && quadro(k, 0) !== quadro(k, 2 * QPV), `${k}: vistas diferentes`);
+    for (let v = 0; v < 3; v++) {
+      const b = v * QPV, parado = quadro(k, b);
+      assert.ok(new Set([2, 3, 4, 5].map((q) => quadro(k, b + q))).size >= 3, `${k}: fases do passo na vista ${v}`);
+      assert.ok(quadro(k, b + 7) !== parado && quadro(k, b + 6) !== quadro(k, b + 7), `${k}: antecipação e golpe na vista ${v}`);
+    }
+  };
+
+  // Humanos: célula de 48 × 64 px, pés na linha 62, corpo (sem acessórios) de 50 a 58 px.
   const humanos = Object.keys(PP).filter((k) => PP[k].humano && !PP[k].montado);
-  assert.ok(humanos.length >= 38, `${humanos.length} humanos`);
+  assert.ok(humanos.length >= 40, `${humanos.length} humanos`);
+  igual(humanos.slice().sort(), Object.keys(M.HUMANOS).filter((k) => !M.MONTADOS[k]).sort(), "todo humano vem de HUMANOS");
+  assert.ok(M.humanoEquipado && typeof M.humanoEquipado.spec.desenhar === "function", "boneco novo ativo (arte/humano-equip.js)");
   for (const k of humanos) {
-    const def = PP[k], qpv = qpvDe(def);
-    igual([def.quadros, def.direcoes], [3 * qpv, 3], k);
-    const px = Arte.pixels(k, { quadro: qpv });
-    igual([px.w, px.h], [def.w * 2, def.h * 2], k);
-    // altura do corpo (do topo ao pé, sem a sombra do chão) entre 36 e 60 px de arte
-    let topo = px.h, base = 0;
-    for (let y = 0; y < px.h; y++) for (let x = 0; x < px.w; x++) if (px.data[y * px.w + x] && !String(px.data[y * px.w + x]).match(/^#1c1210[0-9a-f]{2}$/)) { topo = Math.min(topo, y); base = Math.max(base, y); }
-    // (até 62: no esqueleto de 48 × 64 px um cajado ou estandarte passa da cabeça)
-    assert.ok(base - topo >= 36 && base - topo <= 62, `${k}: altura ${base - topo}`);
-    // as 3 vistas são desenhos diferentes
-    const q = (n) => Arte.pixels(k, { quadro: n }).data.join();
-    assert.ok(q(0) !== q(qpv) && q(qpv) !== q(2 * qpv) && q(0) !== q(2 * qpv), `${k}: vistas diferentes`);
-    // o passo e a ação mudam o quadro (de frente): contato A do ciclo e o golpe
-    const passo = def.ciclo ? def.ciclo[0] : 2, acao = def.quadroAcao ? def.quadroAcao[1] : 4;
-    assert.ok(passo > 0 && passo < qpv && acao > 0 && acao < qpv, `${k}: passo ${passo} e ação ${acao} dentro da vista`);
-    assert.ok(q(qpv) !== q(qpv + passo) && q(qpv) !== q(qpv + acao), `${k}: passo e ação mudam o quadro`);
+    const def = PP[k];
+    contrato(k);
+    const px = Arte.pixels(k, { quadro: QPV });
+    igual([px.w, px.h, def.w, def.h], [48, 64, 24, 32], `${k}: célula`);
+    assert.ok(def.alturaCabeca >= 50 && def.alturaCabeca <= 62, `${k}: alturaCabeca ${def.alturaCabeca}`);
+    igual(def.contorno, M.HUMANOS[k].hostil ? "hostil" : "amigo", `${k}: contorno`);
+    // com acessórios (cajado, lança, elmo): até 62 px, sempre com os pés no chão da célula
+    const cx = caixa(px);
+    assert.ok(cx.h >= 50 && cx.h <= 62 && cx.y1 === 62, `${k}: altura ${cx.h}, base ${cx.y1}`);
+    // o corpo sozinho: de 50 a 58 px (cerca de 1,6 a 1,8 casa)
+    M.registrar("pv_teste_corpo", Object.assign({}, def, { desenhar: (g, q) => M.humanoEquipado.spec.desenhar(g, Object.assign({}, M.HUMANOS[k], { acessorios: [] }), q) }));
+    const corpo = caixa(Arte.pixels("pv_teste_corpo", { quadro: QPV }));
+    assert.ok(corpo.h >= 50 && corpo.h <= 58, `${k}: corpo de ${corpo.h} px`);
+    assert.ok(corpo.w >= 14 && corpo.w <= 30, `${k}: largura do corpo ${corpo.w}`);
   }
+  delete PP.pv_teste_corpo;
+
+  // Criaturas e aliados: toda chave in_/al_ no contrato; as não humanas em células de 40, 48 ou 64 px.
+  const criaturas = Object.keys(PP).filter((k) => /^(in_|al_)/.test(k) && !k.includes("~v:"));
+  assert.ok(criaturas.length >= 35, `${criaturas.length} chaves in_/al_`);
+  const CELULAS = { 40: ["in_corvo", "in_escorpiao", "in_caranguejo", "in_ra"], 64: ["in_leao", "in_urso", "in_leopardo", "in_crocodilo"] };
+  for (const k of criaturas) {
+    const def = PP[k];
+    if (def.humano) continue; // já conferido acima
+    contrato(k);
+    assert.ok(!M.HUMANOS[k], `${k}: criatura não sai de humano()`);
+    const lado = CELULAS[40].includes(k) ? 40 : CELULAS[64].includes(k) ? 64 : 48, px = Arte.pixels(k);
+    igual([def.res, px.w, px.h], [2, lado, lado], `${k}: célula`);
+    // enxames (gafanhotos, vespas) são pontos soltos e desenham a própria borda: sem contorno automático
+    if (def.contorno !== null) igual(def.contorno, k.startsWith("al_") ? "amigo" : "hostil", `${k}: contorno`);
+    else assert.ok(["in_gafanhotos", "in_vespas"].includes(k), `${k}: sem contorno`);
+    assert.ok(def.alturaCabeca > 8 && def.alturaCabeca <= lado, `${k}: alturaCabeca ${def.alturaCabeca}`);
+    for (const q of [0, QPV, 2 * QPV]) {
+      const cx = caixa(Arte.pixels(k, { quadro: q }));
+      assert.ok(cx.w >= lado * 0.3 && cx.h >= lado * 0.25 && cx.y1 >= lado * 0.5 && cx.y1 <= lado - 1, `${k}#${q}: desenho de ${cx.w} × ${cx.h} px, base ${cx.y1}`);
+    }
+  }
+  // Toda def com vistas (as prévias pv_ e o barco também) respeita quadros = vistas × quadros por vista.
+  for (const [k, def] of Object.entries(PP)) if (def.direcoes) {
+    assert.ok(def.quadrosPorVista, `${k}: quadrosPorVista declarado (não há mais desenho de 5 quadros ativo)`);
+    igual(def.quadros, def.direcoes * def.quadrosPorVista, `${k}: quadros`);
+  }
+  igual([PP.mk_barco.direcoes, PP.mk_barco.quadrosPorVista, PP.mk_barco.w * 2, PP.mk_barco.h * 2], [3, 4, 64, 64], "barco: 3 vistas × 4 quadros em 64 × 64 px");
+
   // Equipamento visível: arma, escudo e armadura mudam o desenho do jogador (de frente, parado).
-  const frente = (chave) => Arte.pixels(chave, { quadro: qpvDe(PP[chave]) }).data.join();
+  const frente = (chave) => quadro(chave, PP[chave].quadrosPorVista);
   const jog = (eq) => frente(Arte.garantirJogador(eq));
   const nu = jog({});
   for (const eq of [{ arma: "espada_ferro" }, { escudo: "escudo_bronze" }, { armadura: "armadura_couro" }, { armadura: "couraca_escamas" }, { arco: "arco_madeira" }, { arma: "espada_ferro@raro.dano2" }])
     assert.notStrictEqual(jog(eq), nu, JSON.stringify(eq));
-  // Montarias e trajes geram sprite; montado tem as 3 vistas.
+  igual([PP[Arte.garantirJogador({ arma: "espada_ferro" })].w, PP[Arte.garantirJogador({ arma: "espada_ferro" })].quadros], [24, 24], "jogador equipado na célula de 48 × 64 px");
+  // Montado: célula de 72 × 96 px, 3 vistas × 8 quadros, dentro da célula; prévia da loja de 64 × 64 px.
   for (const m of ["jumento", "camelo", "cavalo", "carro"]) {
-    const chave = Arte.garantirJogador({}, { montaria: m }), def = PP[chave];
-    igual([def.quadros, def.direcoes, Arte.pixels(chave).w, Arte.pixels(chave).h], [3 * qpvDe(def), 3, def.w * 2, def.h * 2], m);
-    assert.ok(def.montado && def.w * 2 >= 56 && def.h * 2 >= 64, `${m}: célula do montado`);
-    assert.notStrictEqual(frente(chave), nu, `${m}: montado muda o desenho`);
-    assert.ok(PP["mt_" + m], `prévia mt_${m}`);
+    const chave = Arte.garantirJogador({}, { montaria: m }), def = PP[chave], px = Arte.pixels(chave, { quadro: QPV });
+    igual([def.quadros, def.direcoes, def.quadrosPorVista, px.w, px.h, def.montado, def.humano], [24, 3, QPV, 72, 96, m, true], m);
+    const cx = caixa(px);
+    assert.ok(cx.h >= 60 && cx.y0 >= 1 && cx.y1 <= 94 && cx.x0 >= 1 && cx.x1 <= 70, `${m}: montado de ${cx.w} × ${cx.h} px dentro da célula`);
+    assert.ok(quadro(chave, 0) !== quadro(chave, QPV) && quadro(chave, QPV) !== quadro(chave, 2 * QPV), `${m}: vistas diferentes`);
+    assert.ok(quadro(chave, 2) !== quadro(chave, 4), `${m}: passo`);
+    const previa = PP["mt_" + m];
+    assert.ok(previa, `prévia mt_${m}`);
+    igual([previa.quadros, Arte.pixels("mt_" + m).w, Arte.pixels("mt_" + m).h], [1, 64, 64], `mt_${m}`);
   }
   for (const t of Object.keys(j.g("TRAJES"))) assert.notStrictEqual(frente(Arte.garantirJogador({}, { traje: t })), nu, t);
-  // Criaturas e itens: px = unidades × resolução (2 px de arte por unidade, 32 por casa).
-  for (const k of ["in_lobo", "in_leao", "in_naja", "in_aguia", "espada_ferro", "pocao", "escudo_bronze"]) {
+  // Itens: 32 × 32 px, origem [0.5, 0.75], redesenhados (nenhum ficou no marcador de reserva de sprites.js).
+  const FONTE_SPRITES_68 = fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8");
+  const itens = [...FONTE_SPRITES_68.matchAll(/^\s*item\("([a-z_0-9]+)"/gm)].map((m) => m[1]);
+  assert.ok(itens.length >= 49, `${itens.length} chamadas item("…") em sprites.js`);
+  const marcador = (k) => { const d = PP[k]; return /marcador/.test(String(d.desenhar)) || d.desenhar.name === "marcador"; };
+  for (const k of itens) {
     const def = PP[k], px = Arte.pixels(k);
-    assert.strictEqual(def.res, 2, `${k}: resolução`);
-    igual([px.w, px.h], [def.w * def.res, def.h * def.res], k);
+    igual([def.res, px.w, px.h, def.origem], [2, 32, 32, [0.5, 0.75]], k);
+    assert.ok(!marcador(k), `${k}: desenho de arte/itens.js`);
   }
-  // Glifos da interface: px = unidades × a resolução do glifo.
-  assert.strictEqual(Arte.pixels("ui_moeda").w, PP.ui_moeda.w * PP.ui_moeda.res);
-  // Toda def com vistas respeita quadros = vistas × quadros por vista, e a validação não acusa nada.
-  for (const [k, def] of Object.entries(PP)) if (def.direcoes) igual(def.quadros, def.direcoes * qpvDe(def), `${k}: quadros`);
+  // Glifos: o tamanho de Arte.TAM_ICONE (ui_ 16 px; hb_ e of_ 32 px), em res 2, e nenhum no marcador.
+  const TI = Arte.TAM_ICONE;
+  igual([TI.ui, TI.hb, TI.of], [16, 32, 32], "Arte.TAM_ICONE");
+  const glifos = [...FONTE_SPRITES_68.matchAll(/^\s*glifo\("((ui|hb|of)_[a-z_0-9]+)"/gm)].map((m) => [m[1], m[2]]);
+  igual(glifos.length, 80, "glifos em sprites.js");
+  for (const [k, fam] of glifos) {
+    const def = PP[k], px = Arte.pixels(k), lado = k === "ui_rosa" ? TI.rosa : TI[fam];
+    igual([def.res, px.w, px.h], [2, lado, lado], k);
+    assert.ok(!marcador(k), `${k}: desenho de arte/icones.js`);
+  }
+  // Nenhuma chave em uso no jogo ficou no marcador de reserva (só as prévias e testes poderiam).
+  for (const [k, def] of Object.entries(PP)) assert.ok(def.desenhar?.name !== "marcador", `${k}: ainda no marcador de reserva de sprites.js`);
   igual(Arte.validar(), [], "Arte.validar()");
   // game.js vira o boneco para a direção do passo (lado, frente ou costas).
   assert.match(FONTE_GAME, /function virar\(sprite, dx, dy\)/);
@@ -5942,6 +6010,31 @@ teste("68. arte em 32 px por casa: contrato de vistas e quadros dos humanos, equ
   // e lê do contrato os quadros por vista, o ciclo e o quadro de ação.
   assert.match(FONTE_GAME, /def\.quadrosPorVista \|\| 5/);
   assert.match(FONTE_GAME, /function quadroDeAcao\(sprite, restanteMs\)/);
+});
+
+teste("68b. arte/*.js desenha px a px (sem primitivas de bloco), sprites.js não guarda desenho trocado e o código não cita jogo de referência", () => {
+  const artes = arquivosDeArte().filter((a) => a.startsWith("arte/"));
+  igual(artes.length, 11, "11 arquivos de arte no index.html");
+  // sem as linhas de comentário: as primitivas de bloco 2 × 2 (unidade) e as do pincel em unidades são proibidas
+  for (const arq of artes) {
+    const codigo = fs.readFileSync(path.join(RAIZ, arq), "utf8").split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+    for (const proibida of ["g.p(", "g.ret(", "g.lin(", "g.elip(", "g.carimbar(", "pin.set(", "pin.encher("]) {
+      const re = new RegExp("(^|[^\\w.])" + proibida.replace(/[.(]/g, "\\$&"));
+      assert.ok(!re.test(codigo), `${arq}: usa ${proibida}`);
+    }
+    assert.ok(!/\bdocument\b/.test(codigo), `${arq}: toca o DOM`);
+  }
+  // sprites.js: o desenho antigo das famílias trocadas saiu; ficam as chamadas (lista de chaves) e a reserva
+  const sp = fs.readFileSync(path.join(RAIZ, "sprites.js"), "utf8");
+  for (const fora of ["function quadrupede(", "function serpente(", "function ave(", "function enxame(", "function cabeca(", "function animalLado(", "laminaDiagonal", "CORES_CASA"])
+    assert.ok(!sp.includes(fora), `sprites.js ainda tem ${fora}`);
+  for (const m of sp.matchAll(/^\s*(item|glifo|obstaculo)\("([a-zA-Z_0-9]+)"(.*)$/gm)) assert.ok(m[3].length < 40 && !m[3].includes("=>"), `sprites.js: ${m[1]}("${m[2]}") ainda traz desenho`);
+  assert.ok(sp.split("\n").length < 3000, "sprites.js enxuto (motor, tabelas e reserva)");
+  // originalidade: nenhum arquivo do jogo cita o jogo de referência
+  const arquivos = ["index.html", "LEIA-ME.txt", "game.js", "interface.js", "cenario.js", "sprites.js", "logica.js", "storage.js", "tools/capturar.js", "docs/GUIA-DE-ARTE.md"]
+    .concat(artes, fs.readdirSync(path.join(RAIZ, "dados")).map((a) => "dados/" + a));
+  const nomeProibido = new RegExp(["ti", "bia"].join("") + "|" + ["cip", "soft"].join("") + "|ot" + "client|open" + "tibia", "i");
+  for (const arq of arquivos) assert.ok(!nomeProibido.test(fs.readFileSync(path.join(RAIZ, arq), "utf8")), `${arq}: cita o jogo de referência`);
 });
 
 // ---------------------------------------------------------------------

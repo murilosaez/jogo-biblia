@@ -12,14 +12,14 @@ const MEU_ID = "jogador1";
 // ---------------------------------------------------------------------
 const TAM = 32; // tile em px de mundo
 const MOLDURA = 4; // tiles de cenário fora do mapa
-// Visão: a câmera mostra cerca de VISAO casas (como no Tibia, 15 × 11 na tela deitada) e cada pixel
+// Visão: a câmera mostra cerca de VISAO casas (como num MMORPG 2D clássico, 15 × 11 na tela deitada) e cada pixel
 // da arte (32 px por casa, 1 px de arte por px de mundo) ocupa um número inteiro de pixels da tela. O canvas desenha na
 // resolução real da tela (devicePixelRatio, até DPR_MAXIMO), sem o navegador esticar a imagem.
 const VISAO = { deitada: [15, 11], empe: [9, 13] };
 const PIXELS_ARTE_POR_CASA = 32;
 const DPR_MAXIMO = 3;
 const CHAVE_ZOOM = "jornada_zoom";
-// Cor da vida, como no Tibia: verde cheia, amarela pela metade, vermelha no fim (fração mínima → cor).
+// Cor da vida, como num MMORPG 2D clássico: verde cheia, amarela pela metade, vermelha no fim (fração mínima → cor).
 const CORES_VIDA = [[0.92, 0x00c000, "#3fd23f"], [0.6, 0x60c060, "#8ad88a"], [0.3, 0xc0c000, "#e0d040"], [0.08, 0xc03030, "#e06050"], [0, 0xc00000, "#e03030"]];
 function corDaVida(frac) {
   return CORES_VIDA.find(([min]) => frac >= min) || CORES_VIDA[CORES_VIDA.length - 1];
@@ -68,9 +68,9 @@ const ESTILO_NUM = {
 // Subida do número: meia casa, em arco (desvia para o lado enquanto desacelera) e some no fim. Como ele já
 // nasce sobre a cabeça, subir mais que isso o solta de quem levou o golpe (ia parar a 45 px da cabeça).
 const NUM_VOO = { sobe: 13, lado: 8, ms: 820, some: 0.6 };
-// Os números nascem logo acima da barra (por um instante sobre o nome, no estalo de entrada) e em ~150 ms
-// já estão acima dele: ficam colados em quem levou o golpe sem tapar a barra.
-const NUM_ACIMA = 11;
+// Os números nascem logo acima do nome (barra de 4 px a 3 px da cabeça, 2 px de vão e o nome de ~7 px de
+// mundo) e sobem dali: ficam colados em quem levou o golpe sem tapar nem a barra nem o nome.
+const NUM_ACIMA = 17;
 // Nome e barra de vida sobre cada personagem: barra de 26 × 4 px de mundo com borda de 1 px (chefes 34 × 5),
 // a 3 px da cabeça; o nome fica logo acima dela, em NOME_PX px de tela.
 const BARRA = { w: 26, h: 4, wChefe: 34, hChefe: 5, folga: 3 };
@@ -333,6 +333,7 @@ class Cena extends Phaser.Scene {
     this.p = Mundo.entrar(MEU_ID);
     this.areaAtual = this.p.area;
     this.bio = Arte.BIOMAS[this.areaAtual] || Arte.BIOMAS.canaan;
+    this.liberarTexturasDeOutraArea();
     this.trocando = false;
     this.proximoPasso = 0;
     this.proximoAutoAtaque = 0;
@@ -677,13 +678,15 @@ class Cena extends Phaser.Scene {
             if (vistos.has(alto) || cobrindo.has(alto.img)) continue;
             vistos.add(alto);
             if (alto.img.depth <= prof || !alto.img.visible) continue;
-            let n = 0;
-            for (const [dx, dy] of pontos) if (this.altoCobre(alto, s.x + dx, s.y + dy)) n++;
-            if (n >= 2) cobrindo.add(alto.img);
+            // só canela e pés cobertos (os 2 últimos pontos) não bastam: o objeto ficava inteiro translúcido
+            // por esconder 8 px de sandália; do quadril para cima, sim
+            let n = 0, acima = 0;
+            pontos.forEach(([dx, dy], i) => { if (this.altoCobre(alto, s.x + dx, s.y + dy)) { n++; if (i < 5) acima++; } });
+            if (n >= 2 && acima >= 1) cobrindo.add(alto.img);
           }
         }
     };
-    testar(this.jogador, this.alturaJogador);
+    testar(this.jogador, this.alturaRotuloJogador()); // montado: a altura da vista atual, não a geral
     for (const ent of this.proximos) testar(ent.sprite, ent.alturaCabeca);
     for (const s of Object.values(this.spritesAliados)) testar(s, 24);
     const passo = reduzMovimento() ? 1 : Math.min(1, (delta || 16) / 110) * 0.5;
@@ -785,7 +788,7 @@ class Cena extends Phaser.Scene {
     return !!pr && pr.fora.alpha > 0.6;
   }
   // Quem está atrás de um telhado (ou da parede de dentro, com o jogador dentro de casa) aparece através dele:
-  // uma cópia do sprite, a meio alfa, desenhada logo acima do prédio — o efeito é o de o prédio ficar
+  // uma cópia do sprite, a 0,8 de alfa, desenhada logo acima do prédio — o efeito é o de o prédio ficar
   // translúcido só sobre o corpo de quem ele esconde. Some quando o telhado inteiro já está translúcido.
   atualizarFantasmas() {
     const vistos = this._fantasmasVistos || (this._fantasmasVistos = new Set());
@@ -797,7 +800,8 @@ class Cena extends Phaser.Scene {
       if (!pr) continue;
       // por cima do telhado; com o jogador dentro, por cima da parede do fundo (e por baixo de quem está dentro)
       const capa = pr.dentro ? pr.paredeDentro : pr.fora;
-      const alfa = 0.5 * s.alpha * Math.max(0, Math.min(1, pr.dentro ? capa.alpha : (capa.alpha - 0.5) * 2));
+      // 0,8: lê-se como a pessoa vista por cima do beiral, não como um vulto (a 0,5 o NPC de missão parecia um fantasma)
+      const alfa = 0.8 * s.alpha * Math.max(0, Math.min(1, pr.dentro ? capa.alpha : (capa.alpha - 0.5) * 2));
       if (alfa < 0.02) continue;
       let f = this.fantasmas.get(ent);
       if (!f) { f = this.add.sprite(s.x, s.y, s.texture.key, s.frame.name); this.fantasmas.set(ent, f); }
@@ -809,6 +813,16 @@ class Cena extends Phaser.Scene {
       vistos.add(ent);
     }
     for (const [ent, f] of this.fantasmas) if (!vistos.has(ent)) { f.destroy(); this.fantasmas.delete(ent); }
+  }
+
+  // Memória: o chão contínuo (1 MB por pedaço de 512 × 512 px) e os prédios pintados para uma área só
+  // servem nela. Na troca de área (a cena reinicia e os objetos antigos já foram destruídos) essas
+  // texturas saem do gerenciador; sem isso, cada área visitada deixava de 10 a 30 MB para trás.
+  liberarTexturasDeOutraArea() {
+    const antes = this.registry.get("areaDasTexturas");
+    this.registry.set("areaDasTexturas", this.areaAtual);
+    if (!antes || antes === this.areaAtual) return;
+    for (const chave of Object.keys(this.textures.list)) if (/^(chao_|pr_)/.test(chave)) this.textures.remove(chave);
   }
 
   // ===== chão contínuo (cenario.js): pedaços de 16 × 16 casas pintados pixel a pixel, criados perto da câmera
@@ -1947,7 +1961,7 @@ class Cena extends Phaser.Scene {
   }
   // Onde nascem os números sobre o jogador: logo acima do nome dele.
   yNumeroJogador() {
-    return this.jogador.y - this.alturaJogador - NUM_ACIMA;
+    return this.jogador.y - this.alturaRotuloJogador() - NUM_ACIMA;
   }
   // Efeito de coluna (cura, luz da fé, veneno) preso ao jogador: a base da tira fica nos pés dele.
   fxNoJogador(chave, opts = {}) {
@@ -2449,7 +2463,7 @@ class Cena extends Phaser.Scene {
       this.numero(j.x, this.yNumeroJogador(), `−${x.dano}`, "recebido");
       // BLOQ só aparece quando o escudo segurou tanto quanto passou (ou mais), e entra na pilha dos números
       if (x.defesaBloqueada > 0 && x.defesaBloqueada >= x.dano) this.time.delayedCall(140, () => j.active && this.numero(j.x, this.yNumeroJogador(), `BLOQ ${x.defesaBloqueada}`, "bloqueio"));
-      j.setTint(0xff7a5c);
+      j.setTint(0xffa48c);
       this.time.delayedCall(100, () => j.active && j.clearTint());
       this.pulsoVinheta(0.35, 150);
       if (x.investida && !reduz) this.cameras.main.shake(120, 0.004);
