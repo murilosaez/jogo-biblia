@@ -31,7 +31,7 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual, R
     igual(Object.keys(C.MUROS).sort(), ["muro", "tijolos"]);
     for (const f of ["texturasPredio", "texturaMovel", "texturaPorta", "texturaPedacoChao", "classesDaArea", "texturaMuro", "obstaculosDaOrla", "naOrla", "temOrla", "material",
       "pintarPredio", "pintarMovel", "pintarPedacoChao", "iniciarPedaco", "pintarFatia", "texturaPedacoChaoFatiada"]) assert.strictEqual(typeof C[f], "function", `Cenario.${f}`);
-    igual([C.LADO_PEDACO, C.MOLDURA_CASAS, C.ALTURA_MURO, C.ALTURA_PAREDE], [16, 4, 34, 32]);
+    igual([C.LADO_PEDACO, C.MOLDURA_CASAS, C.ALTURA_MURO, C.ALTURA_PAREDE], [16, 4, 34, 64]);
     // document só aparece dentro de Tela.canvas()
     const usos = FONTE.split("\n").filter((l) => /\bdocument\b/.test(l) && !/^\s*\/\//.test(l));
     igual(usos.length, 1, "um único uso de document");
@@ -185,7 +185,7 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual, R
           igual([p.chao.w, p.chao.h], [W, H]);
           igual([p.dentro.w, p.dentro.h], [W, H + AP], `dentro com parede de ${AP}`);
           igual([p.fora.w, p.fora.h], [W, H + AP], `fora com parede de ${AP}`);
-          igual([p.sombra.w, p.sombra.h], [W + Math.round((AP * 10) / 32), H + Math.round((AP * 5) / 32)]);
+          igual([p.sombra.w, p.sombra.h], [W + Math.round(AP * 0.5), H + Math.round(AP * 0.25)]);
           // a fachada ocupa a faixa de baixo inteira e o vão da porta é escuro
           const px = (e.porta.x - e.x) * 32 + 16, o = ((H + AP - 6) * W + px) * 4;
           assert.ok(p.fora.buf[o + 3] === 255 && p.fora.buf[o] < 110, `${area}: vão da porta`);
@@ -205,7 +205,7 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual, R
         const c = cena();
         assert.ok(C.texturaMuro(c, "muro", 10, 1).endsWith(`_h${C.ALTURA_MURO}`));
       }
-    } finally { C.ALTURA_PAREDE = 32; C.Tela.prototype.canvas = TelaReal; }
+    } finally { C.ALTURA_PAREDE = 64; C.Tela.prototype.canvas = TelaReal; }
     assert.ok(medidas[32] >= 4 && medidas[64] >= 4);
     for (const tipo of ["balcao", "barris", "caixotes", "sacos", "cama", "jarros", "mesa"]) {
       const t = C.pintarMovel(tipo, C.material(0), {}, 0);

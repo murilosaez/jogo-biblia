@@ -10,7 +10,7 @@
 //               janelas e, nas lojas, o toldo e a placa. Some quando o jogador entra;
 //   sombra    — a sombra do prédio no chão, à direita e embaixo;
 //   móveis    — balcão, barris, caixotes, sacos, cama, jarros e mesa (um por casa bloqueada).
-// A altura da parede vem de Cenario.ALTURA_PAREDE (32 px nesta fase; a pintura aceita até 64) e entra na
+// A altura da parede vem de Cenario.ALTURA_PAREDE (64 px = 2 casas; a pintura aceita de 32 a 64) e entra na
 // chave das texturas; "dentro" e "fora" têm W × (H + altura) e ficam em Y0 − altura.
 // Muros contínuos: 34 px de altura (Cenario.ALTURA_MURO), com pedras de cobertura e a face texturizada.
 // Chão contínuo: o chão de cada região é pintado em pedaços de 16 × 16 casas, pixel a pixel, a partir do
@@ -202,10 +202,16 @@
         else if (by === 3) c = esc(c, 0.1);
         else if (hp < 0.05) c = esc(c, 0.12);
       } else if (mat.textura === "pano") {
-        const dobra = Math.sin((lx / 16) * Math.PI * 2 + Math.sin(ly / 9) * 0.5);
-        c = dobra > 0.7 ? c3 : dobra > 0.1 ? c2 : dobra < -0.65 ? c0 : c1;
-        if (mat.listra && (ly % 12 === 3 || ly % 12 === 4)) c = dobra < -0.2 ? mat.listra[0] : mat.listra[1];
-        else if (hp < 0.05) c = misturar(c, c1, 0.5);
+        // pano pesado de pelo de cabra, em panos de 24 px costurados: pregas largas e moles (o vinco escuro é
+        // fino, a luz pega no dorso da prega), costura a cada pano e duas barras tecidas (em cima e embaixo)
+        const fase = (lx / 24) * Math.PI * 2 + Math.sin(ly / 13 + s) * 0.7 + Math.sin(lx / 41 + s) * 0.9;
+        const dobra = Math.sin(fase), l = 0.58 + dobra * 0.25 - (ly / h) * 0.12;
+        c = l > 0.8 ? c3 : l > 0.42 ? (l > 0.72 && bayer(x, y) > 0.5 ? c3 : c2) : l > 0.3 ? (bayer(x, y) > (l - 0.3) / 0.12 ? c1 : c2) : dobra < -0.93 ? c0 : c1;
+        const barra = mat.listra ? (ly >= 8 && ly < 13 ? 1 : ly >= h - 14 && ly < h - 9 ? 1 : ly === 15 || ly === h - 17 ? 2 : 0) : 0;
+        if (barra === 1) c = l < 0.36 ? esc(mat.listra[0], 0.2) : l > 0.74 ? cla(mat.listra[1], 0.15) : (ly === 8 || ly === h - 14) ? mat.listra[1] : (lx + ly) % 4 === 0 ? mat.listra[1] : mat.listra[0];
+        else if (barra === 2) c = l < 0.36 ? mat.listra[0] : mat.listra[1];
+        else if (lx % 24 === 0) c = misturar(c, c0, 0.45); // costura
+        else if (hp < 0.03) c = misturar(c, c1, 0.5);
       }
       tela.p(x, y, c);
     }
@@ -382,10 +388,15 @@
       }
     }
     // paredes cortadas dos lados e da frente (12 px de espessura, na beira de fora): miolo de adobe à mostra
+    // (pedras de capa com juntas a cada 16 px ao comprido da parede, sem granulado)
     const cortada = (x, y, w, h) => {
+      const deitada = w > h;
       tela.ret(x, y, w, h, (xx, yy) => {
-        const n = hash2(xx, yy, s + 11);
-        return n < 0.15 ? topo[0] : n > 0.88 ? topo[2] : topo[1];
+        const q = (deitada ? xx : yy) + 5, n = hash2(xx, yy, s + 11);
+        const bloco = hash2(Math.floor(q / 16), deitada ? 1 : xx < 16 ? 2 : 3, s + 12);
+        if (q % 16 === 0) return topo[0];
+        if (q % 16 === 1) return cla(topo[2], 0.12);
+        return n < 0.05 ? topo[1] : bloco < 0.3 ? misturar(topo[1], topo[2], 0.5) : topo[2];
       });
     };
     const yl = AP + 20, ys = H + AP - 12;
@@ -398,6 +409,9 @@
       if (Math.floor(x / T) === porta) continue;
       tela.p(x, ys, topo[3]); tela.p(x, H + AP - 1, TINTA); tela.p(x, H + AP - 2, topo[0]); tela.p(x, H + AP - 3, esc(topo[1], 0.1));
     }
+    // sombra das paredes no chão de dentro (luz de cima e da esquerda): ao pé da parede do fundo e da de oeste
+    for (let x = 12; x < W - 12; x++) for (let q = 0; q < 6; q++) tela.p(x, F1 + q, SOMBRA, q < 2 ? 0.34 : q < 4 ? ((x + q) % 2 ? 0.26 : 0.18) : (x + q) % 2 ? 0.14 : 0.06);
+    for (let y = F1 + 6; y < ys; y++) for (let q = 0; q < 5; q++) tela.p(12 + q, y, SOMBRA, q < 2 ? 0.3 : q < 4 ? ((y + q) % 2 ? 0.2 : 0.12) : (y + q) % 2 ? 0.1 : 0.04);
     // batentes da porta
     const dx = porta * T;
     tela.ret(dx, ys - 2, 4, 14, (x, y, i, j) => (j === 0 ? MADEIRA[5] : i === 0 ? MADEIRA[4] : i === 3 ? MADEIRA[1] : MADEIRA[2]));
@@ -407,9 +421,10 @@
     return tela;
   }
 
-  // Medidas do vão da porta para a altura da parede: 18 × 27 px com 32 e 24 × 44 px com 64.
+  // Medidas do vão da porta para a altura da parede: 18 × 27 px com 32 e 26 × 56 px com 64 (a porta da parede
+  // de 2 casas é mais alta que uma pessoa, que tem de 50 a 56 px).
   function vaoDaPorta(AP) {
-    const f = (AP - 32) / 32, vw = 18 + 2 * Math.round(3 * f), vh = 27 + Math.round(17 * f);
+    const f = (AP - 32) / 32, vw = 18 + 2 * Math.round(4 * f), vh = 27 + Math.round(29 * f);
     return { vw, vh, vx: (T - vw) >> 1, arco: Math.round(vw / 3) };
   }
   // Lado de fora: telhado (y 0 a H − 1, a pegada subida AP px) e a fachada (y H a H + AP − 1).
@@ -431,7 +446,9 @@
       for (let x = 0; x < W; x++) { const alt = Math.floor(ruido(x / 6, 0, s + 30) * 6 * k); for (let q = 0; q < alt; q++) tela.tom(x, fy + AP - 3 - q, "#4a3a2a", 0.2 - q * 0.02); }
       // pontas das vigas do teto, com a sombra de cada uma na parede
       const vy = fy + Math.round(3 * k), vt = k > 1.5 ? 4 : 3;
+      const vp = vaoDaPorta(AP), px0 = porta * T + vp.vx - 5, px1 = porta * T + vp.vx + vp.vw + 4, alta = AP - vp.vh < 14;
       for (let x = 7; x < W - 6; x += 12) {
+        if (alta && x + vt > px0 && x < px1) continue; // a porta alta chega às vigas
         tela.ret(x, vy, vt, vt, (xx, yy, i, j) => (i === 0 || j === 0 ? MADEIRA[4] : i === vt - 1 && j === vt - 1 ? MADEIRA[0] : MADEIRA[2]));
         for (let q = 0; q < vt + 1; q++) { tela.tom(x + 1 + q, vy + vt, SOMBRA, 0.4); tela.tom(x + vt, vy + 1 + Math.min(q, vt - 1), SOMBRA, 0.3); }
       }
@@ -489,7 +506,7 @@
     if (loja) pintarToldoEPlaca(tela, e, mat, W, fy, porta, s, AP);
     else if (!pano) {
       // candeia de barro num suporte ao lado da porta
-      const lx = vx + vw + 5, ly = vt + Math.round(6 * k);
+      const lx = vx + vw + 5, ly = fy + AP - Math.round(Math.min(vh - 6, 34 * Math.max(1, k * 0.62)));
       if (lx + 4 < W) { tela.ret(lx, ly + 2, 4, 1, "#2a2a2a"); tela.elip(lx + 2, ly + 1, 2.2, 1.4, (nx) => (nx < 0 ? "#d07a4a" : "#8e4a2a")); tela.p(lx + 3, ly - 1, "#ffd24a"); tela.p(lx + 3, ly - 2, "#fff0a0"); }
     }
     tela.contorno(esc(mat.face[0], 0.6));
@@ -509,7 +526,7 @@
       if (ly === 0 || lx === 0) c = hp < 0.8 ? esc(tons[0], 0.12) : c;
       else if (ly === 1 || lx === 1) c = cla(c, 0.1);
       const ch = ruido(x / 15, y / 15, s + 26);
-      if (ch > 0.72) c = misturar(c, "#5a5a3a", ch > 0.76 ? 0.26 : 0.14); // mancha de chuva
+      if (ch > 0.72) c = misturar(c, "#5a5a3a", ch > 0.76 ? 0.17 : 0.09); // mancha de chuva
       else if (ruido(x / 9, y / 26, s + 27) > 0.8) c = cla(c, 0.1); // caminho gasto
       if (hp < 0.012) c = esc(c, 0.16); // pedrisco
       tela.p(x, y, c);
@@ -598,33 +615,83 @@
     for (let y = 14; y < 38; y += 5) { tela.lin(lx + 1, y, lx + 7, y, MADEIRA[4]); tela.lin(lx + 2, y + 1, lx + 6, y + 1, MADEIRA[1]); }
   }
 
+  // Tenda grande vista de cima: pano de pelo de cabra em quatro águas — a de trás (norte) e a da frente (sul)
+  // presas na cumeeira, e duas pontas em triângulo (a oeste na luz, a leste na sombra). O pano é feito de
+  // faixas de 32 px costuradas que fazem barriga entre as cordas (cada faixa escura à esquerda e clara à
+  // direita, luz da esquerda), com listras tecidas em faixas alternadas, uma barra tecida perto do beiral,
+  // remendos, mastros com as cordas e o beiral recortado preso por estacas.
   function pintarLona(tela, mat, W, H, s) {
-    const [t0, t1, t2, t3] = mat.topo, meio = Math.round(H * 0.42), R = [esc(t0, 0.15), t0, t1, t2, t3, cla(t3, 0.15)];
+    const [t0, t1, t2, t3] = mat.topo, meio = Math.round(H * 0.4), hx = Math.min(30, W >> 2);
+    const R = [esc(t0, 0.32), esc(t0, 0.12), t0, misturar(t0, t1, 0.5), t1, misturar(t1, t2, 0.5), t2, misturar(t2, t3, 0.5), t3, cla(t3, 0.25)];
+    const listra = mat.listra || [t0, t1];
+    const yBarra = meio + Math.round((H - meio) * 0.66);
+    // largura da ponta (triângulo) na linha y: 0 nos cantos, hx na cumeeira
+    const ponta = (y) => (y < meio ? (hx * y) / meio : (hx * (H - 1 - y)) / (H - 1 - meio));
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      // duas águas: a de cima mais clara (luz), a de baixo mais escura; o pano faz barriga entre os mastros
-      const t = y < meio ? 0.8 - (y / meio) * 0.22 : 0.42 - ((y - meio) / (H - meio)) * 0.3;
-      const dobra = Math.sin((x / 24) * Math.PI * 2 + Math.sin(y / 17) * 0.6) * 0.14 + (ruido(x / 20, y / 14, s + 31) - 0.5) * 0.16;
-      const hp = hash2(x, y, s + 32);
-      let c = R[Math.max(0, Math.min(5, Math.floor((t + dobra) * 5.2 + (hp - 0.5) * 0.7)))];
-      if (mat.listra && x % 32 >= 14 && x % 32 <= 16) c = x % 32 === 16 ? esc(mat.listra[0], 0.3) : y < meio ? mat.listra[1] : mat.listra[0];
-      else if ((x + (y >> 1)) % 8 === 0 && hp < 0.5) c = misturar(c, t0, 0.25); // trama do tecido
-      if (y === meio) c = esc(t0, 0.3); else if (y === meio - 1) c = cla(t3, 0.2); else if (y === meio + 1) c = t0;
+      const pw = ponta(y), oeste = x < pw, leste = x > W - 1 - pw;
+      const onda = (ruido(x / 34, y / 22, s + 31) - 0.5) * 0.14;
+      let l, c;
+      if (oeste || leste) {
+        // pontas: o pano desce da cumeeira para o lado; faixas ao comprido (dobras na horizontal)
+        const d = oeste ? x / Math.max(1, pw) : (W - 1 - x) / Math.max(1, pw); // 0 na beira, 1 na aresta
+        const dobra = Math.sin(((y % 24) / 24) * Math.PI * 2) * 0.05;
+        l = oeste ? 0.7 + d * 0.16 + dobra : 0.2 + d * 0.14 + dobra;
+        c = rampa(R, Math.max(0, Math.min(0.999, l + onda)), x, y);
+        if (d > 0.93) c = oeste ? R[9] : misturar(c, R[0], 0.5); // aresta
+        tela.p(x, y, c);
+        continue;
+      }
+      const px = x % 32, fx = Math.floor(x / 32);
+      const prega = Math.sin((px / 32 - 0.5) * Math.PI); // −1 logo depois da costura, +1 antes da seguinte
+      if (y < meio) { const v = y / meio; l = 0.64 + v * 0.2 + prega * 0.07; } // água de trás: clareia até a cumeeira
+      else { const v = (y - meio) / (H - meio); l = 0.6 - v * 0.2 + prega * (0.07 + 0.06 * Math.sin(v * Math.PI)); } // água da frente
+      l += onda - (x / W) * 0.06;
+      c = rampa(R, Math.max(0, Math.min(0.999, l)), x, y);
+      // barra tecida perto do beiral (acompanha a barriga do pano)
+      const jb = y - yBarra - Math.round(Math.sin((px / 32) * Math.PI) * 2);
+      if (jb >= 0 && jb < 6) {
+        c = jb === 0 || jb === 5 ? esc(listra[0], 0.3) : jb === 1 || jb === 4 ? listra[1] : (px + (jb === 2 ? 0 : 2)) % 6 < 3 ? "#e8dcc0" : listra[0];
+        if (prega < -0.5) c = esc(c, 0.14);
+      } else if (fx % 2 === 0 && px >= 15 && px <= 17) {
+        // listra tecida ao comprido das faixas alternadas
+        c = px === 15 ? esc(listra[0], 0.2) : px === 16 ? listra[1] : listra[0];
+        if (y >= meio) c = esc(c, 0.1);
+      } else if (px === 0) c = misturar(c, R[0], 0.5); // costura entre as faixas
+      else if (px === 31) c = misturar(c, R[9], 0.3);
+      else if ((x + y * 3) % 7 === 0 && hash2(x, y, s + 32) < 0.3) c = misturar(c, R[1], 0.25); // trama grossa
       tela.p(x, y, c);
     }
-    // remendos
+    // remendos costurados
     for (let q = 0; q < 3; q++) {
-      const px = 20 + Math.floor(hash2(s, q, 33) * (W - 50)), py = 8 + Math.floor(hash2(s, q, 34) * (H - 26));
-      if (Math.abs(py - meio) < 12) continue;
-      tela.ret(px, py, 9, 7, (x, y, i, j) => (i === 0 || j === 0 || i === 8 || j === 6 ? ((i + j) % 2 ? "#3a2a1a" : t1) : py < meio ? cla(t2, 0.1) : t1));
+      const px = hx + 8 + Math.floor(hash2(s, q, 33) * Math.max(1, W - 2 * hx - 30)), py = 8 + Math.floor(hash2(s, q, 34) * (H - 26));
+      if (Math.abs(py - meio) < 12 || Math.abs(py - yBarra) < 14 || (px % 32 > 4 && px % 32 < 20) || px % 32 > 21) continue;
+      tela.ret(px, py, 9, 7, (x, y, i, j) => (i === 0 || j === 0 || i === 8 || j === 6 ? ((i + j) % 2 ? R[0] : R[5]) : py < meio ? R[7] : R[5]));
     }
-    // beiral: franja e sombra
-    for (let x = 0; x < W; x++) { tela.p(x, H - 1, esc(t0, 0.2)); tela.p(x, H - 2, x % 4 < 2 ? t1 : t0); tela.p(x, 0, cla(t3, 0.2)); }
-    for (let y = 0; y < H; y++) { tela.p(0, y, cla(t3, 0.15)); tela.p(W - 1, y, t0); }
-    // mastros nas pontas da cumeeira e no meio, com as cordas
-    for (const x of [7, W >> 1, W - 8]) {
-      tela.ret(x - 1, meio - 10, 3, 11, (xx, y, i) => (i === 0 ? MADEIRA[5] : i === 1 ? MADEIRA[3] : MADEIRA[1]));
-      tela.p(x, meio - 11, "#e8b94a"); tela.p(x - 1, meio - 11, "#f6dc90");
-      for (let q = 1; q < 9; q++) tela.tom(x + 1 + q, meio + Math.round(q * 0.5), SOMBRA, 0.3);
+    // cumeeira: a vara por baixo do pano faz um vinco claro em cima e uma sombra logo abaixo
+    for (let x = hx; x < W - hx; x++) {
+      tela.p(x, meio - 2, R[8]); tela.p(x, meio - 1, R[9]); tela.p(x, meio, R[6]);
+      tela.tom(x, meio + 1, SOMBRA, 0.4); tela.tom(x, meio + 2, SOMBRA, 0.24); tela.tom(x, meio + 3, SOMBRA, 0.1);
+    }
+    // beiras: luz ao norte e a oeste, sombra a leste
+    for (let x = 0; x < W; x++) { tela.p(x, 0, R[9]); tela.p(x, 1, R[8]); }
+    for (let y = 0; y < H; y++) { tela.p(0, y, R[9]); tela.p(1, y, R[8]); tela.p(W - 1, y, R[0]); tela.p(W - 2, y, R[1]); }
+    // mastros nas pontas da cumeeira e no meio (a ponta fura o pano), com a sombra de cada um e as cordas
+    for (const x of [hx, W >> 1, W - 1 - hx]) {
+      for (let q = 1; q < 14; q++) { tela.tom(x + 1 + q, meio + Math.round(q * 0.5), SOMBRA, 0.36); tela.tom(x + 1 + q, meio + 1 + Math.round(q * 0.5), SOMBRA, 0.18); }
+      tela.ret(x - 1, meio - 11, 3, 12, (xx, y, i) => (i === 0 ? MADEIRA[5] : i === 1 ? MADEIRA[3] : MADEIRA[1]));
+      tela.p(x, meio - 12, "#e8b94a"); tela.p(x - 1, meio - 12, "#f6dc90"); tela.p(x + 1, meio - 12, "#b07a38"); tela.p(x, meio - 13, "#f6dc90");
+    }
+    // cordas de amarração: da cumeeira aos cantos, por cima das arestas das pontas
+    for (const [xa, xb] of [[hx, 2], [W - 1 - hx, W - 3]]) for (const yb of [2, H - 3]) {
+      const n = Math.max(Math.abs(xb - xa), Math.abs(yb - meio));
+      for (let q = 3; q < n; q++) if (q % 5 < 3) tela.p(Math.round(xa + ((xb - xa) * q) / n), Math.round(meio + ((yb - meio) * q) / n), xb < xa ? misturar(R[9], "#fff6e0", 0.2) : R[4]);
+    }
+    // beiral do sul: a barra do pano recortada em meias-luas entre as estacas, com a sombra em cima dela
+    for (let x = 0; x < W; x++) {
+      const px = x % 32, cai = Math.round(Math.sin((px / 32) * Math.PI) * 2);
+      for (let q = 0; q < 3 + cai; q++) tela.tom(x, H - 1 - q, SOMBRA, 0.3 - q * 0.05);
+      tela.p(x, H - 1, (x >> 1) % 2 ? R[1] : R[0]);
+      if (px === 0 || px === 31) { tela.p(x, H - 2, MADEIRA[4]); tela.p(x, H - 3, MADEIRA[5]); }
     }
   }
 
@@ -632,7 +699,7 @@
   function pintarToldoEPlaca(tela, e, mat, W, fy, porta, s, AP = 32) {
     const cores = mat.id === "tenda" ? ["#2e4680", "#e8dcc0"] : mat.id === "basalto" ? ["#3b5a9a", "#e8dcc0"] : ["#a8342a", "#efe2c4"];
     const { vh } = vaoDaPorta(AP), alt = Math.round(10 * (AP > 48 ? 1.4 : 1));
-    const x0 = Math.max(0, (porta - 1) * T + 4), x1 = Math.min(W, (porta + 2) * T - 4), y0 = fy + AP - vh - alt + 1;
+    const x0 = Math.max(0, (porta - 1) * T + 4), x1 = Math.min(W, (porta + 2) * T - 4), y0 = Math.max(fy + 2, fy + AP - vh - alt + 1);
     // sombra do toldo na parede
     for (let x = x0 + 2; x < x1 + 2; x++) for (let q = 0; q < 4; q++) tela.tom(x, y0 + alt + 2 + q, SOMBRA, 0.42 - q * 0.09);
     for (let y = y0; y < y0 + alt; y++) for (let x = x0; x < x1; x++) {
@@ -656,7 +723,7 @@
     // placa: suporte de ferro e tábua com a balança de dois pratos
     const lado = porta + 1 < Math.round(W / T) ? 1 : -1;
     const bx = lado > 0 ? (porta + 2) * T - 2 : (porta - 1) * T + 2;
-    const pyb = fy + AP - vh + 1;
+    const pyb = Math.max(y0 + alt + 4, fy + AP - vh + 1);
     tela.lin(bx, pyb, bx + lado * 10, pyb, "#2a2a2a"); tela.lin(bx, pyb + 1, bx + lado * 3, pyb + 1, "#4a4a4a");
     tela.lin(bx + lado * 3, pyb + 1, bx + lado * 3, pyb + 3, "#2a2a2a");
     tela.lin(bx + lado * 9, pyb + 1, bx + lado * 9, pyb + 3, "#2a2a2a");
@@ -671,17 +738,24 @@
     tela.lin(qx + 4, qy + 9, qx + 8, qy + 9, "#b07a38");
   }
 
+  // Sombra projetada do prédio no chão, para a direita e para baixo (luz de cima e da esquerda): a pegada
+  // arrastada por metade da altura da parede para a direita e um quarto para baixo. As beiras de longe são
+  // suaves (pontilhado em dois degraus); as diagonais dos cantos são nítidas. Imagem posta no canto da pegada.
   function pintarSombra(W, H, AP = 32) {
-    // sombra projetada para a direita e para baixo (luz de cima e da esquerda), proporcional à altura da parede:
-    // imagem posta no canto da pegada, com 10 px à direita e 5 px embaixo para a parede de 32 px
-    const sx = Math.round((AP * 10) / 32), sy = Math.round((AP * 5) / 32);
+    const sx = Math.round(AP * 0.5), sy = Math.round(AP * 0.25);
     const tela = new Tela(W + sx, H + sy);
     for (let y = 0; y < H + sy; y++) for (let x = 0; x < W + sx; x++) {
       if (x < W && y < H) continue;
-      if (x >= W && y < 4 + (x - W) * 0.5) continue; // ponta de cima em diagonal
-      if (y >= H && x < 6 + (y - H) * 2) continue; // ponta da esquerda em diagonal
-      const borda = Math.min(W + sx - x, H + sy - y);
-      tela.p(x, y, SOMBRA, borda < 2 ? 0.12 : borda < 4 && (x + y) % 2 ? 0.19 : 0.27);
+      // menor t (0..1) com (x − sx·t, y − sy·t) dentro da pegada: quanto do caminho da sombra o ponto usa
+      const t0 = Math.max(x >= W ? (x - W + 1) / sx : 0, y >= H ? (y - H + 1) / sy : 0);
+      if (t0 > 1) continue;
+      if (x - sx * t0 < 0 || y - sy * t0 < 0) continue; // fora das diagonais dos cantos
+      const beira = (1 - t0) * Math.min(sx, sy * 2); // px até a beira de longe
+      let a = 0.34;
+      if (beira < 2) a = (x + y) % 2 ? 0.12 : 0.05; else if (beira < 4) a = (x + y) % 2 ? 0.22 : 0.12; else if (beira < 7) a = (x + y) % 2 ? 0.34 : 0.24;
+      // junto à parede a sombra é mais densa
+      if (t0 < 0.14) a = 0.44;
+      tela.p(x, y, SOMBRA, a);
     }
     return tela;
   }
@@ -1664,9 +1738,9 @@
     MATERIAIS_PREDIO, material, LADO_PEDACO: LADO,
     obstaculosDaOrla, naOrla, MOLDURA_CASAS, temOrla: (area) => !!ORLAS[area],
     texturasPredio, texturaMovel, texturaPorta, texturaPedacoChao, classesDaArea, texturaMuro, MUROS, ALTURA_MURO,
-    // altura da parede dos prédios em px (32 = 1 casa nesta onda; a pintura aceita até 64). game.js posiciona
+    // altura da parede dos prédios em px (64 = 2 casas; a pintura aceita de 32 a 64). game.js posiciona
     // "dentro" e "fora" em Y0 − ALTURA_PAREDE e a porta em porta.y × 32 + 32 − ALTURA_PAREDE.
-    ALTURA_PAREDE: 32,
+    ALTURA_PAREDE: 64,
     // chão fatiado: iniciarPedaco(area, bx, by) → estado; pintarFatia(estado, ms) → pronto?; ou, de uma vez,
     // texturaPedacoChaoFatiada(scene, area, bx, by, ms) → chave | null
     iniciarPedaco, pintarFatia, texturaPedacoChaoFatiada, mascaraMuro,

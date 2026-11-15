@@ -41,6 +41,7 @@ function escuridaoDoDia(agora = Date.now()) {
   return { fracao: f, escuro: CICLO_DIA.escuroMax * (k * k * (3 - 2 * k)) };
 }
 const BLOCO = 16; // lado (em casas) dos blocos de cenário ligados e desligados conforme a câmera
+const ORCAMENTO_CHAO_MS = 4; // tempo por quadro para pintar o chão contínuo em fatias (cenario.js)
 // Minimapa: casas mostradas em volta do jogador, em 3 níveis (0 = mais perto). A escolha fica neste navegador.
 const MINIMAPA_NIVEIS = [{ colunas: 40, linhas: 30 }, { colunas: 80, linhas: 60 }, { colunas: 160, linhas: 120 }];
 const CHAVE_MINIMAPA = "jornada_minimapa";
@@ -113,6 +114,14 @@ function quadroAndando(sprite, time) {
   const fase = sprite.getData("fasePasso"), comFase = typeof fase === "number";
   if (def?.direcoes) return CICLO_PASSO[comFase ? Math.max(0, Math.min(3, Math.floor(fase * 4))) : Math.floor(time / 110) % 4];
   return 2 + (comFase ? Math.max(0, Math.min(1, Math.floor(fase * 2))) : Math.floor(time / 125) % 2);
+}
+// Barco: com vistas (def.direcoes), o balanço da vista atual (def.ciclo, mais vivo navegando); o legado tem
+// 2 quadros de balanço e só espelha.
+function quadroDoBarco(sprite, time, navegando) {
+  const def = PIXEL_PATTERNS[sprite.texture?.key];
+  if (!def?.direcoes) return Math.floor(time / 600) % 2;
+  const ciclo = def.ciclo || [0, 1];
+  return quadroComVista(sprite, ciclo[Math.floor(time / (navegando ? 190 : 360)) % ciclo.length]);
 }
 // Quadro do golpe (dentro da vista): no contrato novo, antecipação e depois o golpe no fim
 // (def.quadroAcao = [antecipação, golpe]; o golpe dura GOLPE.total − GOLPE.antecipa ms); no legado, o quadro 4.
@@ -270,6 +279,21 @@ function alturaDoDesenho(chave) {
   cacheAltura.set(chave, alt);
   return alt;
 }
+// Altura do desenho numa vista só (quadro parado dela). O montado não declara alturaCabeca e a vista de
+// frente é bem mais alta que a de lado: com a medida única, nome e barra flutuavam longe da cabeça de lado.
+function alturaDaVista(chave, vista) {
+  const def = PIXEL_PATTERNS[chave];
+  if (!def?.direcoes) return alturaDoDesenho(chave);
+  const k = chave + "|v" + vista;
+  if (cacheAltura.has(k)) return cacheAltura.get(k);
+  let alt = alturaDoDesenho(chave);
+  try {
+    const px = Arte.pixels(chave, { quadro: (ORDEM_VISTA[vista] || 0) * (def.quadrosPorVista || 5) }), i = px.data.findIndex(pxOpaco);
+    if (i >= 0) alt = Math.round((px.h - Math.floor(i / px.w)) * ((def.h * Arte.PX) / px.h));
+  } catch (e) { /* fica a medida geral */ }
+  cacheAltura.set(k, alt);
+  return alt;
+}
 function mascaraDoDesenho(chave, quadro) {
   const k = chave + "|" + quadro;
   if (cacheMascara.has(k)) return cacheMascara.get(k);
@@ -305,6 +329,7 @@ class Cena extends Phaser.Scene {
 
   // ===== criação ======================================================
   create() {
+    const tCriar = performance.now();
     this.p = Mundo.entrar(MEU_ID);
     this.areaAtual = this.p.area;
     this.bio = Arte.BIOMAS[this.areaAtual] || Arte.BIOMAS.canaan;
@@ -384,11 +409,22 @@ class Cena extends Phaser.Scene {
     this.criarJogador();
     this.criarEfeitosDeMundo();
     this.criarCamera();
+    // chão que a câmera vê: pintado já, atrás do escurecimento e do cartão de transição
+    const tChao = performance.now();
+    this.atualizarChaoContinuo(true);
+    const chaoInicialMs = performance.now() - tChao;
     this.criarAtmosfera();
     this.criarAmbiente();
 
     window.gameScene = this;
-    if (window.Jogo) window.Jogo.pronto = true;
+    if (window.Jogo) {
+      window.Jogo.pronto = true;
+      // medidas da troca de área (ferramentas): tempo de montar a cena, de pintar o chão visível e o total
+      // desde o pedido de troca (inclui o escurecimento de saída)
+      const t = performance.now(), pedido = this.registry.get("trocaPedidaEm");
+      window.Jogo.medidas = { area: this.areaAtual, criarCenaMs: Math.round(t - tCriar), chaoInicialMs: Math.round(chaoInicialMs), trocaDeAreaMs: pedido ? Math.round(t - pedido) : null };
+      this.registry.set("trocaPedidaEm", null);
+    }
     this.events.once("shutdown", () => {
       this.scale.off("resize", this.aoRedimensionar, this);
       if (window.gameScene === this) window.gameScene = null;
@@ -577,6 +613,9 @@ class Cena extends Phaser.Scene {
   // ===== estruturas: casas, tendas, bancas e poços (dados/mapas.js), uma imagem por estrutura
   criarEstruturas() {
     this.predios = [];
+    this.sobPredio = new Map(); // casa de dentro (x + y × COLS) → prédio cujo telhado a tapa enquanto está fechado
+    this.atrasDePredio = new Map(); // casa (x + y × COLS) → prédio cujo telhado a cobre
+    this.fantasmas = new Map(); // entidade → cópia translúcida dela por cima do telhado que a esconde
     for (const e of estruturasPorArea[this.areaAtual] || []) {
       if (e.entrar) { this.criarPredio(e); continue; }
       const chave = `es_${e.tipo}`;
@@ -666,8 +705,10 @@ class Cena extends Phaser.Scene {
     const meio = e.x + (e.largura >> 1), fim = e.y + e.altura - 1;
     const chao = this.add.image(X0, Y0, k.chao).setOrigin(0, 0).setDepth(PROF.deco + 0.5);
     const sombra = this.add.image(X0, Y0, k.sombra).setOrigin(0, 0).setDepth(PROF.sombraContato + 0.5);
-    const dentro = this.add.image(X0, Y0 - TAM, k.dentro).setOrigin(0, 0).setDepth(PROF.entidade + Y0 + 30);
-    const fora = this.add.image(X0, Y0 - TAM, k.fora).setOrigin(0, 0).setDepth(PROF.entidade + Y0 + H - 1.5);
+    // parede de 2 casas (Cenario.ALTURA_PAREDE): "dentro" e "fora" têm a pegada mais a altura e sobem AP px
+    const AP = Cenario.ALTURA_PAREDE;
+    const dentro = this.add.image(X0, Y0 - AP, k.dentro).setOrigin(0, 0).setDepth(PROF.entidade + Y0 + 30);
+    const fora = this.add.image(X0, Y0 - AP, k.fora).setOrigin(0, 0).setDepth(PROF.entidade + Y0 + H - 1.5);
     const imgs = [chao, sombra, dentro, fora];
     const bloqueado = new Set(e.moveis.map((m) => `${m.x},${m.y}`));
     e.moveis.forEach((m, i) => {
@@ -678,28 +719,44 @@ class Cena extends Phaser.Scene {
       imgs.push(this.add.image(centroX(m.x), m.y * TAM + TAM, chave).setOrigin(0.5, 1).setDepth(PROF.entidade + m.y * TAM + TAM - 2));
     });
     // folha da porta: fecha e abre conforme o jogador chega perto (fica na fachada, some com o telhado)
-    const porta = this.add.image(e.porta.x * TAM, e.porta.y * TAM, Cenario.texturaPorta(this, e.variante, false)).setOrigin(0, 0)
+    const porta = this.add.image(e.porta.x * TAM, e.porta.y * TAM + TAM - AP, Cenario.texturaPorta(this, e.variante, false)).setOrigin(0, 0)
       .setDepth(PROF.entidade + Y0 + H - 1.4);
     imgs.push(porta);
     for (const img of imgs) this.noBloco(img, meio, fim);
-    this.predios.push({ e, fora, porta, aberta: false, alvo: 1, bloqueado });
+    // a parede de dentro (2 casas de altura) só aparece com o jogador dentro: de fora, com o telhado translúcido,
+    // ela taparia quem está atrás do prédio
+    dentro.setAlpha(0);
+    const pr = { e, fora, porta, paredeDentro: dentro, aberta: false, alvo: 1, bloqueado };
+    this.predios.push(pr);
+    // casas ao norte que o telhado subido cobre (2 fileiras com a parede de 64 px): quem pisa nelas fica atrás dele
+    for (let y = e.y; y < e.y + e.altura - 1; y++) for (let x = e.x; x < e.x + e.largura; x++) this.sobPredio.set(x + y * COLS, pr);
+    for (let q = 1; q <= Math.ceil(AP / TAM); q++) for (let x = e.x; x < e.x + e.largura; x++) this.atrasDePredio.set(x + (e.y - q) * COLS, pr);
     // candeia na porta e a luz de dentro (que só conta com o telhado aberto)
-    this.luzes.push({ x: centroX(e.porta.x), y: e.porta.y * TAM + 8, r: 56, quente: 0.8, tremula: true });
+    this.luzes.push({ x: centroX(e.porta.x) + 20, y: e.porta.y * TAM + TAM - Math.round(AP * 0.66), r: 56, quente: 0.8, tremula: true });
     this.luzes.push({ x: X0 + W / 2, y: Y0 + H / 2, r: Math.max(W, H) * 0.75, quente: 0.6, predio: this.predios[this.predios.length - 1] });
   }
 
-  // Telhado: some com o jogador dentro (chão de dentro ou porta), fica translúcido com ele logo atrás
-  // (ao norte, na faixa coberta pelo telhado) e volta inteiro do lado de fora.
+  // Telhado: some com o jogador dentro (chão de dentro ou porta), fica translúcido com ele atrás (nas fileiras
+  // ao norte que o telhado subido cobre) e volta inteiro do lado de fora. A parede de dentro (2 casas de
+  // altura) só aparece com o jogador dentro. NPC ou criatura atrás do telhado (ou da parede de dentro) não
+  // muda o prédio: ganha uma cópia translúcida por cima dele (atualizarFantasmas), só no contorno do corpo.
   atualizarPredios(delta) {
     if (!this.predios?.length) return;
     const p = this.p;
+    const passo = Math.min(1, (delta || 16) / 140) * 1.6;
+    const rumo = (a, alvo) => (Math.abs(alvo - a) < 0.02 ? alvo : Math.max(0, Math.min(1, a + (alvo - a) * passo)));
+    const atrasDoJogador = this.atrasDePredio.get(p.x + p.y * COLS);
+    const estaDentro = (e) => p.x > e.x && p.x < e.x + e.largura - 1 && p.y > e.y && (p.y < e.y + e.altura - 1 || (p.x === e.porta.x && p.y === e.porta.y));
+    // o prédio em que o jogador está: o telhado subido de um vizinho logo ao sul cairia sobre o chão e a porta
+    // dele (casas a 1 fileira uma da outra), então esse vizinho também abre (quase some) enquanto ele está dentro
+    const casaDoJogador = this.predios.find((pr) => estaDentro(pr.e))?.e || null;
+    const fileirasAP = Math.ceil(Cenario.ALTURA_PAREDE / TAM);
     for (const pr of this.predios) {
       const e = pr.e;
-      const dentro = p.x > e.x && p.x < e.x + e.largura - 1 && p.y > e.y && (p.y < e.y + e.altura - 1 || (p.x === e.porta.x && p.y === e.porta.y));
-      // atrás do telhado (na faixa ao norte que a fachada cobre): o jogador ou alguém a até 4 casas dele
-      const atrasDe = (q) => q.y === e.y - 1 && q.x >= e.x - 1 && q.x <= e.x + e.largura;
-      const atras = !dentro && (atrasDe(p) || this.proximos.some((ent) => atrasDe(ent.dados)));
-      const alvo = dentro ? 0 : atras ? 0.5 : 1;
+      const dentro = e === casaDoJogador;
+      const c = casaDoJogador;
+      const cobreACasa = !!c && !dentro && e.y > c.y && e.y - fileirasAP < c.y + c.altura && e.x < c.x + c.largura && c.x < e.x + e.largura;
+      const alvo = dentro ? 0 : cobreACasa ? 0.22 : atrasDoJogador === pr ? 0.5 : 1;
       // a porta abre com o jogador a uma casa dela (ou nela) e fecha quando ele se afasta
       const aberta = cheb(p, e.porta) <= 1;
       if (aberta !== pr.aberta) {
@@ -708,41 +765,91 @@ class Cena extends Phaser.Scene {
         const ctx = Som.contexto();
         if (ctx) Som.nota(ctx, aberta ? 220 : 165, ctx.currentTime, 0.08, "triangle", 0.03);
       }
-      const a = pr.fora.alpha;
-      if (a !== alvo) {
-        const passo = Math.min(1, (delta || 16) / 140);
-        const novo = Math.abs(alvo - a) < 0.02 ? alvo : a + (alvo - a) * passo * 1.6;
-        pr.fora.setAlpha(Math.max(0, Math.min(1, novo)));
+      if (pr.fora.alpha !== alvo) {
+        pr.fora.setAlpha(rumo(pr.fora.alpha, alvo));
         pr.porta.setAlpha(pr.fora.alpha);
       }
+      const alvoParede = dentro ? 1 : 0;
+      if (pr.paredeDentro.alpha !== alvoParede) pr.paredeDentro.setAlpha(rumo(pr.paredeDentro.alpha, alvoParede));
       if (dentro !== pr.dentro) {
         pr.dentro = dentro;
         if (dentro) window.UI?.entrouNoPredio?.(e);
       }
     }
+    this.atualizarFantasmas();
+  }
+  // Personagem dentro de um prédio de telhado fechado: o corpo está tapado, então nome e barra também somem
+  // (senão flutuam sobre o telhado sem ninguém embaixo). O balão de missão/loja fica, como letreiro do prédio.
+  sobTelhado(ent) {
+    const d = ent.dados, pr = d && this.sobPredio?.get(d.x + d.y * COLS);
+    return !!pr && pr.fora.alpha > 0.6;
+  }
+  // Quem está atrás de um telhado (ou da parede de dentro, com o jogador dentro de casa) aparece através dele:
+  // uma cópia do sprite, a meio alfa, desenhada logo acima do prédio — o efeito é o de o prédio ficar
+  // translúcido só sobre o corpo de quem ele esconde. Some quando o telhado inteiro já está translúcido.
+  atualizarFantasmas() {
+    const vistos = this._fantasmasVistos || (this._fantasmasVistos = new Set());
+    vistos.clear();
+    if (this.atrasDePredio.size) for (const id in this.entidades) {
+      const ent = this.entidades[id], s = ent.sprite, d = ent.dados;
+      if (!s?.active || !s.visible || !d) continue;
+      const pr = this.atrasDePredio.get(d.x + d.y * COLS);
+      if (!pr) continue;
+      // por cima do telhado; com o jogador dentro, por cima da parede do fundo (e por baixo de quem está dentro)
+      const capa = pr.dentro ? pr.paredeDentro : pr.fora;
+      const alfa = 0.5 * s.alpha * Math.max(0, Math.min(1, pr.dentro ? capa.alpha : (capa.alpha - 0.5) * 2));
+      if (alfa < 0.02) continue;
+      let f = this.fantasmas.get(ent);
+      if (!f) { f = this.add.sprite(s.x, s.y, s.texture.key, s.frame.name); this.fantasmas.set(ent, f); }
+      if (f.texture.key !== s.texture.key) f.setTexture(s.texture.key, s.frame.name); else if (f.frame.name !== s.frame.name) f.setFrame(s.frame.name);
+      f.setPosition(s.x, s.y).setOrigin(s.originX, s.originY).setScale(s.scaleX, s.scaleY).setFlipX(s.flipX).setAlpha(alfa);
+      if (s.isTinted) f.setTint(s.tintTopLeft); else if (f.isTinted) f.clearTint();
+      const prof = capa.depth + 0.2;
+      if (f.depth !== prof) f.setDepth(prof);
+      vistos.add(ent);
+    }
+    for (const [ent, f] of this.fantasmas) if (!vistos.has(ent)) { f.destroy(); this.fantasmas.delete(ent); }
   }
 
   // ===== chão contínuo (cenario.js): pedaços de 16 × 16 casas pintados pixel a pixel, criados perto da câmera
-  atualizarChaoContinuo() {
+  // A pintura é fatiada (Cenario.pintarFatia): no máximo ORCAMENTO_CHAO_MS por quadro, um pedaço por vez, o mais
+  // perto do centro primeiro — andar não engasga. `agora` (troca de área, atrás do cartão de transição e do
+  // escurecimento da câmera): pinta de uma vez os pedaços que a câmera vê; os da margem seguem fatiados.
+  atualizarChaoContinuo(agora = false) {
     if (this.areaAtual === "mar" || !window.Cenario) return;
-    const v = this.cameras.main.worldView, lado = Cenario.LADO_PEDACO * TAM;
+    const cam = this.cameras.main, lado = Cenario.LADO_PEDACO * TAM;
+    // antes do primeiro quadro a câmera ainda não mediu o que vê: o retângulo sai do zoom e do alvo dela
+    let v = cam.worldView;
+    if (agora || !v.width) {
+      const w = cam.width / cam.zoom, h = cam.height / cam.zoom, c = this.alvoCamera || this.jogador;
+      v = { x: c.x - w / 2, y: c.y - h / 2 - 16 / cam.zoom, width: w, height: h + 32 / cam.zoom };
+    }
     // inclui a orla de fora do mapa (MOLDURA_CASAS casas além da borda)
     const m = Cenario.MOLDURA_CASAS * TAM;
     const bx0 = Math.max(Math.floor(-m / lado), Math.floor((v.x - lado / 2) / lado)), by0 = Math.max(Math.floor(-m / lado), Math.floor((v.y - lado / 2) / lado));
     const bx1 = Math.min(Math.floor((COLS * TAM + m - 1) / lado), Math.floor((v.x + v.width + lado / 2) / lado));
     const by1 = Math.min(Math.floor((ROWS * TAM + m - 1) / lado), Math.floor((v.y + v.height + lado / 2) / lado));
     this.pedacosChao = this.pedacosChao || new Map();
-    let feitos = 0;
-    // o pedaço mais perto do centro primeiro; no máximo 2 por quadro (sem engasgar ao andar)
     const cx = (v.x + v.width / 2) / lado, cy = (v.y + v.height / 2) / lado, falta = [];
     for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) if (!this.pedacosChao.has(`${bx},${by}`)) falta.push([bx, by]);
-    falta.sort((a, b) => Math.hypot(a[0] + 0.5 - cx, a[1] + 0.5 - cy) - Math.hypot(b[0] + 0.5 - cx, b[1] + 0.5 - cy));
-    for (const [bx, by] of falta) {
-      if (feitos >= (this.pedacosChao.size ? 2 : 99)) break;
-      const chave = Cenario.texturaPedacoChao(this, this.areaAtual, bx, by);
-      const img = this.add.image(bx * lado, by * lado, chave).setOrigin(0, 0).setDepth(PROF.chao + 0.5);
-      this.pedacosChao.set(`${bx},${by}`, { img, chave });
-      feitos++;
+    if (falta.length) {
+      const naTela = ([bx, by]) => bx * lado < v.x + v.width && (bx + 1) * lado > v.x && by * lado < v.y + v.height && (by + 1) * lado > v.y;
+      falta.sort((a, b) => (naTela(b) - naTela(a)) || Math.hypot(a[0] + 0.5 - cx, a[1] + 0.5 - cy) - Math.hypot(b[0] + 0.5 - cx, b[1] + 0.5 - cy));
+      const t0 = performance.now();
+      for (const [bx, by] of falta) {
+        const urgente = naTela([bx, by]);
+        let chave;
+        if (agora && urgente) chave = Cenario.texturaPedacoChao(this, this.areaAtual, bx, by);
+        else {
+          // um pedaço que já entrou na tela sem estar pronto (salto de câmera) ganha o dobro do orçamento
+          const resto = ORCAMENTO_CHAO_MS * (urgente ? 2 : 1) - (performance.now() - t0);
+          if (resto < 0.5) break;
+          chave = Cenario.texturaPedacoChaoFatiada(this, this.areaAtual, bx, by, resto);
+          if (!chave) break; // um pedaço por vez: continua no próximo quadro
+        }
+        const img = this.add.image(bx * lado, by * lado, chave).setOrigin(0, 0).setDepth(PROF.chao + 0.5);
+        this.pedacosChao.set(`${bx},${by}`, { img, chave });
+      }
     }
     // libera os pedaços longe da câmera (memória)
     if (this.pedacosChao.size > 30) {
@@ -813,8 +920,10 @@ class Cena extends Phaser.Scene {
       const c = area.cais;
       const s = this.add.sprite(centroX(c.x), c.y * TAM + TAM + 2, "mk_cais", 0).setOrigin(0.5, 1).setDepth(PROF.marcadorChao);
       this.animados.push({ img: s, quadros: 2, fps: 2 });
-      const barco = this.add.sprite(centroX(c.x) + 30, c.y * TAM - 74, "mk_barco", 0).setOrigin(0.5, 1).setDepth(PROF.marcadorChao + 1);
-      this.animados.push({ img: barco, quadros: 2, fps: 1.5 });
+      const barco = this.add.sprite(centroX(c.x) + 38, c.y * TAM - 52, "mk_barco", 0).setOrigin(0.5, 1).setDepth(PROF.marcadorChao + 1);
+      // atracado: o balanço da vista de lado (os primeiros quadros da folha)
+      const qBarco = PIXEL_PATTERNS.mk_barco?.quadrosPorVista || 2;
+      this.animados.push({ img: barco, quadros: qBarco, fps: qBarco > 2 ? 2.8 : 1.5 });
       const passagem = typeof REGRAS_BARCO !== "undefined" ? ` · ${REGRAS_BARCO.passagem} moedas` : "";
       rotulo(`Barco para o Mar das Rotas${passagem}`, c.x, c.y, COR.agua);
     }
@@ -1143,6 +1252,12 @@ class Cena extends Phaser.Scene {
     const chave = this.chaveAtualJogador, def = PIXEL_PATTERNS[chave];
     this.alturaJogador = Math.round(def?.alturaCabeca || alturaDoDesenho(chave));
     if (def?.sombra && this.areaAtual !== "mar") this.sombraJogador.setTexture(Arte.garantirTextura(this, Arte.garantirSombra(def.sombra.w, def.sombra.h)));
+  }
+  // Onde ficam nome e barra do jogador: a altura declarada (a pé, barco) ou a da vista atual (montado).
+  alturaRotuloJogador() {
+    const chave = this.chaveAtualJogador, def = PIXEL_PATTERNS[chave];
+    if (!def || def.alturaCabeca || !def.direcoes || this.jogador.texture.key !== chave) return this.alturaJogador;
+    return alturaDaVista(chave, this.jogador.getData("vista") || "frente");
   }
   atualizarVisualJogador() {
     const chave = this.chaveJogador();
@@ -1921,8 +2036,8 @@ class Cena extends Phaser.Scene {
       this.atualizarBaloes();
     } else if (r.mensagem) this.mensagem(r.mensagem);
     this.oficioSubiu(r.oficioSubiu);
-    if (this.areaAtual !== "mar") virar(this.jogador, dx, dy);
-    if (this.areaAtual === "mar" && dx) this.jogador.setFlipX(dx < 0);
+    // no mar o barco também vira: com 3 vistas (def.direcoes) mostra proa, popa ou o lado; sem elas, só espelha
+    virar(this.jogador, dx, dy);
     const nx = centroX(this.p.x), ny = baseY(this.p.y) + (this.areaAtual === "mar" ? 6 : 0);
     const agora = this.time.now, dur = intervalo + folgaDeQuadro(this);
     iniciarDeslize(this.estadoJogador.desl, nx, ny, agora, dur);
@@ -1935,6 +2050,7 @@ class Cena extends Phaser.Scene {
   }
   trocarArea(mensagem) {
     this.trocando = true;
+    this.registry.set("trocaPedidaEm", performance.now());
     this.registry.set("mensagemPendente", mensagem || null);
     const cam = this.cameras.main;
     cam.once("camerafadeoutcomplete", () => this.scene.restart());
@@ -2599,7 +2715,7 @@ class Cena extends Phaser.Scene {
     }
     aplicarDeslize(dj, j, time);
     this.alvoCamera.x = dj.x; this.alvoCamera.y = dj.y;
-    if (this.areaAtual === "mar") j.setFrame(Math.floor(time / 600) % 2);
+    if (this.areaAtual === "mar") j.setFrame(quadroDoBarco(j, time, ej.andandoAte > time));
     else if (ej.acaoAte > time) j.setFrame(quadroComVista(j, quadroDeAcao(j, ej.acaoAte - time)));
     else if (ej.andandoAte > time) j.setFrame(quadroComVista(j, quadroAndando(j, time)));
     else j.setFrame(quadroComVista(j, reduz ? 0 : Math.floor(time / 600) % 2));
@@ -2720,7 +2836,7 @@ class Cena extends Phaser.Scene {
     const p = this.p, vmax = typeof vidaMaxima === "function" ? vidaMaxima(p) : 0, j = this.jogador;
     if (vmax && j?.visible) {
       const frac = Math.max(0, Math.min(1, p.vida / vmax)), cor = corDaVida(frac);
-      const topo = Math.round(j.y - this.alturaJogador - BARRA.folga - BARRA.h);
+      const topo = Math.round(j.y - this.alturaRotuloJogador() - BARRA.folga - BARRA.h);
       barra(j.x, topo, BARRA.w, BARRA.h, frac, cor[1]);
       this.rotuloJogador.setPosition(Math.round(j.x), topo - 2);
       if (this.corRotuloJogador !== cor[2]) { this.corRotuloJogador = cor[2]; this.rotuloJogador.setColor(cor[2]); }
@@ -2729,6 +2845,7 @@ class Cena extends Phaser.Scene {
     for (const ent of Object.values(this.entidades)) {
       const s = ent.sprite, w = ent.chefe ? BARRA.wChefe : BARRA.w, h = ent.chefe ? BARRA.hChefe : BARRA.h;
       const topo = s.y - ent.alturaCabeca - BARRA.folga - h;
+      if (this.sobTelhado(ent)) continue;
       if (ent.tipo !== "inimigo") { if (s.visible && naVista(s)) barra(s.x, topo, w, h, 1, cheia); continue; }
       const vida = Mundo.obterVidaInimigo(MEU_ID, ent.id), max = Mundo.vidaMaximaInimigo(MEU_ID, ent.id) || ent.dados.vidaMaxima;
       // fantasma: segmento que encolhe em 400 ms
@@ -2757,7 +2874,7 @@ class Cena extends Phaser.Scene {
   // prioridade visual nº 1 (§1.8): rótulos de marcador, balões e a dica não passam por cima dele.
   retanguloJogador() {
     const j = this.jogador;
-    return { x: j.x, y: j.y, w: 28, h: this.alturaJogador + BARRA.folga + BARRA.h + 3 + this.alturaNome(this.rotuloJogador) };
+    return { x: j.x, y: j.y, w: 28, h: this.alturaRotuloJogador() + BARRA.folga + BARRA.h + 3 + this.alturaNome(this.rotuloJogador) };
   }
   // Balão (!, ?, loja, guia) sobre o nome do NPC; se cruzar o jogador
   // (NPC logo abaixo dele), vai para o lado oposto ao jogador.
@@ -2779,7 +2896,7 @@ class Cena extends Phaser.Scene {
     const visiveis = [];
     for (const ent of Object.values(this.entidades)) {
       const s = ent.sprite;
-      if (!s.visible || s.x < v.x - 60 || s.x > v.right + 60 || s.y < v.y - 8 || s.y > v.bottom + 110) { this.desvanecer(ent.rotulo, false); continue; }
+      if (!s.visible || this.sobTelhado(ent) || s.x < v.x - 60 || s.x > v.right + 60 || s.y < v.y - 8 || s.y > v.bottom + 110) { this.desvanecer(ent.rotulo, false); continue; }
       const y = s.y - ent.alturaCabeca - BARRA.folga - (ent.chefe ? BARRA.hChefe : BARRA.h) - 2;
       visiveis.push({ t: ent.rotulo, x: s.x, y, ent });
     }
