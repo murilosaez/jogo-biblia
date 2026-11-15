@@ -44,6 +44,12 @@
 html,body{width:100%;height:100%;margin:0;overflow:hidden}
 body{background:var(--couro-900) var(--tex-couro);color:var(--texto);font:500 var(--fs-14)/1.4 var(--f-texto);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;touch-action:manipulation}
 img.px,.px{image-rendering:pixelated;image-rendering:crisp-edges}
+/* glifo maior que o lugar (hb_ de 32 px num botão de 16; interface.js, glifoAjustado): no largo e no médio a
+   metade exata sai suave; no celular (densidade 2 ou mais) volta a ser 1 px de arte por px do aparelho */
+img.suave{image-rendering:pixelated;image-rendering:crisp-edges}
+@media (min-width:761px){ img.suave{image-rendering:auto} }
+/* figura de personagem ou criatura (interface.js, figura): px de arte inteiros, o tamanho vem na imagem */
+img.fig{flex:none}
 img.g16{width:16px;height:16px;flex:0 0 16px}
 img.g24{width:24px;height:24px;flex:0 0 24px}
 img.g32{width:32px;height:32px;flex:0 0 32px}
@@ -342,7 +348,8 @@ body:not(.movendo-janela) .painel-cab:hover .janela-btn[data-janela-menu],.paine
 .boneco-lado{grid-area:lado;display:flex;flex-direction:column;gap:4px;min-width:0}
 .boneco-figura{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;border:1px solid #0007;box-shadow:inset 0 0 14px #000a;pointer-events:none;
  background:radial-gradient(ellipse 34% 5% at 50% 86%,#000b,transparent 75%),radial-gradient(ellipse 60% 48% at 50% 46%,#7a4a3040,transparent 72%),#0003}
-.boneco-figura img{flex:none;width:80px;height:96px} /* corpo inteiro em escala 4 (2 px por pixel de arte) */
+.boneco-figura{overflow:hidden}
+.boneco-figura img{flex:none} /* corpo inteiro, 2 px de tela por px de arte: 96 × 128 (o tamanho vem na imagem) */
 .boneco-modo{margin:0;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--ouro-300);text-align:center;white-space:nowrap}
 .boneco-dados{margin:0;display:grid;grid-template-columns:1fr auto;gap:1px 6px;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--texto-2)}
 .boneco-dados dt{margin:0}
@@ -366,7 +373,9 @@ body:not(.movendo-janela) .painel-cab:hover .janela-btn[data-janela-menu],.paine
 .linha-inimigo{display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 8px 4px 5px;border:0;border-left:3px solid transparent;border-bottom:1px solid #0005;background:none;color:var(--texto);text-align:left;width:100%;font:inherit;cursor:pointer}
 .linha-inimigo:hover{background:#ffe9a80d}
 .linha-inimigo.selecionada{border-left-color:var(--hostil);background:var(--couro-500)}
-.linha-inimigo .mini{width:32px;height:28px;display:grid;place-items:end center;flex:0 0 32px}
+/* miniatura em px de arte inteiros, recortada ao corpo: se não couber, corta a cauda, nunca a cabeça (à direita) */
+.linha-inimigo .mini{width:36px;height:28px;display:flex;justify-content:flex-end;align-items:flex-end;overflow:hidden;flex:0 0 36px}
+.mini img.mini-arte{flex:none;max-width:none;max-height:none}
 .linha-inimigo .mini img{max-width:32px;max-height:28px}
 .linha-inimigo .nome{flex:1;min-width:0;display:flex;align-items:center;gap:4px;font:700 var(--fs-14)/1.15 var(--f-texto);white-space:nowrap;overflow:hidden}
 /* só o texto abrevia (…); estrela de chefe, gota e glifo de caçada ficam sempre inteiros */
@@ -441,7 +450,29 @@ body:not(.movendo-janela) .painel-cab:hover .janela-btn[data-janela-menu],.paine
    das coordenadas evita que a margem mude de tamanho conforme a posição */
 .mapa-moldura{display:flex;align-items:stretch;line-height:0}
 .mapa-margem{display:flex;flex-direction:column;justify-content:space-between;align-items:center;gap:4px;padding:2px 0 0 4px}
-.mapa-moldura .rosa{width:22px;height:22px;padding:2px;background:var(--perg-300);border:1px solid var(--tinta)}
+/* a rosa dos ventos tem 32 px de arte: 1 px de tela por px */
+.mapa-moldura .rosa{box-sizing:content-box;width:32px;height:32px;padding:2px;background:var(--perg-300);border:1px solid var(--tinta)}
+/* zoom do minimapa (Jogo.minimapa: +, − e centralizar no viajante; três marcas mostram o nível). Só na janela
+   Mapa e sobre o mundo no largo e no médio (no celular, não), e só quando o MUNDO oferece o zoom
+   (body.mapa-com-zoom, interface.js). */
+.mapa-ctl{display:none}
+body.mapa-com-zoom #pMapa .mapa-ctl,body.mapa-com-zoom #mapaSobre .mapa-ctl{display:grid;grid-template-columns:repeat(3,16px);grid-template-rows:16px 12px;gap:2px;line-height:1}
+.mapa-ctl button{position:relative;min-width:0;width:16px;height:16px;padding:0;border:1px solid #120a06;border-radius:0;background:linear-gradient(var(--bronze-500),var(--bronze-700));box-shadow:inset 1px 1px 0 #ffe9a866,inset -1px -1px 0 #0007;cursor:pointer}
+.mapa-ctl button:hover{background:linear-gradient(var(--bronze-400),var(--bronze-600))}
+.mapa-ctl button:active{background:var(--bronze-700);box-shadow:inset 1px 1px 0 #0009}
+.mapa-ctl button:disabled{background:linear-gradient(var(--couro-600),var(--couro-700));box-shadow:inset 1px 1px 0 #ffe9a81f;cursor:default}
+.mapa-ctl button:disabled::before{opacity:.35}
+.mapa-ctl button:focus-visible{outline:2px solid var(--foco);outline-offset:0;z-index:1}
+.mapa-ctl button::before{content:"";--q:linear-gradient(#fff6e0,#fff6e0);position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px}
+.mapa-ctl [data-mapa="mais"]::before{background:var(--q) 0 4px/10px 2px no-repeat,var(--q) 4px 0/2px 10px no-repeat}
+.mapa-ctl [data-mapa="menos"]::before{background:var(--q) 0 4px/10px 2px no-repeat}
+.mapa-ctl [data-mapa="centro"]::before{background:var(--q) 4px 4px/2px 2px no-repeat,var(--q) 4px 0/2px 3px no-repeat,var(--q) 4px 7px/2px 3px no-repeat,var(--q) 0 4px/3px 2px no-repeat,var(--q) 7px 4px/3px 2px no-repeat}
+#mapaSobre:not(.encoberto) .mapa-ctl{pointer-events:auto}
+@media (max-width:760px){ body.mapa-com-zoom #mapaSobre .mapa-ctl{display:none} }
+.mapa-nivel{grid-column:1/4;display:flex;align-items:flex-end;justify-content:center;gap:3px}
+.mapa-nivel i{width:8px;background:var(--couro-800);border:1px solid #120a06}
+.mapa-nivel i:nth-child(1){height:5px} .mapa-nivel i:nth-child(2){height:8px} .mapa-nivel i:nth-child(3){height:11px}
+.mapa-nivel i.aceso{background:linear-gradient(var(--ouro-200),var(--bronze-500))}
 .mapa-moldura .coord{min-width:52px;padding:1px 3px;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--tinta);background:var(--perg-300);border:1px solid var(--tinta);white-space:nowrap;text-align:center}
 #pMapa{background:var(--tex-couro),linear-gradient(160deg,var(--couro-600),var(--couro-800))}
 #pMapa .painel-corpo{padding:4px}
@@ -461,7 +492,7 @@ body:not(.movendo-janela) .painel-cab:hover .janela-btn[data-janela-menu],.paine
 body.modo-largo.com-alvo #avisos{top:56px}
 .quadro-alvo.ativo{border-color:#4a1416;background:#1c121099}
 .quadro-alvo:not(.ativo){visibility:hidden}
-.quadro-alvo .mini{width:28px;height:24px;display:grid;place-items:end center;overflow:hidden}
+.quadro-alvo .mini{width:36px;height:24px;display:flex;justify-content:flex-end;align-items:flex-end;overflow:hidden;flex:none}
 .quadro-alvo .mini img{max-width:28px;max-height:24px}
 .quadro-alvo .alvo-info{display:flex;flex-direction:column;gap:3px;min-width:0}
 .quadro-alvo strong{font:700 var(--fs-13)/1 var(--f-ui);color:var(--hostil);text-shadow:1px 1px 0 #120a06;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
@@ -647,9 +678,10 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja strong{display:block;font:800 15px/1.15 var(--f-texto)}
 .item-loja span{font:500 var(--fs-14)/1.2 var(--f-texto);color:var(--tinta-suave)}
 .item-loja .btn{min-width:84px}
-.item-loja.cosmetico{grid-template-columns:56px minmax(0,1fr) auto}
-.item-loja.cosmetico .icone{width:56px;height:60px}
-.item-loja.cosmetico .icone img{width:auto;height:auto;max-width:52px;max-height:56px}
+.item-loja.cosmetico{grid-template-columns:68px minmax(0,1fr) auto}
+/* prévia em 1 px de tela por px de arte: o traje (48 × 64) e a montaria (até 64 × 64) cabem inteiros */
+.item-loja.cosmetico .icone{width:68px;height:68px;overflow:hidden}
+.item-loja.cosmetico .icone img{width:auto;height:auto;max-width:none;max-height:none}
 .item-loja.cosmetico .preco{font-style:italic}
 .item-loja.cosmetico > span:nth-child(2) > span{display:block}
 .item-loja.cosmetico.em-uso{border-color:var(--ouro-500,#e8b94a);box-shadow:inset 0 0 0 1px #e8b94a}
@@ -670,7 +702,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .cores-visual{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--e-4);align-items:start}
 .previa-cores{display:flex;flex-direction:column;gap:6px;padding:8px;border:2px solid var(--bronze-700);background:radial-gradient(circle at 40% 30%,#8fa34e,#5d7234)}
 .previa-cores figure{margin:0;display:grid;justify-items:center;gap:2px}
-.previa-cores img{width:120px;height:144px;image-rendering:pixelated}
+.previa-cores img{width:auto;height:auto;image-rendering:pixelated}
 .previa-cores figcaption{font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto);text-shadow:var(--contorno)}
 .partes-cores{display:flex;flex-direction:column;gap:8px;min-width:0}
 .parte-cor{margin:0;padding:4px 8px 8px;border:1px solid var(--perg-400);background:#fff2}
@@ -683,7 +715,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .amostra-cor:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
 .amostra-cor[aria-pressed="true"]{outline:3px solid var(--tinta);outline-offset:2px;box-shadow:inset 0 0 0 2px var(--ouro-300)}
 .partes-cores > .btn{align-self:flex-start}
-@media (max-width:760px){ .cores-visual{grid-template-columns:1fr} .previa-cores{flex-direction:row;justify-content:center} .previa-cores img{width:80px;height:96px} .amostra-cor{min-width:32px} .amostras{grid-template-columns:repeat(auto-fill,minmax(32px,1fr))} }
+@media (max-width:760px){ .cores-visual{grid-template-columns:1fr} .previa-cores{flex-direction:row;justify-content:center} .amostra-cor{min-width:32px} .amostras{grid-template-columns:repeat(auto-fill,minmax(32px,1fr))} }
 /* passagem do barco: bilhete com preço, saldo e o que sobra */
 .bilhete{margin:0 0 12px;border:2px solid var(--tinta);background:#fff8e6;box-shadow:inset 0 0 0 2px #e6cf9c}
 .bilhete-linha{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 12px;font:600 var(--fs-16)/1.2 var(--f-ui);color:var(--tinta)}
@@ -700,6 +732,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 
 /* mural de caçadas (cartões no padrão das linhas da loja) */
 .item-loja.cacada{grid-template-columns:40px minmax(0,1fr) auto;align-items:start;padding:8px 6px}
+.item-loja.cacada .icone,.especie .icone{display:flex;justify-content:flex-end;align-items:center;overflow:hidden}
 .item-loja.cacada .icone img{width:auto;height:auto;max-width:34px;max-height:32px}
 .cacada-nome{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .item-loja .cacada-nome strong{display:inline}
@@ -816,7 +849,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .barra-hab[hidden]{display:none}
 .hab{position:relative;width:var(--slot-atalho);height:var(--slot-atalho);display:grid;place-items:center;padding:0;border:2px solid var(--bronze-700);background:radial-gradient(circle at 35% 30%,#3a2a4a,#1a1424);box-shadow:inset 2px 2px 0 #0008;cursor:pointer;overflow:hidden}
 .hab:hover{border-color:var(--bronze-400)}
-.hab img{width:28px;height:28px;pointer-events:none}
+.hab img{width:32px;height:32px;pointer-events:none} /* hb_ tem 32 px de arte: 1 px de tela por px */
 .hab .tecla-n{position:absolute;left:1px;top:1px;min-width:16px;height:16px;display:grid;place-items:center;font:700 var(--fs-12)/1 var(--f-ui);color:#fff6e0;text-shadow:1px 1px 0 #120a06;background:linear-gradient(var(--bronze-600),var(--bronze-700));border:1px solid var(--tinta);z-index:2}
 .hab .recarga{position:absolute;left:0;right:0;bottom:0;height:calc(var(--r,0) * 100%);background:#000b;pointer-events:none}
 .hab .seg{position:absolute;inset:0;display:grid;place-items:center;font:700 var(--fs-14)/1 var(--f-ui);color:#fff;text-shadow:var(--contorno);pointer-events:none}
@@ -1208,7 +1241,9 @@ body.toque-forcado #dpad{display:block}
 
   <section class="painel" id="pMapa" aria-labelledby="tMapa">
     <h2 class="sr" id="tMapa">Mapa</h2>
-    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><div class="mapa-margem"><img class="px rosa" data-glifo="ui_rosa" alt=""><span class="coord" id="mapaCoord" aria-label="Posição"></span></div></div></div>
+    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><div class="mapa-margem"><img class="px rosa" data-glifo="ui_rosa" data-escala="4" alt="">
+      <div class="mapa-ctl" role="group" aria-label="Zoom do mapa"><button type="button" data-mapa="mais" aria-label="Aproximar o mapa" title="Aproximar o mapa (ou a roda do mouse)"></button><button type="button" data-mapa="menos" aria-label="Afastar o mapa" title="Afastar o mapa (ou a roda do mouse)"></button><button type="button" data-mapa="centro" aria-label="Centralizar o mapa no viajante" title="Centralizar no viajante"></button><span class="mapa-nivel" id="mapaNivel" role="img" aria-label="Zoom do mapa"><i></i><i></i><i></i></span></div>
+      <span class="coord" id="mapaCoord" aria-label="Posição"></span></div></div></div>
   </section>
 
   <section class="painel" id="pPersonagem" aria-labelledby="tPersonagem">
@@ -1346,6 +1381,17 @@ body.toque-forcado #dpad{display:block}
 <script src="dados/cosmeticos.js"></script>
 <script src="logica.js"></script>
 <script src="sprites.js"></script>
+<script src="arte/quadrupede.js"></script>
+<script src="arte/ave-serpente.js"></script>
+<script src="arte/artropode.js"></script>
+<script src="arte/humano.js"></script>
+<script src="arte/humano-equip.js"></script>
+<script src="arte/montado.js"></script>
+<script src="arte/flora.js"></script>
+<script src="arte/terreno.js"></script>
+<script src="arte/efeitos.js"></script>
+<script src="arte/itens.js"></script>
+<script src="arte/icones.js"></script>
 <script src="cenario.js"></script>
 <script src="game.js"></script>
 <script src="interface.js"></script>

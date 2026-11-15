@@ -257,15 +257,100 @@
   function glifoURL(chave, escala = 2) {
     try { return temArte() ? Arte.iconeURL(chave, escala) || "" : ""; } catch (e) { return ""; }
   }
+  // Lado do glifo em px de arte: ui_ 16, hb_/of_ 32 e a rosa dos ventos 32 (Arte.TAM_ICONE). A interface
+  // mostra cada um num múltiplo INTEIRO desse lado (pixel nítido); quando o lugar é menor que a arte
+  // (um hb_ de 32 px num botão de 16), a imagem sai sem "pixelated": a metade exata fica suave e, em
+  // tela de densidade 2, volta a ser 1 px de arte por px do aparelho.
+  const TAM_CLASSE = { g16: 16, g24: 24, g32: 32 };
+  function ladoGlifo(chave) {
+    try {
+      const d = (Arte.PIXEL_PATTERNS || window.PIXEL_PATTERNS || {})[chave];
+      if (d && d.w) return d.w * (d.res || 1);
+      const T = Arte.TAM_ICONE || {};
+      return (chave === "ui_rosa" ? T.rosa : T[String(chave).slice(0, 2)]) || 16;
+    } catch (e) { return 16; }
+  }
+  const resGlifo = (chave) => { try { return ((Arte.PIXEL_PATTERNS || window.PIXEL_PATTERNS || {})[chave] || {}).res || 1; } catch (e) { return 1; } };
+  // Para caber em `tam` px de tela: { url, lado (px de tela), suave }.
+  function glifoAjustado(chave, tam) {
+    const n = ladoGlifo(chave), e = Math.max(1, Math.floor(tam / n));
+    return { url: glifoURL(chave, e * resGlifo(chave)), lado: n <= tam ? n * e : tam, suave: n > tam };
+  }
+  const tamDaClasse = (cls) => { for (const c of String(cls).split(/\s+/)) if (TAM_CLASSE[c]) return TAM_CLASSE[c]; return 0; };
   function itemURL(id, escala = 2) {
     try { return typeof window.iconeItemURL === "function" ? window.iconeItemURL(id, escala) || "" : ""; } catch (e) { return ""; }
   }
+  // Silhueta de um item (espaço vazio do boneco), 1 px de tela por px de arte. Sai só dos px OPACOS: a arte
+  // nova dos itens traz a sombra de apoio em px translúcidos, que na silhueta chapada virava um borrão sob
+  // a peça. Sem os px (arte legada ou ausente), a silhueta inteira de Arte.silhuetaURL.
+  const cacheSilhueta = new Map();
   function silhuetaURL(id) {
-    try { return temArte() ? Arte.silhuetaURL(id, "#2a1a14", 2) || "" : ""; } catch (e) { return ""; }
+    if (cacheSilhueta.has(id)) return cacheSilhueta.get(id);
+    let url = "";
+    try {
+      if (!temArte()) return "";
+      const chave = Arte.motor?.aliasItem ? Arte.motor.aliasItem(id) : id;
+      const px = Arte.pixels ? Arte.pixels(chave) : null;
+      if (px && px.w === 32 && px.h === 32 && px.data.some((v) => v && v.length > 7)) {
+        const c = document.createElement("canvas"); c.width = c.height = 32;
+        const x = c.getContext("2d"); x.fillStyle = "#2a1a14";
+        for (let i = 0; i < px.data.length; i++) { const v = px.data[i]; if (v && v.length <= 7) x.fillRect(i % 32, (i / 32) | 0, 1, 1); }
+        url = c.toDataURL();
+      } else url = Arte.silhuetaURL(id, "#2a1a14", 2) || "";
+    } catch (e) { try { url = Arte.silhuetaURL(id, "#2a1a14", 2) || ""; } catch (e2) { url = ""; } }
+    cacheSilhueta.set(id, url);
+    return url;
   }
   function retratoURL(chave, opcoes) {
     try { return temArte() && chave ? Arte.retratoURL(chave, opcoes) || "" : ""; } catch (e) { return ""; }
   }
+  // Figura de um personagem ou criatura para caber numa caixa de cw × ch px de tela, sempre num número
+  // INTEIRO de px de tela por px de arte (a arte tem células de 40 a 64 px: reduzir borra). Humanos saem
+  // pelo busto da def; criaturas, pelo corpo recortado da célula (de lado, a cabeça à direita). Quando nem
+  // em 1× cabe, a caixa (overflow oculto, alinhada à direita) corta a cauda, nunca a cabeça.
+  const cacheFigura = new Map();
+  function figura(chave, cw, ch) {
+    const id = `${chave}|${cw}|${ch}`;
+    if (!chave) return null;
+    if (cacheFigura.has(id)) return cacheFigura.get(id);
+    let f = null;
+    try {
+      const def = (Arte.PIXEL_PATTERNS || window.PIXEL_PATTERNS || {})[chave];
+      const r = (def && def.res) || 1;
+      if (def && def.busto) {
+        const bw = def.busto[2] * r, bh = def.busto[3] * r, e = Math.max(1, Math.floor(Math.min(cw / bw, ch / bh)));
+        const url = retratoURL(chave, { escala: e * r, recorte: "busto" });
+        if (url) f = { url, w: bw * e, h: bh * e };
+      } else if (def) {
+        const px = Arte.pixels(chave, { quadro: def.retratoQuadro ?? (def.humano ? 4 : 0) });
+        let x0 = px.w, y0 = px.h, x1 = -1, y1 = -1;
+        for (let y = 0; y < px.h; y++) for (let x = 0; x < px.w; x++) if (px.data[y * px.w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 >= x0 && y1 >= y0) {
+          const w = x1 - x0 + 1, h = y1 - y0 + 1, e = Math.max(1, Math.min(3, Math.floor(Math.min(cw / w, ch / h))));
+          const c = document.createElement("canvas"); c.width = w; c.height = h;
+          const ctx = c.getContext("2d");
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const cor = px.data[(y0 + y) * px.w + x0 + x]; if (cor) { ctx.fillStyle = cor; ctx.fillRect(x, y, 1, 1); } }
+          f = { url: c.toDataURL(), w: w * e, h: h * e };
+        }
+      }
+    } catch (e) { f = null; }
+    if (cacheFigura.size > 400) cacheFigura.clear();
+    cacheFigura.set(id, f);
+    return f;
+  }
+  const estiloFigura = (f) => `width:${f.w}px;height:${f.h}px;max-width:none;max-height:none;flex:none`;
+  function htmlFigura(chave, cw, ch, cls = "px") {
+    const f = figura(chave, cw, ch);
+    return f ? `<img class="${cls} fig" src="${f.url}" width="${f.w}" height="${f.h}" style="${estiloFigura(f)}" alt="">` : "";
+  }
+  function porFigura(img, chave, cw, ch) {
+    const f = img && figura(chave, cw, ch);
+    if (!img) return;
+    if (!f) { img.removeAttribute("src"); return; }
+    img.src = f.url; img.width = f.w; img.height = f.h; img.style.cssText = estiloFigura(f);
+  }
+  // Miniatura das listas (Batalha e alvo): 36 × 24 na coluna, 32 × 28 no celular.
+  const miniArte = (chave) => (window.matchMedia("(min-width: 761px)").matches ? htmlFigura(chave, 36, 24, "px mini-arte") : htmlFigura(chave, 32, 28, "px mini-arte"));
   function visualDe(id) {
     try { return temArte() ? Arte.visualDe(id) : ""; } catch (e) { return ""; }
   }
@@ -273,9 +358,15 @@
     if (temArte() && Arte.nomeCurto) return Arte.nomeCurto(nome || "");
     return String(nome || "").split(/[,·]/)[0].trim();
   }
-  const imgGlifo = (chave, cls = "px g16", alt = "") => {
-    const url = glifoURL(chave, 2);
-    return url ? `<img class="${cls}" src="${url}" alt="${esc(alt)}">` : "";
+  // tam: lado do lugar em px de tela (padrão: o da classe g16/g24/g32; sem classe de tamanho, 16).
+  const imgGlifo = (chave, cls = "px g16", alt = "", tam = 0) => {
+    const lugar = tam || tamDaClasse(cls) || 16;
+    const a = glifoAjustado(chave, lugar);
+    if (!a.url) return "";
+    if (a.suave) cls = cls.replace(/\bpx\b/, "suave");
+    // menor que o lugar (um ui_ de 16 px num lugar de 24): fica no tamanho inteiro, centrado pelo pai
+    const medida = tam || a.lado !== lugar ? ` width="${a.lado}" height="${a.lado}" style="width:${a.lado}px;height:${a.lado}px"` : "";
+    return `<img class="${cls}" src="${a.url}"${medida} alt="${esc(alt)}">`;
   };
   // Ícone de item: <img> pixelado, ou duas letras do nome (nunca emoji).
   function htmlItem(id, tam = 32) {
@@ -292,8 +383,13 @@
   function preencherGlifos(raiz = document) {
     for (const img of $$("img[data-glifo]", raiz)) {
       if (img.dataset.ok) continue;
-      const url = glifoURL(img.dataset.glifo, Number(img.dataset.escala || 2));
-      if (url) { img.src = url; img.dataset.ok = "1"; }
+      // o lugar vem da classe (g16/g24/g32) ou, sem ela, de data-escala (px de tela por unidade de 8 px)
+      const lugar = tamDaClasse(img.className) || (img.dataset.escala ? Number(img.dataset.escala) * 8 : 16);
+      const a = glifoAjustado(img.dataset.glifo, lugar);
+      if (a.url) {
+        img.src = a.url; img.dataset.ok = "1";
+        if (a.suave) { img.classList.remove("px"); img.classList.add("suave"); }
+      }
       if (img.dataset.rot) img.style.transform = `rotate(${img.dataset.rot}deg)`;
     }
     for (const img of $$("img[data-item]", raiz)) {
@@ -473,7 +569,7 @@
   // ------------------------------------------------------------------
   // Personagem
   // ------------------------------------------------------------------
-  let assinaturaRetrato = "", urlBoneco = "";
+  let assinaturaRetrato = "", htmlBoneco = "";
   function atualizarPersonagem(p) {
     $("#seloNivel").textContent = p.nivel;
     $("#fichaNivel").textContent = `Nível ${p.nivel}`;
@@ -484,12 +580,17 @@
       assinaturaRetrato = ass;
       let chave = "pj_jogador";
       try { chave = Arte.garantirJogador ? Arte.garantirJogador(eq, { traje: visualPj.traje, cores: visualPj.cores }) : chave; } catch (e) { chave = "pj_jogador"; }
-      const url = retratoURL(chave, { escala: 3, recorte: "busto" }) || retratoURL("pj_jogador", { escala: 3 });
-      if (url) $("#retratoJogador").src = url;
-      // Boneco do painel Equipamento: o corpo inteiro, de frente, com o que está vestido.
-      urlBoneco = retratoURL(chave, { escala: 4, recorte: "inteiro" }) || retratoURL("pj_jogador", { escala: 4, recorte: "inteiro" });
+      porFigura($("#retratoJogador"), figura(chave, 44, 44) ? chave : "pj_jogador", 44, 44);
+      // Boneco do painel Equipamento: o corpo inteiro, de frente e parado, com o que está vestido, em 2 px de
+      // tela por px de arte (a célula de 48 × 64 do contrato novo vira 96 × 128; o tamanho vai na imagem).
+      htmlBoneco = "";
+      for (const c of [chave, "pj_jogador"]) {
+        const def = (Arte.PIXEL_PATTERNS || window.PIXEL_PATTERNS || {})[c], r = (def && def.res) || 1;
+        const url = def ? retratoURL(c, { escala: 2 * r, recorte: "inteiro" }) : "";
+        if (url) { htmlBoneco = `<img class="px" src="${url}" width="${def.w * r * 2}" height="${def.h * r * 2}" style="width:${def.w * r * 2}px;height:${def.h * r * 2}px" alt="">`; break; }
+      }
       const fig = $("#gradeEquip .boneco-figura");
-      if (fig && urlBoneco) fig.innerHTML = `<img class="px" src="${urlBoneco}" alt="">`;
+      if (fig && htmlBoneco) fig.innerHTML = htmlBoneco;
     }
     atualizarFicha(p);
     if (typeof estatisticasCombate !== "function") return;
@@ -780,7 +881,7 @@
       ? `<p class="boneco-modo">${s.modoAtaque === "distancia" ? "À distância" : "Corpo a corpo"}</p>
           <dl class="boneco-dados"><dt>Ataque</dt><dd>${esc(s.danoAtaque)}</dd><dt>Defesa</dt><dd>${esc(s.defesa)}</dd></dl>`
       : "";
-    return `<div class="boneco-lado"><div class="boneco-figura" aria-hidden="true">${urlBoneco ? `<img class="px" src="${urlBoneco}" alt="">` : ""}</div>${dados}</div>`;
+    return `<div class="boneco-lado"><div class="boneco-figura" aria-hidden="true">${htmlBoneco}</div>${dados}</div>`;
   }
   function atualizarBoneco(p, peso, cap) {
     $("#gradeEquip").innerHTML = ORDEM_BONECO.map((slot) => (slot === "mochila" ? htmlMochilaBoneco(peso, cap) : htmlEspacoBoneco(p, slot))).join("") + htmlLadoBoneco(p);
@@ -910,7 +1011,6 @@
         const pct = Math.max(0, Math.min(100, (100 * vida) / max));
         const f = ficha(e.id);
         const curto = nomeDaCriatura(e);
-        const mini = retratoURL(visualDe(e.id), { escala: 2, recorte: "busto" });
         // Caçadas para as quais este abate conta: glifo de contagem, com uma linha por caçada no title.
         const conta = typeof tarefasDoInimigo === "function" ? tarefasDoInimigo(p, e.id) : [];
         const titulo = conta.map((t) => `Conta para: ${t.nome} (${t.progresso}/${t.meta})`).join("\n");
@@ -919,7 +1019,7 @@
         const rotulo = `${curto}, vida ${vida} de ${max}${ehChefe(e.id) ? ", chefe" : ""}${f?.campeao ? ", campeão" : ""}${conta.length ? `, conta para ${conta.map((t) => t.nome).join(" e ")}` : ""}`;
         const classe = f?.campeao ? " campeao" : f?.nomeado ? " nomeado" : "";
         return `<button type="button" role="listitem" class="linha-inimigo${classe}${alvo === e.id ? " selecionada" : ""}" data-alvo="${esc(e.id)}" aria-pressed="${alvo === e.id}" aria-label="${esc(rotulo)}" title="${esc(textoFicha(f))}">
-          <span class="mini">${mini ? `<img class="px" src="${mini}" alt="">` : ""}</span>
+          <span class="mini">${miniArte(visualDe(e.id))}</span>
           <span class="nome"><span class="nome-txt">${esc(curto)}</span>${marcas}</span>
           <span class="vida"><span class="mini-barra"><i style="width:${pct}%"></i></span><b>${vida}/${max}</b></span></button>`;
       }).join("");
@@ -936,8 +1036,7 @@
       for (const c of caixas) {
         if (!c) continue;
         if (!e) { c.innerHTML = ""; c.classList.remove("ativo"); continue; }
-        const mini = retratoURL(visualDe(e.id), { escala: 2, recorte: "busto" });
-        c.innerHTML = `<span class="mini">${mini ? `<img class="px" src="${mini}" alt="">` : ""}</span>
+        c.innerHTML = `<span class="mini">${miniArte(visualDe(e.id))}</span>
           <span class="alvo-info"><strong title="${esc(textoFicha(ficha(e.id)))}">${ehChefe(e.id) ? imgGlifo("ui_estrela_chefe", "px g16") : ""}${marcasDaCriatura(ficha(e.id))}${esc(nomeDaCriatura(e))}</strong>
           <span class="alvo-barra"><i></i></span><span class="alvo-recarga" title="Recarga do autoataque"><i></i></span></span>
           <span class="alvo-vida"></span>`;
@@ -1186,10 +1285,8 @@
     const reserva = papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : papel === "mural" ? "vigia · mural de caçadas"
       : papel === "barqueiro" ? "barqueiro" : papel === "ambiente" ? String(nome).split(",").slice(1).join(",").trim() : "";
     $("#dlgPapel").textContent = PAPEIS[id] || reserva;
-    const url = retratoURL(visualDe(id), { escala: 3, recorte: "busto" });
-    const img = $("#dlgRetrato");
-    if (url) img.src = url; else img.removeAttribute("src");
-    img.alt = `Retrato de ${nomeCurto(nome)}`;
+    porFigura($("#dlgRetrato"), visualDe(id), 44, 44);
+    $("#dlgRetrato").alt = `Retrato de ${nomeCurto(nome)}`;
     $("#dlgPalavras").innerHTML = htmlPalavras(id, lista);
     caixa.classList.add("aberto");
     document.body.classList.add("dialogo-aberto");
@@ -1532,8 +1629,7 @@
       : null;
     lojaAtual = merc?.id || null;
     $("#lojaTitulo").textContent = nomeCurto(merc?.nome || "Mercador");
-    const url = retratoURL(visualDe(merc?.id || "mercador1"), { escala: 3, recorte: "busto" });
-    if (url) $("#lojaRetrato").src = url;
+    porFigura($("#lojaRetrato"), visualDe(merc?.id || "mercador1"), 44, 44);
     falaLoja = falaRecente(merc?.id);
     if (aba === "comprar" || aba === "vender") abaLoja = aba;
     if (dlg.id === merc?.id) fecharDialogo();
@@ -1645,9 +1741,11 @@
       const area = (typeof areas !== "undefined" && areas[npc.area]?.nome) || "";
       $("#muralTitulo").textContent = area ? `Caçadas · ${area}` : "Caçadas";
       $("#muralSub").textContent = "Atalaia · mural de caçadas";
-      url = retratoURL(visualDe(muralNpc), { escala: 3, recorte: "busto" });
       img.className = "px";
+      porFigura(img, visualDe(muralNpc), 44, 44);
+      url = img.getAttribute("src") || "";
     } else {
+      img.style.cssText = "";
       $("#muralTitulo").textContent = "Suas caçadas";
       $("#muralSub").textContent = "Consulta · aceitar e trocar só ao lado de um atalaia";
       url = glifoURL("ui_cacada", 4);
@@ -1794,7 +1892,7 @@
   }
 
   function htmlCacada(t, haVaga) {
-    const retrato = t.retrato ? retratoURL(visualDe(t.retrato), { escala: 2, recorte: "busto" }) : "";
+    const retrato = t.retrato ? htmlFigura(visualDe(t.retrato), 36, 36) : "";
     const acompanhada = ["ativa", "cumprida", "guardada"].includes(t.estado);
     const pct = t.meta > 0 ? Math.min(100, (100 * t.progresso) / t.meta) : 0;
     const barra = acompanhada
@@ -1806,7 +1904,7 @@
     const guardada = t.estado === "guardada" ? '<em class="etiqueta-tipo estado">Guardada</em>' : "";
     const premio = `+${t.recompensa.xp} XP · ${t.recompensa.moedas} moedas · ${imgGlifo("ui_selo", "px g16")}${t.pontosNaEntrega} pts${t.primeiraVez ? " (1ª vez)" : ""}`;
     return `<li class="item-loja cacada${t.estado === "espera" ? " em-espera" : ""}" data-tarefa="${esc(t.id)}">
-      <span class="icone">${retrato ? `<img class="px" src="${retrato}" alt="">` : ""}</span>
+      <span class="icone">${retrato}</span>
       <div class="cacada-info">
         <div class="cacada-nome"><strong>${esc(t.nome)}</strong><em class="etiqueta-tipo${t.tipo === "grande" ? " grande" : ""}">${esc(t.tipoNome)}</em>${guardada}${outraRegiao}</div>
         <p class="cacada-desc">${esc(t.descricao)}</p>
@@ -1868,7 +1966,7 @@
       const estado = !h.aberta ? `Abre no nível ${h.nivel}` : seg ? `pronta em ${seg} s` : "pronta";
       return `<button type="button" class="hab${h.aberta ? "" : " bloqueada"}" data-hab="${i}" style="--r:${h.aberta ? r.toFixed(2) : 0}"
         aria-label="${esc(h.nome)}, tecla ${i + 1}: ${estado}" title="${esc(h.nome)} (tecla ${i + 1}) — ${esc(h.descricao)} Recarga ${Math.round(h.recarga / 1000)} s. ${estado}.">
-        <span class="tecla-n">${i + 1}</span>${imgGlifo("hb_" + h.icone, "px")}<span class="recarga"></span>
+        <span class="tecla-n">${i + 1}</span>${imgGlifo("hb_" + h.icone, "px g32")}<span class="recarga"></span>
         ${!h.aberta ? `<span class="seg">Nv ${h.nivel}</span>` : seg ? `<span class="seg">${seg}</span>` : ""}</button>`;
     }).join("");
     if (html === htmlBarraHab) return;
@@ -2112,13 +2210,13 @@
   const temVisual = () => typeof cosmeticosDoJogador === "function";
   const temCores = () => typeof CORES_VISUAL !== "undefined" && typeof PARTES_COR_VISUAL !== "undefined" && typeof visualDoJogador === "function";
   let abaVisual = "cores", retornoVisual = null, htmlVisual = "";
-  // Prévia do boneco (de frente, de lado e de costas) com as cores escolhidas: 3 px de tela por px de arte.
+  // Prévia do boneco (de frente, de lado e de costas) com as cores escolhidas: 2 px de tela por px de arte.
   const cachePreviaCores = new Map();
   function previaBoneco(chave, quadro) {
     const id = chave + "#" + quadro;
     if (!cachePreviaCores.has(id)) {
       let url = "";
-      try { url = Arte.canvas(chave, { quadro, escala: 6 })?.toDataURL("image/png") || ""; } catch (e) { url = ""; }
+      try { url = Arte.canvas(chave, { quadro, escala: 4 })?.toDataURL("image/png") || ""; } catch (e) { url = ""; }
       if (cachePreviaCores.size > 120) cachePreviaCores.clear();
       cachePreviaCores.set(id, url);
     }
@@ -2131,7 +2229,9 @@
     if (temArte() && Arte.garantirJogador) {
       try {
         const chave = Arte.garantirJogador(p.equipamento || {}, { traje: visual.traje, cores });
-        previa = [[5, "De frente"], [0, "De lado"], [10, "De costas"]].map(([q, nome]) => {
+        // parado em cada vista: o contrato novo tem 8 quadros por vista (o legado, 5)
+        const qpv = (Arte.PIXEL_PATTERNS || window.PIXEL_PATTERNS || {})[chave]?.quadrosPorVista || 5;
+        previa = [[qpv, "De frente"], [0, "De lado"], [2 * qpv, "De costas"]].map(([q, nome]) => {
           const url = previaBoneco(chave, q);
           return url ? `<figure><img class="px" src="${url}" alt="Seu personagem ${nome.toLowerCase()}"><figcaption>${nome}</figcaption></figure>` : "";
         }).join("");
@@ -2348,8 +2448,7 @@
   function htmlEspecie(v) {
     const aberta = especieAberta === v.especie;
     const conhecida = v.abates > 0;
-    const url = retratoURL(visualDe(v.inimigoId), { escala: 2, recorte: "busto" });
-    const img = url ? `<img class="px${conhecida ? "" : " silhueta"}" src="${url}" alt="">` : "";
+    const img = htmlFigura(visualDe(v.inimigoId), 36, 36, conhecida ? "px" : "px silhueta");
     const nome = conhecida ? v.nome : "???";
     const sub = [v.nomeArea, conhecida && v.ficha?.nivel ? `nível ${v.ficha.nivel}` : "", v.nomeado && conhecida ? "raro nomeado" : ""].filter(Boolean).join(" · ");
     const total = typeof ESTAGIO_MAXIMO_BESTIARIO !== "undefined" ? ESTAGIO_MAXIMO_BESTIARIO : 3;
@@ -2486,8 +2585,7 @@
       ? (typeof guiaId === "string" && npcs[guiaId]) || Object.values(npcs).find((n) => n.papel === "guia" && n.area === p.area)
       : null;
     guiaViagem = guia?.id || null;
-    const url = retratoURL(visualDe(guia?.id || "guia_canaa"), { escala: 3, recorte: "busto" });
-    if (url) $("#viagemRetrato").src = url;
+    porFigura($("#viagemRetrato"), visualDe(guia?.id || "guia_canaa"), 44, 44);
     $("#viagemTitulo").textContent = guia ? `Viagem com ${nomeCurto(guia.nome)}` : "Viagem rápida";
     const fala = falaRecente(guia?.id);
     if (guia && dlg.id === guia.id) fecharDialogo();
@@ -2526,8 +2624,7 @@
     const p = jogador();
     if (!p || typeof REGRAS_BARCO === "undefined") return;
     const b = typeof npcs !== "undefined" ? npcs[barqueiroId] : null;
-    const url = retratoURL(visualDe(b?.id || "barqueiro_canaa"), { escala: 3, recorte: "busto" });
-    if (url) $("#barcoRetrato").src = url;
+    porFigura($("#barcoRetrato"), visualDe(b?.id || "barqueiro_canaa"), 44, 44);
     $("#barcoTitulo").textContent = b ? nomeCurto(b.nome) : "Barqueiro";
     const fala = falaRecente(b?.id);
     if (b && dlg.id === b.id) fecharDialogo();
@@ -2686,6 +2783,23 @@
   // ------------------------------------------------------------------
   // No largo é a janela Mapa (fechar e reabrir como as outras); no médio e em tela baixa ele fica sobre o
   // mundo, e a mesma escolha o mostra ou esconde. No celular, M mostra ou esconde o minimapa sobre o mundo.
+  // Zoom do minimapa (Jogo.minimapa, game.js): três marcas ao lado da coordenada, quanto mais acesas, mais
+  // perto; os botões + e − apagam no limite. Sem essa fachada no MUNDO, os controles ficam ocultos.
+  let nivelDoMapa = -1;
+  function atualizarNivelDoMapa() {
+    const mm2 = window.Jogo?.minimapa, cx = $("#mapaNivel");
+    document.body.classList.toggle("mapa-com-zoom", !!mm2?.zoom);
+    if (!mm2?.nivel || !cx) return;
+    const n = mm2.nivel(), total = mm2.niveis?.() || 3;
+    if (n === nivelDoMapa) return;
+    nivelDoMapa = n;
+    const acesas = total - n; // nível 0 = mais perto
+    $$("i", cx).forEach((el, i) => el.classList.toggle("aceso", i < acesas));
+    cx.setAttribute("aria-label", `Zoom do mapa: ${acesas} de ${total}`);
+    const mais = $('[data-mapa="mais"]'), menos = $('[data-mapa="menos"]');
+    if (mais) mais.disabled = n <= 0;
+    if (menos) menos.disabled = n >= total - 1;
+  }
   function alternarMinimapa() {
     if (modo === "estreito") document.body.classList.toggle("mapa-visivel-cel");
     else if (janelaFechada("pMapa")) mostrarJanela("pMapa");
@@ -3928,6 +4042,7 @@
     atualizarBarraHab(p);
     atualizarBotaoVocacao(p);
     $("#mapaCoord").textContent = `${p.x}, ${p.y}`;
+    atualizarNivelDoMapa();
     if (modalAberto?.id === "modalLoja") desenharLoja();
     if (modalAberto?.id === "modalMural") desenharMural();
     if (modalAberto?.id === "modalBestiario") desenharBestiario();
@@ -4020,6 +4135,23 @@
       const b = $("#missaoLinha");
       b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"));
     });
+    // Mapa: zoom e centralizar (o MUNDO desenha; a interface só manda). O clique no minimapa continua sendo
+    // do MUNDO (anda até a casa clicada): aqui só os botões e a roda do mouse sobre o mapa.
+    $(".mapa-ctl")?.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mapa]"), mm2 = window.Jogo?.minimapa;
+      if (!b || !mm2) return;
+      e.stopPropagation();
+      if (b.dataset.mapa === "centro") mm2.centralizar?.();
+      else mm2.zoom?.(b.dataset.mapa === "mais" ? 1 : -1);
+      atualizarNivelDoMapa();
+    });
+    $("#miniMap")?.addEventListener("wheel", (e) => {
+      const mm2 = window.Jogo?.minimapa;
+      if (!mm2?.zoom) return;
+      e.preventDefault();
+      mm2.zoom(e.deltaY < 0 ? 1 : -1);
+      atualizarNivelDoMapa();
+    }, { passive: false });
     // Folhas do celular
     document.addEventListener("click", (e) => {
       const folha = e.target.closest("[data-folha]");

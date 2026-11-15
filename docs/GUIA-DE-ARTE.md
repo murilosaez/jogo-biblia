@@ -1,127 +1,135 @@
 # Guia de arte — Jornada · RPG Bíblico
 
-Toda a arte é pixel art **original**, gerada em código por `sprites.js` (nenhum sprite copiado de outro jogo,
-nenhuma imagem externa). Este guia descreve as regras de desenho desde a versão 16 (JGB-48, JGB-27 e JGB-12),
-com os personagens, as cores do visual e as montarias da JGB-49, e documenta a paleta de cada região.
+Toda a arte do jogo é pixel art **original, gerada em código**, de tema bíblico (fauna, trajes e arquitetura
+do antigo Israel e do Egito). O alvo de qualidade é o dos MMORPGs 2D clássicos de vista oblíqua: personagem
+alto que transborda a casa, chão denso, objetos altos, um efeito por golpe. Nenhum sprite, criatura, ícone ou
+interface de outro jogo é copiado.
 
-## 1. Resolução
+Onde mora cada coisa:
 
-- **32 px de arte por casa** (`Arte.RES = 2` px de arte por unidade). A casa tem 32 × 32 px de mundo, e
-  1 px de arte = 1 px de mundo. A câmera mostra cerca de 15 × 11 casas na tela deitada (9 × 13 em pé), e
-  cada px de arte ocupa um número **inteiro** de px da tela (`PIXELS_ARTE_POR_CASA = 32` em `game.js`;
-  a roda do mouse e as teclas + e − mudam o zoom de 1 em 1).
-- As coordenadas dos desenhos continuam em **unidades de 1/16 de casa** (as do desenho antigo, de 16 px por
-  casa). A `Grade` guarda em 2× e calcula elipses, linhas e sombras em cada px de arte, então as curvas e o
-  sombreado ficam finos sem reescrever cada número. Para detalhe de 1 px de arte use `g.pf`, `g.linf` e
-  `g.retf` (aceitam meia unidade) ou `g.fino(X, Y)` em px de arte.
-- Os glifos da interface (`ui_`, `hb_`, `of_`) ficam em 1 px por unidade: são ícones de botão, não arte do
-  mundo.
-- Os botões das janelas laterais (menu de três pontos, minimizar e restaurar) são desenhados no CSS em
-  pixels inteiros (`.ic-menu`, `.ic-min` no `index.html`), sem curva nem borrão; fechar usa o glifo
-  `ui_fechar`. O destino da rota aparece no minimapa como uma cruz de ouro `#ffe9a8` de 7 px com contorno
-  sépia `#2a1a14` (presa na borda quando o destino está fora do recorte), e no chão como o quadrado de ouro.
-- A pega da alça do dock de baixo é uma fileira de pontos de 2 px em bronze (ouro com o ponteiro ou o foco)
-  numa plaquinha de couro de 30 × 6 px; as caixas e os rádios dos menus de janela são quadrados (o rádio tem o
-  miolo de 6 px, a caixa de 8 px), e as teclas dos menus usam a mesma capa de tecla das outras janelas.
+| Arquivo | O que desenha |
+| --- | --- |
+| `sprites.js` | motor (`Arte.motor`), tabelas (paleta, biomas, cfgs dos humanos, equipamento), portais, balões, sombras e a reserva |
+| `arte/quadrupede.js`, `arte/ave-serpente.js`, `arte/artropode.js` | as 21 criaturas não humanas e os 2 aliados |
+| `arte/humano.js`, `arte/humano-equip.js` | o esqueleto humano e os 36 acessórios, armaduras e trajes |
+| `arte/montado.js` | jogador montado (4 montarias), prévias da loja e o barco |
+| `arte/flora.js` | árvores, rochas, muretas, marcos, tendas, bancas, poço e decoração |
+| `arte/terreno.js` | pintores do tileset (chão de reserva, água, costa, borda, moldura) |
+| `arte/efeitos.js`, `arte/itens.js`, `arte/icones.js` | efeitos (`Arte.FX`), itens e glifos |
+| `cenario.js` | chão contínuo, prédios onde se entra, muros, portas e móveis (motor `Tela`) |
 
-## 2. Luz, contorno e acabamento
+Capturas de referência em `docs/capturas/` (geradas por `tools/capturar.js`, ver a seção 10).
 
-- Luz de cima e da esquerda: realce em cima/esquerda, sombra embaixo/direita, sombra projetada à direita.
-- Contorno automático de **1 px de arte**: sépia `#2a1a14` (amigos, itens, cenário com volume) e carmim
-  `#4a1416` (inimigos). Chão e decoração rasteira não têm contorno.
-- Acabamento automático por dentro do contorno: 1 px mais claro nas bordas viradas para a luz e 1 px mais
-  escuro nas viradas para baixo/direita.
-- Criaturas e montarias ganham a textura fina (traços de 2 px de pelo, escama ou couro), espalhada por hash,
-  nunca em "ruído de TV".
-- Até 24 cores por sprite (o contorno não entra na fusão das cores raras).
+## 1. Resolução e unidades
 
-## 3. Personagens (humanos) — proporção de MMORPG clássico (JGB-49)
+- **32 px de arte por casa**; 1 px de arte = 1 px de mundo. `Arte.RES = 2`, `Arte.PX = 2`, `TAM = 32`.
+- `def.w` e `def.h` são em **unidades de 2 px** (1/16 de casa): célula de 48 × 64 px é `w: 24, h: 32`.
+  As coordenadas de desenho (`g.fino`, `retF`, `elipF`, `linF`) são em px de arte.
+- O desenho é **px a px**. Em `arte/*.js` são proibidas as primitivas de bloco 2 × 2 (`g.p`, `g.ret`,
+  `g.lin`, `g.elip`, `g.carimbar`, `pin.set`, `pin.encher`); os testes `arte/motor` e `68b` recusam pelo texto.
+- Câmera: zoom **inteiro** por px de arte, o mais perto de 15 × 11 casas (deitada) ou 9 × 13 (em pé) e nunca
+  menos que o `devicePixelRatio` (`pixelsPorPixelDeArte` em `game.js`). Medido: 2× em 1366 × 768
+  (17,1 × 8,4 casas), 1600 × 900 (20,7 × 10,4) e 1920 × 1080 (25,7 × 13,3) — casa de 64 px de tela; no
+  celular de 390 × 844 com DPR 3, 4 px de tela por px de arte (9,1 × 16,1 casas). `+`/`−` e a roda ajustam.
 
-Vale para o jogador, os NPCs e os inimigos humanos (todos saem de `humano(chave, cfg)` em `sprites.js`).
-Capturas: `docs/capturas/humanos-antes-depois.jpg` e `docs/capturas/passos-3vistas.jpg`.
+## 2. Células e quadros
 
-- Célula de **40 × 48 px** (20 × 24 unidades), pés na linha 45, contorno de 1 px por fora. O boneco é
-  atarracado e lê de longe: **cabeça de 16 × 15 px** (linhas 7–21, colunas 12–27, orelhas de 1 px para fora),
-  **tronco de 16 px** (linhas 22–30) com o cinto em 31–32, **braços de 4 px** de cada lado (24 px de ombro a
-  ombro, ombro arredondado), pernas curtas (saia até a linha 37 e pernas de 4 px na túnica curta; veste até a
-  42 no manto), **mãos de 4 × 3 px** e sandálias de 5 px (6 px de lado, com a tira e a sola). Altura total
-  ~40 px: a cabeça é ~38% do corpo.
-- Rosto de frente: sobrancelha de 3 px, olho de 2 × 2 (pálpebra escura em cima; embaixo o branco para fora e
-  a pupila para dentro), nariz de luz e sombra, bochecha rosada de 1 px e boca de 2 px. Barba cheia do bigode
-  até 2 px abaixo do queixo, com mechas e a boca aberta no meio. Cabelo curto com franja recortada e
-  costeletas; `longo` cai atrás dos ombros; `careca` mostra o brilho do crânio. Véu (`molde: "veu"` ou
-  `capuz`) enquadra o rosto e cai sobre os ombros (de costas, até o meio das costas).
-- **4 tons por material** (`rampaDe`, ou as letras R/r/d + uma sombra funda): realce, base, sombra e sombra
-  funda, com a luz de cima e da esquerda. A sombra puxa para o púrpura-sépia e a luz para o creme quente (nada
-  de cinza). Pano em faixas (`tomPano`): realce nas 2 colunas da esquerda, sombra na direita; dobras
-  verticais no manto, pregas na túnica curta, a veste dobra 1 px escuro sobre o cinto. Braços, pernas e mãos
-  são máscaras pintadas com a rampa (`pintarMascara`: realce em cima/esquerda, sombra embaixo/direita).
-- Cores por letra: H cabelo, S/s pele e sombra, B barba, R/r/d tronco (claro, médio, escuro), **P/p/q parte
-  de baixo** (sem elas, a do tronco), A cinto e detalhes, F sandálias, V/W véu. Opções: `cabelo` (curto,
-  longo, careca), `porte: "grande"` (+1 px de cada lado), `gola`, `capuz`, `mangaCor` (braço nu ou de outra
-  cor), `barra` (barra da veste na cor do cinto), `armadura`, `acessorios`, `extraCorpo` e `extra`.
-- **15 quadros**: 0–4 de lado (virado para a direita; a esquerda é o espelho), 5–9 de frente e 10–14 de
-  costas. Em cada vista: 0 parado (é também a passagem do passo), 1 respirar (tronco desce 1 px), 2 contato A,
-  3 contato B, 4 ação/fala. **Andando, `game.js` toca 2 → 0 → 3 → 0** (`CICLO_PASSO`, 110 ms por quadro):
-  no contato as pernas abrem (de lado, um pé 5 px à frente e o outro 6 px atrás; de frente/costas, o pé de
-  trás sobe 1 px e a barra balança), o tronco e a cabeça descem 1 px e os braços balançam ao contrário das
-  pernas (de lado, o braço de longe aparece atrás do corpo). As criaturas continuam alternando 2 e 3.
-- Âncoras da pose para acessórios: `T` topo da cabeça, `yT` ombros, `yC` cinto, `maoArma` e `maoEscudo`
-  (centro da mão; a mão ocupa x−2..x+1). Acessórios desenham nas 3 vistas, em camadas (`fundo`, `meio`,
-  `frente`): cajados, lanças, espadas (de frente e de costas a lâmina sai do punho para fora do corpo; de
-  lado vai baixa, apontando para a frente), porrete, escudos (redondo, alto, oval), arco nas costas e na mão,
-  capas, turbante, elmo, faixa, bandana, nemes, colar, peitoral, alforje com a alça cruzando o peito, odre,
-  saco, jarro, fardo, corda, rede, shofar, pele de leopardo, estola, brilho de feitiço, funda (no cinto e na
-  mão), remo e as peças do boneco: capacete de couro, grevas, botas e saiote.
+| Família | Célula (px de arte) | Quadros |
+| --- | --- | --- |
+| Humano (`pj_*`, `in_*` humanos, jogador) | 48 × 64, pés na linha 62, corpo de 55 a 57 px (≈ 1,75 casa) | 3 vistas × 8 |
+| Jogador montado | 72 × 96 | 3 vistas × 8 |
+| Prévia de montaria (`mt_*`) | 64 × 64 | 1 |
+| Criatura pequena (rã, escorpião, caranguejo, corvo) | 40 × 40 | 3 vistas × 8 |
+| Criatura média (cão, ovelha, lobo, chacal, hiena, cabra, javali, víbora, naja, abutre, águia, enxames) | 48 × 48 | 3 vistas × 8 |
+| Criatura grande (leão, urso, leopardo, crocodilo) | 64 × 64 | 3 vistas × 8 |
+| Barco (`mk_barco`) | 64 × 64 | 3 vistas × 4 |
+| Árvore alta (oliveira, acácia, tamareira, figueira) | 64 × 96 (acácia do Sinai e ilhota 64 × 80) | 1 a 3 variantes |
+| Coluna, estandarte | 48 × 88 | 1 |
+| Rocha, basalto, granito | 48 × 40; penedo e rochedo 64 × 56 | 2 a 3 variantes |
+| Arbusto, mureta, jarros, coral | 40 × 40 ou 40 × 44 | 1 a 2 variantes |
+| Casa, tenda, banca, poço (`es_*`, as que não se entra) | 104 × 104, 104 × 88, 104 × 92, 40 × 56 | 4, 4, 2, 1 variantes |
+| Item | 32 × 32, origem `[0.5, 0.75]` | 1 (moeda: 4) |
+| Glifo `ui_*` | 16 × 16 (`ui_rosa` 32 × 32) | 1 |
+| Glifo `hb_*`, `of_*` | 32 × 32 | 1 |
+| Efeito `fx_*` | 32 × 32; impacto e morte 48 × 48; fogo 32 × 48 | tira, ver `Arte.FX` |
+
+Os tamanhos dos glifos estão em `Arte.TAM_ICONE` (`{ ui: 16, hb: 32, of: 32, rosa: 32 }`).
+
+**Vistas e quadros** (contrato de toda def com `direcoes: 3, quadrosPorVista: 8`):
+
+- `vista = Math.floor(quadro / 8)`: 0 de lado virado para a **direita** (a esquerda é `setFlipX`), 1 de frente,
+  2 de costas.
+- `quadro % 8`: 0 parado, 1 respirar, 2 contato A, 3 passagem A, 4 contato B, 5 passagem B, 6 antecipação do
+  golpe, 7 golpe. A def declara `ciclo: [2, 3, 4, 5]` e `quadroAcao: [6, 7]`.
+- `sombra: { w, h }` em px (o jogo põe `fx_sombra_<w>x<h>` no chão; o desenho não cola sombra ao corpo),
+  `alturaCabeca` em px de mundo acima dos pés (onde vão a barra e o nome) e, nos humanos, `busto`
+  (`[6, 2, 11, 11]` em unidades) e `retratoQuadro`.
+- Criaturas nunca levam `humano: true`. Raros nomeados usam `variante(porte, tinta)` da def
+  (`Arte.garantirVariante` registra `<chave>~v:<tinta>.<porte × 100>`).
+- Efeitos são tiras simples: `Arte.FX[chave] = { quadros, ms, laco }` (corte 5 × 45 ms, impacto 5 × 50 ms,
+  sangue 5 × 60 ms, morte 6 × 90 ms, fogueira 6 × 110 ms em laço; projéteis com 3 orientações + espelho).
+
+## 3. Luz, cor e contorno
+
+- **Luz de cima e da esquerda** em tudo (sprites e `cenario.js`): realce em cima/esquerda, sombra
+  embaixo/direita, sombra projetada para a direita e para baixo.
+- **Rampa de 6 tons** por material (`rampa6(base, tipo)`; tipos: pano, pele, pelo, couro, madeira, pedra,
+  folha, metal): a base fica no índice 3, a luz puxa ao creme quente e a sombra ao púrpura-sépia.
+  `sombrear(rampa, l, X, Y)` devolve o tom para `l` de −1 a 1 e só usa o pontilhado Bayer 4 × 4 na faixa de
+  transição entre dois tons. `esferaPx` e `panoPx` são atalhos para volume e pano.
+- **Limite de cores do miolo**: 64 por sprite, 16 nos `ui_`, 24 nos `hb_`/`of_`, sem limite nos `fx_`.
+  Passou do limite, o motor funde as cores mais raras.
+- **Contorno** de 1 px automático e colorido: a cor do vizinho preenchido escurecida e puxada ao sépia
+  `#2a1a14` (amigos, itens, cenário) ou ao carmim `#4a1416` (hostis), mais clara no lado da luz.
+  `contorno: null` desliga (efeitos, enxames, glifos que desenham a própria borda). Arte sombreada com
+  `rampa6` declara `acabamento: false`. `contornoLegado: true` (traço de cor única) ainda existe no motor e
+  só é usado por teste.
+- Sem `Math.random()`: toda variação vem de `hash2(x, y, semente)`; o desenho é igual a cada geração.
+
+## 4. Humanos
+
+- Proporção adulta em vista oblíqua: cabeça de 9 a 11 px, ombros, tronco, pernas e pés visíveis; 48 × 64 px.
+- Moldes: `manto` (veste longa), `curta` (túnica curta, pernas à mostra), `veu` (veste longa com véu) e
+  porte `grande`. Cores por letra (`coresHumano`): H cabelo, S/s pele, B barba, R/r/d tronco, P/p/q parte de
+  baixo, A cinto e detalhes, F sandálias, V/W véu.
+- A cfg de cada humano fica em `sprites.js` (`humano("pj_…", { molde, cores, barba, cabelo, acessorios… })`,
+  guardada em `Arte.motor.HUMANOS`); o desenho é a spec de `arte/humano-equip.js`, ativada por
+  `definirHumano(spec)`. O equipamento do jogador vira acessório (`LAMINAS`, `CORES_ESCUDO`, `ARCOS`) e
+  armadura (`ARMADURAS`); a chave da textura é `pj_jogador|arma||escudo|armadura|traje|montaria[|e:cabeça.pernas.pés][|c:…]` (o arco e a funda vão em `arma`).
 - Equipamento visível no jogador (boneco, com uma mão para a arma): na mão da arma, espada (madeira, ferro,
   temperada), arco na mão (o arco usa as duas mãos, então nunca aparece com escudo) ou funda na mão (as duas
   cordas caem do punho até a bolsa com a pedra; no golpe, gira no alto); escudo (madeira, bronze, ferro);
   armadura (túnica de pano, armadura de couro com ombreiras, couraça de escamas com ombreiras — as ombreiras
   ficam por cima dos braços); cabeça (turbante de linho, capacete de couro com costura e aba, elmo de bronze);
   pernas (saiote de tiras de couro com ponta de bronze; grevas de bronze na canela) e pés (botas de viagem,
-  de cano até o meio da canela). Grevas, botas e saiote não têm desenho próprio por quadro: recolorem a pele
-  (ou a saia) só nas linhas da perna, então seguem o passo e as 3 vistas; usam poucas cores novas (2 tons de
+  de cano até o meio da canela). Grevas, botas e saiote seguem o passo e as 3 vistas e usam poucas cores novas (2 tons de
   bronze; o couro das sandálias que o boneco já tem). Colar, anel e sandálias são pequenos demais para o
   mundo: aparecem só no painel. Com traje, as peças do corpo não aparecem (como a armadura).
+- Passo: um ciclo de 4 fases por casa, sincronizado à fração do deslize; golpe em 2 tempos (antecipação e
+  golpe) com investida de 4 px.
 
-## 4. Cosméticos (JGB-27) e cores do visual (JGB-49)
+### Cosméticos e cores do visual
 
-- **Cores do visual**: o jogador pinta 4 partes do boneco — **cabeça** (cabelo, ou o pano da cabeça do traje:
-  turbante, faixa, bandana, nemes, véu; o elmo é metal e fica), **tronco** (veste de cima, R/r/d),
-  **pernas** (parte de baixo, P/p/q) e **detalhe** (cinto A, gola e barra) — com a paleta fixa de 24 cores de
-  `CORES_VISUAL` (`dados/cosmeticos.js`: tintas e fibras da época e tons de cabelo). Cada cor vira a rampa
-  de 4 tons. No save: `p.cosmeticos.cores = { cabeca, tronco, pernas, detalhe }` com o id da cor ou `null`
-  (= a cor do traje, ou a do boneco sem traje); a carga normaliza (sem cores, ou cor fora da paleta → `null`)
-  e não precisou de versão nova do save. Comando: `{ tipo: "definirCores", cores: { parte: id | null } }`.
-  As cores entram na chave da textura (`pj_jogador|…|c:cabeca.tronco.pernas.detalhe`) e valem por cima dos
-  trajes; a túnica de pano (que é pano) toma a cor do tronco. Captura: `docs/capturas/cores-do-visual.jpg`.
-- Janela Visual (tecla U), aba **Cores**: prévia do boneco de frente, de lado e de costas (3 px de tela por px
-  de arte) e uma fileira de amostras por parte, com a amostra listrada "Cor do traje" e o botão "Voltar às
-  cores do traje". Captura: `docs/capturas/janela-visual-cores.jpg`.
-- Trajes (`TRAJES[id].visual`) usam o mesmo boneco: molde, cores, gola, cabelo e acessórios que não são
+- O jogador pinta 4 partes — **cabeça** (cabelo ou o pano da cabeça do traje; o elmo é metal e fica),
+  **tronco**, **pernas** e **detalhe** (cinto, gola e barra) — com as 24 cores de `CORES_VISUAL`
+  (`dados/cosmeticos.js`). No save: `p.cosmeticos.cores = { cabeca, tronco, pernas, detalhe }`. As cores
+  entram na chave da textura e valem por cima dos trajes.
+- Trajes (`TRAJES[id].visual`) usam o mesmo esqueleto: molde, cores, gola, cabelo e acessórios que não são
   arma nem escudo. Com traje, a armadura vestida não aparece (a defesa continua).
-- **Montarias**: jumento (cinzento, focinho claro, cruz escura no lombo, orelhas compridas), camelo (uma
-  corcova, pernas compridas de joelho grosso e patas largas, tapete listrado com borlas), cavalo (castanho,
-  crina e cauda escuras, mancha na testa, meia branca) e carro (caixa de vime, roda de raios e o cavalo menor
-  no varal), em célula de **56 × 64 px** (28 × 32 unidades), chão na linha 61, nas 3 vistas e com passo
-  (pernas em pares diagonais, corpo desce 1 px). Manta com franja de ouro, sela de couro com o loro do
-  estribo, cabeçada e rédeas com folga até as mãos do cavaleiro. De frente, a cabeça comprida (orelhas,
-  olhos dos lados, narinas, frontal colorido) e as patas da frente ficam por cima do cavaleiro; de costas, a
-  garupa, a cauda e as patas de trás. O cavaleiro é o boneco do jogador montado (`cfg.montado`): de lado a
-  coxa vai para a frente e a canela desce; de frente e de costas as pernas abrem para os lados; as mãos
-  seguram as rédeas (o escudo fica pendurado do lado). No carro ele vai de pé. Prévia da loja:
-  `mt_<montaria>`. Captura: `docs/capturas/montarias-antes-depois.jpg`.
-- Nenhum cosmético (nem as cores) muda dano, defesa, vida, carga, velocidade, XP ou saque.
+- Montarias (jumento, cavalo, camelo, carro com parelha): o cavaleiro é o humano novo sobre o esqueleto de
+  `arte/quadrupede.js`, com arreios próprios; cores em `MONTARIAS_ARTE`. Só aparência.
 
-## 5. Criaturas e itens
+## 5. Criaturas, itens e ícones
 
-- Criaturas mantêm a silhueta de cada espécie (o teste 50 exige um sprite por espécie). O quadrúpede
-  genérico (cão, ovelha, lobo, chacal, javali, urso, leão, hiena, cabra, leopardo) tem coxa e canela
-  finas, patas ou cascos, peito e quadril, pescoço, focinho afilado, olho com íris e brilho, orelhas com o
-  dentro rosado e pelagem em traços. Aves têm rêmiges uma a uma e bico curvo; serpentes, corpo em tubo com
-  o desenho do dorso.
-- Itens: célula de 16 × 16 unidades (32 × 32 px), arte de até 24 × 24 px apoiada na linha 28, contorno
-  sépia de 1 px e sombra de apoio suave. Peças do boneco: turbante (voltas do pano em diagonal e a ponta
+- Cada espécie tem esqueleto e silhueta próprios nas 3 vistas (o teste 50 exige um sprite por espécie; o 68
+  confere contrato, célula e base). Quadrúpedes: `arte/quadrupede.js` (anatomia por espécie em `A.largo`,
+  pernas em pares diagonais); aves voam acima do chão com a sombra separada; serpentes rastejam; enxames são
+  pontos soltos sem contorno.
+- Itens: 32 × 32 px, sombra de apoio suave, leitura pela silhueta. A lista de chaves são as chamadas
+  `item("…")` de `sprites.js` (os testes as procuram lá); o desenho é de `arte/itens.js`.
+- Glifos: idem com `glifo("…")` e `arte/icones.js`. A interface usa `Arte.TAM_ICONE` para não reduzir um
+  glifo de 32 px a 16.
+- Peças do boneco (ícones dos itens): turbante (voltas do pano em diagonal e a ponta
   caindo), capacete de couro (calota com costura, aba e orelheiras), elmo de bronze (testeira, abas do rosto
   e nasal), colar de contas de cornalina (a conta maior no meio), saiote (cinto com fivela e tiras com ponta
   de bronze), grevas (placa da canela, larga no joelho, com 2 correias), sandálias, botas de viagem (de
@@ -135,56 +143,52 @@ Capturas: `docs/capturas/humanos-antes-depois.jpg` e `docs/capturas/passos-3vist
   unidades e (+5, +3) a partir de 5, como um montinho; sem número escrito no mundo (a quantidade aparece no
   menu do item e na mensagem).
 
-## 6. Cenário (JGB-12)
+## 6. Cenário
 
-- Tileset de 8 × 15 casas de 32 × 32 px por região (`gerarTileset`). O `Pincel` pinta em unidades e
-  `detalharChao` acrescenta o detalhe em px de arte: folhinhas de relva de 1 × 2 px com a ponta clara,
-  grãos de areia e terra, seixos de 2–3 px nos caminhos.
-- Casas de terraço (teto plano, como as casas do antigo Israel e do Egito — por isso não há telhado
-  inclinado nem chaminé): adobe claro, pedra de Canaã, basalto da Galileia e tijolo de barro do Egito;
-  porta em arco de tábuas com cravos e verga de madeira, janela de treliça com persianas, reboco gasto,
-  escada externa e, no terraço, o forno de barro (tabun) com um fio de fumaça e um vaso de planta.
-- Tendas (pano cru, listras vermelhas, listras índigo, pelo de cabra), bancas com toldo listrado e poço.
-- Água animada (4 fases, em px de arte), costa com espuma e a muralha de água do Mar Vermelho.
+- **Chão contínuo** (`cenario.js`): pintado por pedaços de 16 × 16 casas (512 × 512 px) a partir das
+  coordenadas do mundo, sem azulejo repetido — relva e areia em duas escalas de ruído, estrada de terra de
+  beira irregular, rua de pedra nas vilas, chão pisado em volta de portas e poços; a beira da água tem raso,
+  espuma, areia molhada e areia seca. Paleta curta e beiras nítidas: ver 6.1. A pintura é **fatiada** (`Cenario.pintarFatia`, 4 ms por quadro) e os pedaços longe da câmera são
+  liberados; na troca de área as texturas de chão e de prédio da área anterior saem da memória.
+- **Tileset** (`Arte.gerarTileset`, pintores de `arte/terreno.js`): 8 × 15 casas por região para água animada
+  (4 fases, em px de arte, reenviada a cada 250 ms), costa, borda e moldura.
+- **Alturas (só visuais)**: parede de prédio com **64 px** (2 casas, `Cenario.ALTURA_PAREDE`), muro com
+  **34 px** (`ALTURA_MURO`), árvores de até 3 casas. Colisão, pegadas, interior e linha de visão continuam
+  na grade de `logica.js`.
+- **Prédios onde se entra**: chão, parede de dentro, fachada com o terraço (teto plano, como nas casas do
+  antigo Israel e do Egito) e sombra projetada; porta de 26 × 56 px que abre com o jogador a uma casa.
+  Materiais (`MATERIAIS_PREDIO`): adobe, pedra de Canaã, basalto da Galileia, tijolo do Egito, tenda grande.
+- **Quem fica atrás**: objeto alto que cobre o corpo do jogador, de um NPC ou de uma criatura a até 4 casas
+  fica a meio alfa (`registrarAlto`, `atualizarTranslucidez`). Jogador dentro do prédio: o telhado some;
+  jogador nas 2 fileiras ao norte: telhado a meio alfa; NPC ou criatura atrás de um telhado ganha uma cópia
+  translúcida por cima dele.
+- **Orla e muros**: a borda do mapa vira mata, palmeiral ou pedregal do bioma; muros e muretas emendam com os
+  vizinhos (máscara N/L/S/O).
+- **Dia e noite** (`CICLO_DIA`): 40 min por dia, noite até 70% em azul profundo com luz nas fogueiras,
+  candeias, interiores e portais. Só aparência.
 
-### 6.1 Casas e lojas onde se entra, chão contínuo e muros (`cenario.js`)
-
-- **Prédios** (`DADOS_ESTRUTURAS` com `entrar: true`): a casa (6 × 5 casas) e a loja (7 × 6) são feitas de
-  cinco imagens por prédio. Por fora: o terraço (placas de barro batido, parapeito de 7 px com a face de
-  dentro mais escura, forno de barro, jarros, esteira de figos e a escada encostada) e a fachada (32 px) com
-  pontas das vigas, janelas de treliça com luz quente, porta aberta em arco e, na loja, o toldo listrado e a
-  placa com a balança. Por dentro: a parede do fundo alta (reboco claro; prateleiras com jarros, tecidos e
-  frutas na loja; nicho com a candeia e réstia de ervas na casa), as paredes dos lados e da frente cortadas
-  e finas (12 px, como numa planta) e o piso: tábuas na loja, lajotas (pedra e basalto), barro batido
-  (adobe e tijolo) ou areia com tapete (tenda grande). Móveis: balcão (emenda com os vizinhos, com
-  mercadoria em cima), barris, caixotes, sacos, esteira de dormir, jarros e mesa baixa.
-- O telhado some quando o jogador passa pela porta e volta quando ele sai; com o jogador logo atrás do
-  prédio, fica translúcido. Materiais (`MATERIAIS_PREDIO`, a variante do prédio): 0 adobe, 1 pedra de Canaã,
-  2 basalto da Galileia, 3 tijolo do Egito, 4 tenda grande (lona listrada em duas águas).
-- **Chão contínuo**: o chão é pintado por pedaços de 16 × 16 casas a partir das coordenadas do mundo (nada
-  de azulejo repetido), em paleta curta e beiras nítidas (ver 6.2); a estrada de terra tem a beira irregular
-  (amostra deslocada por ruído, ±9 px) com a fileira escura e pontas de relva; dentro das vilas o caminho é rua
-  de pedra (fiadas de 8 px, junta escura, luz em cima/esquerda); em volta das portas, poços, tendas e moradores
-  o chão fica pisado; a beira da água tem raso, espuma, areia molhada e areia seca (6.2).
-- **Portas**: a folha da porta é uma imagem à parte (`texturaPorta`): fechada (tábuas com ferragens e argola;
-  na tenda, a aba de pano baixada) e aberta (encostada à esquerda). Abre sozinha com o jogador a uma casa dela.
-- **Orla**: a borda do mapa e as 4 casas de fora viram mata, palmeiral ou pedregal do bioma (`ORLAS`), com o
-  chão da região por baixo e as peças mais escuras para fora, no lugar da faixa chapada. Água e muralha da
-  borda continuam no Tilemap. Árvores e pedras de todo o mapa saem da grade (deslocamento e espelho por casa).
-- **Dia e noite** (`CICLO_DIA` em `game.js`): um dia dura 40 min de relógio; a noite escurece até 70% em azul
-  profundo, com buracos de luz suaves no jogador, nas fogueiras, nas candeias das portas, nos interiores
-  (com o telhado aberto) e nos portais, e um brilho quente por cima. Nomes, barras e números ficam acima da
-  noite. Só aparência.
-- **Muros contínuos**: o muro da vila e as muretas de pedra (`muro`, `tijolos`) emendam com os vizinhos
-  (máscara N/L/S/O): topo de pedras de cobertura e face de 20 px onde o muro não continua para o sul.
-
-### 6.2 Mundo no estilo de MMORPG clássico em 2D (frente "arte")
+### 6.1 Mundo no estilo de MMORPG clássico em 2D (revisão da arte do mundo)
 
 Direção: pixel art de MMORPG clássico visto de cima, mundo em casas, paleta curta e rica, bordas nítidas, sem
 anti-serrilhado nem 3D, ambiente do antigo Oriente Próximo. Tudo é original e gerado em código: segue só as
 convenções do gênero (escala das árvores, contorno escuro, luz de cima e da esquerda), sem copiar sprites,
 ícones, layouts ou paletas de jogo nenhum. Capturas: `docs/capturas/arte-antes-depois.jpg` (antes e depois em
-cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noite).
+cada região, centro ampliado) e `docs/capturas/arte-regioes.jpg` (as 6 regiões e o mar, de dia e de noite com
+`--hora 0.75`). Nas regiões o jogador pode aparecer com a vida baixa: a ferramenta passa por lá depois do combate.
+
+Flora, rochas e terreno têm dois conjuntos de desenho no código: o de `arte/flora.js` e `arte/terreno.js`
+(seções 2 e 10) e o desta revisão, em `sprites.js` e `cenario.js`. Os dois seguem a mesma escala (1 px de arte
+por px de mundo) e a mesma luz (de cima e da esquerda); os props das vilas e a vegetação rasteira em moitas
+existem só nesta revisão.
+
+O que aparece no jogo, por elemento: árvores, arbustos, rochas, estruturas (`es_`) e decorações (`dc_`) usam o
+desenho de `arte/flora.js`; o tileset é o de `arte/terreno.js` e o chão é o fatiado de `cenario.js`, com as
+moitas desta revisão por cima (nas áreas com `vegetacao`, a decoração rasteira do tileset fica desligada). Os
+props das vilas (barril, caixotes, carroça, jarros, lenha, cocho e cerca) são os desta revisão, registrados no
+fim de `arte/flora.js`, sem espelho e sem deslocamento. O segundo desenho continua no código:
+`Arte.MUNDO_DA_MAIN` (um `Set` em `sprites.js`, vazio por padrão) lista as chaves `ob_`/`es_`/`dc_` que devem
+usar o desenho guardado em `Arte.motor.mundoAlternativo`, e `Cenario.usarChao("main" | "fatiado")` troca o
+chão inteiro em execução.
 
 - **Escala de pixel**: 1 px de arte = 1 px de mundo em tudo o que fica no chão e em pé (árvores, pedras, props,
   decorações do chão, poço, tendas, bancas, a mureta solta, água, a muralha de água do Mar Vermelho e o chão;
@@ -245,7 +249,41 @@ cada região) e `docs/capturas/arte-regioes.jpg` (as 6 regiões, de dia e de noi
 - **Cenas leves**: a arte dos obstáculos e dos props é gerada só para a área atual (`garantirTextura`), e as
   imagens do cenário entram em blocos de 16 × 16 casas que ligam e desligam com a câmera (`noBloco`).
 
-## 7. Paleta por região
+## 7. Nomes, barras, números e movimento
+
+- Todo personagem na tela tem **nome pequeno** (13 px de tela, com contorno) e **barra de vida** de 26 × 4 px
+  de mundo com borda escura de 1 px (chefes 34 × 5), a 3 px da cabeça, na cor da vida. Personagem dentro de
+  prédio de telhado fechado não mostra nome nem barra.
+- **Números de dano** são texto com contorno, cor por tipo; nascem 17 px acima da cabeça (logo acima do nome),
+  sobem 13 px em arco e somem em 820 ms.
+- **Movimento**: sem tween de passo. Cada entidade guarda `{ x0, y0, x1, y1, t0, dur }` e é posicionada por
+  interpolação linear a cada quadro. Jogador: 140 ms por casa (180 ms na diagonal); criatura: o intervalo
+  medido entre dois passos dela (250 a 700 ms). A câmera segue um alvo invisível; o recuo do golpe é um
+  deslocamento visual à parte.
+
+## 8. Layout da interface
+
+- **Largo e médio** (a partir de 761 px de largura): o mundo fica no meio, com as **janelas laterais** nas
+  colunas dos lados (Missão, Personagem, Equipamento, Batalha, Mochila, Bolsa, Caçada e Mapa) e o **dock de
+  baixo** de uma ponta à outra (console com as abas Geral, NPCs e Servidor; atalhos e barra de habilidades à
+  direita). Cada janela tem o cabeçalho como alça: arrasta para a outra coluna ou posição, minimiza e fecha; o
+  menu Janelas reabre, escolhe o lugar da conversa e restaura o layout, que fica em `localStorage`
+  (`jornada_janelas`). Uma coluna sem janelas sai e o mundo fica mais largo; nada flutua sobre o mundo. O
+  zoom do mundo é inteiro, e a altura do dock é escolhida para não derrubá-lo. Os padrões por tamanho de tela
+  estão no LEIA-ME.txt ("Janelas laterais" e "Console").
+- **Celular** (até 760 px): palco em tela cheia, caixa de vida, botões de toque e abas inferiores.
+- Skin própria: couro, pergaminho e bronze.
+- Os botões das janelas laterais (menu de três pontos, minimizar e restaurar) são desenhados no CSS em
+  pixels inteiros (`.ic-menu`, `.ic-min` no `index.html`), sem curva nem borrão; fechar usa o glifo
+  `ui_fechar`. O destino da rota aparece no minimapa como uma cruz de ouro `#ffe9a8` de 7 px com contorno
+  sépia `#2a1a14` (presa na borda quando o destino está fora do recorte), e no chão como o quadrado de ouro.
+  O minimapa tem 3 níveis de zoom: os botões + e − e o de centralizar ficam ao lado dele, com a rosa dos
+  ventos, e a roda do mouse sobre o minimapa também troca o nível; o clique que traça a rota vale em qualquer nível.
+- A pega da alça do dock de baixo é uma fileira de pontos de 2 px em bronze (ouro com o ponteiro ou o foco)
+  numa plaquinha de couro de 30 × 6 px; as caixas e os rádios dos menus de janela são quadrados (o rádio tem o
+  miolo de 6 px, a caixa de 8 px), e as teclas dos menus usam a mesma capa de tecla das outras janelas.
+
+## 9. Paleta por região
 
 Cada região usa só as cores abaixo no chão, nas manchas, nos caminhos, na borda e na decoração (os
 obstáculos e estruturas derivam delas). Fonte: `BIOMAS` em `sprites.js`. As peças da vegetação rasteira
@@ -326,7 +364,7 @@ Obstáculos: penedo, arbusto, marco, acacia.
 
 | Papel | Cores |
 |---|---|
-| Chão | `#8f735a` `#7a6050` `#a68a6c` `#bca084` |
+| Chão | `#a08266` `#896d59` `#b89b7c` `#ccb294` |
 | Mancha | `#8a6e5e` `#6a5248` |
 | Caminho | `#c2a888` `#a08a6c` `#d4bea0` `#7a6450` |
 | Borda (paredao) | `#2e2430` `#3a2a44` `#5a4a4a` `#7a6a62` |
@@ -347,3 +385,47 @@ Obstáculos: figueira, basalto_muro, basalto, barco.
 | Decoração | anemona `#d8443a`, mostarda `#e2c044`, lirio `#b8a0d0`, tufo `#5e7e40` |
 | Luz | `#ffe0a0` (screen, 0.08) · vinheta `#1a1408` |
 
+
+## 10. Como escrever ou mexer num `arte/*.js`
+
+- O arquivo é uma IIFE que começa por `(function (global) {`, não toca `document` nem `canvas` na carga (os
+  testes rodam numa `vm` sem DOM) e registra **tudo na carga** com `Arte.motor.registrar(chave, def)`.
+  Registrar com a mesma chave troca o desenho e apaga os caches daquela chave.
+- Para manter os campos que o jogo lê (origem, `obstaculo`, `alto`, `quadros`), parta da def de reserva:
+  `registrar(chave, Object.assign({}, PIXEL_PATTERNS[chave], { w, h, desenhar }))`.
+- `sprites.js` guarda, para cada chave redesenhada, só um **marcador de reserva** (`reserva`, `item`,
+  `glifo`, `obstaculo`) com esses campos; o boneco e a montaria de reserva são o que
+  `definirHumano(null)` / `definirMontado(null)` devolvem. Nada disso aparece com os arquivos de arte
+  carregados (o teste 68 confere que nenhuma chave ficou no marcador).
+- Motor (`Arte.motor`): `Grade`, `registrar`, `pixels`, `rampa6`, `sombrear`, `esferaPx`, `panoPx`, `prim`
+  (`retF`, `elipF`, `linF`, `bastao`, `pintarMascara`), `hash2`, `ruido`, `misturar`, `comAlfa`,
+  `definirHumano`, `definirMontado`, `garantirSombra`, `garantirVariante`, `pintores`, `limparTilesets`.
+- Ordem dentro de `pixels()`: `desenhar` → textura automática (só se pedida) → contorno → acabamento →
+  `depois` (pinta por cima do contorno) → fusão de cores até o limite.
+- Deixe 1 px livre nas bordas da célula (o contorno ocupa 1 px por fora da silhueta).
+- Cada arquivo tem o seu teste em `tests/arte/<nome>.test.js` (nome do teste começa por `arte/<nome>:`).
+
+Conferir:
+
+```
+node tools/capturar.js <pasta> --so-folhas --familia in_,al_     # folhas de contato, segundos
+node tools/capturar.js <pasta> --tudo                            # jogo inteiro, tamanhos, deslize, combate, atrás, carga
+node tools/capturar.js --comparar <pastaA> <pastaB> <saida>      # pares lado a lado
+node tools/capturar.js <pasta> --tudo --hora 0.75                # a mesma captura à noite (padrão 0.1 = manhã; "real" = relógio)
+node tests/logica.test.js 68                                     # contrato da arte
+node tests/logica.test.js arte/                                  # testes de cada arquivo de arte
+node tests/logica.test.js                                        # suíte inteira (~4 min)
+```
+
+Aceite: `relatorio.json` com `erros: []`, `validar.problemas: 0`, geração de todos os quadros abaixo de 3 s
+e nenhum quadro acima de 50 ms ao andar 30 casas (`desempenho`); `carga` traz a troca de área, o primeiro
+encontro de cada espécie, a memória de texturas e o reenvio da água; `desempenhoCelular` repete o percurso
+em 390 × 844 com DPR 3 emulado.
+
+Capturas em `docs/capturas/`: `inicio-1600x900.jpg`, `celular-390x844.jpg`, `tela-1366x768.jpg`,
+`tela-1920x1080.jpg`, `regiao-<area>.jpg` e `regiao-canaan-zoom.jpg`, `combate.jpg`, `combate-golpe.jpg`,
+`passo.jpg`, `atras-arvore.jpg`, `atras-casa.jpg`, `dentro-de-casa.jpg`, `folha-humanos.jpg`,
+`folha-criaturas.jpg`, `folha-flora.jpg`, `folha-itens.jpg`, `folha-icones.jpg`, `folha-efeitos.jpg`,
+`folha-montarias.jpg`, `antes-depois-inicio.jpg`, `antes-depois-combate.jpg`, `antes-depois-celular.jpg`,
+`arte-antes-depois.jpg` e `arte-regioes.jpg`. As telas e comparações foram refeitas depois da junção com a
+`main` (janelas móveis, dock e equipamento da `main` com a arte nova); as `folha-*.jpg` são da onda 5.

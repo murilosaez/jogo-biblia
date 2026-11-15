@@ -86,8 +86,9 @@ desenho da região) e os tipos da vegetação rasteira.
 
 Instalação
 1. Faça uma cópia de segurança da pasta atual.
-2. Mantenha juntos na mesma pasta: index.html, storage.js, a pasta dados/, logica.js, sprites.js,
-   cenario.js, game.js e interface.js (carregados nesta ordem pelo index.html). Não há build nem dependências:
+2. Mantenha juntos na mesma pasta: index.html, storage.js, a pasta dados/, logica.js, sprites.js, a pasta
+   arte/ (os 11 arquivos de desenho), cenario.js, game.js e interface.js (carregados nesta ordem pelo
+   index.html). Sem a pasta arte/ o jogo abre com os desenhos de reserva (marcadores e bonecos simples). Não há build nem dependências:
    o Phaser 3.80.1 e as fontes vêm de CDN.
 3. Abra index.html (de preferência por um servidor local, por exemplo Live Server).
 4. Não apague os dados do navegador: o save existente (chave "save_jogador1") é migrado automaticamente
@@ -122,7 +123,8 @@ Controles — teclado e mouse
   destino fica marcado com uma cruz de ouro no minimapa (na borda, se estiver fora do recorte) e com o
   quadrado de ouro no chão. Um clique novo troca a rota; andar com as teclas ou o joystick cancela. Sobre o
   mundo (médio, tela baixa e celular), o minimapa fica translúcido quando alguém passa por baixo dele, e
-  então o clique vai para o mundo.
+  então o clique vai para o mundo. Os botões + e − ao lado do minimapa (ou a roda do mouse sobre ele) trocam entre
+  3 níveis de zoom, e o botão do meio volta a centralizar no jogador.
 - Clique num inimigo (no mundo ou na lista Batalha): seleciona, vai até ele (até ficar ao lado, ou ao
   alcance do arco com o caminho livre) e ativa o autoataque a cada 2 segundos com o que está na mão da arma
   (arco com flechas ou funda: atira, se o alvo estiver no alcance com o caminho livre; espada ou mão vazia:
@@ -142,8 +144,8 @@ Controles — teclado e mouse
   pinte a cabeça, o tronco, as pernas e o detalhe do seu personagem (grátis, com a prévia de frente, de lado
   e de costas; as cores valem também por cima dos trajes). Vestir, montar, tirar e descer; a compra única aparece como "Em breve" até o meio de pagamento ser definido.
 - + e −, ou a roda do mouse sobre o mapa: aproximar ou afastar a câmera (a escolha fica salva neste
-  navegador). Sem ajuste, a câmera mostra cerca de 15 × 11 casas na tela deitada e 9 × 13 em pé, como no
-  Tibia, e cada pixel da arte ocupa um número inteiro de pixels da tela (nada borrado nem esticado). O mapa
+  navegador). Sem ajuste, a câmera mostra cerca de 15 × 11 casas na tela deitada e 9 × 13 em pé, como nos
+  MMORPGs 2D clássicos, e cada pixel da arte ocupa um número inteiro de pixels da tela (nada borrado nem esticado). O mapa
   desenha na resolução real da tela (celulares e telas com escala 125%, 150% ou 200% ficam nítidos).
 - Toda criatura na tela mostra o nome e a barra de vida, na cor da vida (verde, amarela, vermelha); o
   jogador tem a sua barra acima da cabeça.
@@ -196,11 +198,16 @@ Controles — toque (celular e tablet)
   nos outros, mostra a descrição.
 
 Interface e visual
-- Toda a arte (personagens, itens, ícones, cenário) é pixel art original gerada em código por
-  sprites.js; não há imagens externas nem emojis. Desde a versão 16 a arte é desenhada em 32 px por casa
-  (1 px de arte por px de mundo); personagens têm 3 vistas (de lado, de frente e de costas) e mostram a
-  arma (espada, arco ou funda na mão), o escudo, a armadura e as peças da cabeça, das pernas e dos pés. As regras de desenho e as paletas de cada região estão
-  em docs/GUIA-DE-ARTE.md. Os ícones da mochila, bolsa, equipamento, atalhos,
+- Toda a arte (personagens, itens, ícones, cenário) é pixel art original gerada em código (sprites.js é o
+  motor; os desenhos estão em arte/*.js e cenario.js); não há imagens externas nem emojis. Desde a versão 16
+  a arte é desenhada em 32 px por casa (1 px de arte por px de mundo), pixel a pixel: personagens de
+  48 × 64 px (mais altos que uma casa), criaturas de 40 a 64 px, árvores de até 3 casas e prédios com parede
+  de 2 casas. Personagens e criaturas têm 3 vistas (de lado, de frente e de costas) com 8 quadros cada
+  (parado, respirar, 4 fases do passo, antecipação e golpe); o jogador mostra a arma (espada, arco ou funda
+  na mão), o escudo, a armadura e as peças da cabeça, das pernas e dos pés. O movimento desliza de casa em
+  casa sem saltos, e o que é alto fica translúcido quando cobre alguém. As regras de desenho, as células, as
+  paletas de cada região e as capturas de conferência estão em docs/GUIA-DE-ARTE.md e docs/capturas/. Os
+  ícones da mochila, bolsa, equipamento, atalhos,
   loja e lista de batalha usam os mesmos desenhos do mundo.
 - Mundo no estilo dos MMORPGs clássicos em 2D (visto de cima, em casas, paleta curta, bordas nítidas): árvores
   maiores que a casa (a copa transborda para cima; o tronco fica na casa que bloqueia), arbustos e rochas
@@ -724,12 +731,16 @@ Para desenvolvedores
   a casa alcançada mais perto dele. A grade vem de Mundo.gradeDePassagem(p) (a regra de casaLivre montada de
   uma vez); as casas de transição só entram como destino. O mapa inteiro (160 × 120) leva poucos ms (~3 ms
   numa rota de 125 passos). Bloqueada no meio (uma criatura entrou), a rota refaz o A* até o mesmo destino.
-  NPCs, saques, pesca e a perseguição do alvo seguem com a busca em largura curta (calcularRota). O teste 75
+  NPCs, saques, pesca e a perseguição do alvo seguem com a busca em largura curta (calcularRota), em 8
+  direções sobre Mundo.casaLivre, sem atravessar casas de transição que não sejam o destino; a perseguição
+  refaz a rota a cada passo. O teste 75
   confere o caminho mais rápido contra uma busca completa, a casa mais perto quando o destino é bloqueado ou
   cercado, a grade de passagem, uma rota de ponta a ponta de Canaã andada com o comando mover, o clique no
   minimapa ligado à rota longa e os layouts padrão das janelas laterais (LAYOUT_PADRAO, em interface.js: toda
   janela numa coluna uma vez só; uma janela nova entra em JANELAS e em cada layout).
-- Divisão dos arquivos: sprites.js (window.Arte, toda a arte), game.js (cena Phaser e window.Jogo),
+- Divisão dos arquivos: sprites.js (window.Arte: motor da arte, tabelas e desenhos de reserva), arte/*.js
+  (os desenhos: criaturas, humanos e equipamento, montado, flora, terreno, efeitos, itens e ícones),
+  cenario.js (chão contínuo, prédios e muros), tools/capturar.js (capturas e medidas; não faz parte do jogo), game.js (cena Phaser e window.Jogo),
   interface.js (window.UI: painéis, modais, atalhos, toque; window.UI.abrirMural(npcId) abre o mural de
   um atalaia, ou a consulta com null; window.UI.abrirBestiario() abre o bestiário). Os nomes antigos continuam
   valendo: atualizarInterface(), mostrarMensagem(), abrirLoja(), abrirViagem(), abrirOracao(), abrirMural().
