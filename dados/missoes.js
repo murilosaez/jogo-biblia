@@ -18,9 +18,9 @@
 //
 // Tipos de objetivo:
 //   { tipo: "derrotar", criatura, quantidade?, aviso?, repetirAviso? } — abates da criatura;
-//   { tipo: "coletar", item, quantidade, origem: "mapa" | "saque", reaparecer? } — cada coletável
-//     do mapa ou saque é contado uma vez pelo seu id; reaparecer: os coletáveis do mapa voltam
-//     quando a etapa começa; saques de "saque" não expiram enquanto a etapa estiver aberta;
+//   { tipo: "coletar", item, quantidade, origem: "saque" } — cada item que cai de uma criatura (direto na
+//     mochila, ou no chão se não couber) conta uma vez; os que ficaram no chão não expiram enquanto a etapa
+//     estiver aberta. Nada brota no mapa: erva, odre e os materiais dos ofícios vêm das criaturas;
 //   { tipo: "entregar", item, quantidade } — exige os itens na mochila e os remove na entrega;
 //   { tipo: "falar", npc, aviso? } — conversar com outro NPC;
 //   { tipo: "chegar", area, x?, y?, raio?, aviso? } — entrar na área (ou chegar perto de x, y).
@@ -86,7 +86,7 @@ const DADOS_MISSOES = [
     proxima: "deserto",
     sinalAoIniciar: "missaoErvasIniciada",
     falas: {
-      inicio: "Há viajantes feridos na vila. Preciso de 3 ervas medicinais; colete três e volte.",
+      inicio: "Há viajantes feridos na vila. Preciso de 3 ervas medicinais: os chacais das colinas as carregam no pelo. Traga três.",
       concluida: "Obrigado por ajudar os viajantes. Você concluiu as missões de Canaã.",
       subiuNivel: " Você subiu para o nível {nivel}!",
     },
@@ -98,15 +98,15 @@ const DADOS_MISSOES = [
     etapas: [
       {
         objetivos: [
-          { tipo: "coletar", item: "erva", quantidade: 3, origem: "mapa", reaparecer: true },
+          { tipo: "coletar", item: "erva", quantidade: 3, origem: "saque" },
           { tipo: "entregar", item: "erva", quantidade: 3 },
         ],
         recompensa: { xp: 80, moedas: 0, itens: ["pocao", "pocao"] },
-        painel: { andamento: "Colete ervas medicinais: {coletados}/{total}.", retorno: "Leve as 3 ervas a Eliabe." },
+        painel: { andamento: "Ervas medicinais dos chacais: {coletados}/{total}.", retorno: "Leve as 3 ervas a Eliabe." },
         falas: {
           andamento: "Ainda faltam ervas. Você coletou {coletados}/{total} para esta missão.",
           faltamItens:
-            "Preciso que você traga as {total} ervas na mochila (você tem {naMochila}). As plantas brotam de novo em alguns segundos.",
+            "Preciso que você traga as {total} ervas na mochila (você tem {naMochila}). Os chacais voltam em alguns segundos.",
           mochilaCheia: "Sua mochila está cheia. Libere espaço para receber as poções.",
           concluir: "Que Deus o recompense! Receba 2 poções e 80 XP. Missão concluída!",
         },
@@ -121,7 +121,7 @@ const DADOS_MISSOES = [
     npc: "noemi1",
     sinalAoIniciar: "missaoDesertoIniciada",
     falas: {
-      inicio: "A caravana precisa de água. Encontre 3 odres espalhados pelo deserto e traga-os para mim.",
+      inicio: "A caravana precisa de água. Os abutres rasgaram a nossa carga e arrastaram os odres pelo deserto; o bando e as hienas pegaram outros. Recupere 3 e traga-os para mim.",
       concluida: "A caravana está segura graças a você. Que o Senhor guarde o seu caminho.",
       subiuNivel: " Nível {nivel}!",
     },
@@ -133,7 +133,7 @@ const DADOS_MISSOES = [
     etapas: [
       {
         objetivos: [
-          { tipo: "coletar", item: "odre_agua", quantidade: 3, origem: "mapa", reaparecer: true },
+          { tipo: "coletar", item: "odre_agua", quantidade: 3, origem: "saque" },
           { tipo: "entregar", item: "odre_agua", quantidade: 3 },
         ],
         recompensa: {
@@ -141,9 +141,9 @@ const DADOS_MISSOES = [
           moedas: 0,
           itens: ["pocao", "pocao", "armadura_couro", "arco_madeira", "flecha", "flecha", "flecha", "flecha", "flecha", "flecha", "flecha", "flecha"],
         },
-        painel: { andamento: "Etapa {etapa}/{etapas} · Encontre odres de água: {coletados}/{total}." },
+        painel: { andamento: "Etapa {etapa}/{etapas} · Recupere os odres (abutres e o bando): {coletados}/{total}." },
         falas: {
-          andamento: "Ainda faltam odres. Você encontrou {coletados}/{total}.",
+          andamento: "Ainda faltam odres. Você recuperou {coletados}/{total}. Cada abutre que você derruba larga um.",
           faltamItens: "Traga os {total} odres na mochila (você tem {naMochila}).",
           mochilaCheia: "Sua mochila está cheia. Libere espaço para receber poções, armadura, arco e flechas.",
           concluir:

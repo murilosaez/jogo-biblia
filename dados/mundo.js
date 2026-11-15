@@ -87,50 +87,8 @@ const pontosPesca = [
   { id: "pesca8", x: 146, y: 24 },
 ];
 
-// Ervas só existem em Canaã e odres só no Deserto.
-// Posições iniciais; depois de coletado, cada ponto brota de novo num lugar aleatório das zonas de
-// coleta da área (zonasColeta em dados/mapas.js).
-const ervas = [
-  { id: "erva1", x: 54, y: 12 },
-  { id: "erva2", x: 60, y: 19 },
-  { id: "erva3", x: 40, y: 82 },
-  { id: "erva4", x: 48, y: 88 },
-  { id: "erva5", x: 108, y: 55 },
-  { id: "erva6", x: 122, y: 94 },
-];
-const odres = [
-  { id: "odre1", x: 52, y: 72 },
-  { id: "odre2", x: 60, y: 80 },
-  { id: "odre3", x: 108, y: 46 },
-  { id: "odre4", x: 28, y: 94 },
-  { id: "odre5", x: 102, y: 18 },
-  { id: "odre6", x: 114, y: 52 },
-];
-
-// Pontos de extração dos ofícios (JGB-24): pise no ponto para colher o item (madeira, argila, minério ou
-// resina). Cada ponto fica sempre no mesmo lugar e brota de novo depois de REGRAS_OFICIOS.respawnExtracao.
-// O XP vai para o ofício que tem o item em OFICIOS[...].coleta (dados/oficios.js).
-const pontosExtracao = [
-  { id: "madeira_canaa1", area: "canaan", item: "madeira", x: 128, y: 37 },
-  { id: "madeira_canaa2", area: "canaan", item: "madeira", x: 105, y: 15 },
-  { id: "madeira_canaa3", area: "canaan", item: "madeira", x: 140, y: 33 },
-  { id: "madeira_canaa4", area: "canaan", item: "madeira", x: 106, y: 24 },
-  { id: "madeira_galileia1", area: "galileia", item: "madeira", x: 118, y: 98 },
-  { id: "madeira_galileia2", area: "galileia", item: "madeira", x: 142, y: 90 },
-  { id: "madeira_galileia3", area: "galileia", item: "madeira", x: 135, y: 100 },
-  { id: "argila1", area: "egito", item: "argila", x: 117, y: 11 },
-  { id: "argila2", area: "egito", item: "argila", x: 129, y: 7 },
-  { id: "argila3", area: "egito", item: "argila", x: 51, y: 11 },
-  { id: "argila4", area: "egito", item: "argila", x: 68, y: 13 },
-  { id: "resina1", area: "sinai", item: "resina", x: 61, y: 28 },
-  { id: "resina2", area: "sinai", item: "resina", x: 69, y: 22 },
-  { id: "resina3", area: "sinai", item: "resina", x: 57, y: 21 },
-  { id: "resina4", area: "sinai", item: "resina", x: 52, y: 29 },
-  { id: "minerio1", area: "sinai", item: "minerio_cobre", x: 148, y: 27 },
-  { id: "minerio2", area: "sinai", item: "minerio_cobre", x: 125, y: 39 },
-  { id: "minerio3", area: "sinai", item: "minerio_cobre", x: 102, y: 17 },
-  { id: "minerio4", area: "sinai", item: "minerio_cobre", x: 137, y: 35 },
-];
+// Erva medicinal, odre de água, madeira, argila, resina e minério não brotam no mapa: vêm das criaturas
+// (tabelas de saque em dados/criaturas.js).
 
 // Portais entre regiões (os de ida exigem o capítulo anterior concluído).
 const DADOS_PORTAIS = [
@@ -255,3 +213,13 @@ const REGRAS_VIGOR = {
     { id: "exausto", nome: "Exausto", desde: 0, xp: 0.5, texto: "metade do XP das criaturas" },
   ],
 };
+
+// Velocidade do personagem: casas por segundo andando reto. Começa em base no nível 1 e sobe porNivel a cada
+// nível, até maximo. O passo na diagonal (1,41 casa) demora fatorDiagonal × o passo reto.
+// Nível 1: 4 casas/s (250 ms por casa) · 25: 5 (200 ms) · 50: 6 (167 ms) · 88 em diante: 7,5 (133 ms).
+const REGRAS_VELOCIDADE = { base: 4, porNivel: 0.04, maximo: 7.5, fatorDiagonal: 1.3 };
+
+// Depósito (DP): um guarda do depósito em cada cidade (papel "deposito", dados/npcs.js). O conteúdo é um só
+// para o personagem: o que se guarda numa cidade se retira em qualquer outra. espacos: quantas unidades cabem
+// (cada flecha, erva ou espada conta 1); o peso não conta. Guardar e retirar só ao lado de um guarda.
+const REGRAS_DEPOSITO = { espacos: 2000 };

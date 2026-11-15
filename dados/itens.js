@@ -101,12 +101,13 @@ const ITENS = {
 // melhoria: pontos somados ao atributo principal do equipamento (dano da arma ou do arco, defesa do
 // escudo ou da armadura); atributos: quantos atributos aleatórios o equipamento ganha (raro ou
 // melhor); anuncio: título do aviso de destaque no Registro quando o saque cai (só épico e relíquia).
+// venda: quanto o valor de venda (VALORES_VENDA) do equipamento é multiplicado quando ele cai nesta raridade.
 const RARIDADES = {
-  comum: { nome: "Comum", cor: "#d8cbb0", brilho: 0, som: null, melhoria: 0, atributos: 0 },
-  incomum: { nome: "Incomum", cor: "#6fc25a", brilho: 1, som: "incomum", melhoria: 1, atributos: 0 },
-  raro: { nome: "Raro", cor: "#4f9be8", brilho: 2, som: "raro", melhoria: 1, atributos: 1 },
-  epico: { nome: "Épico", cor: "#b46be0", brilho: 3, som: "epico", melhoria: 2, atributos: 2, anuncio: "Saque épico!" },
-  reliquia: { nome: "Relíquia", cor: "#f0b43c", brilho: 4, som: "reliquia", melhoria: 3, atributos: 3, anuncio: "Saque de relíquia!" },
+  comum: { nome: "Comum", cor: "#d8cbb0", brilho: 0, som: null, melhoria: 0, atributos: 0, venda: 1 },
+  incomum: { nome: "Incomum", cor: "#6fc25a", brilho: 1, som: "incomum", melhoria: 1, atributos: 0, venda: 1.5 },
+  raro: { nome: "Raro", cor: "#4f9be8", brilho: 2, som: "raro", melhoria: 1, atributos: 1, venda: 2.5 },
+  epico: { nome: "Épico", cor: "#b46be0", brilho: 3, som: "epico", melhoria: 2, atributos: 2, anuncio: "Saque épico!", venda: 4 },
+  reliquia: { nome: "Relíquia", cor: "#f0b43c", brilho: 4, som: "reliquia", melhoria: 3, atributos: 3, anuncio: "Saque de relíquia!", venda: 7 },
 };
 
 // Atributos aleatórios dos equipamentos raros ou melhores. tipos: em quais equipamentos aparece;
@@ -144,7 +145,8 @@ const SORTEIO_RARIDADE = { comum: 600, incomum: 280, raro: 90, epico: 25, reliqu
 const CHANCES_SAQUE = { sempre: 1, comum: 0.25, incomum: 0.08, raro: 0.01, muito_raro: 0.001 };
 
 // Preço de compra nas lojas ("flechas" é um pacote de FLECHAS_POR_PACOTE). Os itens da troca de pontos
-// de tarefa (dados/tarefas.js) ficam fora desta lista e de VALORES_VENDA: pontos nunca viram moedas.
+// de tarefa (dados/tarefas.js) ficam fora desta lista; o escudo de ferro e a couraça, que também caem das
+// criaturas, os mercadores compram (VALORES_VENDA), mas por bem menos do que valem em pontos.
 const PRECOS_LOJA = { pocao: 12, pocao_fe: 18, flechas: 8, escudo_madeira: 35, armadura_couro: 65, arco_madeira: 80, funda: 60,
   // Equipamento do corpo (boneco).
   sandalias_couro: 12, turbante_linho: 20, saiote_couro: 30, colar_contas: 40, capacete_couro: 45, botas_viagem: 50,
@@ -153,7 +155,7 @@ const FLECHAS_POR_PACOTE = 5;
 // Quantidade máxima numa compra só (unidades, ou lotes de flechas): o seletor da loja vai de 1 até ela.
 const QUANTIDADE_MAXIMA_COMPRA = 100;
 // O que cada mercador (NPC com papel "loja", dados/npcs.js) vende, na ordem da lista; o preço é o de
-// PRECOS_LOJA. Todo mercador compra todos os itens de VALORES_VENDA.
+// PRECOS_LOJA. Todo mercador compra todos os itens (VALORES_VENDA tem um valor para cada item de ITENS).
 const LOJAS = {
   mercador_canaa: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "funda", "sandalias_couro", "turbante_linho"],
   mercador1: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira", "turbante_linho", "sandalias_couro", "capacete_couro"],
@@ -162,7 +164,37 @@ const LOJAS = {
   mercador_sinai: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira", "capacete_couro", "botas_viagem", "grevas_bronze"],
   mercador_galileia: ["pocao", "pocao_fe", "flechas", "escudo_madeira", "armadura_couro", "arco_madeira", "botas_viagem", "elmo_bronze", "anel_selo_bronze"],
 };
+// Valor de venda de cada item. Sempre abaixo do preço da loja (comprar e revender nunca dá lucro); o
+// equipamento que cai acima de comum vale mais (RARIDADES[...].venda).
 const VALORES_VENDA = {
+  // Provisões (a flecha é vendida por unidade).
+  pocao: 8,
+  pocao_fe: 10,
+  flecha: 1,
+  // Armas, escudos e armaduras.
+  espada_madeira: 3,
+  espada_ferro: 30,
+  espada_temperada: 75,
+  escudo_madeira: 14,
+  escudo_bronze: 40,
+  escudo_ferro: 60,
+  tunica_pano: 40,
+  armadura_couro: 46,
+  couraca_escamas: 80,
+  arco_madeira: 32,
+  arco_composto: 70,
+  funda: 24,
+  // Equipamento do corpo (boneco).
+  turbante_linho: 8,
+  capacete_couro: 18,
+  elmo_bronze: 52,
+  colar_contas: 16,
+  saiote_couro: 12,
+  grevas_bronze: 44,
+  sandalias_couro: 5,
+  botas_viagem: 20,
+  anel_selo_bronze: 36,
+  // Recursos.
   pele_lobo: 5,
   erva: 2,
   odre_agua: 3,

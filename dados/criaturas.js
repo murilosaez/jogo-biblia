@@ -15,7 +15,8 @@
 // sorteada à parte: chance é um número de 0 a 1 ou um nome de CHANCES_SAQUE (dados/itens.js): "sempre" (100%),
 // "comum" (25%), "incomum" (8%), "raro" (1%) e "muito_raro" (0,1%). Equipamento sem raridade fixa sorteia a
 // raridade por SORTEIO_RARIDADE; raridadeMinima corta as raridades abaixo dela. Itens que uma missão pede
-// (pele, veneno, insígnia) ficam em "sempre", para a campanha não depender de sorte.
+// (pele, veneno, insígnia, erva, odre) ficam em "sempre" em alguma criatura, para a campanha não depender de
+// sorte. Erva, odre, madeira, argila, resina e minério só vêm das criaturas (não brotam no mapa).
 // nivel: nível da criatura (nível em que o jogador costuma chegar à região). Quem está mais de 5 níveis
 // acima rende menos XP (ver xpDoAbate em logica.js).
 // grupo: { quantidade, raio }: quantas criaturas iguais existem na área e o raio (em casas) em volta de x, y
@@ -245,6 +246,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 4,
       itens: [
+        { item: "erva", chance: "comum" },
         { item: "pele_lobo", chance: "sempre" },
         { item: "presa_lobo", chance: "comum" },
         { item: "pocao", chance: 0.06 },
@@ -306,6 +308,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 15,
       itens: [
+        { item: "odre_agua", chance: "comum" },
         { item: "insignia_bandido", chance: "sempre" },
         { item: "pocao", chance: "comum" },
         { item: "espada_ferro", chance: 0.05, raridadeMinima: "incomum" },
@@ -335,6 +338,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 18,
       itens: [
+        { item: "argila", chance: "incomum" },
         { item: "linho_egipcio", chance: "comum" },
         { item: "pocao", chance: 0.08 },
         { item: "escudo_bronze", chance: 0.03 },
@@ -393,6 +397,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 26,
       itens: [
+        { item: "minerio_cobre", chance: "comum" },
         { item: "bracelete_cobre", chance: "comum" },
         { item: "pocao", chance: 0.08 },
         { item: "arco_madeira", chance: 0.03 },
@@ -423,6 +428,8 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 30,
       itens: [
+        { item: "madeira", chance: "comum" },
+        { item: "erva", chance: "incomum" },
         { item: "pocao", chance: "comum" },
         { item: "pocao_fe", chance: 0.08 },
         { item: "espada_temperada", chance: 0.03 },
@@ -454,6 +461,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 3,
       itens: [
+        { item: "erva", chance: "sempre" },
         { item: "pele_lobo", chance: "comum" },
         { item: "presa_lobo", chance: 0.1 },
         { item: "pocao", chance: 0.05 },
@@ -483,6 +491,8 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 4,
       itens: [
+        { item: "madeira", chance: "comum" },
+        { item: "erva", chance: "incomum" },
         { item: "couro_grosso", chance: "comum" },
         { item: "pocao", chance: 0.06 },
         { item: "tunica_pano", chance: 0.03 },
@@ -513,6 +523,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 12,
       itens: [
+        { item: "madeira", chance: "comum" },
         { item: "couro_grosso", chance: "sempre" },
         { item: "pocao", chance: 0.15 },
         { item: "escudo_madeira", chance: 0.05 },
@@ -543,6 +554,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 16,
       itens: [
+        { item: "madeira", chance: "incomum" },
         { item: "couro_grosso", chance: "sempre" },
         { item: "presa_lobo", chance: "comum" },
         { item: "pocao", chance: 0.15 },
@@ -605,6 +617,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 6,
       itens: [
+        { item: "odre_agua", chance: "comum" },
         { item: "couro_grosso", chance: "comum" },
         { item: "pocao", chance: 0.06 },
         { item: "escudo_madeira", chance: 0.03 },
@@ -636,6 +649,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 5,
       itens: [
+        { item: "odre_agua", chance: "sempre" },
         { item: "pena_ave", chance: "comum" },
         { item: "pocao", chance: 0.05 },
         { item: "arco_madeira", chance: 0.03 },
@@ -697,6 +711,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 12,
       itens: [
+        { item: "odre_agua", chance: "comum" },
         { item: "insignia_bandido", chance: "comum" },
         { item: "pocao", chance: 0.08 },
         { item: "arco_madeira", chance: 0.04 },
@@ -728,6 +743,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 20,
       itens: [
+        { item: "argila", chance: "comum" },
         { item: "couro_grosso", chance: "sempre" },
         { item: "pocao", chance: 0.15 },
         { item: "escudo_bronze", chance: 0.05 },
@@ -820,6 +836,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 4,
       itens: [
+        { item: "argila", chance: "comum" },
         { item: "carapaca", chance: "comum" },
         { item: "pocao", chance: 0.06 },
         { item: "escudo_madeira", chance: 0.03 },
@@ -970,6 +987,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 6,
       itens: [
+        { item: "resina", chance: "comum" },
         { item: "couro_grosso", chance: "comum" },
         { item: "pocao", chance: 0.06 },
         { item: "armadura_couro", chance: 0.03 },
@@ -1002,6 +1020,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 6,
       itens: [
+        { item: "resina", chance: "comum" },
         { item: "pena_ave", chance: "comum" },
         { item: "pocao", chance: 0.06 },
         { item: "arco_madeira", chance: 0.04 },
@@ -1034,6 +1053,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 24,
       itens: [
+        { item: "minerio_cobre", chance: "comum" },
         { item: "bracelete_cobre", chance: "comum" },
         { item: "pocao", chance: 0.08 },
         { item: "escudo_bronze", chance: 0.04 },
@@ -1064,6 +1084,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 28,
       itens: [
+        { item: "resina", chance: "incomum" },
         { item: "couro_grosso", chance: "sempre" },
         { item: "pocao", chance: 0.15 },
         { item: "espada_temperada", chance: 0.05 },
@@ -1095,6 +1116,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 3,
       itens: [
+        { item: "madeira", chance: "comum" },
         { item: "carapaca", chance: "comum" },
         { item: "pocao_fe", chance: 0.08 },
         { item: "tunica_pano", chance: 0.04 },
@@ -1125,6 +1147,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 5,
       itens: [
+        { item: "madeira", chance: "comum" },
         { item: "pena_ave", chance: "comum" },
         { item: "pocao", chance: 0.06 },
         { item: "arco_composto", chance: 0.03 },
@@ -1155,6 +1178,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 42,
       itens: [
+        { item: "madeira", chance: "incomum" },
         { item: "ponta_lanca", chance: "sempre" },
         { item: "pocao", chance: 0.2 },
         { item: "espada_temperada", chance: 0.05 },
@@ -1188,6 +1212,7 @@ const DADOS_CRIATURAS = [
     saque: {
       moedas: 10,
       itens: [
+        { item: "odre_agua", chance: "comum" },
         { item: "erva", chance: "comum" },
         { item: "pocao", chance: 0.12 },
         { item: "tunica_pano", chance: 0.03 },

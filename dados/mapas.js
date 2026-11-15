@@ -63,7 +63,6 @@ const DADOS_ESTRUTURAS = {
 //   densidade (chance de uma moita a cada 44 px, modulada por um ruído largo), moitas (tipo: peso — capim,
 //   flor, arbusto, pedra, liquen, seixos, concha, caco, broto) e beira (o que nasce na beira da água: junco,
 //   papiro ou alga, com a densidade).
-// zonasColeta: onde ervas (Canaã) e odres (Deserto) brotam de novo depois de coletados (x, y, raio).
 const DADOS_MAPAS = {
   canaan: {
     terreno: { escala: 7, limiar: 0.6, densidade: 0.45, salpico: 0.012, semente: 11 },
@@ -93,6 +92,7 @@ const DADOS_MAPAS = {
       { tipo: "tenda", x: 12, y: 15, variante: 1, npc: "guia_canaa" },
       { tipo: "banca", x: 17, y: 15, variante: 1, reservada: "ferreiro" },
       { tipo: "tenda", x: 34, y: 15, variante: 2, npc: "atalaia_canaa" },
+      { tipo: "banca", x: 29, y: 18, variante: 0, npc: "deposito_canaa" },
       { tipo: "poco", x: 21, y: 24 },
       { tipo: "casa", x: 10, y: 24, variante: 1 },
       { tipo: "casa", x: 17, y: 27, variante: 1 },
@@ -108,12 +108,6 @@ const DADOS_MAPAS = {
     ],
     decoracoes: [{ chave: "dc_fogo_apagado", x: 31, y: 23 }],
     vegetacao: { densidade: 0.5, moitas: { capim: 5, flor: 3, arbusto: 2, pedra: 1, seixos: 1 }, beira: { junco: 0.7 } },
-    zonasColeta: [
-      { x: 56, y: 15, raio: 9 },
-      { x: 44, y: 84, raio: 12 },
-      { x: 110, y: 58, raio: 10 },
-      { x: 124, y: 96, raio: 10 },
-    ],
   },
   deserto: {
     terreno: { escala: 6, limiar: 0.62, densidade: 0.35, salpico: 0.018, semente: 23 },
@@ -142,6 +136,7 @@ const DADOS_MAPAS = {
       { tipo: "loja", x: 140, y: 16, variante: 4, npc: "mercador1", placa: "mercador" },
       { tipo: "tenda", x: 127, y: 18, variante: 0, npc: "guia_deserto" },
       { tipo: "tenda", x: 138, y: 22, variante: 2, npc: "atalaia_deserto" },
+      { tipo: "banca", x: 149, y: 16, variante: 0, npc: "deposito_deserto" },
       { tipo: "banca", x: 146, y: 22, variante: 1, reservada: "ferreiro" },
       { tipo: "tenda", x: 120, y: 25, variante: 3 },
       { tipo: "tenda", x: 125, y: 27, variante: 0 },
@@ -155,12 +150,6 @@ const DADOS_MAPAS = {
     ],
     decoracoes: [{ chave: "dc_tapete", x: 136, y: 17 }],
     vegetacao: { densidade: 0.3, moitas: { capim: 3, pedra: 3, seixos: 3, arbusto: 1 }, beira: { junco: 0.6 } },
-    zonasColeta: [
-      { x: 56, y: 76, raio: 12 },
-      { x: 110, y: 48, raio: 12 },
-      { x: 30, y: 96, raio: 10 },
-      { x: 100, y: 20, raio: 9 },
-    ],
   },
   mar: {
     terreno: { escala: 9, limiar: 0.72, densidade: 0.18, salpico: 0.004, semente: 37 },
@@ -179,7 +168,6 @@ const DADOS_MAPAS = {
     estruturas: [],
     marcos: [],
     decoracoes: [],
-    zonasColeta: [],
   },
   egito: {
     terreno: { escala: 7, limiar: 0.62, densidade: 0.4, salpico: 0.012, semente: 41 },
@@ -210,6 +198,7 @@ const DADOS_MAPAS = {
       { tipo: "casa", x: 26, y: 87, variante: 3 },
       { tipo: "casa", x: 32, y: 87, variante: 3 },
       { tipo: "tenda", x: 31, y: 97, variante: 0, npc: "atalaia_egito" },
+      { tipo: "banca", x: 26, y: 99, variante: 0, npc: "deposito_egito" },
       { tipo: "poco", x: 20, y: 101 },
       { tipo: "casa", x: 9, y: 101, variante: 3 },
       { tipo: "casa", x: 31, y: 101, variante: 3 },
@@ -223,7 +212,6 @@ const DADOS_MAPAS = {
     ],
     decoracoes: [{ chave: "dc_esteira", x: 22, y: 98 }],
     vegetacao: { densidade: 0.4, moitas: { broto: 3, capim: 2, caco: 1, seixos: 1 }, beira: { papiro: 0.8 } },
-    zonasColeta: [],
   },
   marVermelho: {
     terreno: { escala: 7, limiar: 0.62, densidade: 0.4, salpico: 0.012, semente: 53 },
@@ -251,6 +239,7 @@ const DADOS_MAPAS = {
       { tipo: "tenda", x: 27, y: 88, variante: 1 },
       { tipo: "tenda", x: 32, y: 88, variante: 3 },
       { tipo: "tenda", x: 29, y: 95, variante: 2, npc: "atalaia_mar" },
+      { tipo: "banca", x: 18, y: 92, variante: 0, npc: "deposito_mar" },
       { tipo: "tenda", x: 10, y: 103, variante: 0 },
       { tipo: "tenda", x: 15, y: 103, variante: 3 },
       { tipo: "tenda", x: 30, y: 104, variante: 1 },
@@ -262,7 +251,6 @@ const DADOS_MAPAS = {
     ],
     decoracoes: [],
     vegetacao: { densidade: 0.32, moitas: { concha: 3, seixos: 2, pedra: 2, capim: 1 }, beira: { alga: 0.7 } },
-    zonasColeta: [],
   },
   sinai: {
     terreno: { escala: 6, limiar: 0.6, densidade: 0.45, salpico: 0.016, semente: 67 },
@@ -288,6 +276,7 @@ const DADOS_MAPAS = {
       { tipo: "tenda", x: 27, y: 88, variante: 0 },
       { tipo: "tenda", x: 32, y: 88, variante: 3 },
       { tipo: "tenda", x: 29, y: 95, variante: 2, npc: "atalaia_sinai" },
+      { tipo: "banca", x: 19, y: 92, variante: 0, npc: "deposito_sinai" },
       { tipo: "tenda", x: 10, y: 103, variante: 0 },
       { tipo: "tenda", x: 15, y: 103, variante: 3 },
       { tipo: "tenda", x: 30, y: 104, variante: 0 },
@@ -301,7 +290,6 @@ const DADOS_MAPAS = {
     ],
     decoracoes: [],
     vegetacao: { densidade: 0.4, moitas: { pedra: 3, seixos: 3, capim: 2, liquen: 2, arbusto: 1 }, beira: {} },
-    zonasColeta: [],
   },
   galileia: {
     terreno: { escala: 7, limiar: 0.62, densidade: 0.4, salpico: 0.012, semente: 79 },
@@ -332,6 +320,7 @@ const DADOS_MAPAS = {
       { tipo: "casa", x: 30, y: 30, variante: 2 },
       { tipo: "tenda", x: 36, y: 38, variante: 0 },
       { tipo: "tenda", x: 13, y: 38, variante: 2, npc: "atalaia_galileia" },
+      { tipo: "banca", x: 40, y: 25, variante: 0, npc: "deposito_galileia" },
       { tipo: "poco", x: 27, y: 36 },
       { tipo: "casa", x: 7, y: 42, variante: 2 },
       { tipo: "casa", x: 15, y: 42, variante: 2 },
@@ -354,6 +343,5 @@ const DADOS_MAPAS = {
       { chave: "dc_esteira", x: 34, y: 29 },
     ],
     vegetacao: { densidade: 0.55, moitas: { flor: 4, capim: 4, arbusto: 2, seixos: 1 }, beira: { junco: 0.8 } },
-    zonasColeta: [],
   },
 };

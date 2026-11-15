@@ -6,25 +6,23 @@
 // Regras.
 //   nivelMaximo: nível máximo de cada ofício;
 //   xp: XP para subir do nível n ao n + 1 = round(base × n ^ expoente) (do 1 ao 2: 10; do 10 ao 11: 251);
-//   coletaExtra: chance de colher 1 unidade a mais (pesca e pontos de extração) = porNivel × (nível − 1),
+//   coletaExtra: chance de colher 1 unidade a mais (pesca e material que cai das criaturas) = porNivel × (nível − 1),
 //     até maximo;
 //   peixeGrande: a partir de nivel, cada pesca tem chance (+ porNivel por nível acima) de trazer um peixe
 //     grande em vez do peixe comum, até maximo;
 //   qualidade: ao fabricar um equipamento (arma, arco, escudo ou armadura), chance de sair incomum ou melhor =
 //     porNivelAcima × (nível do ofício − nível da receita), até maximo; a raridade sai do sorteio normal a
 //     partir de "incomum";
-//   respawnExtracao: ms até um ponto de extração (madeira, argila, minério, resina) brotar de novo.
 const REGRAS_OFICIOS = {
   nivelMaximo: 30,
   xp: { base: 10, expoente: 1.4 },
   coletaExtra: { porNivel: 0.02, maximo: 0.4 },
   peixeGrande: { nivel: 5, chance: 0.04, porNivel: 0.01, maximo: 0.25 },
   qualidade: { porNivelAcima: 0.03, maximo: 0.3 },
-  respawnExtracao: 45000,
 };
 
-// Ofícios, na ordem da janela. coleta: item colhido → XP que rende a este ofício (pesca, ervas e os pontos
-// de extração de dados/mundo.js); onde: de onde vêm os materiais (texto da janela); icone: glifo "of_<icone>".
+// Ofícios, na ordem da janela. coleta: item colhido → XP que rende a este ofício (pesca e o material que cai
+// das criaturas direto na mochila); onde: de onde vêm os materiais (texto da janela); icone: glifo "of_<icone>".
 const OFICIOS = {
   pescador: {
     nome: "Pescador",
@@ -36,21 +34,21 @@ const OFICIOS = {
   ferreiro: {
     nome: "Ferreiro",
     descricao: "Funde o cobre e forja escudos e espadas (Gn 4:22).",
-    onde: "Minério de cobre: nas penhas do Sinai. Pontas de lança e couro: das criaturas.",
+    onde: "Minério de cobre: guardiões e fundibulários do Sinai. Pontas de lança e couro: das criaturas.",
     icone: "ferreiro",
     coleta: { minerio_cobre: 5 },
   },
   carpinteiro: {
     nome: "Carpinteiro",
     descricao: "Trabalha a madeira: flechas, escudos e arcos (Mc 6:3).",
-    onde: "Madeira: nos olivais de Canaã e nas figueiras da Galileia. Penas, peles e carapaças: das criaturas.",
+    onde: "Madeira: javalis e ursos de Canaã, vespas e corvos da Galileia. Penas, peles e carapaças: das criaturas.",
     icone: "carpinteiro",
     coleta: { madeira: 4 },
   },
   oleiro: {
     nome: "Oleiro",
     descricao: "Molda o barro na roda: frascos, jarros, lamparinas e ânforas (Jr 18:3-4).",
-    onde: "Argila: nas margens do Nilo, no Egito.",
+    onde: "Argila: rãs e crocodilos do Nilo, no Egito.",
     icone: "oleiro",
     coleta: { argila: 4 },
   },
@@ -64,7 +62,7 @@ const OFICIOS = {
   perfumista: {
     nome: "Perfumista",
     descricao: "Mistura ervas e resinas: poções, incenso e o óleo da unção (Êx 30:25).",
-    onde: "Ervas: em Canaã. Resina: nas acácias do Sinai. Odres: no Deserto.",
+    onde: "Ervas: chacais e lobos de Canaã. Resina: cabras e águias do Sinai. Odres: abutres, hienas e o bando do Deserto.",
     icone: "perfumista",
     coleta: { erva: 2, resina: 4 },
   },
