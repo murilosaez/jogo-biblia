@@ -9,6 +9,16 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const assert = require("assert");
+// A suíte inteira chega perto de 2 GB de memória viva (simulações de equilíbrio somadas aos contextos de
+// arte) e o limite padrão do V8 nesta máquina é ~2,2 GB: sem folga, a coleta falhava de vez em quando.
+// Por isso o arquivo se reexecuta uma vez com 4 GB de pilha de objetos (os mesmos testes, mesma saída).
+if (require.main === module && !process.env.JORNADA_TESTE_MEMORIA && require("v8").getHeapStatistics().heap_size_limit < 3.5e9) {
+  const r = require("child_process").spawnSync(process.execPath, ["--max-old-space-size=4096", ...process.argv.slice(1)], {
+    stdio: "inherit",
+    env: Object.assign({}, process.env, { JORNADA_TESTE_MEMORIA: "1" }),
+  });
+  process.exit(r.status === null ? 1 : r.status);
+}
 
 const RAIZ = path.resolve(__dirname, "..");
 const ARQUIVOS_DADOS = [

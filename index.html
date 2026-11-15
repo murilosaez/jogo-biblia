@@ -44,6 +44,8 @@
 html,body{width:100%;height:100%;margin:0;overflow:hidden}
 body{background:var(--couro-900) var(--tex-couro);color:var(--texto);font:500 var(--fs-14)/1.4 var(--f-texto);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;touch-action:manipulation}
 img.px,.px{image-rendering:pixelated;image-rendering:crisp-edges}
+/* glifo maior que o lugar (hb_ de 32 px num botão de 16): suave só no cliente largo; ver interface.js */
+img.suave{image-rendering:pixelated;image-rendering:crisp-edges}
 img.g16{width:16px;height:16px;flex:0 0 16px}
 img.g24{width:24px;height:24px;flex:0 0 24px}
 img.g32{width:32px;height:32px;flex:0 0 32px}
@@ -214,7 +216,8 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .boneco-figura,.equip.e-armadura{grid-area:figura}
 .boneco-figura{position:relative;display:flex;justify-content:center;align-items:flex-start;border:1px solid #0007;box-shadow:inset 0 0 14px #000a;pointer-events:none;
  background:radial-gradient(ellipse 34% 4% at 50% 76%,#000b,transparent 75%),radial-gradient(ellipse 60% 48% at 50% 42%,#7a4a3040,transparent 72%),#0003}
-.boneco-figura img{flex:none;width:120px;height:144px;margin-top:-10px} /* retrato inteiro em escala 6 (3 px por pixel de arte) */
+.boneco-figura{overflow:hidden}
+.boneco-figura img{flex:none;margin-top:-4px} /* corpo inteiro, 2 px de tela por px de arte (o tamanho vem na imagem) */
 /* a armadura fica por cima do peito da figura; o rótulo, abaixo dos pés */
 .equip.e-armadura{z-index:1;align-self:stretch;justify-content:flex-start;padding-top:49px;gap:47px;background:none;border:0}
 .equip.e-armadura .slot{box-shadow:inset 2px 2px 0 #0008,0 0 0 2px #120a0699}
@@ -222,7 +225,7 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .equip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:4px 0 3px;border:solid transparent;border-width:2px 0;background:#0003;cursor:pointer;color:var(--texto);text-align:center}
 .equip .slot{flex:0 0 auto;width:44px;height:44px}
 .equip.cheio .slot{border-color:var(--bronze-500)}
-.equip .slot img.silhueta{opacity:.35}
+.equip .slot img.silhueta{opacity:.2}
 .equip-txt{min-width:0;max-width:100%;display:flex;flex-direction:column;gap:2px}
 /* "ARMADURA" é o rótulo mais longo: sem espaçamento extra cabe na célula; a
    reticência só aparece com a fonte de reserva (sem internet) */
@@ -242,7 +245,7 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 .linha-inimigo{display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 8px 4px 5px;border:0;border-left:3px solid transparent;border-bottom:1px solid #0005;background:none;color:var(--texto);text-align:left;width:100%;font:inherit;cursor:pointer}
 .linha-inimigo:hover{background:#ffe9a80d}
 .linha-inimigo.selecionada{border-left-color:var(--hostil);background:var(--couro-500)}
-.linha-inimigo .mini{width:32px;height:28px;display:grid;place-items:end center;flex:0 0 32px}
+.linha-inimigo .mini{width:32px;height:28px;display:flex;justify-content:flex-end;align-items:flex-end;overflow:hidden;flex:0 0 32px}
 .linha-inimigo .mini img{max-width:32px;max-height:28px}
 .linha-inimigo .nome{flex:1;min-width:0;display:flex;align-items:center;gap:4px;font:700 var(--fs-14)/1.15 var(--f-texto);white-space:nowrap;overflow:hidden}
 /* só o texto abrevia (…); estrela de chefe, gota e glifo de caçada ficam sempre inteiros */
@@ -333,7 +336,7 @@ body.console-sobre #dpad,body.console-sobre #acoes{bottom:calc(var(--console-sob
 .quadro-alvo{display:flex;align-items:center;gap:8px;min-width:0;padding:2px 8px 2px 4px;border:2px solid transparent}
 .quadro-alvo.ativo{border-color:#4a1416;background:#1c121099}
 .quadro-alvo:not(.ativo){visibility:hidden}
-.quadro-alvo .mini{width:28px;height:24px;display:grid;place-items:end center;overflow:hidden}
+.quadro-alvo .mini{width:28px;height:24px;display:flex;justify-content:flex-end;align-items:flex-end;overflow:hidden}
 .quadro-alvo .mini img{max-width:28px;max-height:24px}
 .quadro-alvo .alvo-info{display:flex;flex-direction:column;gap:3px;min-width:0}
 .quadro-alvo strong{font:700 var(--fs-13)/1 var(--f-ui);color:var(--hostil);text-shadow:1px 1px 0 #120a06;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
@@ -458,9 +461,10 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .item-loja strong{display:block;font:800 15px/1.15 var(--f-texto)}
 .item-loja span{font:500 var(--fs-14)/1.2 var(--f-texto);color:var(--tinta-suave)}
 .item-loja .btn{min-width:84px}
-.item-loja.cosmetico{grid-template-columns:56px minmax(0,1fr) auto}
-.item-loja.cosmetico .icone{width:56px;height:60px}
-.item-loja.cosmetico .icone img{width:auto;height:auto;max-width:52px;max-height:56px}
+/* prévia em 1 px de tela por px de arte: o traje (48 × 64) e a montaria (até 64 × 64) cabem inteiros */
+.item-loja.cosmetico{grid-template-columns:68px minmax(0,1fr) auto}
+.item-loja.cosmetico .icone{width:68px;height:68px;overflow:hidden}
+.item-loja.cosmetico .icone img{width:auto;height:auto;max-width:none;max-height:none}
 .item-loja.cosmetico .preco{font-style:italic}
 .item-loja.cosmetico > span:nth-child(2) > span{display:block}
 .item-loja.cosmetico.em-uso{border-color:var(--ouro-500,#e8b94a);box-shadow:inset 0 0 0 1px #e8b94a}
@@ -468,7 +472,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .cores-visual{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--e-4);align-items:start}
 .previa-cores{display:flex;flex-direction:column;gap:6px;padding:8px;border:2px solid var(--bronze-700);background:radial-gradient(circle at 40% 30%,#8fa34e,#5d7234)}
 .previa-cores figure{margin:0;display:grid;justify-items:center;gap:2px}
-.previa-cores img{width:120px;height:144px;image-rendering:pixelated}
+.previa-cores img{width:auto;height:auto;image-rendering:pixelated}
 .previa-cores figcaption{font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto);text-shadow:var(--contorno)}
 .partes-cores{display:flex;flex-direction:column;gap:8px;min-width:0}
 .parte-cor{margin:0;padding:4px 8px 8px;border:1px solid var(--perg-400);background:#fff2}
@@ -481,7 +485,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .amostra-cor:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
 .amostra-cor[aria-pressed="true"]{outline:3px solid var(--tinta);outline-offset:2px;box-shadow:inset 0 0 0 2px var(--ouro-300)}
 .partes-cores > .btn{align-self:flex-start}
-@media (max-width:760px){ .cores-visual{grid-template-columns:1fr} .previa-cores{flex-direction:row;justify-content:center} .previa-cores img{width:80px;height:96px} .amostra-cor{min-width:32px} .amostras{grid-template-columns:repeat(auto-fill,minmax(32px,1fr))} }
+@media (max-width:760px){ .cores-visual{grid-template-columns:1fr} .previa-cores{flex-direction:row;justify-content:center} .amostra-cor{min-width:32px} .amostras{grid-template-columns:repeat(auto-fill,minmax(32px,1fr))} }
 /* passagem do barco: bilhete com preço, saldo e o que sobra */
 .bilhete{margin:0 0 12px;border:2px solid var(--tinta);background:#fff8e6;box-shadow:inset 0 0 0 2px #e6cf9c}
 .bilhete-linha{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 12px;font:600 var(--fs-16)/1.2 var(--f-ui);color:var(--tinta)}
@@ -498,6 +502,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 
 /* mural de caçadas (cartões no padrão das linhas da loja) */
 .item-loja.cacada{grid-template-columns:40px minmax(0,1fr) auto;align-items:start;padding:8px 6px}
+.item-loja.cacada .icone,.especie .icone{display:flex;justify-content:flex-end;align-items:center;overflow:hidden}
 .item-loja.cacada .icone img{width:auto;height:auto;max-width:34px;max-height:32px}
 .cacada-nome{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .item-loja .cacada-nome strong{display:inline}
@@ -816,7 +821,7 @@ body.dialogo-aberto #toque{visibility:hidden}
  body.folha-aberta #avisos.sem-espaco{visibility:hidden}
  body.folha-aberta #avisos .aviso:not(:last-child){display:none}
  #dialogo{left:8px;right:8px;bottom:8px;max-height:46%}
- #dialogo .retrato{width:52px;height:48px}
+ #dialogo .retrato{width:56px;height:56px;place-items:center}
  .dlg-dica{display:none}
  /* rodapé: atalhos + abas */
  #rodape{padding-bottom:env(safe-area-inset-bottom)}
@@ -874,7 +879,7 @@ body.toque-forcado #dpad{display:block}
    faixa de ação e console presos embaixo do mundo, sem rodapé. O celular (≤760 px) não passa por aqui:
    o que é novo nasce oculto e só aparece dentro deste bloco.
    ====================================================================== */
-#faixaAcao,.jan-btns,.col-botoes,.mapa-ctl,.atr-alternar{display:none}
+#faixaAcao,.jan-btns,.col-botoes,.mapa-ctl,.atr-alternar,.jan-alca,.jan-marca,.mapa-nivel,.equip-placas,.equip-val{display:none}
 #folha #quadroAlvo{display:none}
 @media (min-width:761px){
  :root{--rodape:0px;--slot-atalho:40px;--col:248px}
@@ -908,6 +913,7 @@ body.toque-forcado #dpad{display:block}
  #faixaAcao .barra-hab[hidden]{display:none}
  #faixaAcao .hab,#faixaAcao .atalho{border-width:1px;border-color:var(--bronze-700);box-shadow:inset 1px 1px 0 #000a,inset -1px -1px 0 #ffe9a814}
  #faixaAcao .hab:hover,#faixaAcao .atalho:hover{border-color:var(--ouro-300)}
+ #faixaAcao .hab img{width:32px;height:32px}
  #faixaAcao .tecla-n{left:0;top:0;min-width:13px;height:13px;font-size:11px;border-width:0 1px 1px 0}
  #faixaAcao .atalho .qtd{right:2px;font-size:var(--fs-13)}
  /* console: 132 px por padrão (112–168 pela alça); recolhido, só a barra (30 px) */
@@ -927,13 +933,20 @@ body.toque-forcado #dpad{display:block}
  #mundo .console.sobre .console-lista{bottom:calc(100% + 48px);height:calc(var(--altura-console) - 30px)}
  #mundo .console.sobre .console-alca{top:calc(-24px - var(--altura-console))}
 
+ #dialogo .retrato{width:78px;height:78px;place-items:center}
+
  /* ----- coluna de janelinhas ----- */
  #colDir{gap:4px;padding-right:0}
  /* faixa de botões: um por janela, para fechar e reabrir */
  .col-botoes{position:sticky;top:0;z-index:3;flex:0 0 auto;display:flex;gap:1px;padding:2px;border:1px solid #120a06;background:#120a06;box-shadow:0 2px 0 #0008}
  .col-botoes button{flex:1 1 0;min-width:0;height:22px;display:grid;place-items:center;padding:0;border:1px solid var(--bronze-700);border-radius:0;
   background:linear-gradient(var(--couro-700),var(--couro-800));box-shadow:inset 0 1px 0 #ffe9a81f}
- .col-botoes button img{width:16px;height:16px;opacity:.45;filter:grayscale(.6)}
+ .col-botoes button img{opacity:.45;filter:grayscale(.6)}
+ /* disposição padrão: uma seta em volta, desenhada em px */
+ .col-botoes .col-padrao{flex:0 0 20px;position:relative}
+ .col-botoes .col-padrao::before{content:"";--q:linear-gradient(var(--texto-2),var(--texto-2));width:10px;height:10px;
+  background:var(--q) 2px 0/6px 2px no-repeat,var(--q) 0 2px/2px 6px no-repeat,var(--q) 2px 8px/6px 2px no-repeat,var(--q) 8px 4px/2px 4px no-repeat,var(--q) 6px 2px/4px 2px no-repeat,var(--q) 8px 0/2px 2px no-repeat}
+ .col-botoes .col-padrao:hover::before{--q:linear-gradient(#fff6e0,#fff6e0)}
  .col-botoes button:hover{border-color:var(--ouro-300)}
  .col-botoes button:hover img{opacity:.9}
  .col-botoes button[aria-pressed="true"]{background:linear-gradient(var(--couro-500),var(--couro-600));border-color:var(--bronze-500);box-shadow:inset 0 -2px 0 var(--ouro-300),inset 0 1px 0 #ffe9a833}
@@ -944,15 +957,46 @@ body.toque-forcado #dpad{display:block}
  #colDir>section[data-fechada="true"]{display:none}
  #colDir>section[data-min="true"]>:not(.painel-cab){display:none}
  body.hideBags #colDir>#pMochila,body.hideBags #colDir>#pBolsa{display:none}
- #colDir .painel-cab{height:20px;gap:5px;margin:0;padding:0 2px 0 4px;background:linear-gradient(#74462c,#4a2c1c 55%,var(--couro-700));border-bottom:1px solid #120a06;box-shadow:inset 0 1px 0 #ffe9a838}
- #colDir .painel-cab h2{flex:1 1 auto;padding:0;font:700 var(--fs-12)/20px var(--f-titulo);letter-spacing:.1em;color:var(--ouro-300);text-shadow:1px 1px 0 #120a06}
- #colDir .painel-cab .extra{font-size:var(--fs-12);color:var(--texto-2);text-shadow:1px 1px 0 #120a06}
+ /* barra de título de 20 px: é por ela que a janela se arrasta (muda de ordem) */
+ #colDir .painel-cab{height:20px;gap:5px;margin:0;padding:0 2px 0 4px;cursor:grab;user-select:none;-webkit-user-select:none;
+  background:linear-gradient(#7d4c30,#55321f 50%,#3d2417 52%,var(--couro-700));border-bottom:1px solid #120a06;box-shadow:inset 0 1px 0 #ffe9a84d,inset 0 -1px 0 #0006}
+ #colDir .painel-cab h2{flex:0 1 auto;padding:1px 0 0;font:700 var(--fs-12)/19px var(--f-titulo);letter-spacing:.12em;color:var(--ouro-200);text-shadow:1px 1px 0 #120a06,-1px 0 0 #120a0680}
+ /* ranhuras entre o título e os botões: a pega */
+ #colDir .painel-cab h2::after{content:none}
+ #colDir .painel-cab::after{content:"";order:1;flex:1 1 8px;min-width:0;height:6px;margin:0 2px;opacity:.55;background:repeating-linear-gradient(#120a06 0 1px,#ffe9a833 1px 2px,transparent 2px 3px)}
+ #colDir .painel-cab .extra,#colDir .painel-cab .jan-btns{order:2}
+ #colDir .painel-cab button.recolher{flex:0 1 auto;cursor:inherit}
+ #colDir .painel-cab .extra{font:700 var(--fs-12)/1 var(--f-ui);color:#fff6e0;text-shadow:var(--contorno)}
+ #colDir>section.perg .painel-cab h2{color:var(--ouro-200)}
+ #colDir>section.arrastando{position:relative;z-index:6;pointer-events:none;box-shadow:0 0 0 1px var(--ouro-300),0 10px 18px #000e}
+ #colDir>section.arrastando .painel-cab{cursor:grabbing}
+ body.arrastando-janela,body.arrastando-janela *{cursor:grabbing!important;user-select:none;-webkit-user-select:none}
+ body.redimensionando-janela,body.redimensionando-janela *{cursor:ns-resize!important;user-select:none;-webkit-user-select:none}
+ /* onde a janela arrastada vai cair */
+ .jan-marca{display:block;flex:none;position:relative;height:0;margin:-2px 0;z-index:5;pointer-events:none}
+ .jan-marca::before{content:"";position:absolute;left:0;right:0;top:-2px;height:4px;background:var(--ouro-300);border:1px solid #120a06;box-shadow:0 0 8px var(--ouro-300)}
+ /* alça de altura (Batalha, Mochila, Bolsa): uma linha por passo */
+ #colDir .jan-alca{display:block;position:relative;height:7px;cursor:ns-resize;touch-action:none;border-top:1px solid #120a06;background:linear-gradient(var(--couro-600),var(--couro-800));box-shadow:inset 0 1px 0 #ffe9a826}
+ #colDir .jan-alca::before{content:"";position:absolute;left:50%;top:2px;width:22px;height:2px;margin-left:-11px;background:repeating-linear-gradient(90deg,var(--bronze-400) 0 2px,transparent 2px 4px)}
+ #colDir .jan-alca:hover,#colDir .jan-alca:focus-visible,body.redimensionando-janela #colDir .jan-alca:active{outline:none;background:linear-gradient(var(--bronze-600),var(--bronze-700))}
+ #colDir .jan-alca:hover::before,#colDir .jan-alca:focus-visible::before{background:repeating-linear-gradient(90deg,var(--ouro-200) 0 2px,transparent 2px 4px)}
+ #colDir .jan-alca:focus-visible{box-shadow:inset 0 0 0 1px var(--foco)}
+ /* a coluna rola sem barra (a barra roubaria largura das janelas); uma sombra avisa que há mais embaixo */
+ #colDir{scrollbar-width:none;position:relative}
+ #colDir::-webkit-scrollbar{display:none}
+ #colDir::after{content:"";flex:none;position:sticky;bottom:0;z-index:4;height:16px;margin-top:-20px;pointer-events:none;opacity:0;transition:opacity .15s;
+  background:linear-gradient(transparent,#120a06e6),linear-gradient(var(--ouro-300),var(--ouro-300)) 50% 100%/36px 2px no-repeat}
+ #colDir.tem-mais::after{opacity:1}
+ #colDir img.suave,#topo img.suave,.modal img.suave,#faixaAcao img.suave{image-rendering:auto}
+ #colDir .jan-btn:focus-visible,.col-botoes button:focus-visible,.mapa-ctl button:focus-visible{outline:2px solid var(--foco);outline-offset:0;z-index:1}
+ #colDir .linha-inimigo:focus-visible,#colDir .equip:focus-visible{outline:2px solid var(--foco);outline-offset:-2px}
  #colDir .painel-cab .extra img{vertical-align:-3px}
  #colDir .painel-cab .seta{display:none}
  #colDir .painel-cab button.recolher{gap:5px;min-width:0}
  #colDir .painel-corpo{padding:4px}
  .jan-btns{flex:none;gap:2px;margin-left:2px}
- #colDir .painel-cab .extra{margin-left:0}
+ #colDir .painel-cab .extra{margin-left:0;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+ #colDir .painel-cab h2{flex-shrink:0}
  #colDir .jan-btns{display:flex}
  .jan-btn{position:relative;flex:none;width:16px;height:16px;padding:0;border:1px solid #120a06;border-radius:0;background:linear-gradient(var(--bronze-500),var(--bronze-700));box-shadow:inset 1px 1px 0 #ffe9a866,inset -1px -1px 0 #0006}
  .jan-btn:hover{background:linear-gradient(var(--bronze-400),var(--bronze-600))}
@@ -963,23 +1007,41 @@ body.toque-forcado #dpad{display:block}
  .jan-fechar::before{--q:linear-gradient(#fff6e0,#fff6e0);left:2px;top:2px;width:10px;height:10px;background:var(--q) 0 0/2px 2px no-repeat,var(--q) 2px 2px/2px 2px no-repeat,var(--q) 4px 4px/2px 2px no-repeat,var(--q) 6px 6px/2px 2px no-repeat,var(--q) 8px 8px/2px 2px no-repeat,var(--q) 8px 0/2px 2px no-repeat,var(--q) 6px 2px/2px 2px no-repeat,var(--q) 2px 6px/2px 2px no-repeat,var(--q) 0 8px/2px 2px no-repeat}
  .jan-fechar:hover{background:linear-gradient(var(--vida-2),var(--vida-1))}
 
- /* Mapa: 176×132 + coluna de 40 px (rosa, zoom, centralizar) e a coordenada embaixo */
- #colDir #pMapa .painel-corpo{display:block;padding:4px}
- #pMapa .mapa-moldura{display:grid;grid-template-columns:176px 40px;grid-template-rows:40px minmax(0,1fr);gap:4px;justify-content:center;line-height:1}
- #pMapa #miniMap{grid-column:1;grid-row:1/3;width:176px;height:132px;border-width:1px;box-shadow:0 0 0 1px var(--bronze-700),0 0 0 2px #120a06;margin:2px}
+ /* Mapa: 176×132 com moldura própria, coluna de 40 px (rosa dos ventos, +, −, centralizar) e, embaixo,
+    a coordenada e o nível do zoom */
+ #colDir #pMapa .painel-corpo{display:block;padding:4px 4px 3px}
+ #pMapa .mapa-moldura{display:grid;grid-template-columns:178px 40px;grid-template-rows:40px 92px 16px;gap:2px 4px;justify-content:center;line-height:1}
+ #pMapa #miniMap{box-sizing:content-box;grid-column:1;grid-row:1/3;width:176px;height:132px;border:1px solid #120a06;box-shadow:0 0 0 1px var(--bronze-500),0 0 0 2px #120a06,inset 0 0 0 1px #0004;cursor:grab;touch-action:none}
+ #pMapa #miniMap.arrastando{cursor:grabbing}
  #pMapa .mapa-margem{display:contents}
- #pMapa .mapa-moldura .rosa{grid-column:2;grid-row:1;width:40px;height:40px;padding:3px;background:radial-gradient(circle at 40% 35%,#4a2e1f,#1a0f0a);border:1px solid #120a06;box-shadow:inset 0 0 0 1px var(--bronze-700)}
- #pMapa .mapa-ctl{grid-column:2;grid-row:2;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:24px;gap:2px;align-content:start;padding-top:2px}
- .mapa-ctl button{min-width:0;padding:0;border:1px solid #120a06;border-radius:0;background:linear-gradient(var(--bronze-600),var(--bronze-700));box-shadow:inset 1px 1px 0 #ffe9a855,inset -1px -1px 0 #0006;font:700 var(--fs-16)/1 var(--f-ui);color:#fff6e0;text-shadow:1px 1px 0 #120a06}
+ /* a rosa de 32 px de arte, em 1× */
+ #pMapa .mapa-moldura .rosa{grid-column:2;grid-row:1;width:40px;height:40px;padding:3px;background:radial-gradient(circle at 40% 35%,#5a3826,#1a0f0a 75%);border:1px solid #120a06;box-shadow:inset 0 0 0 1px var(--bronze-600),inset 0 0 0 2px #120a0680}
+ #pMapa .mapa-ctl{grid-column:2;grid-row:2;display:grid;grid-template-rows:repeat(3,1fr);gap:2px;padding-top:2px}
+ .mapa-ctl button{position:relative;min-width:0;padding:0;border:1px solid #120a06;border-radius:0;background:linear-gradient(var(--bronze-500),var(--bronze-700));box-shadow:inset 1px 1px 0 #ffe9a866,inset -1px -1px 0 #0007}
  .mapa-ctl button:hover{background:linear-gradient(var(--bronze-400),var(--bronze-600))}
- .mapa-ctl button:active{transform:translateY(1px)}
- .mapa-ctl button[data-mapa="centro"]{grid-column:1/3;font-size:var(--fs-12);letter-spacing:.02em}
- /* a coordenada é uma etiqueta no canto de baixo do mapa (não gasta uma linha da coluna) */
- #pMapa .mapa-moldura .coord{grid-column:1;grid-row:2;align-self:end;justify-self:end;z-index:1;min-width:0;margin:0 3px 3px 0;padding:1px 4px;border:1px solid #120a06;background:#1c1210d9;font-size:var(--fs-12);line-height:13px;color:#fff6e0;text-align:center;pointer-events:none}
+ .mapa-ctl button:active{background:var(--bronze-700);box-shadow:inset 1px 1px 0 #0009}
+ .mapa-ctl button:disabled{background:linear-gradient(var(--couro-600),var(--couro-700));box-shadow:inset 1px 1px 0 #ffe9a81f}
+ .mapa-ctl button:disabled::before{opacity:.35}
+ /* sinais em px: +, − e a mira de centralizar */
+ .mapa-ctl button::before{content:"";--q:linear-gradient(#fff6e0,#fff6e0);--s:linear-gradient(#120a06,#120a06);position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;filter:drop-shadow(1px 1px 0 #120a06)}
+ .mapa-ctl [data-mapa="mais"]::before{background:var(--q) 0 5px/12px 2px no-repeat,var(--q) 5px 0/2px 12px no-repeat}
+ .mapa-ctl [data-mapa="menos"]::before{background:var(--q) 0 5px/12px 2px no-repeat}
+ .mapa-ctl [data-mapa="centro"]::before{background:var(--q) 5px 5px/2px 2px no-repeat,var(--q) 5px 0/2px 3px no-repeat,var(--q) 5px 9px/2px 3px no-repeat,var(--q) 0 5px/3px 2px no-repeat,var(--q) 9px 5px/3px 2px no-repeat,
+  var(--q) 2px 2px/2px 2px no-repeat,var(--q) 8px 2px/2px 2px no-repeat,var(--q) 2px 8px/2px 2px no-repeat,var(--q) 8px 8px/2px 2px no-repeat}
+ /* rodapé do mapa: coordenada à esquerda, três marcas de zoom à direita */
+ #pMapa .mapa-moldura .coord{grid-column:1;grid-row:3;justify-self:start;align-self:center;min-width:0;margin:0;padding:0 5px 0 17px;border:1px solid #120a06;background:#120a06 linear-gradient(#f2d27a,#f2d27a) 5px 50%/2px 8px no-repeat;
+  background-image:linear-gradient(var(--ouro-300),var(--ouro-300)),linear-gradient(var(--ouro-300),var(--ouro-300));background-position:7px 3px,4px 6px;background-size:2px 8px,8px 2px;background-repeat:no-repeat;
+  box-shadow:inset 1px 1px 0 #0008,0 1px 0 #ffe9a81f;font:700 var(--fs-12)/14px var(--f-ui);letter-spacing:.03em;color:#fff6e0;text-align:left}
+ #pMapa .mapa-nivel{grid-column:2;grid-row:3;display:flex;align-items:flex-end;justify-content:center;gap:3px;padding-bottom:3px}
+ .mapa-nivel i{width:8px;background:var(--couro-600);border:1px solid #120a06;box-shadow:inset 0 1px 0 #ffe9a81a}
+ .mapa-nivel i:nth-child(1){height:5px} .mapa-nivel i:nth-child(2){height:8px} .mapa-nivel i:nth-child(3){height:11px}
+ .mapa-nivel i.aceso{background:linear-gradient(var(--ouro-200),var(--bronze-500))}
 
  /* Estado: retrato, barras de 14 px, alvo e atributos recolhíveis */
  #colDir .ficha{gap:5px;align-items:stretch}
- #colDir .ficha .retrato{width:50px;height:50px;outline-width:1px;outline-offset:-3px;box-shadow:inset 0 0 0 3px var(--bronze-700)}
+ #colDir .ficha .retrato{width:50px;height:50px;place-items:center;outline-width:1px;outline-offset:-3px;box-shadow:inset 0 0 0 3px var(--bronze-700)}
+ /* o selo do nível fica no canto, abaixo do queixo (o busto tem 40 px) */
+ #colDir .ficha .selo{right:1px;bottom:1px;min-width:13px;height:12px;padding:0 1px;border-width:1px;font-size:10px;clip-path:none}
  #colDir .ficha-nome{display:none}
  #colDir .ficha-dados{display:flex;flex-direction:column;gap:4px}
  #colDir .ficha-dados .linha-barra{margin:0;gap:4px}
@@ -1004,24 +1066,39 @@ body.toque-forcado #dpad{display:block}
  #colDir .atributos{margin-top:4px;padding-top:4px;gap:0 10px}
  #colDir .atributos div,#colDir .atributos dt{font-size:var(--fs-13);line-height:1.3}
 
- /* Equipamento (o boneco em cruz é do pacote seguinte) */
- #colDir #gradeEquip{grid-template-columns:52px 92px 52px;gap:4px 6px;padding:0}
- #colDir .equip{gap:2px;padding:2px 0 1px;border-width:1px 0}
- #colDir .equip .slot{width:40px;height:40px}
- #colDir .equip-txt small{display:none}
- #colDir .equip-txt em{font-size:var(--fs-12);line-height:12px}
- #colDir .boneco-figura img{width:80px;height:96px;margin-top:2px}
- #colDir .equip.e-armadura{padding-top:42px;gap:0}
- /* espaço vazio diz o que cabe nele; cheio, o que o item dá */
- #colDir .equip.vazio:not(.e-municao) .equip-txt small{display:block;font-size:var(--fs-12);line-height:12px;color:var(--texto-mudo)}
- #colDir .equip.vazio:not(.e-municao) .equip-txt em{display:none}
- #colDir .equip.e-armadura .equip-txt{margin-top:auto}
+ /* Equipamento: o viajante num nicho e, ao lado, a cruz de espaços de 40 px — arco no alto (às costas),
+    arma à esquerda, armadura no centro, escudo à direita e a munição embaixo. Nos quatro cantos da cruz,
+    plaquinhas com o que o conjunto dá (dano, defesa, arco, crítico). */
+ #colDir #pEquip .painel-corpo{padding:4px}
+ #colDir #gradeEquip{grid-template-columns:var(--nicho,92px) repeat(3,40px);grid-template-rows:repeat(3,40px);grid-template-areas:"figura pdano arco pdef" "figura arma armadura escudo" "figura parco municao pcrit";gap:3px;justify-content:center;padding:0}
+ #colDir .boneco-figura{grid-area:figura;align-items:flex-end;border:1px solid #120a06;box-shadow:inset 0 0 0 1px var(--bronze-700),inset 0 0 18px #000c;
+  background:radial-gradient(ellipse 36% 5% at 50% 93%,#000c,transparent 78%),linear-gradient(transparent 80%,#0006 80% 81%,#3b241866 81%),radial-gradient(ellipse 70% 52% at 50% 44%,#a8703a59,transparent 74%),linear-gradient(#2c1a12,#1c1210)}
+ #colDir .boneco-figura img{margin:0}
+ #colDir .equip{position:relative;display:block;width:40px;height:40px;padding:0;border:0;background:none}
+ #colDir .equip.e-armadura{grid-area:armadura;padding:0;z-index:auto;align-self:auto}
+ #colDir .equip .slot{display:grid;width:40px;height:40px;border-width:1px;border-color:var(--bronze-700);box-shadow:inset 1px 1px 0 #000a,inset -1px -1px 0 #ffe9a814,0 0 0 1px #120a06}
+ #colDir .equip.cheio .slot,#colDir .equip.e-municao.tem .slot{border-color:var(--bronze-500);background:radial-gradient(circle at 35% 30%,#5d3a26,#24150e)}
+ #colDir .equip.cheio:hover .slot,#colDir .equip.vazio:hover .slot{border-color:var(--ouro-300)}
+ #colDir .equip.e-armadura .slot{box-shadow:inset 1px 1px 0 #000a,inset -1px -1px 0 #ffe9a814,0 0 0 1px #120a06}
+ #colDir .equip.e-armadura.vazio .slot{background:radial-gradient(circle at 35% 30%,#4a2e1f,#24150e)}
+ #colDir .equip-txt{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+ /* espaço vazio: a silhueta do que cabe ali, gravada em claro */
+ #colDir .equip .slot img.silhueta{filter:drop-shadow(-1px -1px 0 #000);opacity:.26}
+ #colDir .equip.vazio:hover .slot img.silhueta{opacity:.34}
+ #colDir .equip-val{display:block;position:absolute;right:2px;bottom:1px;font:700 11px/1 var(--f-ui);color:var(--ouro-200);text-shadow:var(--contorno);pointer-events:none}
+ #colDir .equip .slot .qtd{font-size:11px;right:2px;bottom:1px;color:var(--ouro-200)}
+ #colDir .equip-placas{display:contents}
+ .equip-placa{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:40px;height:40px;border:1px solid #120a06;background:linear-gradient(#34201680,#1c121080);box-shadow:inset 0 0 0 1px #5e3c1c80}
+ .equip-placa b{font:700 var(--fs-12)/1 var(--f-ui);color:#fff6e0;text-shadow:var(--contorno)}
+ .equip-placa small{display:none}
+ .equip-placa img{opacity:.9}
+ .equip-placa.p-dano{grid-area:pdano} .equip-placa.p-def{grid-area:pdef} .equip-placa.p-arco{grid-area:parco} .equip-placa.p-crit{grid-area:pcrit}
 
  /* Batalha: linhas de 26 px (nome e número em cima, barra embaixo); 5 linhas e rola por dentro */
  #colDir #pBatalha{min-height:0}
- #colDir #linhasBatalha{max-height:130px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bronze-700) transparent}
- #colDir .linha-inimigo{display:grid;grid-template-columns:36px minmax(0,1fr) auto;grid-template-rows:14px 4px;gap:2px 5px;align-content:center;height:26px;min-height:26px;padding:0 5px 0 0;border-left-width:2px}
- #colDir .linha-inimigo .mini{grid-row:1/3;width:36px;height:24px;flex:none;align-self:center}
+ #colDir #linhasBatalha{height:var(--alt-lista,130px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bronze-600) #120a06;background:linear-gradient(#0000 25px,#0003 25px) 0 0/100% 26px}
+ #colDir .linha-inimigo{display:grid;grid-template-columns:42px minmax(0,1fr) auto;grid-template-rows:14px 4px;gap:2px 5px;align-content:center;height:26px;min-height:26px;padding:0 5px 0 0;border-left-width:2px}
+ #colDir .linha-inimigo .mini{grid-row:1/3;width:42px;height:24px;flex:none;align-self:center}
  #colDir .linha-inimigo .mini img{max-width:26px;max-height:22px}
  /* miniatura em px de arte inteiros: recortada ao corpo, cabeça (à direita) sempre à vista */
  #colDir .linha-inimigo .mini,#colDir .quadro-alvo .mini{display:flex;justify-content:flex-end;align-items:center;overflow:hidden}
@@ -1036,7 +1113,7 @@ body.toque-forcado #dpad{display:block}
  #colDir .vazio-txt{margin:0;padding:6px 6px;font-size:var(--fs-13)}
 
  /* Mochila e Bolsa: 5 colunas de 40 px */
- #colDir #pMochila .painel-corpo,#colDir #pBolsa .painel-corpo{padding:4px}
+ #colDir #pMochila .painel-corpo,#colDir #pBolsa .painel-corpo{height:calc(var(--alt-lista,128px) + 8px);padding:4px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--bronze-600) #120a06}
  #colDir .grade{justify-content:center}
  #colDir #pMochila .nota,#colDir #pBolsa .nota{display:none}
  /* Missão e Caçada (pergaminho) */
@@ -1049,7 +1126,8 @@ body.toque-forcado #dpad{display:block}
 @media (min-width:761px) and (pointer:coarse){
  /* no toque as linhas da Batalha têm a altura do dedo */
  #colDir .linha-inimigo{height:40px;min-height:40px}
- #colDir #linhasBatalha{max-height:200px}
+ #colDir .jan-alca{height:14px}
+ #colDir .jan-alca::before{top:5px;height:4px;background:repeating-linear-gradient(90deg,var(--bronze-400) 0 4px,transparent 4px 7px)}
  .jan-btn{width:24px;height:18px}
  .jan-btn::before{left:7px;top:4px}
 }
@@ -1058,8 +1136,10 @@ body.toque-forcado #dpad{display:block}
  #areaSub{display:none}
  #avisos{top:34px}
  :root{--col:232px;--slot:38px}
- #pMapa .mapa-moldura{grid-template-columns:164px 40px}
+ #pMapa .mapa-moldura{grid-template-columns:166px 40px;grid-template-rows:40px 83px 16px}
  #pMapa #miniMap{width:164px;height:123px}
+ #colDir #gradeEquip{--nicho:84px}
+ #pBatalha .painel-cab .extra{display:none}
 }
 @media (min-width:761px) and (max-width:899px){ :root{--slot-atalho:32px} #faixaAcao .barra-hab{margin-right:6px} }
 @media (min-width:1280px){ #faixaAcao #atalhos-dica{display:block} }
@@ -1200,9 +1280,9 @@ body.toque-forcado #dpad{display:block}
 
   <section class="painel" id="pMapa" aria-labelledby="tMapa">
     <div class="painel-cab"><img class="px g16" data-glifo="ui_rosa" alt=""><h2 id="tMapa">MAPA</h2></div>
-    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><div class="mapa-margem"><img class="px rosa" data-glifo="ui_rosa" alt="">
-      <div class="mapa-ctl" role="group" aria-label="Zoom do mapa"><button type="button" data-mapa="mais" aria-label="Aproximar o mapa" title="Aproximar o mapa">+</button><button type="button" data-mapa="menos" aria-label="Afastar o mapa" title="Afastar o mapa">−</button><button type="button" data-mapa="centro" aria-label="Centralizar o mapa no viajante" title="Centralizar no viajante">centro</button></div>
-      <span class="coord" id="mapaCoord" aria-label="Posição"></span></div></div></div>
+    <div class="painel-corpo" id="mapaCasa"><div class="mapa-moldura" id="mapaMoldura"><canvas id="miniMap" width="160" height="120" role="img" aria-label="Minimapa da região"></canvas><div class="mapa-margem"><img class="px rosa" data-glifo="ui_rosa" data-escala="4" alt="">
+      <div class="mapa-ctl" role="group" aria-label="Zoom do mapa"><button type="button" data-mapa="mais" aria-label="Aproximar o mapa" title="Aproximar o mapa (ou a roda do mouse)"></button><button type="button" data-mapa="menos" aria-label="Afastar o mapa" title="Afastar o mapa (ou a roda do mouse)"></button><button type="button" data-mapa="centro" aria-label="Centralizar o mapa no viajante" title="Centralizar no viajante (ou duplo clique no mapa)"></button></div>
+      <span class="coord" id="mapaCoord" aria-label="Posição"></span><span class="mapa-nivel" id="mapaNivel" role="img" aria-label="Zoom do mapa"><i></i><i></i><i></i></span></div></div></div>
   </section>
 
   <section class="painel" id="pPersonagem" aria-labelledby="tPersonagem">

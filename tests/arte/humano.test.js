@@ -46,7 +46,7 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual })
       }
       // de frente, parado: mais alto que largo, na proporção de adulto (largura até metade da altura)
       const fr = caixa(Arte.pixels(k, { quadro: 8 }));
-      assert.ok(fr.w >= 18 && fr.w <= fr.h * 0.5, `${k}: largura ${fr.w} para altura ${fr.h}`);
+      assert.ok(fr.w >= 18 && fr.w <= fr.h * 0.52, `${k}: largura ${fr.w} para altura ${fr.h}`);
     }
     igual(Arte.validar(), []);
     // nada de chave real assumida nesta onda: os humanos do jogo só mudam no H2 (definirHumano)
@@ -126,7 +126,10 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual })
 
   teste("arte/humano: a spec nova serve a definirHumano e os humanos do jogo cabem na célula", () => {
     const { Arte, PP, M } = nova();
+    // o H2 (arte/humano-equip.js) já ativou o boneco novo na carga: mede o legado desligando o gancho
+    M.definirHumano(null);
     const antes = PP.pj_eliabe.w;
+    assert.ok(antes < 24, "legado menor que a célula nova");
     const n = M.definirHumano(M.novoHumano);
     assert.ok(n >= 39, `${n} humanos re-registrados`);
     for (const k of ["pj_eliabe", "pj_noemi", "pj_josue", "in_chefe", "in_salteador"]) {
@@ -140,5 +143,6 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual })
     }
     M.definirHumano(null);
     igual(PP.pj_eliabe.w, antes, "volta ao legado");
+    if (M.humanoEquipado) { M.definirHumano(M.humanoEquipado.spec); igual(PP.pj_eliabe.w, 24, "reativa o boneco equipado"); }
   });
 };

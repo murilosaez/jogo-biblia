@@ -102,7 +102,7 @@
       P.maoArma = golpe === 1 ? [cx - 8, P.yT + 2] : golpe === 2 ? [cx + 12, P.yT + 7] : [cx + bal, m - sobe];
       P.maoLonge = fase >= 0 ? [cx - bal + (bal < 0 ? 1 : -1), m - sobe - 1] : golpe ? [cx + (golpe === 1 ? 5 : -4), m - 4] : null;
       P.maoEscudo = P.maoLonge && P.maoLonge[0] > cx ? P.maoLonge : [cx + 6, P.yT + 12];
-      const pp = [[6, PES, 0], [0, PES, 0], [-6, PES, 1], [2, PES - 4, 2]][fase], pl = [[-6, PES, 1], [2, PES - 4, 2], [6, PES, 0], [0, PES, 0]][fase];
+      const pp = [[6, PES, 0], [-1, PES, 0], [-6, PES, 1], [3, PES - 3, 2]][fase], pl = [[-6, PES, 1], [3, PES - 3, 2], [6, PES, 0], [-1, PES, 0]][fase];
       P.pe = {
         perto: golpe === 2 ? [CX + 7, PES, 0] : golpe === 1 ? [CX + 1, PES, 0] : pp ? [CX + pp[0], pp[1], pp[2]] : [CX + 2, PES, 0],
         longe: golpe === 2 ? [CX - 6, PES, 1] : golpe === 1 ? [CX - 3, PES, 0] : pl ? [CX + pl[0], pl[1], pl[2]] : [CX - 2, PES, 0],
@@ -110,7 +110,7 @@
       return P;
     }
     const frente = vista === "frente";
-    const ob = (cfg.molde === "veu" ? 7 : 8) + L;
+    const ob = (cfg.molde === "veu" ? 8 : 9) + L;
     P.ombroE = [cx - ob, P.yT + 5]; P.ombroD = [cx + ob, P.yT + 5];
     // contato A: perna da esquerda da tela à frente, braço da direita à frente
     const bE = [-3, -1, 3, 1][fase] || 0; // braço da esquerda: + = para a frente
@@ -245,14 +245,14 @@
           for (let X = cx - hw; X < cx + hw; X++) {
             const i = X - cx, jan = frente && r >= 4 && (i >= -HW[r] + 1 && i < HW[r] - 1);
             if (jan) { if (r === 4) G.fino(X, Y, i === -4 || i === 3 ? V[1] : Hc[i < 0 ? 3 : 2]); continue; }
-            G.fino(X, Y, pano(X, Y, (i + hw) / (2 * hw), (r < 3 ? 0.3 - r * 0.1 : 0) - (frente && r >= 4 ? 0.15 : 0)));
+            G.fino(X, Y, pano(X, Y, (i + hw) / (2 * hw), (r < 3 ? 0.3 - r * 0.1 : 0) - (frente && r >= 4 ? 0.15 : 0) - (frente && r === 3 && Math.abs(i + 0.5) < 4 ? 0.45 : 0) + (r === 1 && i >= -3 && i <= 0 ? 0.3 : 0) - (!frente && r >= 2 && (i === -1 || i === 2) ? 0.3 : 0) - (r === 7 ? 0.2 : 0)));
           }
         }
         if (frente) {
           for (let Y = T + 9; Y <= yT + 4; Y++) {
             const k = Y >= yT + 1 ? 1 : 0, f = Y === yT + 4 ? 1 : 0;
-            for (let X = cx - 6 - k + f; X <= cx - 5 + (Y > T + 10 ? 1 : 0); X++) G.fino(X, Y, pano(X, Y, 0.1 + (X - cx + 7) * 0.12, Y > yT ? -0.1 : 0));
-            for (let X = cx + 4 - (Y > T + 10 ? 1 : 0); X <= cx + 5 + k - f; X++) G.fino(X, Y, pano(X, Y, 0.62 + (X - cx - 4) * 0.12));
+            for (let X = cx - 6 - k + f; X <= cx - 5 + (Y > T + 10 ? 1 : 0); X++) G.fino(X, Y, pano(X, Y, 0.1 + (X - cx + 7) * 0.12, (Y > yT ? -0.1 : 0) - ((Y - T) % 5 === 2 ? 0.28 : 0) + (X === cx - 6 - k + f ? 0.2 : 0)));
+            for (let X = cx + 4 - (Y > T + 10 ? 1 : 0); X <= cx + 5 + k - f; X++) G.fino(X, Y, pano(X, Y, 0.62 + (X - cx - 4) * 0.12, (Y - T) % 5 === 0 ? -0.28 : 0));
           }
           for (let X = cx - 3; X <= cx + 2; X++) G.fino(X, T + 11, V[X < cx ? 2 : 1]);
         } else {
@@ -304,7 +304,7 @@
       }
       for (let Y = T + 9; Y <= yT + 8; Y++) {
         const k = Y > yT + 5 ? Y - yT - 5 : 0, a = -7 + k, b = Y <= T + 10 ? 0 : -1;
-        for (let i = a; i <= b; i++) G.fino(cx + i, Y, pano(cx + i, Y, (i + 7) / 9, Math.cos((i + 7) * 1.1) * 0.15));
+        for (let i = a; i <= b; i++) G.fino(cx + i, Y, pano(cx + i, Y, (i + 7) / 9, Math.cos((i + 7) * 1.1 + (Y - T) * 0.25) * 0.4));
       }
     }
   }
@@ -384,7 +384,7 @@
           // pernas nuas com as correias da sandália; a de longe mais escura
           const perna = (x, base, erg, longe) => {
             const tz = [x - 0.5 + (erg === 1 ? -1 : 0), base - 3 - (erg === 1 ? 1 : 0)], hx = hq + (longe ? -1 : 0.5);
-            const j = junta(hx, 44, tz[0], tz[1], 7.5, 8.5, -1, erg === 0 ? (fase < 0 ? 0.2 : 0.45) : 1); // de pé, o joelho quase não dobra
+            const j = junta(hx, 44, tz[0], tz[1], 7.5, 8.5, -1, erg === 0 ? (fase < 0 ? 0.2 : 0.45) : erg === 2 ? 0.8 : 1); // de pé, o joelho quase não dobra
             const R = longe ? PeleLonge : Pl, cor = { faixas: [[0.45, 0.6, [c.Sand[0], c.Sand[0], c.Sand[1], c.Sand[1], c.Sand[2]]]] };
             membro(G, hx, 44, j[0], j[1], 4.6, 4, R, { vies: longe ? -0.5 : 0 });
             membro(G, j[0], j[1], tz[0], tz[1], 3.8, 3, R, Object.assign({ vies: longe ? -0.5 : 0.05 }, cor));
@@ -422,8 +422,10 @@
       }
       // tronco de perfil: costas arredondadas, peito à frente; o plano dos ombros em luz
       const hw = 5;
+      // P.tronco(Y) -> [x0, x1] da linha do tronco (o equipamento veste por cima: armaduras, colares, mantos)
+      P.tronco = (Y) => { const i = Math.min(Y, yC - 1) - yT; return [cx - hw - L + (i === 0 ? 2 : i === 1 ? 1 : 0) + (i > 9 ? 1 : 0), cx + hw - 1 + L - (i === 0 ? 2 : i === 1 ? 1 : 0) + (i >= 3 && i <= 8 ? 1 : 0)]; };
       for (let Y = yT; Y < yC; Y++) {
-        const i = Y - yT, a = cx - hw - L + (i === 0 ? 2 : i === 1 ? 1 : 0) + (i > 9 ? 1 : 0), b = cx + hw - 1 + L - (i === 0 ? 2 : i === 1 ? 1 : 0) + (i >= 3 && i <= 8 ? 1 : 0) - (i > 10 && !fem ? 0 : 0);
+        const i = Y - yT, [a, b] = P.tronco(Y);
         faixa(G, Y, a, b, Tr, (u) => 0.6 - 1.45 * u + (i <= 1 ? 0.6 : i === 2 ? 0.3 : 0) + (u > 0.6 && i >= 3 && i <= 6 ? 0.22 : 0) - (Y === yC - 1 ? 0.4 : 0) - (i > 8 ? 0.1 : 0));
       }
       if (c.gola) { G.fino(cx + 1, yT, c.gola); G.fino(cx + 2, yT + 1, c.gola); }
@@ -434,7 +436,7 @@
     }
     // ----- frente e costas -----
     const frente = v === "frente";
-    const hwT = (fem ? 5 : 6) + L;
+    const hwT = (fem ? 6 : 7) + L;
     if (montado) inferiorMontado(G, cfg, c, P);
     else {
       const E = P.pe.e, D = P.pe.d;
@@ -493,8 +495,9 @@
       }
     }
     // tronco: ombros em escorço (faixa clara em cima), sombra dos braços e do queixo, pano dobrando no cinto
+    P.tronco = (Y) => { const i = Math.min(Y, yC - 1) - yT, hw = i === 0 ? hwT - 3 : i === 1 ? hwT - 1 : i > 10 && !longo ? hwT - 1 : hwT; return [cx - hw, cx + hw - 1]; };
     for (let Y = yT; Y < yC; Y++) {
-      const i = Y - yT, hw = i === 0 ? hwT - 3 : i === 1 ? hwT - 1 : i > 10 && !longo ? hwT - 1 : hwT, a = cx - hw, b = cx + hw - 1;
+      const i = Y - yT, [a, b] = P.tronco(Y);
       faixa(G, Y, a, b, Tr, (u, X) => {
         let l = 0.5 - 1.6 * (u - 0.28) - (u < 0.1 ? 0.3 : 0) + (i <= 1 ? 0.6 : i === 2 ? 0.3 : 0);
         if (frente) { const q = Math.abs(X - cx + 0.5); if (i <= 4 && q < 4.5 - i * 0.6) l -= 0.45; if (i > 6) l += dobra(u, 2.5, 0.05, 0.1 + (i - 6) * 0.05); }
@@ -608,7 +611,7 @@
 
   const novoHumano = {
     w: W, h: H, quadrosPorVista: QPV, ciclo: [2, 3, 4, 5], quadroAcao: [6, 7],
-    busto: [6, 2, 12, 12], retratoQuadro: QPV, sombra: { w: 22, h: 10 }, alturaCabeca: 56,
+    busto: [6, 2, 11, 11], retratoQuadro: QPV, sombra: { w: 22, h: 10 }, alturaCabeca: 56,
     acabamento: false, limiteCores: 64,
     VISTAS, CX, PES, pose, desenhar, inferiorMontado, cores,
     partes: { corpo, cabeca, bracos, braco, mao, membro, junta, faixa, peFrente, peLado },
