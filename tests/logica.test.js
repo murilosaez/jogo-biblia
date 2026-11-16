@@ -7547,6 +7547,59 @@ teste("81. janela Batalha: só as criaturas por perto, da mais perto para a mais
   assert.doesNotMatch(ui, /curandeiro \? 1 : 0\) - \(ficha\(a\.id\)\?\.curandeiro/);
 });
 
+teste("82. exportar e importar o progresso: envelope, validação, troca do save e bloqueio até recarregar", () => {
+  // Dispositivo A: joga um pouco e exporta.
+  const a = carregarJogo();
+  a.entrar();
+  a.p.moedas = 1234;
+  a.p.nivel = 7;
+  a.g("Mundo").salvar(a.p); // ainda pendente: exportar grava antes
+  const SA = a.g("Storage");
+  const texto = SA.exportar(ID);
+  const env = JSON.parse(texto);
+  igual([env.formato, env.versaoFormato], ["jornada-save", 1], "envelope com formato e versão");
+  assert.ok(!Number.isNaN(Date.parse(env.exportadoEm)), "data da exportação");
+  igual([env.personagem.moedas, env.personagem.nivel, env.personagem.versao], [1234, 7, a.g("VERSAO_SAVE")]);
+  assert.strictEqual(SA.exportar("ninguem"), null, "sem save, nada a exportar");
+
+  // Dispositivo B: outro personagem; importa o arquivo de A.
+  const b = carregarJogo();
+  b.entrar();
+  b.p.moedas = 5;
+  const SB = b.g("Storage");
+  const lido = SB.lerExportacao("\uFEFF" + texto);
+  assert.strictEqual(lido.personagem.moedas, 1234);
+  lido.personagem.id = "outro"; // o id do arquivo não manda: vale o do dispositivo
+  assert.ok(SB.importar(ID, lido.personagem));
+  igual([JSON.parse(b.store.save_jogador1).moedas, JSON.parse(b.store.save_jogador1).id], [1234, ID]);
+  // O personagem antigo, ainda na memória, não sobrescreve o importado (passos, golpes, fechar a página).
+  b.exec({ tipo: "mover", dx: 1, dy: 0 });
+  b.g("Mundo").salvar(b.p);
+  b.avancar(5000);
+  SB.flush();
+  assert.strictEqual(JSON.parse(b.store.save_jogador1).moedas, 1234, "gravações bloqueadas até recarregar");
+  // Recarregar a página: o jogo entra com o save importado.
+  const b2 = carregarJogo({ store: b.store });
+  b2.entrar();
+  igual([b2.p.moedas, b2.p.nivel], [1234, 7]);
+
+  // O save cru (valor de save_jogador1) também é aceito.
+  assert.strictEqual(SB.lerExportacao(JSON.stringify(env.personagem)).personagem.moedas, 1234);
+  // Arquivos inválidos dão mensagem clara.
+  assert.throws(() => SB.lerExportacao("isto não é json"), /JSON inválido/);
+  assert.throws(() => SB.lerExportacao("[1,2]"), /não é um progresso/);
+  assert.throws(() => SB.lerExportacao(JSON.stringify({ formato: "outro", personagem: env.personagem })), /não é um progresso/);
+  assert.throws(() => SB.lerExportacao(JSON.stringify({ ...env, versaoFormato: 99 })), /versão mais nova/);
+  assert.throws(() => SB.lerExportacao(JSON.stringify({ ...env, personagem: { nivel: 3 } })), /personagem válido/);
+
+  // A ajuda tem os botões, e a importação pede confirmação e recarrega a página.
+  const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
+  assert.match(ui, /data-exportar-progresso/);
+  assert.match(ui, /data-importar-progresso/);
+  assert.match(ui, /data-confirmar-importacao[\s\S]*Storage\.importar\(ID, env\.personagem\)[\s\S]*location\.reload\(\)/);
+  assert.match(ui, /env\.personagem\.versao\) > VERSAO_SAVE/, "save de versão mais nova é recusado");
+});
+
 // Testes de cada pacote de arte: tests/arte/<nome>.test.js exporta uma função que recebe as ferramentas
 // desta suíte e registra os seus testes com teste(). Cada pacote escreve só o próprio arquivo.
 const PASTA_TESTES_ARTE = path.join(__dirname, "arte");

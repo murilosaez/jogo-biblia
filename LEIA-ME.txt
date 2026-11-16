@@ -106,6 +106,14 @@ Instalação
    tamanho: a posição antiga (e os saques no chão) vai para o ponto equivalente do mapa novo e, se ali
    houver obstáculo, estrutura ou NPC, para a casa livre mais próxima. O jogo grava no máximo 1 vez por
    segundo e grava na hora ao fechar, ocultar ou trocar de aba.
+5. Levar o progresso para outro dispositivo: na ajuda (? ou botão Controles; no celular, o botão Menu), seção
+   Progresso, "Exportar progresso" baixa um arquivo jornada-progresso-AAAA-MM-DD-HHMM.json; no outro aparelho,
+   "Importar progresso" lê esse arquivo, mostra nível e moedas dele e do save atual e pede confirmação
+   ("Substituir"): o save do aparelho é trocado e o jogo recarrega (saves de versões anteriores são migrados;
+   de uma versão mais nova, recusados). O arquivo é um envelope JSON pensado para servir também ao futuro banco
+   de dados: { formato: "jornada-save", versaoFormato: 1, exportadoEm (ISO), personagem (o save inteiro) }
+   (Storage.envelope/exportar/lerExportacao/importar, em storage.js). Também aceita o save cru (o valor da
+   chave "save_jogador1").
 
 Controles — teclado e mouse
 - WASD ou setas: andar. Q / E / Z / C: diagonais.

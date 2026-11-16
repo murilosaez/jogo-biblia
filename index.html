@@ -845,6 +845,9 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .teclas td:first-child{white-space:nowrap;width:1%}
 .teclas kbd{margin:1px 2px}
 .acoes-modal{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:12px}
+.progresso-confirma{border:var(--borda) solid var(--bronze-500);border-radius:var(--raio);padding:8px 10px;margin:8px 0}
+.progresso-confirma .acoes-modal{margin-top:6px}
+.progresso-fala{font-style:italic}
 /* Vocações (JGB-20): barra de habilidades (teclas 1 a 8) e janela Vocação. */
 .barra-hab{display:flex;gap:4px;padding:4px;border:2px solid var(--bronze-700);background:#1a0f0a99;box-shadow:inset 2px 2px 0 #0008}
 .barra-hab[hidden]{display:none}
@@ -1299,7 +1302,7 @@ body.toque-forcado #dpad{display:block}
 <!-- modais: um componente só -->
 <div class="modal" id="modalAjuda" aria-hidden="true">
   <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="ajudaTitulo">
-    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_ajuda" data-escala="4" alt=""></span><div><h2 id="ajudaTitulo">Como jogar</h2><p class="sub">Controles e regras da jornada</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_ajuda" data-escala="4" alt=""></span><div><h2 id="ajudaTitulo">Como jogar</h2><p class="sub">Controles, regras e progresso</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
     <div class="modal-corpo" id="ajudaCorpo"></div>
   </div>
 </div>

@@ -2784,8 +2784,119 @@
     }
   }
 
+  // ----- Progresso: exportar e importar (levar o save para outro dispositivo) -----
+  // importacaoPendente: envelope lido do arquivo, à espera do "Substituir"; falaProgresso: retorno ao jogador.
+  let importacaoPendente = null, falaProgresso = "";
+  const dataCurta = (iso) => {
+    const d = iso ? new Date(iso) : null;
+    return d && !Number.isNaN(d.getTime()) ? d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "";
+  };
+  const resumoPersonagem = (p) => `nível ${Math.floor(Number(p?.nivel) || 1)}, ${Math.max(0, Math.floor(Number(p?.moedas) || 0))} moedas`;
+
+  function htmlProgresso() {
+    const atual = jogador();
+    const pend = importacaoPendente;
+    const confirmar = pend ? `
+      <div class="progresso-confirma" id="progressoConfirma" role="alert">
+        <p>Arquivo${pend.exportadoEm ? ` exportado em ${esc(dataCurta(pend.exportadoEm))}` : ""}: ${esc(resumoPersonagem(pend.personagem))}.
+          Substituir o progresso deste dispositivo${atual ? ` (${esc(resumoPersonagem(atual))})` : ""}? O progresso atual daqui some de vez, a menos que você o exporte antes.</p>
+        <div class="acoes-modal">
+          <button type="button" class="btn secundario" data-cancelar-importacao>Cancelar</button>
+          <button type="button" class="btn primario" data-confirmar-importacao>Substituir</button>
+        </div>
+      </div>` : "";
+    return `
+      <h3 id="secProgresso">Progresso</h3>
+      <p>Para jogar em outro dispositivo, exporte o progresso num arquivo e importe esse arquivo no outro aparelho (pelo botão Importar progresso, nesta mesma ajuda). Importar substitui o progresso do aparelho onde você importa.</p>
+      ${confirmar}
+      ${falaProgresso ? `<p class="progresso-fala" role="status">${esc(falaProgresso)}</p>` : ""}
+      <div class="acoes-modal">
+        <button type="button" class="btn secundario" data-exportar-progresso>Exportar progresso</button>
+        <button type="button" class="btn secundario" data-importar-progresso>Importar progresso</button>
+      </div>`;
+  }
+
+  // Redesenha a ajuda e rola até a seção Progresso (abrirModal volta o corpo ao topo).
+  function reabrirAjudaNoProgresso(focar) {
+    abrirAjuda();
+    setTimeout(() => {
+      $("#secProgresso")?.scrollIntoView({ block: "start", behavior: "auto" });
+      if (focar) $(focar)?.focus({ preventScroll: true });
+    }, 0);
+  }
+
+  function exportarProgresso() {
+    const texto = Storage.exportar(ID);
+    if (!texto) {
+      falaProgresso = "Ainda não há progresso salvo para exportar.";
+      reabrirAjudaNoProgresso("[data-exportar-progresso]");
+      return;
+    }
+    const d = new Date();
+    const dois = (n) => String(n).padStart(2, "0");
+    const nome = `jornada-progresso-${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}-${dois(d.getHours())}${dois(d.getMinutes())}.json`;
+    const url = URL.createObjectURL(new Blob([texto], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    importacaoPendente = null;
+    falaProgresso = `Progresso exportado no arquivo ${nome} (${resumoPersonagem(jogador())}). Leve-o ao outro dispositivo e use Importar progresso lá.`;
+    reabrirAjudaNoProgresso("[data-exportar-progresso]");
+  }
+
+  let entradaArquivo = null;
+  function escolherArquivoProgresso() {
+    if (!entradaArquivo) {
+      entradaArquivo = document.createElement("input");
+      entradaArquivo.type = "file";
+      entradaArquivo.accept = ".json,application/json,text/plain";
+      entradaArquivo.hidden = true;
+      document.body.appendChild(entradaArquivo);
+      entradaArquivo.addEventListener("change", async () => {
+        const arquivo = entradaArquivo.files?.[0];
+        entradaArquivo.value = ""; // o mesmo arquivo pode ser escolhido de novo
+        if (!arquivo) return;
+        importacaoPendente = null;
+        try {
+          if (arquivo.size > 20 * 1024 * 1024) throw new Error("O arquivo é grande demais para ser um progresso do jogo.");
+          const env = Storage.lerExportacao(await arquivo.text());
+          if (typeof VERSAO_SAVE !== "undefined" && Number(env.personagem.versao) > VERSAO_SAVE) {
+            throw new Error("Esse progresso foi salvo numa versão mais nova do jogo. Atualize a página e tente de novo.");
+          }
+          importacaoPendente = env;
+          falaProgresso = "";
+        } catch (erro) {
+          falaProgresso = erro?.message || "Não foi possível ler o arquivo.";
+        }
+        reabrirAjudaNoProgresso(importacaoPendente ? "[data-cancelar-importacao]" : "[data-importar-progresso]");
+      });
+    }
+    entradaArquivo.click();
+  }
+
+  function confirmarImportacao() {
+    const env = importacaoPendente;
+    importacaoPendente = null;
+    if (!env) return;
+    if (!Storage.importar(ID, env.personagem)) {
+      falaProgresso = "Não foi possível gravar o progresso importado (o navegador bloqueou o armazenamento?).";
+      reabrirAjudaNoProgresso("[data-importar-progresso]");
+      return;
+    }
+    falaProgresso = "Progresso importado. Recarregando o jogo…";
+    reabrirAjudaNoProgresso();
+    // O jogo recarrega para entrar com o save novo (e migrá-lo, se vier de uma versão anterior).
+    setTimeout(() => location.reload(), 300);
+  }
+
   // ----- Ajuda -----
   function abrirAjuda() {
+    // Aberta de novo (não só redesenhada), a seção Progresso começa limpa.
+    if (modalAberto?.id !== "modalAjuda") { importacaoPendente = null; falaProgresso = ""; }
     const p = jogador();
     const regra = p && typeof descreverRegraMorte === "function" ? descreverRegraMorte(p.nivel) : "";
     const k = (...t) => t.map((x) => `<kbd>${esc(x)}</kbd>`).join("");
@@ -2874,6 +2985,8 @@
         recolhidos), lucro (menos poções, flechas e perdas na morte), abates e mortes, por sessão e por hora, e quanto falta para
         o próximo nível. Zere quando quiser; recarregar a página também zera.</p>
       <p>Cidades: toda cidade tem um mercador (vende provisões e compra qualquer item; "Vender tudo" vende a mochila inteira, menos poções e flechas), um guarda do depósito, um guia de caravanas e um cais. O depósito é um baú só para todas as cidades, com espaço para ${typeof REGRAS_DEPOSITO !== "undefined" ? REGRAS_DEPOSITO.espacos : 2000} itens: o que guardar numa cidade, retire em qualquer outra. O guia leva a qualquer cidade aberta, cobrando pela distância. No cais, a passagem do barco leva ao Mar das Rotas, que liga todas as cidades: navegue até o cais de uma cidade aberta para desembarcar. A pé, as rotas ligam as regiões de graça. Os capítulos (Egito, Mar Vermelho, Sinai, Galileia) abrem em ordem. No mar, pesque nos pontos com ondulação.</p>
+      ${htmlProgresso()}
+      <h3>Opções</h3>
       <div class="acoes-modal">
         <button type="button" class="btn secundario" data-alternar-toque aria-pressed="${comToque}">${comToque ? "Ocultar" : "Mostrar"} controles de toque</button>
         <button type="button" class="btn secundario" data-som aria-pressed="${!!window.Som?.ligado}">Som: ${window.Som?.ligado ? "ligado" : "desligado"}</button>
@@ -4358,6 +4471,15 @@
           return;
         }
         if (e.target.closest("[data-tela-cheia]")) telaCheia();
+        if (e.target.closest("[data-exportar-progresso]")) { exportarProgresso(); return; }
+        if (e.target.closest("[data-importar-progresso]")) { escolherArquivoProgresso(); return; }
+        if (e.target.closest("[data-confirmar-importacao]")) { confirmarImportacao(); return; }
+        if (e.target.closest("[data-cancelar-importacao]")) {
+          importacaoPendente = null;
+          falaProgresso = "Importação cancelada; nada mudou.";
+          reabrirAjudaNoProgresso("[data-importar-progresso]");
+          return;
+        }
       });
     }
 
