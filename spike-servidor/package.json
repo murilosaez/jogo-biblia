@@ -1,0 +1,14 @@
+{
+  "name": "jornada-spike-servidor",
+  "private": true,
+  "description": "Teste técnico descartável: o logica.js do jogo dentro de um Durable Object (Cloudflare), rodando local. Não faz parte do jogo.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && wrangler dev --local --port 8799",
+    "teste": "node teste-clientes.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.162.0"
+  }
+}

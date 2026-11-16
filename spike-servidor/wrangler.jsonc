@@ -1,0 +1,10 @@
+{
+  // Spike descartável: roda só local (wrangler dev --local), sem conta e sem deploy.
+  "name": "jornada-spike",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  "durable_objects": {
+    "bindings": [{ "name": "SALA", "class_name": "Sala" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }]
+}
