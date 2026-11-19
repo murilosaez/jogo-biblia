@@ -103,7 +103,16 @@ Os tamanhos dos glifos estão em `Arte.TAM_ICONE` (`{ ui: 16, hb: 32, of: 32, ro
   ficam por cima dos braços); cabeça (turbante de linho, capacete de couro com costura e aba, elmo de bronze);
   pernas (saiote de tiras de couro com ponta de bronze; grevas de bronze na canela) e pés (botas de viagem,
   de cano até o meio da canela). Grevas, botas e saiote seguem o passo e as 3 vistas e usam poucas cores novas (2 tons de
-  bronze; o couro das sandálias que o boneco já tem). Colar, anel e sandálias são pequenos demais para o
+  bronze; o couro das sandálias que o boneco já tem).
+- **Armadura de Deus** (Ef 6:13-17; relíquias, ouro pálido comum às 6 peças e um acento por peça): Espada do
+  Espírito (`LAMINAS`: lâmina clara, guarda de ouro, cabo carmim); Escudo da fé (`CORES_ESCUDO` com o 4º campo
+  `"liso"` e `FORMA_ESCUDO` → `escudo_alto`: escudo "de porta", face de anil lisa, moldura, espinha e umbo de
+  ouro); Couraça da justiça (`ARM.couraca_justica`: as escamas da couraça de escamas, função `escamas`, em ouro
+  pálido, ombreiras de ouro e tiras carmim); Capacete da salvação (`elmo` de ouro com a 3ª cor = crista de crina
+  branca: arco da testa à nuca de lado, leque estreito de frente e de costas); Cinto da verdade (`saiote` de
+  tiras de linho branco com a 3ª cor = cinto de placas de ouro, que também doura a ponta da faixa do corpo);
+  Calçados do evangelho (`botas` com a 3ª cor = tiras de ouro em linhas alternadas até o meio da canela, a perna
+  aparecendo entre elas, e o pé fechado em couro claro). A 3ª cor é opcional: as peças antigas não mudam. Colar, anel e sandálias são pequenos demais para o
   mundo: aparecem só no painel. Com traje, as peças do corpo não aparecem (como a armadura).
 - Passo: um ciclo de 4 fases por casa, sincronizado à fração do deslize; golpe em 2 tempos (antecipação e
   golpe) com investida de 4 px.
@@ -135,6 +144,12 @@ Os tamanhos dos glifos estão em `Arte.TAM_ICONE` (`{ ui: 16, hb: 32, of: 32, ro
   de bronze), grevas (placa da canela, larga no joelho, com 2 correias), sandálias, botas de viagem (de
   perfil, cano dobrado e atilhos), anel de selo (chapa oval com a marca) e a mochila do boneco (aba, fivela
   e alças), com luz de cima e da esquerda e 3 a 4 tons por material.
+- Armadura de Deus (ícones, seção 10 de `arte/itens.js`, rampas `OURO_CL`, `LAMINA_CL`, `CARMIM`): espada de
+  lâmina longa e clara com guarda em asa e cabo carmim; escudo alto "de porta" curvo, face de anil com espinha,
+  travessa, umbo e moldura de ouro e a espessura da borda; couraça no corte da de escamas (`escamasTorso`) em ouro
+  pálido sobre forro carmim, com o sol no peito; capacete de ouro com crista de crina branca, testeira com pedra
+  e abas do rosto; cinto de placas de ouro com o fecho e seis tiras de linho branco de ponta dourada; o par de
+  calçados de couro claro com tiras de ouro cruzadas e o laço de anil.
 - Painel Equipamento (boneco): o espaço vazio mostra o contorno do item que vai nele (`silhueta` em
   ESPACOS_BONECO, dados/itens.js), apagado; a mão do escudo presa pelo arco mostra o arco apagado sobre um
   fundo riscado. A figura ao lado é o corpo inteiro do jogador em escala 4 (2 px por pixel de arte).

@@ -678,6 +678,7 @@
     tunica_pano: { veste: { R: "#c9d4e0", r: "#a8b8c8", d: "#7f90a4" }, gola: "#3b5a9a" },
     armadura_couro: {},
     couraca_escamas: {},
+    couraca_justica: {},
   };
 
   // Boneco de reserva (40 × 48 px): cabeça, veste nas cores da cfg, pernas e pés; no passo as pernas abrem.
@@ -696,7 +697,7 @@
     if (q === 4) retF(g, lado ? x0 + w : x0 - 3, 22, 3, 3, c.pele[1]); // mão erguida na ação
     // Equipamento no boneco de reserva: uma marca simples por peça (o desenho de verdade é de
     // arte/humano-equip.js), para que arma, escudo, armadura e peças do corpo mudem o boneco mesmo sem a arte.
-    if (cfg.armadura) retF(g, x0 + 1, 23 + dy, w - 2, 8, cfg.armadura === "couraca_escamas" ? "#8a6a3a" : cfg.armadura === "armadura_couro" ? "#7a4a2c" : "#c9d4e0");
+    if (cfg.armadura) retF(g, x0 + 1, 23 + dy, w - 2, 8, cfg.armadura === "couraca_escamas" ? "#8a6a3a" : cfg.armadura === "couraca_justica" ? "#e6c25a" : cfg.armadura === "armadura_couro" ? "#7a4a2c" : "#c9d4e0");
     for (const [nome, cores] of cfg.acessorios || []) {
       if (nome === "brilho") continue;
       const cor = (cores && typeof cores[0] === "string" && cores[0]) || "#6b4a2e", cor2 = (cores && typeof cores[1] === "string" && cores[1]) || cor, h = sementeDe(nome) % 5;
@@ -768,12 +769,16 @@
     espada_madeira: ["#8a6038", "#d9a35c", "#4f3220", "#4f3220"],
     espada_ferro: ["#6e7a84", "#e4ecf0", "#b07a38", "#5a3624"],
     espada_temperada: ["#5a7896", "#e8f0f8", "#e8b94a", "#5a3624"],
+    espada_espirito: ["#8a9cb0", "#f4f8fc", "#f2d27a", "#a8242e"],
   };
   const CORES_ESCUDO = {
     escudo_madeira: ["#8a5a32", "#4f3220", "#b07a3e"],
     escudo_bronze: ["#b07a38", "#7a4a24", "#f2d27a"],
     escudo_ferro: ["#8a949c", "#4a5258", "#d4dce2"],
+    // escudo da fé: alto ("de porta"), face de anil lisa, moldura e espinha de ouro (o 4º campo tira a malha de couro)
+    escudo_fe: ["#34528c", "#e6c25a", "#f2d27a", "liso"],
   };
+  const FORMA_ESCUDO = { escudo_fe: "escudo_alto" };
   const ARCOS = { arco_madeira: ["#9a6a3c", "#eadcb6"], arco_composto: ["#6e3a24", "#f0e4c4"] };
   // Peças do corpo vistas no boneco: [acessório, cores]. Colar e anel são pequenos demais para o mundo.
   const PECAS_CORPO = {
@@ -783,6 +788,10 @@
     saiote_couro: ["saiote", ["#8a5a32", "#e8b94a"]],
     grevas_bronze: ["grevas", ["#b07a38", "#f2d27a"]],
     botas_viagem: ["botas", ["#6a4228", "#9a6a3c"]],
+    // Armadura de Deus: elmo de ouro com crista branca, cinto de ouro com tiras de linho, calçados de tiras de ouro
+    capacete_salvacao: ["elmo", ["#b08a3a", "#fff0b0", "#f2ecdc"]],
+    cinto_verdade: ["saiote", ["#ece4cf", "#f2d27a", "#e6c25a"]],
+    calcados_evangelho: ["botas", ["#e2d2b0", "#f2d27a", "#e6c25a"]],
   };
   const ALIAS_ACESSORIO = { funda_mao: "funda", capacete: "elmo" };
   const base = (id) => String(id || "").split("@")[0];
@@ -821,7 +830,7 @@
     if (arma === "funda") acessorios.push(["funda_mao", ["#8a6a42", "#a8a090"]]);
     else if (ehDistancia(arma)) acessorios.push(["arco_mao", ARCOS[arma] || ARCOS.arco_madeira]);
     else if (arma) acessorios.push(["espada", LAMINAS[arma] || LAMINAS.espada_ferro]);
-    if (eq.escudo) acessorios.push(["escudo_redondo", CORES_ESCUDO[base(eq.escudo)] || CORES_ESCUDO.escudo_madeira]);
+    if (eq.escudo) acessorios.push([FORMA_ESCUDO[base(eq.escudo)] || "escudo_redondo", CORES_ESCUDO[base(eq.escudo)] || CORES_ESCUDO.escudo_madeira]);
     const cores = Object.assign({ H: "#4a2f20", S: "#e0a878", s: "#c68a5c", R: "#eadcb6", r: "#d4bf8f", d: "#a8916a", P: "#d4bf8f", p: "#b8a07a", q: "#8a7656", A: "#3b5a9a", F: "#5a3a24" }, traje?.cores);
     if (traje?.cores && !traje.cores.P) { delete cores.P; delete cores.p; delete cores.q; }
     if (cab) { cores.H = cab; if (traje?.molde === "veu") { cores.V = cab; cores.W = rampaDe(cab)[2]; } }
@@ -1210,6 +1219,13 @@
   item("botas_viagem");
   item("anel_selo_bronze");
   item("mochila");
+  // Armadura de Deus (Ef 6:13-17), relíquias em ouro pálido: desenho em arte/itens.js.
+  item("cinto_verdade");
+  item("couraca_justica");
+  item("calcados_evangelho");
+  item("escudo_fe");
+  item("capacete_salvacao");
+  item("espada_espirito");
   // Pedras do peitoral: a mesma lapidação, na cor de cada pedra (campo "pedra" em dados/itens.js).
   for (const [chave, d] of Object.entries(typeof ITENS !== "undefined" ? ITENS : {})) {
     if (!d.pedra) continue;

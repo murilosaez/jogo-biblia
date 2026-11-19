@@ -63,6 +63,8 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual })
     const npcs = chaves.filter((k) => k.startsWith("pj_") && k !== "pj_jogador"), inimigos = chaves.filter((k) => k.startsWith("in_"));
     igual([npcs.length, inimigos.length], [25, 14], "25 NPCs e 14 inimigos humanos");
     chaves.push(Arte.garantirJogador({ arma: "espada_ferro", escudo: "escudo_bronze", armadura: "couraca_escamas", cabeca: "elmo_bronze", pernas: "grevas_bronze", pes: "botas_viagem" }, {}));
+    // a Armadura de Deus inteira (Ef 6:13-17): escudo alto, couraça de ouro, crista, cinto e calçados de tiras
+    chaves.push(Arte.garantirJogador({ arma: "espada_espirito", escudo: "escudo_fe", armadura: "couraca_justica", cabeca: "capacete_salvacao", pernas: "cinto_verdade", pes: "calcados_evangelho" }, {}));
     for (const k of chaves) {
       const def = PP[k];
       igual([def.w, def.h, def.direcoes, def.quadrosPorVista, def.quadros, def.humano], [24, 32, 3, 8, 24, true], k);
@@ -112,9 +114,9 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual })
     // a funda vai na mão da arma (uma mão só: o arco ou a funda tomam o lugar da espada)
     for (const v of VISTAS) assert.ok(difere(px({}, {}, v), px({ arma: "funda" }, {}, v)) >= 8, `funda na vista ${v / 8}`);
     // peças do corpo do boneco (cabeça, pernas e pés) aparecem nas 3 vistas, cada uma com o seu desenho
-    variar("cabeça", ["turbante_linho", "capacete_couro", "elmo_bronze"], (id) => ({ cabeca: id }), 20);
-    variar("pernas", ["saiote_couro", "grevas_bronze"], (id) => ({ pernas: id }), 8);
-    variar("pés", ["botas_viagem"], (id) => ({ pes: id }), 6);
+    variar("cabeça", ["turbante_linho", "capacete_couro", "elmo_bronze", "capacete_salvacao"], (id) => ({ cabeca: id }), 20);
+    variar("pernas", ["saiote_couro", "grevas_bronze", "cinto_verdade"], (id) => ({ pernas: id }), 8);
+    variar("pés", ["botas_viagem", "calcados_evangelho"], (id) => ({ pes: id }), 6);
     // arma e escudo saem da silhueta e acompanham o golpe: a caixa cresce no quadro 7 e a arma muda de lugar entre 6 e 7
     for (const v of VISTAS) {
       const nu7 = px({}, {}, v + 7), arm7 = px({ arma: "espada_ferro" }, {}, v + 7), arm6 = px({ arma: "espada_ferro" }, {}, v + 6), arm0 = px({ arma: "espada_ferro" }, {}, v);

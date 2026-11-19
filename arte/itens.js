@@ -1,5 +1,5 @@
 // =====================================================================
-// arte/itens.js — itens redesenhados (60 ícones e as pedras do peitoral).
+// arte/itens.js — itens redesenhados (66 ícones e as pedras do peitoral).
 // Pacote A8 do plano de arte.
 //
 // Como o desenho é feito
@@ -10,7 +10,7 @@
 //   mostram a boca, os escudos mostram a espessura da borda. A sombra de apoio fica na camada de sombra.
 //
 // Chaves que este arquivo assume (registrar() com a MESMA chave troca o desenho legado de sprites.js):
-//   as 56 chaves de item de sprites.js (pocao, espada_ferro, escudo_bronze, pedra_*, moeda…), em 32 × 32 px;
+//   as 65 chaves de item de sprites.js (pocao, espada_ferro, escudo_bronze, pedra_*, moeda…), em 32 × 32 px;
 //   as chamadas item("…") continuam em sprites.js (os testes as procuram lá) e são sobrescritas aqui
 //
 // Contrato (docs/GUIA-DE-ARTE.md, seção "Contrato"):
@@ -175,6 +175,8 @@
   const LINHO = rampa6("#d9cba6", "pano"), LINHO_BR = rampa6("#ece4cf", "pano"), ANIL = rampa6("#3b5a9a", "pano");
   const OSSO = rampa6("#dccfae", "pedra"), PEDRA = rampa6("#8a8478", "pedra");
   const CORDA = rampa6("#b79a68", "pano");
+  // Armadura de Deus (relíquias): ouro pálido e brilhante, comum às 6 peças; o acento de cada uma vem à parte
+  const OURO_CL = rampa6("#e6c25a", "metal"), LAMINA_CL = rampa6("#c6d4e0", "metal"), CARMIM = rampa6("#a8242e", "couro");
 
   // -------------------------------------------------------------------
   // Registro: mesma chave, mesma célula (32 × 32 px), mesma origem do legado
@@ -462,18 +464,21 @@
     pontos(g, [[9, 7], [22, 7]], OURO[5]); pontos(g, [[10, 8], [23, 8]], COURO[0]);
   }, { sombraApoio: [8, 14.6, 5.6, 0.9] });
   // Couraça de escamas: lâminas de bronze em fileiras desencontradas sobre forro de couro vermelho.
-  item("couraca_escamas", (g) => {
-    const FORRO = rampa6("#7a2a26", "couro");
+  // escamas em fileiras desencontradas sobre o forro (R, metal; F, forro); a couraça da justiça usa o mesmo corte
+  function escamasTorso(g, R, F) {
     poli(g, TORSO, (X, Y, den) => {
       const nx = (X - 15.5) / 10.5, c = Math.sqrt(Math.max(0.05, 1 - nx * nx));
       const l = luzN(nx * 0.9, -0.15, c);
       const beira = !den(X - 1, Y) || !den(X + 1, Y) || !den(X, Y - 1);
-      if (Y < 7 || (beira && Y < 23)) return sombrear(FORRO, l + 0.25, X, Y, false);
-      if (Y >= 27) return FORRO[Y === 27 ? (X < 15 ? 4 : 3) : 1];
+      if (Y < 7 || (beira && Y < 23)) return sombrear(F, l + 0.25, X, Y, false);
+      if (Y >= 27) return F[Y === 27 ? (X < 15 ? 4 : 3) : 1];
       const fil = Math.floor((Y - 7) / 4), v = (Y - 7) % 4, u = (X + (fil % 2) * 3) % 5;
       const d = v === 0 ? [-1.3, 0.9, 0.9, 0.5, -1.3][u] : v === 1 ? [0.7, 0.3, 0.1, 0, -0.5][u] : v === 2 ? [0.3, 0, 0, -0.2, -0.6][u] : [-1.3, -0.6, -0.5, -0.7, -1.3][u];
-      return sombrear(BRONZE, l * 0.7 + d, X, Y, false);
+      return sombrear(R, l * 0.7 + d, X, Y, false);
     });
+  }
+  item("couraca_escamas", (g) => {
+    escamasTorso(g, BRONZE, rampa6("#7a2a26", "couro"));
     pontos(g, [[10, 5], [21, 5]], OURO[5]); pontos(g, [[15, 22], [16, 22]], OURO[5]);
     faisca(g, 11, 10, BRANCO); faisca(g, 13, 16, BRANCO);
   }, { sombraApoio: [8, 14.6, 5.6, 0.9] });
@@ -1296,6 +1301,112 @@
     pontos(g, [[8, 26], [23, 26]], OURO[4]);
   }, { sombraApoio: [8, 14.6, 5.8, 0.9] });
 
+
+  // ===================================================================
+  // 10. ARMADURA DE DEUS (Ef 6:13-17) — relíquias: ouro pálido polido em todas, um acento por peça
+  // ===================================================================
+  // Espada do Espírito: lâmina longa e clara com sulco, guarda em asa de ouro, cabo carmim e pomo em disco.
+  item("espada_espirito", (g) => {
+    punho(g, CARMIM, OURO_CL, { faixas: OURO_CL, espPomo: BRANCO, pomo: 2.3 });
+    lamina(g, LAMINA_CL, 25, (s) => (s > 20 ? 1.7 * Math.max(0, 1 - (s - 20) / 5) + 0.3 : s < 1.6 ? 2.3 : 1.7), { sulco: true, brilhos: [5, 11, 16.5] });
+    // guarda em asa: as pontas sobem para a lâmina
+    curva(g, (t) => { const p = (t * 2 - 1) * 6.2; return emS(0.2 + 1.9 * (p / 6.2) ** 2, p); }, 12, (t) => 1.25 + 0.45 * (1 - Math.abs(t * 2 - 1)), OURO_CL, { esp: BRANCO, dur: 0.985 });
+    const c = emS(0.3);
+    bola(g, c[0], c[1], 1.7, 1.7, CARMIM, { esp: "#ffd6c8", dur: 0.97 });
+    const f = emS(19, -1.9); faisca(g, Math.floor(f[0]), Math.floor(f[1]), BRANCO, true);
+  }, { sombraApoio: [8.2, 14.3, 5, 1.1] });
+
+  // Escudo da fé: alto, "de porta", curvo como um cilindro; face de anil, moldura e espinha de ouro, umbo polido.
+  item("escudo_fe", (g) => {
+    const borda = (x, cy, k) => { const pts = []; for (let i = 0; i <= 8; i++) { const X = 6.5 + i * 2.375, u = (X - 16) / 9.5; pts.push([X, cy + k * u * u]); } return pts; };
+    const cima = borda(0, 3.6, 1.6), baixo = borda(0, 27.4, -1.4).reverse();
+    const forma = cima.concat(baixo);
+    // espessura da borda: aparece embaixo e à direita
+    poli(g, forma.map(([x, y]) => [x + 1.2, y + 1.6]), (X, Y) => OURO_CL[X > 22 ? 0 : 1]);
+    const den = poli(g, forma, (X, Y, d) => {
+      const u = lim((X + 0.5 - 16) / 9.5, -0.97, 0.97), l = luzN(u * 0.85, -0.12, Math.sqrt(1 - u * u * 0.72));
+      const fora1 = !d(X - 1, Y) || !d(X + 1, Y) || !d(X, Y - 1) || !d(X, Y + 1);
+      const fora2 = !d(X - 2, Y) || !d(X + 2, Y) || !d(X, Y - 2) || !d(X, Y + 2);
+      if (fora1) return sombrear(OURO_CL, l + 0.35, X, Y, false);
+      if (fora2) return sombrear(OURO_CL, l - 0.1, X, Y, false);
+      const meio = Math.abs(X + 0.5 - 16);
+      if (meio < 1.1) return sombrear(OURO_CL, l + (X < 16 ? 0.45 : -0.05), X, Y, false); // espinha
+      if (meio < 1.6) return ANIL[0];
+      return sombrear(ANIL, l * 0.9 + (meio < 2.6 ? -0.25 : 0) + (hash2(X >> 1, Y >> 1, 41) > 0.82 ? -0.18 : 0), X, Y, false);
+    });
+    // travessa de ouro e umbo
+    for (let X = 7; X <= 25; X++) if (den(X, 15) && Math.abs(X + 0.5 - 16) > 1.1) { g.fino(X, 15, sombrear(OURO_CL, 0.75 - (X - 7) * 0.08, X, 15, false)); g.fino(X, 16, OURO_CL[1]); }
+    for (let k = 0; k < 16; k++) { const an = (k / 16) * Math.PI * 2; matiz(g, Math.round(15.5 + Math.cos(an) * 4.4 + 0.6), Math.round(15 + Math.sin(an) * 4.4 + 0.8), 0.3); }
+    bola(g, 16, 15.5, 3.6, 3.6, OURO_CL, { esp: BRANCO, dur: 0.97, rebote: 0.35 });
+    // cravos nos cantos
+    for (const [X, Y] of [[9, 7], [22, 7], [9, 24], [22, 24]]) { matiz(g, X + 1, Y + 1, 0.35); g.fino(X, Y, OURO_CL[5]); }
+    faisca(g, 9, 11, BRANCO, true);
+  }, { sombraApoio: [8.4, 14.5, 6, 1.1] });
+
+  // Couraça da justiça: o corte da couraça de escamas, em ouro pálido sobre forro carmim, com o sol no peito.
+  item("couraca_justica", (g) => {
+    escamasTorso(g, OURO_CL, CARMIM);
+    for (let k = 0; k < 14; k++) { const an = (k / 14) * Math.PI * 2; matiz(g, Math.round(15.5 + Math.cos(an) * 3.6 + 0.5), Math.round(13 + Math.sin(an) * 3.6 + 0.7), 0.35); }
+    bola(g, 16, 13.4, 2.9, 2.9, OURO_CL, { esp: BRANCO, dur: 0.96, rebote: 0.3 });
+    g.fino(16, 14, CARMIM[3]);
+    pontos(g, [[10, 5], [21, 5], [15, 22], [16, 22]], OURO_CL[5]);
+    faisca(g, 11, 9, BRANCO, true); faisca(g, 20, 18, BRANCO);
+  }, { sombraApoio: [8, 14.6, 5.6, 0.9] });
+
+  // Capacete da salvação: calota de ouro, crista de crina branca, testeira com a pedra e abas do rosto.
+  item("capacete_salvacao", (g) => {
+    const CRINA = rampa6("#f2ecdc", "pano");
+    poli(g, [[12, 19], [20, 19], [20, 28], [12, 28]], (X, Y) => (Y < 22 ? "#1c1210" : "#2e1c16"));
+    poli(g, [[6, 18], [26, 18], [26, 25], [23, 29], [19.5, 29], [18.5, 22], [13.5, 22], [12.5, 29], [9, 29], [6, 25]], (X, Y, den) => cil(OURO_CL, X, Y, 16, 10.6, (!den(X, Y + 1) ? -0.5 : 0) - (Y - 18) * 0.03 + (!den(X - 1, Y) ? 0.3 : 0), true));
+    bola(g, 16, 19, 10.5, 11, OURO_CL, { so: (X, Y) => Y < 18, esp: BRANCO, dur: 0.97, rebote: 0.3 });
+    // crista: leque de crina preso num suporte de ouro
+    bola(g, 16, 6.6, 3.4, 5.2, CRINA, { so: (X, Y) => Y < 10, tex: (X) => (X % 2 ? -0.35 : 0.15) });
+    tubo(g, 14, 10, 18, 10, 1.3, 1.3, OURO_CL, { esp: BRANCO });
+    tubo(g, 5.5, 18.4, 26.5, 18.4, 1.3, 1.3, OURO_CL, { esp: BRANCO, dur: 0.985 });
+    bola(g, 16, 18.4, 1.5, 1.5, rampa6("#3a8fa0", "metal"), { esp: BRANCO });
+    for (let Y = 20; Y <= 27; Y++) { g.fino(15, Y, OURO_CL[Y === 27 ? 3 : 5]); g.fino(16, Y, OURO_CL[Y === 27 ? 1 : 3]); }
+    faisca(g, 10, 13, BRANCO, true);
+  }, { sombraApoio: [8, 14.6, 5.4, 1.1] });
+
+  // Cinto da verdade: cinto de placas de ouro com o fecho redondo e seis tiras de linho branco de ponta dourada.
+  item("cinto_verdade", (g) => {
+    poli(g, [[5, 9], [27, 9], [27, 14], [5, 14]], (X, Y) => LINHO[Y < 11 ? 1 : 0]);
+    for (let i = 0; i < 6; i++) {
+      const X0 = 5 + i * 4, comp = Math.round(18 - Math.abs(i - 2.5) * 1.6);
+      for (let j = 0; j < comp; j++) {
+        const Y = 10 + j, ponta = j >= comp - 2, l = 0.35 - (i - 2.5) * 0.12 - j * 0.02 + (j % 5 === 3 ? -0.25 : 0);
+        g.fino(X0, Y, ponta ? OURO_CL[5] : sombrear(LINHO_BR, l + 0.55, X0, Y, false));
+        g.fino(X0 + 1, Y, ponta ? OURO_CL[j === comp - 1 ? 2 : 4] : sombrear(LINHO_BR, l + 0.05, X0 + 1, Y, false));
+        g.fino(X0 + 2, Y, ponta ? OURO_CL[2] : sombrear(LINHO_BR, l - 0.6, X0 + 2, Y, false));
+      }
+    }
+    tubo(g, 4.5, 7.6, 27.5, 7.6, 2.3, 2.3, OURO_CL, { esp: BRANCO, dur: 0.985, tex: (X) => (X % 4 === 0 ? -0.75 : X % 4 === 1 ? 0.25 : 0) });
+    bola(g, 16, 7.8, 3.1, 3.1, OURO_CL, { esp: BRANCO, rebote: 0.3 });
+    g.fino(16, 8, LINHO_BR[5]); g.fino(15, 8, LINHO_BR[3]);
+    faisca(g, 8, 6, BRANCO, true);
+  }, { sombraApoio: [8, 14.4, 5.6, 0.9] });
+
+  // Calçados do evangelho da paz: o par de perfil, couro claro, tiras de ouro cruzadas e o laço de anil.
+  item("calcados_evangelho", (g) => {
+    const COURO_BR = rampa6("#d6c098", "couro"), SOLA = rampa6("#9a6a34", "couro");
+    const calcado = (dx, dy, R, vies) => {
+      const forma = [[9, 9], [17.5, 9], [17.5, 17], [23.5, 19], [27.5, 22.5], [27.5, 27], [8, 27], [8, 18]].map(([x, y]) => [x + dx, y + dy]);
+      poli(g, forma, (X, Y, den) => {
+        const x = X - dx, y = Y - dy;
+        if (y >= 25) return SOLA[x < 12 ? 2 : 1];
+        if (y < 11) return sombrear(OURO_CL, 0.8 - (x - 9) * 0.14 - (y === 10 ? 0.55 : 0) + vies, X, Y, false);
+        const tira = ((x + y) % 5 === 0 || (x - y + 40) % 5 === 0) && y < 24;
+        if (tira) return sombrear(OURO_CL, 0.55 - (x - 9) * 0.06 + vies + (!den(X, Y - 1) ? 0.3 : 0), X, Y, false);
+        if (y < 17 || x < 18) return cil(R, X, Y, 13.5 + dx, 5.6, vies + (!den(X, Y - 1) ? 0.3 : 0), false);
+        return sombrear(R, 0.5 - (x - 18) * 0.1 - (y - 18) * 0.12 + vies + (!den(X, Y - 1) ? 0.4 : 0), X, Y, false);
+      });
+    };
+    calcado(-4, -1, COURO_BR, -0.45);
+    calcado(1, 1, COURO_BR, 0);
+    // laço de anil no tornozelo
+    pontos(g, [[19, 13], [20, 14], [21, 13]], ANIL[4]); pontos(g, [[20, 15], [21, 16], [19, 16]], ANIL[2]);
+    faisca(g, 12, 11, BRANCO, true);
+  }, { sombraApoio: [8.4, 14.6, 5.8, 0.9] });
 
   // Conferência na carga: nenhuma chave de item do legado ficou sem desenho novo (o teste do pacote confere de novo).
   Arte.ITENS_NOVOS = FEITOS.slice();
