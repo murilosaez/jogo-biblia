@@ -1698,6 +1698,7 @@ class Cena extends Phaser.Scene {
     }
     if (r.abrirLoja) (window.UI?.abrirLoja || window.abrirLoja)?.(r.abrirLoja);
     if (r.abrirDeposito) (window.UI?.abrirDeposito || window.abrirDeposito)?.(r.abrirDeposito);
+    if (r.abrirForja) window.UI?.abrirForja?.(r.abrirForja);
     if (r.abrirViagem) (window.UI?.abrirViagem || window.abrirViagem)?.(r.abrirViagem);
     if (r.abrirBarco) window.UI?.abrirBarco?.(r.abrirBarco);
     if (r.abrirMural) window.UI?.abrirMural?.(r.abrirMural);

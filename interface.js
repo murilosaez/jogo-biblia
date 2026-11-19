@@ -372,8 +372,16 @@
   function htmlItem(id, tam = 32) {
     const url = itemURL(id, 2);
     const nome = nomeDoItem(id);
-    if (url) return `<img class="px" src="${url}" width="${tam}" height="${tam}" alt="${esc(nome)}">`;
-    return `<span class="letras" aria-label="${esc(nome)}">${esc(nome.slice(0, 2))}</span>`;
+    if (url) return `<img class="px" src="${url}" width="${tam}" height="${tam}" alt="${esc(nome)}">${marcasItem(id)}`;
+    return `<span class="letras" aria-label="${esc(nome)}">${esc(nome.slice(0, 2))}</span>${marcasItem(id)}`;
+  }
+  // Forja e pedra (JGB-25) sobre o ícone: "+3" no canto e um ponto na cor da pedra engastada.
+  function marcasItem(id) {
+    const d = info(id);
+    if (!d || (!d.forja && !d.pedra)) return "";
+    const cor = d.pedra && typeof ITENS !== "undefined" ? ITENS[d.pedra]?.pedra : "";
+    return `${d.forja ? `<span class="marca-forja" aria-hidden="true">+${d.forja}</span>` : ""}`
+      + `${cor && /^#[0-9a-f]{6}$/i.test(cor) ? `<i class="marca-pedra" aria-hidden="true" style="--pedra:${cor}"></i>` : ""}`;
   }
   function nomeDoItem(id) {
     if (id === "flechas") return `${typeof FLECHAS_POR_PACOTE !== "undefined" ? FLECHAS_POR_PACOTE : 5} flechas`;
@@ -476,6 +484,11 @@
     const linhaRaridade = r !== "comum" && nomeR ? `<p class="raridade" style="--rar:${corRaridade(r)}">${esc(nomeR)}</p>` : "";
     const principal = atributoItem(id);
     const atributos = (typeof textoAtributos === "function" ? textoAtributos(id) : []).filter((t) => t !== principal);
+    // Forja e pedra (JGB-25): o nível e o bônus da pedra engastada; a pedra solta diz o que daria.
+    if (d.forja) atributos.unshift(`Forjada: +${d.forja} de ${typeof REGRAS_FORJA !== "undefined" ? REGRAS_FORJA.maximo : 10}`);
+    if (d.pedra && typeof textoEngaste === "function") atributos.push(`Pedra engastada: ${nomeDoItem(d.pedra)}, ${textoEngaste(d.pedra)} (vestida)`);
+    if (!d.pedra && typeof ITENS !== "undefined" && ITENS[id]?.engaste && typeof textoEngaste === "function")
+      atributos.push(`Engastada por um ferreiro: ${textoEngaste(id)}`);
     const linhaAtributos = atributos.length ? `<ul class="atr-item">${atributos.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "";
     const boneco = linhaBoneco(id, origem);
     let acao = boneco ? `${boneco}. ` : "";
@@ -1352,7 +1365,8 @@
     dlg.npc = npc;
     $("#dlgNome").textContent = nomeCurto(nome);
     const reserva = papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : papel === "mural" ? "vigia · mural de caçadas"
-      : papel === "barqueiro" ? "barqueiro" : papel === "deposito" ? "guarda do depósito · baú de todas as cidades" : papel === "ambiente" ? String(nome).split(",").slice(1).join(",").trim() : "";
+      : papel === "barqueiro" ? "barqueiro" : papel === "deposito" ? "guarda do depósito · baú de todas as cidades"
+      : papel === "ferreiro" ? "ferreiro · forja e engaste" : papel === "ambiente" ? String(nome).split(",").slice(1).join(",").trim() : "";
     $("#dlgPapel").textContent = PAPEIS[id] || reserva;
     porFigura($("#dlgRetrato"), visualDe(id), 44, 44);
     $("#dlgRetrato").alt = `Retrato de ${nomeCurto(nome)}`;
@@ -1438,6 +1452,7 @@
     if (k.acao === "despedir") conversaCom = null;
     else if (k.acao === "loja") abrirLoja(npc.id, k.aba);
     else if (k.acao === "deposito") abrirDeposito(npc.id);
+    else if (k.acao === "forja") abrirForja(npc.id);
     else if (k.acao === "viagem") abrirViagem(npc.id);
     else if (k.acao === "barco") abrirBarco(npc.id);
   }
@@ -1885,6 +1900,129 @@
       <ul class="lista-loja" role="tabpanel">${lista}</ul>
       <p class="nota" style="color:var(--tinta-suave)">Carga: ${kg(peso)} / ${kg(cap)} kg. O depósito é o mesmo em todas as cidades e o peso dele não conta.</p>`;
     if (focoAntes) (corpo.querySelector(focoAntes) || corpo.querySelector(`[data-aba-deposito=${abaDeposito}]`))?.focus({ preventScroll: true });
+  }
+
+  // ----- Forja e engaste (JGB-25) -----
+  // Janela do ferreiro: lê visaoForja(p) (pura, logica.js) e manda os comandos forjar e engastar por executar().
+  // A resposta da última ação fica no topo (retornoForja): os avisos ficam atrás do véu do modal.
+  // confirmaEngaste: "item|slot" da peça que já tem pedra, à espera do "Trocar mesmo" (a pedra antiga se perde).
+  let abaForja = "forjar", falaForja = "", ferreiroForja = null, htmlForja = "", retornoForja = null, pedraForja = null, confirmaEngaste = null;
+  function abrirForja(ferreiroId, aba) {
+    const p = jogador();
+    const ferreiro = typeof npcs !== "undefined"
+      ? (typeof ferreiroId === "string" && npcs[ferreiroId]) || (p && Mundo.ferreiroProximo?.(p)) || Object.values(npcs).find((n) => n.papel === "ferreiro" && n.area === p?.area)
+      : null;
+    ferreiroForja = ferreiro?.id || null;
+    $("#forjaTitulo").textContent = nomeCurto(ferreiro?.nome || "Ferreiro");
+    porFigura($("#forjaRetrato"), visualDe(ferreiro?.id || "ferreiro_canaa"), 44, 44);
+    falaForja = falaRecente(ferreiro?.id);
+    if (aba === "forjar" || aba === "engastar") abaForja = aba;
+    retornoForja = null;
+    confirmaEngaste = null;
+    if (dlg.id === ferreiro?.id) fecharDialogo();
+    desenharForja(true);
+    abrirModal("modalForja");
+  }
+  function desenharForja(forcar = false) {
+    const p = jogador();
+    if (!p || typeof visaoForja !== "function") return;
+    const corpo = $("#forjaCorpo");
+    const v = visaoForja(p);
+    if (pedraForja && !v.pedras.some((x) => x.id === pedraForja)) pedraForja = null;
+    if (!pedraForja && v.pedras.length) pedraForja = v.pedras[0].id;
+    const chave = (pc) => `${pc.item}|${pc.slot || ""}`;
+    const onde = (pc) => (pc.slot ? `Vestida (${typeof ESPACOS_BONECO !== "undefined" ? ESPACOS_BONECO[pc.slot]?.nome || pc.slot : pc.slot})` : `Na mochila${pc.quantidade > 1 ? ` (${pc.quantidade})` : ""}`);
+    const atrib = (pc) => (pc.proximo?.atributo === "dano" ? "de dano" : "de defesa");
+    let lista = "";
+    if (abaForja === "forjar") {
+      for (const pc of v.pecas) {
+        const c = pc.proximo;
+        const detalhe = c
+          ? `+${c.nivel}: ${c.chance}% de chance · ${c.moedas} moedas${c.material ? ` · ${c.material}× ${v.material.nome.toLowerCase()}` : ""}${c.ganho ? ` · +${c.ganho} ${atrib(pc)}` : " · a defesa sobe no nível seguinte"}`
+          : `No máximo (+${pc.maximo}).`;
+        const motivo = pc.falta === "moedas" ? "Faltam moedas" : pc.falta === "material" ? `Faltam lingotes` : "No máximo";
+        const botao = c && pc.podeForjar
+          ? `<button type="button" class="btn primario" data-forjar="${esc(pc.item)}" data-slot="${esc(pc.slot || "")}" aria-label="Forjar ${esc(pc.nome)} para +${c.nivel}, ${c.chance}% de chance">Forjar +${c.nivel}</button>`
+          : `<button type="button" class="btn primario" disabled>${esc(motivo)}</button>`;
+        lista += `<li class="item-loja item-forja"><span class="icone">${htmlItem(pc.item)}</span><span><strong>${esc(pc.nome)}</strong>`
+          + `<span>${esc(onde(pc))} · ${esc(pc.efeitos.join(", "))}</span><span class="forja-prox">${esc(detalhe)}</span></span>${botao}</li>`;
+      }
+      if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">Nenhum equipamento para forjar: vista ou leve uma peça na mochila.</li>';
+    } else {
+      const escolhida = v.pedras.find((x) => x.id === pedraForja);
+      const pedras = v.pedras.length
+        ? `<div class="pedras-forja" role="radiogroup" aria-label="Pedra para engastar">${v.pedras.map((x) =>
+          `<button type="button" class="pedra-forja" role="radio" aria-checked="${x.id === pedraForja}" data-pedra-forja="${esc(x.id)}" title="${esc(x.texto)}">${htmlItem(x.id, 24)}<span>${esc(x.nome)}${x.quantidade > 1 ? ` ×${x.quantidade}` : ""}</span></button>`).join("")}</div>`
+          + `<p class="forja-prox">${esc(escolhida.nome)}: ${esc(escolhida.texto)} (com a peça vestida). Engastar custa ${v.precoEngaste} moedas.</p>`
+        : '<p class="vazio-txt" style="color:var(--tinta-suave)">Você não tem pedras do peitoral. Elas caem muito raramente (0,1%) das criaturas e dos raros nomeados.</p>';
+      if (escolhida) {
+        for (const pc of v.pecas) {
+          const k = chave(pc);
+          const mesma = pc.pedra?.id === pedraForja;
+          const pedindo = confirmaEngaste === k;
+          const botao = mesma ? '<button type="button" class="btn primario" disabled>Já tem esta</button>'
+            : !v.podeEngastar ? '<button type="button" class="btn primario" disabled>Faltam moedas</button>'
+              : pc.pedra && !pedindo ? `<button type="button" class="btn secundario" data-engastar="${esc(pc.item)}" data-slot="${esc(pc.slot || "")}" data-trocar="pedir">Trocar pedra</button>`
+                : `<button type="button" class="btn primario" data-engastar="${esc(pc.item)}" data-slot="${esc(pc.slot || "")}"${pedindo ? ' data-trocar="sim"' : ""} aria-label="Engastar ${esc(escolhida.nome)} em ${esc(pc.nome)}">${pedindo ? `Trocar mesmo (perde ${esc(pc.pedra.nome)})` : "Engastar"}</button>`;
+          const atual = pc.pedra ? `Pedra: ${pc.pedra.nome} (${pc.pedra.texto})` : "Sem pedra";
+          lista += `<li class="item-loja item-forja"><span class="icone">${htmlItem(pc.item)}</span><span><strong>${esc(pc.nome)}</strong>`
+            + `<span>${esc(onde(pc))} · ${esc(atual)}</span></span>${botao}</li>`;
+        }
+      }
+      lista = pedras + (lista ? `<ul class="lista-loja">${lista}</ul>` : "");
+    }
+    const legenda = typeof ITENS !== "undefined"
+      ? Object.keys(ITENS).filter((id) => ITENS[id].engaste && textoEngaste(id)).map((id) => `<li><b>${esc(ITENS[id].nome)}</b> ${esc(textoEngaste(id))}</li>`).join("")
+      : "";
+    const html = `${falaForja ? `<p class="fala-modal">${esc(falaForja)}</p>` : ""}`
+      + `${retornoForja ? `<p class="retorno${retornoForja.ok ? "" : " erro"}" role="status">${esc(retornoForja.texto)}</p>` : ""}`
+      + `<div class="saldo"><span>Moedas: ${v.moedas} · ${esc(v.material.nome)}: ${v.material.quantidade}</span></div>`
+      + `<div class="abas-modal" role="tablist">
+        <button type="button" class="aba-modal" role="tab" data-aba-forja="forjar" aria-selected="${abaForja === "forjar"}">Forjar</button>
+        <button type="button" class="aba-modal" role="tab" data-aba-forja="engastar" aria-selected="${abaForja === "engastar"}">Engastar</button>
+      </div>`
+      + (abaForja === "forjar" ? `<ul class="lista-loja" role="tabpanel">${lista}</ul>` : `<div role="tabpanel">${lista}</div>`)
+      + (abaForja === "forjar"
+        ? `<p class="nota" style="color:var(--tinta-suave)">A forja nunca destrói a peça: se o metal não pegar, perdem-se as moedas e os lingotes, e a peça fica como estava. Lingotes: Ferreiro, 3 minérios de cobre (Ofícios, tecla O).</p>`
+        : `<details class="pedras-legenda"><summary>As 12 pedras do peitoral (Êx 28:17-20)</summary><ul>${legenda}</ul></details>`
+          + `<p class="nota" style="color:var(--tinta-suave)">Uma pedra por peça. Trocar a pedra perde a anterior.</p>`);
+    if (!forcar && html === htmlForja) return;
+    htmlForja = html;
+    const ativo = document.activeElement;
+    const focoAntes = corpo.contains(ativo)
+      ? ativo.dataset.forjar !== undefined ? `[data-forjar="${CSS.escape(ativo.dataset.forjar)}"][data-slot="${CSS.escape(ativo.dataset.slot || "")}"]`
+        : ativo.dataset.engastar !== undefined ? `[data-engastar="${CSS.escape(ativo.dataset.engastar)}"][data-slot="${CSS.escape(ativo.dataset.slot || "")}"]`
+          : ativo.dataset.pedraForja ? `[data-pedra-forja="${CSS.escape(ativo.dataset.pedraForja)}"]` : null
+      : null;
+    const rolagem = corpo.scrollTop;
+    corpo.innerHTML = html;
+    corpo.scrollTop = rolagem;
+    if (focoAntes) (corpo.querySelector(focoAntes) || corpo.querySelector(`[data-aba-forja=${abaForja}]`))?.focus({ preventScroll: true });
+  }
+  // Clique dentro da janela da forja: true se tratou.
+  function acaoForja(e) {
+    const aba = e.target.closest("[data-aba-forja]");
+    if (aba) { abaForja = aba.dataset.abaForja; retornoForja = null; confirmaEngaste = null; desenharForja(true); $(`#forjaCorpo [data-aba-forja=${abaForja}]`)?.focus(); return true; }
+    const pedra = e.target.closest("[data-pedra-forja]");
+    if (pedra) { pedraForja = pedra.dataset.pedraForja; confirmaEngaste = null; desenharForja(true); return true; }
+    const forjar = e.target.closest("[data-forjar]");
+    if (forjar && !forjar.disabled) {
+      const r = executar({ tipo: "forjar", item: forjar.dataset.forjar, ...(forjar.dataset.slot ? { slot: forjar.dataset.slot } : {}) });
+      retornoForja = { ok: !!r?.ok && r.sucesso !== false, texto: r?.mensagem || "" };
+      desenharForja(true);
+      return true;
+    }
+    const eng = e.target.closest("[data-engastar]");
+    if (eng && !eng.disabled) {
+      const k = `${eng.dataset.engastar}|${eng.dataset.slot || ""}`;
+      if (eng.dataset.trocar === "pedir") { confirmaEngaste = k; desenharForja(true); return true; }
+      const r = executar({ tipo: "engastar", item: eng.dataset.engastar, pedra: pedraForja, trocar: eng.dataset.trocar === "sim", ...(eng.dataset.slot ? { slot: eng.dataset.slot } : {}) });
+      retornoForja = { ok: !!r?.ok, texto: r?.mensagem || "" };
+      confirmaEngaste = null;
+      desenharForja(true);
+      return true;
+    }
+    return false;
   }
 
   // ----- Mural de caçadas (atalaia) -----
@@ -4301,6 +4439,7 @@
     atualizarNivelDoMapa();
     if (modalAberto?.id === "modalLoja") desenharLoja();
     if (modalAberto?.id === "modalDeposito") desenharDeposito();
+    if (modalAberto?.id === "modalForja") desenharForja();
     if (modalAberto?.id === "modalMural") desenharMural();
     if (modalAberto?.id === "modalBestiario") desenharBestiario();
     if (modalAberto?.id === "modalMana") desenharMana();
@@ -4321,7 +4460,7 @@
     document.body.dataset.area = area;
     fecharDialogo();
     // Loja e viagem dependem de estar ao lado do NPC; oração e ajuda não.
-    if (modalAberto && (modalAberto.id === "modalLoja" || modalAberto.id === "modalViagem")) fecharModal(false);
+    if (modalAberto && ["modalLoja", "modalViagem", "modalForja"].includes(modalAberto.id)) fecharModal(false);
     // O mural de um atalaia também; a consulta (T) pode continuar aberta.
     if (modalAberto?.id === "modalMural" && muralNpc !== null) fecharModal(false);
     // A cena nova (área, morte, viagem) liga o teclado e a captura de Espaço e setas de novo; com um
@@ -4436,6 +4575,7 @@
     for (const m of $$(".modal")) {
       m.addEventListener("click", (e) => {
         if (e.target === m || e.target.closest("[data-fechar]")) { fecharModal(); return; }
+        if (m.id === "modalForja" && acaoForja(e)) return;
         // Loja: 1 unidade, a do seletor (data-qtd-acao) ou a do botão (data-quantidade, "Vender tudo").
         const qtdLoja = (b) => (b.dataset.qtdAcao ? quantidadeDe(b.dataset.qtdAcao) : Number(b.dataset.quantidade) || 1);
         const comprar = e.target.closest("[data-comprar]");
@@ -4668,6 +4808,7 @@
     avancarDialogo,
     abrirLoja,
     abrirDeposito,
+    abrirForja,
     abrirViagem,
     abrirBarco,
     orar,

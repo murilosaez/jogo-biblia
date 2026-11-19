@@ -129,3 +129,54 @@ const RECEITAS = {
     oficio: "perfumista", nivel: 12, materiais: { resina: 3, erva: 3, frasco_barro: 1 }, produto: { item: "oleo_uncao", quantidade: 1 }, xp: 80,
   },
 };
+
+// Forja (JGB-25): o ferreiro (papel "ferreiro", dados/npcs.js) aprimora um equipamento de +0 a +10. Cada tentativa
+// de passar de +n a +(n+1) usa a linha n de niveis: chance de dar certo, moedas e lingotes de bronze (Ferreiro:
+// 3 minérios de cobre por lingote). Na falha, o material e as moedas se perdem, mas o item fica como estava:
+// a forja nunca destrói nem rebaixa. ganho: quanto cada nível soma ao atributo principal (dano da arma e do arco,
+// defesa do escudo e da armadura); as outras peças do corpo (cabeça, colar, pernas, pés e anel) ganham
+// ganhoOutros por nível, arredondado para baixo (+1 de defesa a cada 2 níveis). xpOficio: XP de Ferreiro por
+// tentativa no ofício oficio. O nível fica no texto do item ("espada_ferro@comum+3"; ver logica.js).
+const REGRAS_FORJA = {
+  maximo: 10,
+  oficio: "ferreiro",
+  material: "lingote_bronze",
+  niveis: [
+    { chance: 1, moedas: 10, material: 0 }, // +0 → +1
+    { chance: 0.9, moedas: 16, material: 0 },
+    { chance: 0.8, moedas: 26, material: 0 },
+    { chance: 0.65, moedas: 41, material: 1 },
+    { chance: 0.5, moedas: 66, material: 1 },
+    { chance: 0.4, moedas: 105, material: 2 },
+    { chance: 0.3, moedas: 168, material: 2 },
+    { chance: 0.2, moedas: 268, material: 3 },
+    { chance: 0.12, moedas: 429, material: 3 },
+    { chance: 0.08, moedas: 687, material: 4 }, // +9 → +10
+  ],
+  ganho: { arma: 1, arma_distancia: 1, escudo: 1, armadura: 1 },
+  ganhoOutros: 0.5,
+  xpOficio: 3,
+};
+
+// Engaste (JGB-25): o ferreiro prende uma pedra do peitoral (ITENS com engaste, dados/itens.js) num equipamento,
+// uma por peça. moedas: preço de cada engaste; trocar a pedra de uma peça perde a que estava nela. O bônus vale
+// com a peça vestida. tetos: soma máxima de cada efeito em fração (as pedras se somam entre as peças); o crítico
+// respeita o teto do equipamento (25 pontos) e a velocidade, o teto de REGRAS_VELOCIDADE. textos: a linha de cada
+// efeito na interface ({v}: o valor; {p}: o valor em %; {familia}: o nome da família).
+const REGRAS_ENGASTE = {
+  moedas: 25,
+  tetos: { reducao: 0.12, cura: 0.3, xp: 0.2, moedas: 0.3, familia: 0.3, velocidade: 0.75 },
+  textos: {
+    dano: "+{v} de dano",
+    critico: "+{v}% de chance de crítico",
+    vida: "+{v} de vida máxima",
+    defesa: "+{v} de defesa",
+    carga: "+{v} kg de carga",
+    reducao: "−{p}% de dano recebido",
+    cura: "+{p}% de cura (poções e Oração)",
+    xp: "+{p}% de XP dos abates",
+    moedas: "+{p}% de moedas no saque",
+    familia: "+{p}% de dano contra {familia}",
+    velocidade: "+{v} casas/s de velocidade",
+  },
+};
