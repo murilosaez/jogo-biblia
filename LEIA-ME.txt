@@ -5,7 +5,8 @@ Conteúdo do jogo (pasta dados/)
   aleatórios com as faixas de cada raridade, sorteio de raridade, chances nomeadas das tabelas de saque,
   preços da loja, o que cada mercador vende (LOJAS) e valores de venda; as peças do boneco (cabeça, colar,
   pernas, pés e anel), com maos (2 = usa as duas mãos, como os arcos) e atributosFixos ({ critico, vida,
-  carga } somados aos da raridade), e os espaços do boneco no painel Equipamento (ESPACOS_BONECO: nome,
+  carga } somados aos da raridade), os conjuntos (CONJUNTOS, JGB-26: peças com versículo e bônus com 2, 4 e 6
+  peças vestidas, nos mesmos efeitos e tetos das pedras), e os espaços do boneco no painel Equipamento (ESPACOS_BONECO: nome,
   lugar no corpo e silhueta do espaço vazio).
 - dados/mapas.js: tamanho dos mapas (160×120 casas) e o desenho de cada região: terreno de fundo,
   regiões (bosques, pedregais, clareiras, com o tipo de obstáculo), águas (lagos e rios), vilas (com
@@ -659,6 +660,21 @@ Fale com o ferreiro (Bezalel, em Canaã, ou Aoliabe, no Deserto, à frente da ba
 - As pedras caem muito raramente (0,1%) das criaturas de cada região e a 5% dos raros nomeados; o Diamante,
   das elites. "Vender tudo" deixa de fora as peças forjadas ou com pedra.
 
+Armadura de Deus (JGB-26)
+"Tomai toda a armadura de Deus" (Ef 6:13-17): conjunto lendário de 6 relíquias, cada uma de um raro nomeado
+(4% a cada abate, na janela de aparição dele; o anúncio diz "Peça da Armadura de Deus!"):
+    Cinto da verdade (pernas) ......... Presa-Cinzenta (Canaã) · +2 de defesa, +10 de vida
+    Calçados do evangelho da paz (pés)  Rei das Areias (Deserto) · +2 de defesa, +3 kg de carga
+    Couraça da justiça (armadura) ..... Mandíbula do Nilo (Egito) · +9 de defesa, +20 de vida
+    Escudo da fé (escudo) ............. Garra-de-Coral (Mar Vermelho) · +8 de defesa, +15 de vida
+    Capacete da salvação (cabeça) ..... Chifre-de-Pedra (Monte Sinai) · +2 de defesa, +10 de vida
+    Espada do Espírito (arma) ......... Asa-Negra (Galileia) · +19 de dano, +4% de crítico
+- Bônus de conjunto, pelas peças vestidas (cumulativos): 2 peças +2 de defesa; 4 peças +30 de vida e −4% de
+  dano recebido; 6 peças +3 de dano, +3% de crítico e +10% de cura. Somam com as pedras, sob os mesmos tetos.
+- As peças podem ser forjadas e receber pedra sem sair do conjunto. A dica da peça mostra o versículo, as faixas
+  (a ativa marcada) e de quem ela cai; o painel Equipamento mostra "Armadura de Deus n/6". "Vender tudo" não
+  vende peças de conjunto.
+
 Maná diário e descanso do Sábado
 Tecla N ou o botão Maná, no topo. Nada aqui exige entrar todo dia: perder um dia não tira nada.
 - Maná (Êxodo 16): o dia do maná vai de um amanhecer (6 h, hora do seu computador) ao seguinte; é a janela de
@@ -710,7 +726,8 @@ Para desenvolvedores
   com a tabela de duração das lutas.
 - Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p), tutorialAtivo(p),
   visaoForja(p) (a janela do ferreiro: peças com nível, efeitos, próximo passo e o que falta; pedras da mochila),
-  textoEngaste(pedra), somaEngastes(p, efeito, familia),
+  textoEngaste(pedra), somaEngastes(p, efeito, familia) (pedras e conjuntos), conjuntoDoItem(item),
+  visaoConjunto(p, conjuntoId) (nome, peças com versículo e origem, faixas de bônus e se estão ativas),
   visaoTutorial(p, toque) (a etapa atual do tutorial: número, título, texto do teclado ou do toque, rumo, destaque e
   recompensa; null quando acabou), bestiarioPorFamilia(p),
   resumoBestiario(p), visaoEspecie(p, especie), bonusAmuleto(p, e), Mundo.analisador(id), textoRelogio(ms),

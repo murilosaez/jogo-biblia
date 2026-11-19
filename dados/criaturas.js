@@ -1301,6 +1301,7 @@ const DADOS_CRIATURAS = [
         { item: "pocao", chance: 0.5 },
         { item: "escudo_madeira", chance: "raro", raridadeMinima: "epico" },
         { item: "pedra_sardio", chance: 0.05 },
+        { item: "cinto_verdade", chance: 0.04 }, // Armadura de Deus (JGB-26)
       ],
     },
   },
@@ -1335,6 +1336,7 @@ const DADOS_CRIATURAS = [
         { item: "pocao_fe", chance: 0.5 },
         { item: "armadura_couro", chance: "raro", raridadeMinima: "epico" },
         { item: "pedra_topazio", chance: 0.05 },
+        { item: "calcados_evangelho", chance: 0.04 }, // Armadura de Deus (JGB-26)
       ],
     },
   },
@@ -1369,6 +1371,7 @@ const DADOS_CRIATURAS = [
         { item: "pocao", chance: 0.5 },
         { item: "espada_temperada", chance: "raro", raridadeMinima: "epico" },
         { item: "pedra_carbunculo", chance: 0.05 },
+        { item: "couraca_justica", chance: 0.04 }, // Armadura de Deus (JGB-26)
       ],
     },
   },
@@ -1403,6 +1406,7 @@ const DADOS_CRIATURAS = [
         { item: "couraca_escamas", chance: "raro", raridadeMinima: "epico" },
         { item: "pedra_safira", chance: 0.05 },
         { item: "pedra_berilo", chance: 0.05 },
+        { item: "escudo_fe", chance: 0.04 }, // Armadura de Deus (JGB-26)
       ],
     },
   },
@@ -1438,6 +1442,7 @@ const DADOS_CRIATURAS = [
         { item: "arco_composto", chance: "raro", raridadeMinima: "epico" },
         { item: "pedra_ametista", chance: 0.05 },
         { item: "pedra_jaspe", chance: 0.05 },
+        { item: "capacete_salvacao", chance: 0.04 }, // Armadura de Deus (JGB-26)
       ],
     },
   },
@@ -1475,6 +1480,7 @@ const DADOS_CRIATURAS = [
         { item: "espada_temperada", chance: "raro", raridadeMinima: "epico" },
         { item: "pedra_onix", chance: 0.05 },
         { item: "pedra_jacinto", chance: 0.05 },
+        { item: "espada_espirito", chance: 0.04 }, // Armadura de Deus (JGB-26)
       ],
     },
   },
