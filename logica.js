@@ -4708,8 +4708,8 @@ const Mundo = {
       return { ok: false, mensagem: `Forjar ${info.nome} pede ${custo.material}× ${nomeItem(material)}; você tem ${temMaterial}.` };
     p.moedas -= custo.moedas;
     this.removerItens(p, material, custo.material);
-    const nivelOficio = ganharXpOficio(p, REGRAS_FORJA.oficio, REGRAS_FORJA.xpOficio);
-    const oficioSubiu = nivelOficio ? { oficio: REGRAS_FORJA.oficio, nivel: nivelOficio } : null;
+    const nivelNovoOficio = ganharXpOficio(p, REGRAS_FORJA.oficio, REGRAS_FORJA.xpOficio);
+    const oficioSubiu = nivelNovoOficio ? { oficio: REGRAS_FORJA.oficio, nivel: nivelNovoOficio } : null;
     const sucesso = Math.random() < custo.chance;
     const novo = sucesso ? itemComExtras(item, { forja: nivel + 1 }) : item;
     // o lingote saiu da mochila: a peça (se estava nela) pode ter mudado de posição
@@ -4720,7 +4720,7 @@ const Mundo = {
     const mensagem = sucesso
       ? `${nome}: Ficou bom! ${nomeItem(novo)} (${efeitosDoItem(novo).join(", ")}). Gastou ${gasto}.`
       : `${nome}: O metal não pegou desta vez. ${info.nome} continua como estava; gastou ${gasto}.`;
-    const subiu = oficioSubiu ? ` ${OFICIOS[REGRAS_FORJA.oficio].nome} subiu para o nível ${nivelOficio}!` : "";
+    const subiu = oficioSubiu ? ` ${OFICIOS[REGRAS_FORJA.oficio].nome} subiu para o nível ${nivelNovoOficio}!` : "";
     return { ok: true, sucesso, item: novo, slot: onde.slot || null, ...(oficioSubiu ? { oficioSubiu } : {}), mensagem: mensagem + subiu };
   },
 
@@ -4734,9 +4734,10 @@ const Mundo = {
     if (!onde) return { ok: false, mensagem: "Escolha um equipamento da mochila ou do corpo para engastar." };
     if (!engasteValido(registroDe(ITENS, pedra)?.engaste) || !p.inventario.includes(pedra))
       return { ok: false, mensagem: "Escolha uma pedra do peitoral da mochila." };
-    if (info.pedra === pedra) return { ok: false, mensagem: `${info.nome} já tem ${nomeItem(pedra)}.` };
+    const semPedra = nomeItem(itemComExtras(item, { pedra: null }));
+    if (info.pedra === pedra) return { ok: false, mensagem: `${semPedra} já tem ${nomeItem(pedra)}.` };
     if (info.pedra && trocar !== true)
-      return { ok: false, confirmar: true, mensagem: `${info.nome} já tem ${nomeItem(info.pedra)}: trocar perde essa pedra.` };
+      return { ok: false, confirmar: true, mensagem: `${semPedra} já tem ${nomeItem(info.pedra)}: trocar perde essa pedra.` };
     for (const [x, verbo] of [[pedra, "engastar"], ...(onde.indice !== undefined ? [[item, "engastar"]] : [])]) {
       const saida = this.conferirSaida(p, x, 1, verbo);
       if (!saida.ok) return saida;
@@ -4755,7 +4756,7 @@ const Mundo = {
       ok: true,
       item: novo,
       slot: onde.slot || null,
-      mensagem: `${ferreiro.nome.split(",")[0]}: Engastei ${nomeItem(pedra)} em ${nomeItem(itemComExtras(item, { pedra: null }))} (${textoEngaste(pedra)}). Gastou ${preco} moedas.${perdeu}`,
+      mensagem: `${ferreiro.nome.split(",")[0]}: Engastei ${nomeItem(pedra)} em ${semPedra} (${textoEngaste(pedra)}). Gastou ${preco} moedas.${perdeu}`,
     };
   },
 
