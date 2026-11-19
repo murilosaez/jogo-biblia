@@ -448,6 +448,7 @@ class Cena extends Phaser.Scene {
     const pendente = this.registry.get("mensagemPendente");
     this.registry.set("mensagemPendente", null);
     if (pendente) this.mensagem(pendente);
+    else if (!ultima && typeof tutorialAtivo === "function" && tutorialAtivo(this.p)) this.mensagem("Bem-vindo a Canaã! Siga o cartão do tutorial, no canto da tela.");
     else if (!ultima) this.mensagem("Bem-vindo! Arraste os itens para os espaços de equipamento.");
     // Cada aviso da lógica só é consumido na hora de aparecer: se a cena
     // reiniciar antes (troca de área, morte, viagem), o relógio dela descarta

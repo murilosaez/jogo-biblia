@@ -781,6 +781,69 @@
   }
 
   // ------------------------------------------------------------------
+  // Tutorial (JGB-14): cartão com a etapa atual, destaque do que usar e "Pular"
+  // ------------------------------------------------------------------
+  // Lê visaoTutorial(p) (pura, logica.js); pular passa por executar(). Quando a etapa muda, mostra a frase de
+  // cada etapa cumprida (vale para todo caminho: andar, falar, lutar e equipar chegam por lugares diferentes).
+  let etapaTutorialVista = null, assinaturaTutorial = "", destaqueTutorial = null;
+  function atualizarTutorial(p) {
+    const cartao = $("#tutorial");
+    if (!cartao || typeof visaoTutorial !== "function") return;
+    const t = p.tutorial || {};
+    const etapa = Number.isInteger(t.etapa) ? t.etapa : 0;
+    if (etapaTutorialVista !== null && etapa > etapaTutorialVista && typeof DADOS_TUTORIAL !== "undefined") {
+      for (let i = etapaTutorialVista; i < etapa; i++) if (DADOS_TUTORIAL[i]) mensagem(DADOS_TUTORIAL[i].cumprida, "missao");
+      if (t.fim === "concluido") mensagem(REGRAS_TUTORIAL.concluido, "missao");
+    }
+    etapaTutorialVista = etapa;
+    const v = visaoTutorial(p, mm("(pointer: coarse)"));
+    const ass = v ? JSON.stringify(v) : "";
+    if (ass === assinaturaTutorial) return;
+    assinaturaTutorial = ass;
+    destaqueTutorial?.classList.remove("tut-destaque");
+    destaqueTutorial = null;
+    cartao.hidden = !v;
+    if (!v) return;
+    $("#tutNumero").textContent = `Tutorial ${v.numero} de ${v.total}`;
+    $("#tutTitulo").textContent = v.titulo;
+    $("#tutTexto").textContent = v.texto;
+    const rumo = $("#tutRumo");
+    rumo.hidden = !v.rumo;
+    rumo.textContent = v.rumo;
+    const premio = $("#tutPremio");
+    premio.hidden = !v.recompensa;
+    premio.textContent = v.recompensa ? `Recompensa: ${v.recompensa}` : "";
+    $("#tutPontos").innerHTML = Array.from({ length: v.total }, (_, i) =>
+      `<i class="${i < v.numero - 1 ? "feito" : i === v.numero - 1 ? "atual" : ""}"></i>`).join("");
+    pularTutorialArmado(false);
+    if (v.destaque) {
+      destaqueTutorial = document.querySelector(v.destaque);
+      destaqueTutorial?.classList.add("tut-destaque");
+    }
+  }
+  // "Pular" pede confirmação no mesmo botão (um toque a mais, sem janela).
+  function pularTutorialArmado(armado) {
+    const b = $("#tutPular");
+    if (!b) return;
+    b.dataset.armado = armado ? "1" : "";
+    b.textContent = armado ? "Pular mesmo?" : "Pular tutorial";
+    b.setAttribute("aria-label", armado ? "Confirmar: pular o tutorial" : "Pular o tutorial");
+  }
+  function ligarTutorial() {
+    $("#tutPular")?.addEventListener("click", () => {
+      const b = $("#tutPular");
+      if (!b.dataset.armado) { pularTutorialArmado(true); return; }
+      executar({ tipo: "pularTutorial" });
+    });
+    $("#tutPular")?.addEventListener("blur", () => pularTutorialArmado(false));
+    // No celular o texto fica em 2 linhas: um toque no cartão abre ou fecha o resto.
+    $("#tutorial")?.addEventListener("click", (e) => {
+      if (e.target.closest("#tutPular")) return;
+      $("#tutorial").classList.toggle("aberto");
+    });
+  }
+
+  // ------------------------------------------------------------------
   // Caçadas: linhas no painel Missão e saldo de pontos no topo
   // ------------------------------------------------------------------
   const temCacadas = () => typeof tarefasDoJogador === "function" && typeof tarefasDoMural === "function";
@@ -4226,6 +4289,7 @@
     atualizarBarras(p);
     atualizarPersonagem(p);
     atualizarMissao(p);
+    atualizarTutorial(p);
     atualizarCacadas(p);
     atualizarItens(p);
     atualizarBatalha(p);
@@ -4324,6 +4388,7 @@
       atualizarBarraHab(jogador());
     });
     $("#btnAnalisador").addEventListener("click", () => abrirAnalisador(painel("pAnalisador").dataset.min === "true"));
+    ligarTutorial();
     $("#missaoLinha").addEventListener("click", () => {
       const b = $("#missaoLinha");
       b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"));

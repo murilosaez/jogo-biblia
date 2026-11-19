@@ -57,6 +57,11 @@ Conteúdo do jogo (pasta dados/)
   PARTES_COR_VISUAL: cabeça, tronco, pernas e detalhe), só de aparência, e a regra da loja (REGRAS_COSMETICOS:
   pagamento, null enquanto o meio de pagamento não for definido). Os ids ficam no save; para tirar da
   loja, use oculto: true.
+- dados/tutorial.js: o tutorial do personagem novo (JGB-14). DADOS_TUTORIAL: as etapas em ordem (andar, falar
+  com Eliabe, derrotar o lobo, voltar, vestir a espada de ferro e negociar com a mercadora), cada uma com título,
+  texto do teclado e do toque, condição, NPC para onde o cartão aponta, destaque da interface, recompensa e a
+  frase de quando é cumprida; REGRAS_TUTORIAL: recompensa final e as frases do fim. O nível 2 chega com a
+  recompensa de Eliabe, em menos de 2 minutos (o teste 83 cronometra). Os ids das etapas ficam no save.
 O progresso fica no save (save versão 16): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
@@ -68,6 +73,9 @@ vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica 
 deposito (lista de itens do baú, o mesmo em todas as cidades; sem o campo, começa vazio — não mudou a versão
 do save; os campos antigos ervasRespawn, odresRespawn, ervasColetadas, odresColetados e extracaoRespawn saem
 na carga) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje).
+tutorial = { etapa, passos, loja, fim } (etapa: índice em DADOS_TUTORIAL; fim: null, "concluido" ou "pulado"; só o
+personagem novo o recebe: saves sem o campo ficam com ele pulado — não mudou a versão do save; o comando
+pularTutorial encerra de vez).
 equipamento = { cabeca, colar, arma, armadura, escudo, pernas, pes, anel, municao } (o boneco; null = vazio) e
 quantidadeMunicao (quantas unidades há na pilha do espaço de munição). Saves antigos são convertidos sozinhos,
 sem perder o que já foi feito. O boneco não pediu versão nova: a carga de todo save (normalizarEquipamento, em
@@ -676,7 +684,9 @@ no navegador.
 Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
   com a tabela de duração das lutas.
-- Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p), bestiarioPorFamilia(p),
+- Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p), tutorialAtivo(p),
+  visaoTutorial(p, toque) (a etapa atual do tutorial: número, título, texto do teclado ou do toque, rumo, destaque e
+  recompensa; null quando acabou), bestiarioPorFamilia(p),
   resumoBestiario(p), visaoEspecie(p, especie), bonusAmuleto(p, e), Mundo.analisador(id), textoRelogio(ms),
   estadoMissaoNpc(p, npcId) (balão sobre o NPC: "missao", "andamento", "entregar", "mural" para o
   atalaia com o mural aberto e já usado, ou null), Mundo.consumirAviso(id),
