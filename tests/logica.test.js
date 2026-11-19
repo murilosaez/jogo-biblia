@@ -7754,6 +7754,147 @@ teste("83. tutorial (JGB-14): etapas em ordem, recompensas, nível 2 em menos de
   igual(carregarJogo({ store }).entrar().tutorial, { etapa: T(j).length, passos: 0, loja: false, fim: "concluido" });
 });
 
+// ---------------------------------------------------------------------
+// Forja +1 a +10 e as 12 pedras do peitoral (JGB-25)
+// ---------------------------------------------------------------------
+teste("84. forja e engaste (JGB-25): 12 pedras de Êx 28, formato do item, forja que nunca destrói, bônus das pedras e save", () => {
+  const j = carregarJogo({ semente: 3 });
+  const p = j.entrar();
+  const M = j.M, g = j.g, ITENS = g("ITENS"), info = g("infoItem"), F = g("REGRAS_FORJA"), E = g("REGRAS_ENGASTE");
+  // (a) As 12 pedras na ordem das 4 fileiras (Êx 28:17-20), cada uma com um bônus próprio e cor única.
+  const pedras = Object.keys(ITENS).filter((id) => ITENS[id].engaste);
+  igual(pedras.map((id) => ITENS[id].nome), ["Sárdio", "Topázio", "Carbúnculo", "Esmeralda", "Safira", "Diamante", "Jacinto", "Ágata", "Ametista", "Berilo", "Ônix", "Jaspe"]);
+  const efeitos = pedras.map((id) => `${ITENS[id].engaste.efeito}:${ITENS[id].engaste.familia || ""}`);
+  assert.strictEqual(new Set(efeitos).size, 12, "cada pedra dá um bônus diferente");
+  assert.strictEqual(new Set(pedras.map((id) => ITENS[id].pedra)).size, 12, "cores únicas");
+  for (const id of pedras) {
+    assert.ok(g("engasteValido")(ITENS[id].engaste), `${id}: engaste válido`);
+    assert.match(ITENS[id].pedra, /^#[0-9a-f]{6}$/, `${id}: cor em hex minúsculo`);
+    assert.ok(g("textoEngaste")(id).length > 5, `${id}: texto do bônus`);
+    const fontes = Object.values(g("inimigos")).filter((e) => !e.base && !e.nomeado && e.saque.itens.some((l) => l.item === id));
+    assert.ok(fontes.length >= 1, `${id}: cai de alguma criatura comum`);
+  }
+  // Forja: +1 a +10 com chance decrescente e custo crescente.
+  assert.strictEqual(F.niveis.length, F.maximo);
+  for (let n = 1; n < F.niveis.length; n++) {
+    assert.ok(F.niveis[n].chance < F.niveis[n - 1].chance, `chance cai em +${n + 1}`);
+    assert.ok(F.niveis[n].moedas > F.niveis[n - 1].moedas, `custo sobe em +${n + 1}`);
+    assert.ok(F.niveis[n].material >= F.niveis[n - 1].material);
+  }
+  assert.strictEqual(F.niveis[0].chance, 1);
+
+  // (b) Formato: o nível e a pedra vão no fim do texto; inválidos continuam inválidos.
+  const codigo = g("codigoItem");
+  assert.strictEqual(codigo("espada_ferro", "comum", {}), "espada_ferro");
+  assert.strictEqual(codigo("espada_ferro", "comum", {}, { forja: 3 }), "espada_ferro@comum+3");
+  assert.strictEqual(codigo("espada_ferro", "epico", { critico: 3, dano: 4 }, { forja: 7, pedra: "pedra_safira" }), "espada_ferro@epico.dano4.critico3+7~pedra_safira");
+  const forjada = info("espada_ferro@epico.dano4.critico3+7~pedra_safira");
+  igual([forjada.nome, forjada.bonus, forjada.forja, forjada.pedra], ["Espada de ferro +7 com Safira (Épico)", 12 + 4 + 7, 7, "pedra_safira"]);
+  assert.strictEqual(g("baseItem")("espada_ferro@comum+3"), "espada_ferro");
+  assert.strictEqual(info("tunica_pano@comum+4").defesa, 2 + 4, "armadura: +1 de defesa por nível");
+  assert.strictEqual(info("anel_selo_bronze@comum+5").defesa, 2, "peças pequenas: +1 de defesa a cada 2 níveis");
+  for (const ruim of ["espada_ferro@comum", "espada_ferro@comum.dano1+3", "espada_ferro@raro+0", "espada_ferro@comum+11", "espada_ferro@comum+03",
+    "espada_ferro@comum~pedra_sardio+2", "flecha@comum+1", "pocao@comum+1", "espada_ferro@comum~pele_lobo", "espada_ferro@comum~constructor",
+    "espada_ferro@comum~__proto__", "espada_ferro@comum+1+2", "espada_ferro@comum~pedra_sardio~pedra_onix"])
+    assert.strictEqual(info(ruim), null, `inválido: ${ruim}`);
+  assert.strictEqual(g("valorDeVenda")("espada_ferro@comum+9~pedra_onix"), g("VALORES_VENDA").espada_ferro, "forjar não vira lucro na venda");
+
+  // (c) Forjar: só ao lado do ferreiro; a falha gasta o material e nunca destrói nem rebaixa.
+  p.moedas = 5000;
+  assert.match(j.exec({ tipo: "forjar", item: "espada_madeira", slot: "arma" }).mensagem, /Aproxime-se de um ferreiro/);
+  posicionarAoLado(j, "canaan", g("npcs").ferreiro_canaa);
+  const conversa = j.exec({ tipo: "interagir", alvoId: "ferreiro_canaa" });
+  assert.strictEqual(conversa.abrirForja, "ferreiro_canaa");
+  igual(g("palavrasChaveDoNpc")(p, "ferreiro_canaa").map((k) => [k.palavra, k.aba]), [["oi", undefined], ["forjar", "forjar"], ["engastar", "engastar"], ["tchau", undefined]]);
+  assert.strictEqual(g("palavraChaveDoTexto")(g("palavrasChaveDoNpc")(p, "ferreiro_canaa"), "tem como por uma pedra?")?.palavra, "engastar");
+  j.definirAleatorio(() => 0.999); // toda tentativa acima de +1 falha
+  let r = j.exec({ tipo: "forjar", item: "espada_madeira", slot: "arma" });
+  assert.ok(r.ok && r.sucesso, "o +1 sempre dá certo");
+  assert.strictEqual(p.equipamento.arma, "espada_madeira@comum+1");
+  const moedas = p.moedas;
+  r = j.exec({ tipo: "forjar", item: "espada_madeira@comum+1", slot: "arma" });
+  assert.ok(r.ok && r.sucesso === false && /continua como estava/.test(r.mensagem));
+  assert.strictEqual(p.equipamento.arma, "espada_madeira@comum+1", "falhou: a peça fica igual");
+  assert.strictEqual(p.moedas, moedas - F.niveis[1].moedas, "falhou: as moedas se perdem");
+  // Do +3 em diante pede lingotes; sem eles, recusa sem gastar nada.
+  j.definirAleatorio(() => 0);
+  j.exec({ tipo: "forjar", item: "espada_madeira@comum+1", slot: "arma" });
+  j.exec({ tipo: "forjar", item: "espada_madeira@comum+2", slot: "arma" });
+  const antes = p.moedas;
+  r = j.exec({ tipo: "forjar", item: "espada_madeira@comum+3", slot: "arma" });
+  assert.ok(!r.ok && /lingote/i.test(r.mensagem) && p.moedas === antes);
+  for (let i = 0; i < 40; i++) p.inventario.push(F.material);
+  for (let n = 3; n < F.maximo; n++) {
+    j.definirAleatorio(() => 0.999); // falha: gasta o material e não rebaixa
+    const lingotes = M.contarItem(ID, F.material);
+    r = j.exec({ tipo: "forjar", item: `espada_madeira@comum+${n}`, slot: "arma" });
+    assert.ok(r.ok && !r.sucesso && p.equipamento.arma === `espada_madeira@comum+${n}`);
+    assert.strictEqual(M.contarItem(ID, F.material), lingotes - F.niveis[n].material);
+    j.definirAleatorio(() => 0);
+    assert.ok(j.exec({ tipo: "forjar", item: `espada_madeira@comum+${n}`, slot: "arma" }).sucesso);
+  }
+  assert.strictEqual(p.equipamento.arma, "espada_madeira@comum+10");
+  assert.strictEqual(info(p.equipamento.arma).bonus, 5 + 10);
+  assert.match(j.exec({ tipo: "forjar", item: "espada_madeira@comum+10", slot: "arma" }).mensagem, /máximo/);
+  assert.ok(g("xpOficio")(p, "ferreiro") > 0, "cada tentativa dá XP de Ferreiro");
+  // Quando o Ferreiro sobe de nível, a resposta traz { oficio, nivel } (como fabricar) e a mensagem avisa.
+  p.oficios.ferreiro = { xp: g("xpTotalOficio")(2) - 1 };
+  p.inventario.push("escudo_madeira");
+  r = j.exec({ tipo: "forjar", item: "escudo_madeira" });
+  igual(r.oficioSubiu, { oficio: "ferreiro", nivel: 2 });
+  assert.match(r.mensagem, /Ferreiro subiu para o nível 2!/);
+  // Peça empilhada na mochila: só uma muda.
+  p.inventario.push("espada_ferro", "espada_ferro");
+  j.exec({ tipo: "forjar", item: "espada_ferro" });
+  igual([M.contarItem(ID, "espada_ferro"), M.contarItem(ID, "espada_ferro@comum+1")], [1, 1]);
+
+  // (d) Engastar: pede a pedra na mochila e moedas; trocar pede confirmação e perde a antiga.
+  const dano0 = g("danoBruto")(p, "corpo"), vida0 = g("vidaMaxima")(p), vel0 = g("velocidadeDoJogador")(p).casasPorSegundo;
+  assert.match(j.exec({ tipo: "engastar", item: "tunica_pano", slot: "armadura", pedra: "pedra_sardio" }).mensagem, /pedra do peitoral/);
+  p.inventario.push("pedra_sardio", "pedra_carbunculo", "pedra_berilo", "pedra_onix");
+  r = j.exec({ tipo: "engastar", item: "tunica_pano", slot: "armadura", pedra: "pedra_sardio" });
+  assert.ok(r.ok, r.mensagem);
+  assert.strictEqual(p.equipamento.armadura, "tunica_pano@comum~pedra_sardio");
+  assert.strictEqual(g("danoBruto")(p, "corpo"), dano0 + 2, "Sárdio: +2 de dano mesmo na armadura");
+  assert.strictEqual(g("danoBruto")(p, "distancia") - g("danoBruto")({ ...p, equipamento: { ...p.equipamento, armadura: "tunica_pano" } }, "distancia"), 2);
+  r = j.exec({ tipo: "engastar", item: "tunica_pano@comum~pedra_sardio", slot: "armadura", pedra: "pedra_carbunculo" });
+  assert.ok(!r.ok && r.confirmar, "trocar a pedra pede confirmação");
+  r = j.exec({ tipo: "engastar", item: "tunica_pano@comum~pedra_sardio", slot: "armadura", pedra: "pedra_carbunculo", trocar: true });
+  assert.ok(r.ok && /Sárdio se perdeu/.test(r.mensagem));
+  assert.strictEqual(g("vidaMaxima")(p), vida0 + 15, "Carbúnculo: +15 de vida");
+  assert.ok(!p.inventario.includes("pedra_sardio") && !p.inventario.includes("pedra_carbunculo"), "as pedras saíram da mochila");
+  j.exec({ tipo: "engastar", item: "escudo_madeira", slot: "escudo", pedra: "pedra_berilo" });
+  assert.strictEqual(g("velocidadeDoJogador")(p).casasPorSegundo, Math.round((vel0 + 0.25) * 1000) / 1000, "Berilo: +0,25 casas/s");
+  j.exec({ tipo: "engastar", item: "espada_madeira@comum+10", slot: "arma", pedra: "pedra_onix" });
+  const bandido = Object.values(g("inimigos")).find((e) => e.familia === "saqueadores");
+  const lobo = Object.values(g("inimigos")).find((e) => e.familia === "feras");
+  igual([g("bonusContraFamilia")(p, bandido), g("bonusContraFamilia")(p, lobo)], [0.1, 0], "Ônix: +10% só contra saqueadores");
+  // Tetos: oito pedras iguais não passam do teto do efeito.
+  const tudoJacinto = { nivel: 1, equipamento: Object.fromEntries(["cabeca", "colar", "arma", "armadura", "escudo", "pernas", "pes", "anel"].map((s) => [s, null])) };
+  tudoJacinto.equipamento.arma = "espada_ferro@comum~pedra_jacinto";
+  tudoJacinto.equipamento.escudo = "escudo_madeira@comum~pedra_jacinto";
+  tudoJacinto.equipamento.armadura = "tunica_pano@comum~pedra_jacinto";
+  tudoJacinto.equipamento.cabeca = "capacete_couro@comum~pedra_jacinto";
+  tudoJacinto.equipamento.pes = "sandalias_couro@comum~pedra_jacinto";
+  assert.strictEqual(g("somaEngastes")(tudoJacinto, "xp"), E.tetos.xp);
+  assert.strictEqual(g("somaEngastes")({ nivel: 1 }, "dano"), 0, "funciona sem equipamento");
+
+  // (e) Vender tudo deixa as peças forjadas ou com pedra; o save guarda tudo e saves antigos não mudam.
+  const venda = M.vendaDeTudo(ID).map((v) => v.item);
+  assert.ok(venda.includes("espada_ferro") && !venda.includes("espada_ferro@comum+1"));
+  const vestido = { ...p.equipamento };
+  j.g("Storage").flush();
+  const j2 = carregarJogo({ store: j.store });
+  const p2 = j2.entrar();
+  igual(p2.equipamento, vestido, "o save guarda forja e pedras");
+  assert.ok(p2.inventario.includes("espada_ferro@comum+1"));
+  // A janela (pura) mostra o próximo passo de cada peça.
+  const v = g("visaoForja")(p2);
+  const linha = v.pecas.find((x) => x.slot === "escudo");
+  igual([linha.nivel, linha.proximo.nivel, linha.proximo.chance, linha.pedra.nome], [0, 1, 100, "Berilo"]);
+  assert.strictEqual(v.pecas.find((x) => x.slot === "arma").falta, "máximo");
+});
+
 const PASTA_TESTES_ARTE = path.join(__dirname, "arte");
 if (fs.existsSync(PASTA_TESTES_ARTE)) {
   for (const arq of fs.readdirSync(PASTA_TESTES_ARTE).filter((a) => a.endsWith(".test.js")).sort()) {

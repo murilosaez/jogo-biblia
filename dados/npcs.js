@@ -10,7 +10,7 @@
 // Quem atende numa tenda ou banca fica logo à frente dela; o mercador fica atrás do balcão da loja (dados/mapas.js,
 // estruturas com npc). "barqueiro": fica ao lado do cais da cidade, diz o preço da passagem e embarca quem pagar.
 // "deposito": guarda do depósito da cidade (atende à frente de uma banca); o depósito é um só em todas as cidades
-// (REGRAS_DEPOSITO, dados/mundo.js).
+// (REGRAS_DEPOSITO, dados/mundo.js). "ferreiro": forja e engasta (dados/oficios.js), à frente de uma banca.
 const DADOS_NPCS = [
   // Guardas do depósito (um por cidade). Os nomes vêm dos que cuidavam dos depósitos do templo (Ne 12:25; 13:13)
   // e de Itamar, que fez a conta do material do tabernáculo (Êx 38:21).
@@ -87,6 +87,29 @@ const DADOS_NPCS = [
     papel: "vocacao",
     aparencia: "anciao",
     falas: { saudacao: "Não é bom que um só carregue tudo: cada um tem a sua parte no caminho." },
+  },
+  // Ferreiros (JGB-25): forjam de +1 a +10 e engastam as pedras do peitoral (REGRAS_FORJA e REGRAS_ENGASTE,
+  // dados/oficios.js), à frente da banca deles. Bezalel e Aoliabe lavraram o metal e lapidaram as pedras do
+  // tabernáculo (Êx 31:2-6; 35:30-35).
+  {
+    id: "ferreiro_canaa",
+    nome: "Bezalel, ferreiro",
+    area: "canaan",
+    x: 18,
+    y: 17,
+    papel: "ferreiro",
+    aparencia: "oleiro",
+    falas: { saudacao: "O fogo prova o metal. Traga a sua peça e eu a aprimoro; traga uma pedra do peitoral e eu a engasto." },
+  },
+  {
+    id: "ferreiro_deserto",
+    nome: "Aoliabe, ferreiro",
+    area: "deserto",
+    x: 147,
+    y: 24,
+    papel: "ferreiro",
+    aparencia: "cameleiro",
+    falas: { saudacao: "Até no deserto a bigorna canta. Forjo armas e armaduras e engasto pedras preciosas." },
   },
   { id: "noemi1", nome: "Noemi", area: "deserto", x: 136, y: 14, papel: "missao" },
   { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 143, y: 17, papel: "loja" },
@@ -266,7 +289,7 @@ const DADOS_NPCS = [
     aparencia: "ancia",
     falas: {
       linhas: [
-        "As bancas vazias da praça esperam um ferreiro e um curandeiro. Quem sabe um dia.",
+        "Bezalel, o ferreiro, já trabalha na banca da praça. Agora só falta um curandeiro.",
         "A estrada do sul leva à trilha do Deserto. É longa, mas segura de dia.",
       ],
     },

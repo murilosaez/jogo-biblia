@@ -85,15 +85,23 @@ const ITENS = {
   sandalias_couro: { nome: "Sandálias de couro", peso: 0.4, tipo: "pes", defesa: 1 },
   botas_viagem: { nome: "Botas de viagem", peso: 1.2, tipo: "pes", defesa: 1, atributosFixos: { carga: 2 } },
   anel_selo_bronze: { nome: "Anel de selo de bronze", peso: 0.05, tipo: "anel", atributosFixos: { critico: 2 } }, // Gn 41:42
-  // Pedras do peitoral do sumo sacerdote (Êxodo 28.17–20): saques muito raros (0,1%). No futuro serão
-  // engastadas nos equipamentos; por ora os mercadores as compram.
-  pedra_sardio: { nome: "Sárdio", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#c2452d" },
-  pedra_topazio: { nome: "Topázio", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#e8b94a" },
-  pedra_esmeralda: { nome: "Esmeralda", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#3fa66a" },
-  pedra_carbunculo: { nome: "Carbúnculo", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#a8243a" },
-  pedra_safira: { nome: "Safira", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#3b5ec2" },
-  pedra_ametista: { nome: "Ametista", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#8a4ac2" },
-  pedra_onix: { nome: "Ônix", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#4a4450" },
+  // Pedras do peitoral do sumo sacerdote (Êxodo 28.17–20, na ordem das 4 fileiras): saques muito raros (0,1%).
+  // O ferreiro as engasta num equipamento (uma por peça; REGRAS_ENGASTE, dados/oficios.js); os mercadores as
+  // compram. engaste: o bônus da pedra na peça vestida — efeito (dano, critico, vida, defesa, carga: pontos;
+  // reducao, cura, xp, moedas, familia: fração; velocidade: casas por segundo), valor e, no efeito familia, a
+  // família de criaturas (FAMILIAS_CRIATURAS, dados/criaturas.js). Os ids ficam no save: não renomeie.
+  pedra_sardio: { nome: "Sárdio", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#c2452d", engaste: { efeito: "dano", valor: 2 } },
+  pedra_topazio: { nome: "Topázio", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#e8b94a", engaste: { efeito: "critico", valor: 3 } },
+  pedra_carbunculo: { nome: "Carbúnculo", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#a8243a", engaste: { efeito: "vida", valor: 15 } },
+  pedra_esmeralda: { nome: "Esmeralda", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#3fa66a", engaste: { efeito: "cura", valor: 0.1 } },
+  pedra_safira: { nome: "Safira", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#3b5ec2", engaste: { efeito: "defesa", valor: 2 } },
+  pedra_diamante: { nome: "Diamante", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#d6e2ea", engaste: { efeito: "reducao", valor: 0.04 } },
+  pedra_jacinto: { nome: "Jacinto", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#d0742a", engaste: { efeito: "xp", valor: 0.05 } },
+  pedra_agata: { nome: "Ágata", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#8a94a0", engaste: { efeito: "carga", valor: 5 } },
+  pedra_ametista: { nome: "Ametista", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#8a4ac2", engaste: { efeito: "familia", valor: 0.1, familia: "feras" } },
+  pedra_berilo: { nome: "Berilo", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#5ec2b4", engaste: { efeito: "velocidade", valor: 0.25 } },
+  pedra_onix: { nome: "Ônix", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#4a4450", engaste: { efeito: "familia", valor: 0.1, familia: "saqueadores" } },
+  pedra_jaspe: { nome: "Jaspe", peso: 0.01, tipo: "recurso", raridade: "reliquia", pedra: "#7a8a3a", engaste: { efeito: "moedas", valor: 0.1 } },
 };
 
 // Raridades, da mais comum à mais rara (a ordem importa). cor: nome, borda e brilho no chão;
@@ -235,6 +243,11 @@ const VALORES_VENDA = {
   pedra_safira: 180,
   pedra_ametista: 190,
   pedra_onix: 200,
+  pedra_diamante: 210,
+  pedra_jacinto: 170,
+  pedra_agata: 160,
+  pedra_berilo: 190,
+  pedra_jaspe: 200,
 };
 
 // Espaços do boneco no painel Equipamento (o que cabe em cada um é regra: SLOTS_EQUIPAMENTO, em logica.js).

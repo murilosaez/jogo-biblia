@@ -164,11 +164,15 @@ function tetoAtributo(chave) {
   return Math.max(...faixas.map((f) => f[1])) + melhoria;
 }
 
-// Texto canônico de um item com raridade e atributos.
-function codigoItem(base, raridade, atributos = {}) {
-  if (!raridade || raridade === "comum") return base;
+// Texto canônico de um item com raridade e atributos. extras (JGB-25): { forja, pedra } — o nível da forja
+// (+1 a +10) e a pedra engastada vão no fim: "espada_ferro@epico.dano4.critico3+7~pedra_safira". Um item da
+// raridade dele (sem atributos sorteados) só leva "@raridade" quando tem forja ou pedra: "espada_ferro@comum+3".
+function codigoItem(base, raridade, atributos = {}, extras = {}) {
+  const forja = Number.isInteger(extras.forja) && extras.forja > 0 ? `+${extras.forja}` : "";
+  const pedra = typeof extras.pedra === "string" && extras.pedra ? `~${extras.pedra}` : "";
+  if ((!raridade || raridade === "comum") && !forja && !pedra) return base;
   const partes = ORDEM_ATRIBUTOS.filter((k) => atributos[k] > 0).map((k) => `${k}${atributos[k]}`);
-  return [`${base}@${raridade}`, ...partes].join(".");
+  return [`${base}@${raridade || "comum"}`, ...partes].join(".") + forja + pedra;
 }
 
 // Soma dois conjuntos de atributos ({ critico: 2 } + { critico: 1, vida: 7 }), na ordem de ATRIBUTOS_ITEM.
@@ -187,23 +191,44 @@ function lerItem(id) {
   const [base, resto, ...sobra] = id.split("@");
   const d = registroDe(ITENS, base);
   if (!d || sobra.length) return null;
-  // atributos: os da raridade somados aos fixos do item (atributosFixos, as peças do boneco).
-  const montar = (raridade, atributos) => ({
-    ...d,
-    id,
-    base,
-    raridade,
-    atributos: somarAtributos(d.atributosFixos, atributos),
-    nome: raridade !== (d.raridade || "comum") ? `${d.nome} (${RARIDADES[raridade].nome})` : d.nome,
-    bonus: (d.bonus || 0) + (atributos.dano || 0),
-    defesa: (d.defesa || 0) + (atributos.defesa || 0),
-  });
-  if (resto === undefined) return montar(registroDe(RARIDADES, d.raridade) ? d.raridade : "comum", {});
+  const fixa = registroDe(RARIDADES, d.raridade) ? d.raridade : "comum";
+  // atributos: os da raridade somados aos fixos do item (atributosFixos, as peças do boneco); sorteados: só os
+  // da raridade (para refazer o texto). forja: o nível (+n soma ao atributo principal); pedra e engaste: a pedra
+  // engastada e o bônus dela (somado em somaEngastes, só com a peça vestida).
+  const montar = (raridade, atributos, forja = 0, pedra = null) => {
+    const ganho = ganhoDaForja(d.tipo, forja), principal = atributoPrincipal(d.tipo);
+    const raro = raridade !== fixa ? ` (${RARIDADES[raridade].nome})` : "";
+    return {
+      ...d,
+      id,
+      base,
+      raridade,
+      atributos: somarAtributos(d.atributosFixos, atributos),
+      sorteados: atributos,
+      nome: `${d.nome}${forja ? ` +${forja}` : ""}${pedra ? ` com ${ITENS[pedra].nome}` : ""}${raro}`,
+      bonus: (d.bonus || 0) + (atributos.dano || 0) + (principal === "dano" ? ganho : 0),
+      defesa: (d.defesa || 0) + (atributos.defesa || 0) + (principal === "defesa" ? ganho : 0),
+      forja,
+      pedra,
+      engaste: pedra ? ITENS[pedra].engaste : null,
+    };
+  };
+  if (resto === undefined) return montar(fixa, {});
   if (!TIPOS_COM_RARIDADE.has(d.tipo)) return null;
-  const [raridade, ...partes] = resto.split(".");
+  // "raridade[.atributoN…][+forja][~pedra]"
+  const m = /^([a-z]+(?:\.[a-z0-9]+)*)(?:\+(\d+))?(?:~([a-z0-9_]+))?$/.exec(resto);
+  if (!m) return null;
+  const forja = m[2] === undefined ? 0 : Number(m[2]);
+  const pedra = m[3] ?? null;
+  if (m[2] !== undefined && !(forja >= 1 && forja <= REGRAS_FORJA.maximo)) return null;
+  if (pedra !== null && !engasteValido(registroDe(ITENS, pedra)?.engaste)) return null;
+  const [raridade, ...partes] = m[1].split(".");
   const r = registroDe(RARIDADES, raridade);
-  // A raridade do texto fica acima da do item (a fixa, no amuleto de faiança, é a forma sem "@").
-  if (!r || indiceRaridade(raridade) <= indiceRaridade(registroDe(RARIDADES, d.raridade) ? d.raridade : "comum")) return null;
+  // A raridade do texto fica acima da do item (a fixa, no amuleto de faiança, é a forma sem "@"); a própria só
+  // com forja ou pedra, e aí sem atributos sorteados.
+  if (!r || indiceRaridade(raridade) < indiceRaridade(fixa)) return null;
+  const daRaridade = raridade === fixa;
+  if (daRaridade && (partes.length || (!forja && !pedra))) return null;
   const atributos = {};
   for (const parte of partes) {
     const m = /^([a-z]+)([1-9]\d{0,2})$/.exec(parte);
@@ -213,8 +238,99 @@ function lerItem(id) {
     atributos[m[1]] = Number(m[2]);
   }
   if (Object.keys(atributos).length > r.atributos + 1) return null; // +1: a melhoria do principal
-  if (codigoItem(base, raridade, atributos) !== id) return null; // só a forma canônica
-  return montar(raridade, atributos);
+  if (codigoItem(base, raridade, atributos, { forja, pedra }) !== id) return null; // só a forma canônica
+  return montar(raridade, atributos, forja, pedra);
+}
+
+// ---------------------------------------------------------------------
+// Forja e engaste (JGB-25): REGRAS_FORJA e REGRAS_ENGASTE (dados/oficios.js); as pedras, ITENS com engaste
+// ---------------------------------------------------------------------
+const EFEITOS_ENGASTE = new Set(Object.keys(REGRAS_ENGASTE.textos));
+
+function engasteValido(g) {
+  return !!g && typeof g === "object" && EFEITOS_ENGASTE.has(g.efeito) && Number(g.valor) > 0
+    && (g.efeito !== "familia" || !!registroDe(FAMILIAS_CRIATURAS, g.familia));
+}
+
+// Quanto o nível da forja soma ao atributo principal de um item desse tipo.
+function ganhoDaForja(tipo, nivel) {
+  if (!(nivel > 0)) return 0;
+  const g = registroDe(REGRAS_FORJA.ganho, tipo);
+  return g ? g * nivel : Math.floor(nivel * REGRAS_FORJA.ganhoOutros);
+}
+
+// O mesmo item com outro nível de forja ou outra pedra (null = nenhum), na forma canônica.
+function itemComExtras(id, extras) {
+  const info = infoItem(id);
+  if (!info) return null;
+  const forja = "forja" in extras ? extras.forja : info.forja;
+  const pedra = "pedra" in extras ? extras.pedra : info.pedra;
+  return codigoItem(info.base, info.raridade, info.sorteados, { forja, pedra });
+}
+
+// Soma do efeito das pedras engastadas no equipamento vestido (familia: só as dessa família), até o teto.
+function somaEngastes(p, efeito, familia) {
+  let soma = 0;
+  for (const item of Object.values(p?.equipamento || {})) {
+    const g = item ? infoItem(item)?.engaste : null;
+    if (g && g.efeito === efeito && (efeito !== "familia" || g.familia === familia)) soma += g.valor;
+  }
+  const teto = REGRAS_ENGASTE.tetos[efeito];
+  return Math.round(Math.min(teto ?? Infinity, soma) * 10000) / 10000;
+}
+
+// Janela da forja (pura): as peças (vestidas primeiro, depois as da mochila, uma linha por texto), cada uma com o
+// nível, os efeitos, o próximo passo (chance em %, moedas, lingotes, ganho) e o que falta ("moedas", "material",
+// "máximo" ou ""), e as pedras da mochila na ordem do peitoral.
+function visaoForja(p) {
+  const material = REGRAS_FORJA.material;
+  const naMochila = (x) => p.inventario.filter((y) => y === x).length;
+  const temMaterial = naMochila(material);
+  const peca = (item, slot) => {
+    const info = infoItem(item);
+    const n = info.forja, c = REGRAS_FORJA.niveis[n] || null;
+    const falta = !c ? "máximo" : p.moedas < c.moedas ? "moedas" : temMaterial < c.material ? "material" : "";
+    return {
+      item,
+      slot,
+      nome: info.nome,
+      tipo: info.tipo,
+      nivel: n,
+      maximo: REGRAS_FORJA.maximo,
+      efeitos: efeitosDoItem(item),
+      proximo: c
+        ? { nivel: n + 1, chance: Math.round(c.chance * 100), moedas: c.moedas, material: c.material, ganho: ganhoDaForja(info.tipo, n + 1) - ganhoDaForja(info.tipo, n), atributo: atributoPrincipal(info.tipo) }
+        : null,
+      podeForjar: !falta,
+      falta,
+      pedra: info.pedra ? { id: info.pedra, nome: ITENS[info.pedra].nome, texto: textoEngaste(info.pedra) } : null,
+    };
+  };
+  const forjavel = (item) => !!item && TIPOS_COM_RARIDADE.has(infoItem(item)?.tipo);
+  const vestidas = Object.entries(p.equipamento || {}).filter(([, item]) => forjavel(item)).map(([slot, item]) => ({ ...peca(item, slot), quantidade: 1 }));
+  const mochila = [...new Set(p.inventario)].filter(forjavel).map((item) => ({ ...peca(item, null), quantidade: naMochila(item) }));
+  const pedras = Object.keys(ITENS)
+    .filter((x) => engasteValido(ITENS[x].engaste) && naMochila(x) > 0)
+    .map((x) => ({ id: x, nome: ITENS[x].nome, texto: textoEngaste(x), quantidade: naMochila(x) }));
+  return {
+    pecas: [...vestidas, ...mochila],
+    pedras,
+    moedas: p.moedas,
+    material: { id: material, nome: nomeItem(material), quantidade: temMaterial },
+    precoEngaste: REGRAS_ENGASTE.moedas,
+    podeEngastar: p.moedas >= REGRAS_ENGASTE.moedas,
+  };
+}
+
+// Texto do bônus de uma pedra ("+2 de dano", "+10% de dano contra feras"), ou "".
+function textoEngaste(pedra) {
+  const g = registroDe(ITENS, pedra)?.engaste;
+  if (!engasteValido(g)) return "";
+  const familia = g.efeito === "familia" ? FAMILIAS_CRIATURAS[g.familia].nome.toLowerCase() : "";
+  return REGRAS_ENGASTE.textos[g.efeito]
+    .replace("{v}", String(g.valor).replace(".", ","))
+    .replace("{p}", String(Math.round(g.valor * 1000) / 10).replace(".", ","))
+    .replace("{familia}", familia);
 }
 
 // Descrição completa de um item (base + raridade + atributos), ou null se o id não for válido.
@@ -254,7 +370,8 @@ function efeitosDoItem(id) {
   const lista = [];
   if (info.bonus) lista.push(`+${info.bonus} de dano`);
   if (info.defesa) lista.push(`+${info.defesa} de defesa`);
-  return lista.concat(textoAtributos(id).filter((t) => !/de dano$|de defesa$/.test(t)));
+  const pedra = info.pedra ? [`${ITENS[info.pedra].nome}: ${textoEngaste(info.pedra)}`] : [];
+  return lista.concat(textoAtributos(id).filter((t) => !/de dano$|de defesa$/.test(t)), pedra);
 }
 
 // "1 flecha", "37 flechas".
@@ -360,8 +477,10 @@ function pesoItem(id) {
 }
 
 // Soma de um atributo em todo o equipamento vestido.
+// As pedras de crítico, vida e carga somam aqui (somaEngastes).
 function atributoEquipado(p, chave) {
-  return Object.values(p?.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.atributos[chave] || 0 : 0), 0);
+  const pedras = chave === "critico" || chave === "vida" || chave === "carga" ? somaEngastes(p, chave) : 0;
+  return Object.values(p?.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.atributos[chave] || 0 : 0), pedras);
 }
 
 // Carga máxima: base + CARGA_POR_NIVEL por nível acima do 1º + melhorias da troca de pontos (bonusCarga)
@@ -391,16 +510,17 @@ function textoKg(kg) {
 }
 
 function defesaEquipamento(p) {
-  return Object.values(p.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.defesa || 0 : 0), 0);
+  return Object.values(p.equipamento || {}).reduce((soma, item) => soma + (item ? infoItem(item)?.defesa || 0 : 0), somaEngastes(p, "defesa"));
 }
 
 // Vida que a Oração cura: 20 + metade do nível de Oração.
+// As pedras de cura (somaEngastes "cura") aumentam a Oração e a poção.
 function curaOracao(p) {
-  return 20 + Math.floor(nivelHabilidade(p, "oracao") / 2);
+  return Math.round((20 + Math.floor(nivelHabilidade(p, "oracao") / 2)) * (1 + somaEngastes(p, "cura")));
 }
 
 function curaPocao(p) {
-  return Math.max(CURA_POCAO, Math.round(vidaMaxima(p) * CURA_POCAO_PERCENTUAL));
+  return Math.round(Math.max(CURA_POCAO, Math.round(vidaMaxima(p) * CURA_POCAO_PERCENTUAL)) * (1 + somaEngastes(p, "cura")));
 }
 
 // ----- Boneco: mão da arma, duas mãos e munição -----
@@ -689,8 +809,9 @@ function defesaTotal(p) {
 function danoBruto(p, tipo) {
   const nivel = Math.max(1, p.nivel || 1);
   const porNivel = (nivel - 1) * DANO_POR_NIVEL;
-  if (tipo === "distancia") return DANO_BASE_DISTANCIA + porNivel + bonusArco(p) + bonusHabilidade(p, "distancia");
-  return DANO_BASE_CORPO + porNivel + bonusArma(p) + bonusHabilidade(p, "corpo");
+  const pedras = somaEngastes(p, "dano"); // pedras de dano em qualquer peça vestida
+  if (tipo === "distancia") return DANO_BASE_DISTANCIA + porNivel + bonusArco(p) + bonusHabilidade(p, "distancia") + pedras;
+  return DANO_BASE_CORPO + porNivel + bonusArma(p) + bonusHabilidade(p, "corpo") + pedras;
 }
 
 // Chance de crítico em % (5% com habilidade 0 até 25% com habilidade 100), mais o crítico do equipamento.
@@ -778,7 +899,8 @@ function efeitoHabilidade(p, chave) {
 function velocidadeDoJogador(p) {
   const r = REGRAS_VELOCIDADE;
   const nivel = Math.max(1, Math.min(NIVEL_MAXIMO, Math.floor(p?.nivel) || 1));
-  const casasPorSegundo = Math.min(r.maximo, r.base + r.porNivel * (nivel - 1));
+  const pedras = somaEngastes(p, "velocidade"); // pedras de velocidade (JGB-25)
+  const casasPorSegundo = Math.round(Math.min(r.maximo, r.base + r.porNivel * (nivel - 1) + pedras) * 1000) / 1000;
   const reto = Math.round(1000 / casasPorSegundo);
   return { casasPorSegundo, reto, diagonal: Math.round(reto * r.fatorDiagonal) };
 }
@@ -2265,9 +2387,14 @@ function amuletosDoJogador(p) {
   return Object.keys(FAMILIAS_CRIATURAS).map((f) => progressoAmuleto(p, f)).filter((a) => a.ativo);
 }
 
-// Golpe esperado (sem crítico) do jogador contra a criatura: dano bruto com o amuleto, menos a defesa dela.
+// Bônus de dano (fração) contra a família da criatura: o amuleto do bestiário + as pedras dessa família.
+function bonusContraFamilia(p, e) {
+  return bonusAmuleto(p, e) + (e?.familia ? somaEngastes(p, "familia", e.familia) : 0);
+}
+
+// Golpe esperado (sem crítico) do jogador contra a criatura: dano bruto com o amuleto e as pedras, menos a defesa dela.
 function golpeContra(p, e, tipo) {
-  return mitigarDano(Math.round(danoBruto(p, tipo) * (1 + bonusAmuleto(p, e))), e.defesa || 0);
+  return mitigarDano(Math.round(danoBruto(p, tipo) * (1 + bonusContraFamilia(p, e))), e.defesa || 0);
 }
 
 // Fraquezas da espécie: comportamentos, status (com a chance dela), pouca defesa e alcance menor que o do arco.
@@ -2624,7 +2751,7 @@ function estadoVigor(p, agora) {
 // × vigor, arredondado; o descanso do Sábado dobra este resultado depois (gastarDescanso). Vocação e talentos
 // não multiplicam XP (só dano, cura, defesa e recarga). Devolve { xp, semVigor, fatorVigor, faixa }.
 function composicaoXpAbate(p, e, campeao, agora) {
-  const criatura = xpDoAbate(p, e) * (campeao ? CAMPEAO.xp : 1);
+  const criatura = xpDoAbate(p, e) * (campeao ? CAMPEAO.xp : 1) * (1 + somaEngastes(p, "xp")); // pedras de XP
   const faixa = estadoVigor(p, agora).faixa;
   return { xp: Math.round(criatura * faixa.xp), semVigor: Math.round(criatura), fatorVigor: faixa.xp, faixa };
 }
@@ -2882,7 +3009,7 @@ function catalogoDaLoja(npcId) {
 // ---------------------------------------------------------------------
 // Cada palavra leva a uma ação que já existe, sem regra nova: "interagir" (a mesma conversa do
 // clique ou do F: missão, rodízio do morador, mural, vocação), "loja" (na aba comprar ou vender), "deposito"
-// (janela do depósito),
+// (janela do depósito), "forja" (janela do ferreiro),
 // "viagem" (janela do guia), "barco" (janela da passagem), "fala" (só a resposta) e "despedir".
 // Os sinônimos valem sem acento e sem maiúsculas, sozinhos ou no meio de uma frase.
 const PALAVRAS_CHAVE = {
@@ -2895,6 +3022,8 @@ const PALAVRAS_CHAVE = {
   embarcar: { acao: "barco", sinonimos: ["barco", "navegar", "mar", "boat"] },
   preço: { acao: "fala", sinonimos: ["quanto", "custa", "custo", "passagem", "valor", "price"] },
   vocação: { acao: "interagir", sinonimos: ["vocacoes", "talentos", "vocation"] },
+  forjar: { acao: "forja", aba: "forjar", sinonimos: ["forja", "aprimorar", "melhorar", "bigorna", "forge"] },
+  engastar: { acao: "forja", aba: "engastar", sinonimos: ["engaste", "pedras", "pedra", "peitoral", "gem", "gems"] },
   conversar: { acao: "interagir", sinonimos: ["falar", "conversa", "novidades", "noticias", "news"] },
   missão: { acao: "interagir", sinonimos: ["missoes", "quest", "mission"] },
   tchau: { acao: "despedir", sinonimos: ["adeus", "ate logo", "ate mais", "bye", "falou"] },
@@ -2907,6 +3036,7 @@ const PALAVRAS_DO_PAPEL = {
   mural: ["caçadas"],
   barqueiro: ["embarcar", "preço"],
   vocacao: ["vocação"],
+  ferreiro: ["forjar", "engastar"],
   ambiente: ["conversar"],
   apoio: ["conversar"],
 };
@@ -2961,6 +3091,8 @@ function palavrasChaveDoNpc(p, npcId) {
     comprar: "Veja o que tenho para vender.",
     vender: "Mostre o que tem; compro de tudo: peles, ervas, armas, armaduras e pedras.",
     depósito: "Abra o baú: o que está aqui está em todo depósito.",
+    forjar: `Mostre a peça: forjo de +1 a +${REGRAS_FORJA.maximo}. Se o metal não pegar, a peça fica como estava.`,
+    engastar: `Uma pedra do peitoral por peça, ${REGRAS_ENGASTE.moedas} moedas o engaste.`,
     viajar: "Para onde vamos? O preço depende da distância.",
     embarcar: falaPassagemBarco(p),
     preço: falaPassagemBarco(p),
@@ -4208,7 +4340,7 @@ const Mundo = {
   // reforco (campeão): sorteia a tabela reforco.rolagensSaque vezes, equipamento com reforco.raridadeMinima
   // ou melhor e moedas × reforco.moedas.
   criarSaque(p, e, agora = Date.now(), reforco = null) {
-    const moedas = Math.round((e.saque?.moedas || 0) * (reforco?.moedas || 1));
+    const moedas = Math.round((e.saque?.moedas || 0) * (reforco?.moedas || 1) * (1 + somaEngastes(p, "moedas")));
     const sufixo = `${agora}_${Math.floor(Math.random() * 1e6).toString(36)}`;
     const naMochila = [];
     const noChao = [];
@@ -4497,7 +4629,9 @@ const Mundo = {
   vendaDeTudo(id) {
     const p = this.jogadores[id];
     if (!p) return [];
-    const itens = [...new Set(p.inventario)].filter((item) => valorDeVenda(item) > 0 && !TIPOS_FORA_DE_VENDER_TUDO.has(infoItem(item)?.tipo));
+    // Peças forjadas ou com pedra (JGB-25) também ficam: só saem pela venda de uma em uma.
+    const aprimorado = (item) => infoItem(item)?.forja > 0 || !!infoItem(item)?.pedra;
+    const itens = [...new Set(p.inventario)].filter((item) => valorDeVenda(item) > 0 && !TIPOS_FORA_DE_VENDER_TUDO.has(infoItem(item)?.tipo) && !aprimorado(item));
     return itens
       .map((item) => ({ item, quantidade: this.quantidadeLivre(id, item), valor: valorDeVenda(item) }))
       .filter((v) => v.quantidade > 0);
@@ -4527,6 +4661,103 @@ const Mundo = {
   // REGRAS_DEPOSITO.espacos unidades; o peso não conta. A reserva de missão não sai da mochila.
   guardaDoDepositoProximo(p) {
     return this.npcProximo(p, (n) => n.papel === "deposito");
+  },
+
+  // ----- Forja e engaste (JGB-25) -----
+  // Só ao lado de um ferreiro (papel "ferreiro"). A peça pode estar na mochila ou vestida (slot = o espaço).
+  ferreiroProximo(p) {
+    return this.npcProximo(p, (n) => n.papel === "ferreiro");
+  },
+
+  // Onde está a peça: { slot } se vestida (e o slot bate), { indice } na mochila; null se não há.
+  localizarPeca(p, item, slot) {
+    if (typeof item !== "string") return null;
+    if (slot !== undefined && slot !== null) return tiposDoSlot(slot).length && p.equipamento[slot] === item ? { slot } : null;
+    const indice = p.inventario.indexOf(item);
+    return indice >= 0 ? { indice } : null;
+  },
+
+  // Troca a peça pelo texto novo, no mesmo lugar (vestida: ajusta a vida ao equipamento).
+  trocarPeca(p, onde, novo) {
+    if (onde.slot) {
+      p.equipamento[onde.slot] = novo;
+      this.ajustarVidaAoEquipamento(p);
+    } else p.inventario[onde.indice] = novo;
+  },
+
+  // Uma tentativa de +n a +(n+1): paga moedas e lingotes (REGRAS_FORJA.niveis[n]) e sorteia. Na falha, o
+  // material se perde e a peça fica igual: a forja nunca destrói nem rebaixa.
+  forjar(id, item, slot) {
+    const p = this.jogadores[id];
+    const ferreiro = this.ferreiroProximo(p);
+    if (!ferreiro) return { ok: false, mensagem: "Aproxime-se de um ferreiro para forjar." };
+    const info = infoItem(item);
+    const onde = info && TIPOS_COM_RARIDADE.has(info.tipo) ? this.localizarPeca(p, item, slot) : null;
+    if (!onde) return { ok: false, mensagem: "Escolha um equipamento da mochila ou do corpo para forjar." };
+    if (onde.indice !== undefined) {
+      const saida = this.conferirSaida(p, item, 1, "forjar");
+      if (!saida.ok) return saida;
+    }
+    const nivel = info.forja;
+    if (nivel >= REGRAS_FORJA.maximo) return { ok: false, mensagem: `${info.nome} já está no máximo (+${REGRAS_FORJA.maximo}).` };
+    const custo = REGRAS_FORJA.niveis[nivel];
+    const material = REGRAS_FORJA.material;
+    const temMaterial = p.inventario.filter((x) => x === material).length;
+    if (p.moedas < custo.moedas) return { ok: false, mensagem: `Forjar ${info.nome} custa ${custo.moedas} moedas; você tem ${p.moedas}.` };
+    if (temMaterial < custo.material)
+      return { ok: false, mensagem: `Forjar ${info.nome} pede ${custo.material}× ${nomeItem(material)}; você tem ${temMaterial}.` };
+    p.moedas -= custo.moedas;
+    this.removerItens(p, material, custo.material);
+    const nivelNovoOficio = ganharXpOficio(p, REGRAS_FORJA.oficio, REGRAS_FORJA.xpOficio);
+    const oficioSubiu = nivelNovoOficio ? { oficio: REGRAS_FORJA.oficio, nivel: nivelNovoOficio } : null;
+    const sucesso = Math.random() < custo.chance;
+    const novo = sucesso ? itemComExtras(item, { forja: nivel + 1 }) : item;
+    // o lingote saiu da mochila: a peça (se estava nela) pode ter mudado de posição
+    if (sucesso) this.trocarPeca(p, onde.slot ? onde : { indice: p.inventario.indexOf(item) }, novo);
+    this.salvar(p);
+    const gasto = `${custo.moedas} moedas${custo.material ? ` e ${custo.material}× ${nomeItem(material)}` : ""}`;
+    const nome = ferreiro.nome.split(",")[0];
+    const mensagem = sucesso
+      ? `${nome}: Ficou bom! ${nomeItem(novo)} (${efeitosDoItem(novo).join(", ")}). Gastou ${gasto}.`
+      : `${nome}: O metal não pegou desta vez. ${info.nome} continua como estava; gastou ${gasto}.`;
+    const subiu = oficioSubiu ? ` ${OFICIOS[REGRAS_FORJA.oficio].nome} subiu para o nível ${nivelNovoOficio}!` : "";
+    return { ok: true, sucesso, item: novo, slot: onde.slot || null, ...(oficioSubiu ? { oficioSubiu } : {}), mensagem: mensagem + subiu };
+  },
+
+  // Engasta uma pedra (da mochila) na peça; trocar a pedra de uma peça perde a que estava nela (trocar: true).
+  engastar(id, item, slot, pedra, trocar) {
+    const p = this.jogadores[id];
+    const ferreiro = this.ferreiroProximo(p);
+    if (!ferreiro) return { ok: false, mensagem: "Aproxime-se de um ferreiro para engastar." };
+    const info = infoItem(item);
+    const onde = info && TIPOS_COM_RARIDADE.has(info.tipo) ? this.localizarPeca(p, item, slot) : null;
+    if (!onde) return { ok: false, mensagem: "Escolha um equipamento da mochila ou do corpo para engastar." };
+    if (!engasteValido(registroDe(ITENS, pedra)?.engaste) || !p.inventario.includes(pedra))
+      return { ok: false, mensagem: "Escolha uma pedra do peitoral da mochila." };
+    const semPedra = nomeItem(itemComExtras(item, { pedra: null }));
+    if (info.pedra === pedra) return { ok: false, mensagem: `${semPedra} já tem ${nomeItem(pedra)}.` };
+    if (info.pedra && trocar !== true)
+      return { ok: false, confirmar: true, mensagem: `${semPedra} já tem ${nomeItem(info.pedra)}: trocar perde essa pedra.` };
+    for (const [x, verbo] of [[pedra, "engastar"], ...(onde.indice !== undefined ? [[item, "engastar"]] : [])]) {
+      const saida = this.conferirSaida(p, x, 1, verbo);
+      if (!saida.ok) return saida;
+    }
+    const preco = REGRAS_ENGASTE.moedas;
+    if (p.moedas < preco) return { ok: false, mensagem: `Engastar custa ${preco} moedas; você tem ${p.moedas}.` };
+    p.moedas -= preco;
+    this.removerItens(p, pedra, 1);
+    const novo = itemComExtras(item, { pedra });
+    // a pedra saiu da mochila: a peça (se estava nela) pode ter mudado de posição
+    const lugar = onde.slot ? onde : { indice: p.inventario.indexOf(item) };
+    this.trocarPeca(p, lugar, novo);
+    this.salvar(p);
+    const perdeu = info.pedra ? ` ${nomeItem(info.pedra)} se perdeu na troca.` : "";
+    return {
+      ok: true,
+      item: novo,
+      slot: onde.slot || null,
+      mensagem: `${ferreiro.nome.split(",")[0]}: Engastei ${nomeItem(pedra)} em ${semPedra} (${textoEngaste(pedra)}). Gastou ${preco} moedas.${perdeu}`,
+    };
   },
 
   // Guarda "quantidade" unidades (padrão 1) de um item da mochila no depósito.
@@ -4716,6 +4947,10 @@ const Mundo = {
         return this.definirCores(id, comando.cores);
       case "pularTutorial":
         return this.pularTutorial(id);
+      case "forjar":
+        return this.forjar(id, comando.item, comando.slot);
+      case "engastar":
+        return this.engastar(id, comando.item, comando.slot, comando.pedra, comando.trocar === true);
       default:
         return { ok: false };
     }
@@ -5238,6 +5473,9 @@ const Mundo = {
         mensagem: `${npc.nome.split(",")[0]}: ${npc.falas?.saudacao || "Tenho provisões, flechas e equipamentos para vender."}`,
       };
     }
+    if (npc.papel === "ferreiro") {
+      return { ok: true, abrirForja: npc.id, mensagem: `${npc.nome.split(",")[0]}: ${npc.falas?.saudacao || "Forjo e engasto pedras."}` };
+    }
     if (npc.papel === "deposito") {
       const n = (p.deposito || []).length;
       return {
@@ -5291,7 +5529,7 @@ const Mundo = {
   conversaDeMissao(p, npc) {
     const missao = missaoDaVez(p, missoesDoNpc(npc.id));
     if (!missao) return false;
-    if (!["loja", "guia", "mural", "deposito"].includes(npc.papel)) return true;
+    if (!["loja", "guia", "mural", "deposito", "ferreiro"].includes(npc.papel)) return true;
     return ["inicio", "andamento", "retorno"].includes(faseMissao(p, missao.id));
   },
 
@@ -5724,7 +5962,7 @@ const Mundo = {
       analisador.gastos += custoFlecha();
     }
 
-    const bonus = bonusAmuleto(p, e);
+    const bonus = bonusContraFamilia(p, e);
     // Combinações: criatura atordoada leva crítico garantido; com medo, leva mais dano.
     const combo = combinacoesNoGolpe(e, agora);
     const golpe = calcularGolpe(p, tipo, at.defesa, combo.critico ? -1 : Math.random(), (1 + bonus) * combo.multiplicador * fatorDano(p, tipo, agora));
@@ -6472,7 +6710,7 @@ const Mundo = {
     const magia = REGRAS_VOCACAO.magia;
     const base = tipo === "magia" ? magia.base + magia.porNivel * Math.max(0, (p.nivel || 1) - 1) : danoBruto(p, tipo);
     const combo = combinacoesNoGolpe(e, agora);
-    let mult = h.dano.mult * fatorDano(p, tipo, agora) * (1 + bonusAmuleto(p, e)) * combo.multiplicador * fatorTalentoHabilidade(p, habilidadeId, "dano");
+    let mult = h.dano.mult * fatorDano(p, tipo, agora) * (1 + bonusContraFamilia(p, e)) * combo.multiplicador * fatorTalentoHabilidade(p, habilidadeId, "dano");
     const nomes = [...combo.nomes];
     if (h.bonus) {
       const status = [].concat(h.bonus.status).filter((t) => statusAtivo(e, t, agora));
@@ -6876,7 +7114,7 @@ const Mundo = {
 
   // Dano que chega ao jogador depois da redução e do escudo dos buffs: { dano, absorvido }.
   absorverDano(p, dano, agora) {
-    const reducao = Math.min(REGRAS_TALENTOS.limiteReducao, somaBuffs(p, "reducao", agora) + passivosDe(p).reducao);
+    const reducao = Math.min(REGRAS_TALENTOS.limiteReducao, somaBuffs(p, "reducao", agora) + passivosDe(p).reducao + somaEngastes(p, "reducao"));
     let restante = reducao ? Math.max(1, Math.round(dano * (1 - reducao))) : dano;
     let absorvido = 0;
     for (const b of buffsAtivos(p, agora)) {
@@ -6990,7 +7228,8 @@ const Mundo = {
       estado.explosoes = estado.explosoes.filter((x) => agora < x.em);
       for (const x of prontas) {
         const atingiu = x.area === p.area && distanciaChebyshev(p, x) <= 1;
-        const dano = atingiu ? mitigarDano(x.dano, defesaTotal(p)) : 0;
+        // a redução de dano (talentos, buffs e pedras) e o escudo dos buffs valem como num golpe
+        const { dano } = atingiu ? this.absorverDano(p, mitigarDano(x.dano, defesaTotal(p)), agora) : { dano: 0 };
         if (atingiu) {
           p.vida = Math.max(0, p.vida - dano);
           estado.ultimoCombate = agora;

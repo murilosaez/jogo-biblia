@@ -27,7 +27,7 @@ Conteúdo do jogo (pasta dados/)
   loja (conversa-se e compra-se do outro lado do balcão, a 2 casas); guias e atalaias atendem à frente
   de uma tenda ou banca (estruturas com npc em dados/mapas.js); o barqueiro fica ao lado do cais, diz o
   preço da passagem e embarca quem pagar; os moradores (papel "ambiente") só conversam, dizendo as suas
-  falas em rodízio.
+  falas em rodízio; o ferreiro (papel "ferreiro", à frente de uma banca) abre a janela da forja e do engaste.
 - dados/criaturas.js: inimigos (tier, comportamento, status, atributos e tabela de saque), as regras de
   tiers, comportamentos, status e campeões, e os raros nomeados com a janela de aparição; especie e familia de cada criatura (as
   caçadas contam por elas) e os nomes das famílias; as regras do bestiário (REGRAS_BESTIARIO: abates de cada
@@ -52,6 +52,8 @@ Conteúdo do jogo (pasta dados/)
   grande e qualidade dos equipamentos; OFICIOS: os 6 ofícios, de onde vêm os materiais e o XP de cada coleta;
   RECEITAS: ofício, nível, materiais, produto e XP). Nada brota no mapa: erva, odre, madeira, argila, minério e
   resina caem das criaturas (tabelas de saque em dados/criaturas.js); os itens novos ficam em dados/itens.js.
+  REGRAS_FORJA (JGB-25): a forja de +1 a +10 (chance, moedas e lingotes de cada nível, ganho por tipo de peça e
+  XP de Ferreiro por tentativa); REGRAS_ENGASTE: preço do engaste, tetos e textos de cada efeito das pedras.
 - dados/cosmeticos.js: trajes (TRAJES: nome, vocação, gratuito, preço e o visual do boneco), montarias
   (MONTARIAS: jumento, camelo, cavalo e carro) e a paleta das cores do visual (CORES_VISUAL: id, nome e cor;
   PARTES_COR_VISUAL: cabeça, tronco, pernas e detalhe), só de aparência, e a regra da loja (REGRAS_COSMETICOS:
@@ -323,8 +325,8 @@ Mapas e vilas
 Cada região tem 160×120 casas, com vilas e acampamentos (Vila de Canaã, Acampamento de Noemi, Gósen,
 Acampamento à beira-mar, Refidim e Cafarnaum), estradas, áreas de caça, lagos e rios. Toda cidade tem
 um mercador numa loja, um guarda do depósito numa banca, um guia de caravanas e um atalaia em tendas, e um
-cais ao norte (no Egito, na margem do Nilo; na Galileia, no lago). As bancas vazias de Canaã e do Deserto estão reservadas para o
-ferreiro. Cada vila tem moradores para conversar.
+cais ao norte (no Egito, na margem do Nilo; na Galileia, no lago). Em Canaã e no Deserto, um ferreiro (Bezalel e
+Aoliabe) atende à frente da banca da praça. Cada vila tem moradores para conversar.
 O minimapa mostra 80×60 casas em volta do jogador; clicar nele anda até lá (veja Controles).
 
 Combate
@@ -369,7 +371,9 @@ Saques e raridades
   O som pode ser desligado na ajuda (?), e a escolha fica no navegador.
 - No save, um item com raridade é um texto que se descreve sozinho, "<item>@<raridade>.<atributo><valor>…"
   (por exemplo "espada_ferro@epico.dano4.critico3"); dois itens com o mesmo sorteio se empilham. Itens
-  com texto inválido somem na carga do save.
+  com texto inválido somem na carga do save. A forja e a pedra engastada (JGB-25) vão no fim: "+<nível>" e
+  "~<pedra>" ("espada_ferro@epico.dano4.critico3+7~pedra_safira"; a peça comum forjada é
+  "espada_ferro@comum+3"). Saves antigos não mudam (não mudou a versão do save).
 
 Inimigos obrigatórios (vida / defesa / dano por golpe antes da sua defesa)
 - Lobo 70 / 2 / 6 · Escorpião 130 / 4 / 9 (envenena) · Chefe dos saqueadores 190 / 6 / 10
@@ -507,12 +511,12 @@ Eliaquim (Galileia). Todos vendem poção de vida 12 · poção de fé 18 · 5 f
 variam: escudo de madeira 35 (todos menos o do Egito), armadura de couro 65 e arco de madeira 80 (todos
 menos a de Canaã); Hadassa (Canaã) vende também a funda (60). Todos compram qualquer item (VALORES_VENDA, em
 dados/itens.js): recursos (pele de lobo 5, erva 2, odre 3, peixe 6, veneno 4, insígnia 6, presa 10, ferrão
-12, linho 8, ponta de lança 9, bracelete 16, pedras do peitoral 150 a 200), armas, escudos, armaduras e as
+12, linho 8, ponta de lança 9, bracelete 16, pedras do peitoral 150 a 210), armas, escudos, armaduras e as
 peças do boneco (sempre abaixo do preço da loja; o equipamento que caiu incomum vale 1,5 ×, raro 2,5 ×, épico
 4 × e relíquia 7 ×), poções (5 e 7) e flechas (1 cada).
 - Vender: com mais de uma unidade, Vender 1, Vender X (− número +, até o que você tem) ou Vender tudo; o
   total em moedas aparece no botão antes de confirmar. No topo da aba Vender, "Vender todos os itens" vende a
-  mochila inteira de uma vez (pede confirmação), menos poções e flechas. Só a mochila conta (o vestido não é vendido) e cada
+  mochila inteira de uma vez (pede confirmação), menos poções, flechas e peças forjadas ou com pedra. Só a mochila conta (o vestido não é vendido) e cada
   raridade de um equipamento é um item à parte. Unidades que uma missão pede na entrega ficam guardadas.
 - Comprar: poções e flechas têm o mesmo seletor (até 100 de uma vez, ou o que as moedas e a carga permitem).
 
@@ -635,6 +639,26 @@ equipamento vestido não conta); a receita abre no nível do ofício e a janela 
 - Mercadorias (peixe seco, jarro, lamparina, ânfora, incenso, óleo da unção, manto bordado e outras) valem
   mais nos mercadores que os materiais que gastam. Nenhuma receita usa itens da loja.
 
+Forja e pedras do peitoral (JGB-25)
+Fale com o ferreiro (Bezalel, em Canaã, ou Aoliabe, no Deserto, à frente da banca da praça) ou diga [forjar].
+- Forja: cada equipamento (vestido ou na mochila) sobe de +0 a +10. Cada nível soma +1 ao dano da arma ou do
+  arco e +1 à defesa do escudo e da armadura; as outras peças do corpo ganham +1 de defesa a cada 2 níveis.
+  Chance e custo de cada tentativa (de +n para +n+1):
+    +1 100% 10 moedas · +2 90% 16 · +3 80% 26 · +4 65% 41 e 1 lingote · +5 50% 66 e 1 · +6 40% 105 e 2
+    +7 30% 168 e 2 · +8 20% 268 e 3 · +9 12% 429 e 3 · +10 8% 687 e 4 lingotes de bronze
+  A forja nunca destrói nem rebaixa: se o metal não pegar, perdem-se as moedas e os lingotes, e a peça fica
+  como estava. Cada tentativa dá 3 XP de Ferreiro. Lingote de bronze: Ferreiro, 3 minérios de cobre.
+- Engaste: uma pedra do peitoral por peça (25 moedas); trocar a pedra perde a que estava nela. O bônus vale
+  com a peça vestida e soma entre as peças, até o teto de cada efeito:
+    Sárdio +2 de dano · Topázio +3% de crítico · Carbúnculo +15 de vida · Esmeralda +10% de cura (poção e
+    Oração) · Safira +2 de defesa · Diamante −4% de dano recebido · Jacinto +5% de XP dos abates · Ágata +5 kg
+    de carga · Ametista +10% de dano contra feras · Berilo +0,25 casas/s · Ônix +10% de dano contra
+    saqueadores · Jaspe +10% de moedas no saque.
+  Tetos: dano recebido −12%, cura +30%, XP +20%, moedas +30%, dano contra uma família +30%, velocidade
+  +0,75 casa/s; o crítico respeita o teto do equipamento (25%).
+- As pedras caem muito raramente (0,1%) das criaturas de cada região e a 5% dos raros nomeados; o Diamante,
+  das elites. "Vender tudo" deixa de fora as peças forjadas ou com pedra.
+
 Maná diário e descanso do Sábado
 Tecla N ou o botão Maná, no topo. Nada aqui exige entrar todo dia: perder um dia não tira nada.
 - Maná (Êxodo 16): o dia do maná vai de um amanhecer (6 h, hora do seu computador) ao seguinte; é a janela de
@@ -685,6 +709,8 @@ Para desenvolvedores
 - Testes: node tests/logica.test.js (sem dependências). Incluem a simulação da campanha inteira,
   com a tabela de duração das lutas.
 - Funções para a interface (sem DOM): estatisticasCombate(p), textoMissaoAtual(p), tutorialAtivo(p),
+  visaoForja(p) (a janela do ferreiro: peças com nível, efeitos, próximo passo e o que falta; pedras da mochila),
+  textoEngaste(pedra), somaEngastes(p, efeito, familia),
   visaoTutorial(p, toque) (a etapa atual do tutorial: número, título, texto do teclado ou do toque, rumo, destaque e
   recompensa; null quando acabou), bestiarioPorFamilia(p),
   resumoBestiario(p), visaoEspecie(p, especie), bonusAmuleto(p, e), Mundo.analisador(id), textoRelogio(ms),
