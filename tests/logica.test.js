@@ -33,6 +33,7 @@ const ARQUIVOS_DADOS = [
   "dados/vocacoes.js",
   "dados/oficios.js",
   "dados/cosmeticos.js",
+  "dados/tutorial.js",
 ];
 const ARQUIVOS = ["storage.js", ...ARQUIVOS_DADOS, "logica.js"];
 const FONTES = ARQUIVOS.map((f) => fs.readFileSync(path.join(RAIZ, f), "utf8"));
@@ -7602,6 +7603,157 @@ teste("82. exportar e importar o progresso: envelope, validação, troca do save
 
 // Testes de cada pacote de arte: tests/arte/<nome>.test.js exporta uma função que recebe as ferramentas
 // desta suíte e registra os seus testes com teste(). Cada pacote escreve só o próprio arquivo.
+// ---------------------------------------------------------------------
+// Tutorial (JGB-14)
+// ---------------------------------------------------------------------
+// Anda até ficar ao lado de "alvo" pelo caminho mais rápido (A*), um passo por vez, no ritmo do personagem
+// (velocidadeDoJogador) e com o mundo rodando (as criaturas andam e atacam). alvo() é chamado a cada passo
+// (a criatura pode se mexer). Devolve os eventos de cada atualização.
+function caminharAte(j, alvo, limiteMs = 120_000) {
+  const M = j.M, p = j.p, rotaNaGrade = j.g("rotaNaGrade"), COLS = j.g("COLS"), vel = j.g("velocidadeDoJogador");
+  const fim = j.agora + limiteMs;
+  while (j.agora < fim) {
+    const a = alvo();
+    if (Math.max(Math.abs(a.x - p.x), Math.abs(a.y - p.y)) <= 1) return;
+    const grade = M.gradeDePassagem(p);
+    const livre = (x, y) => (x === a.x && y === a.y) || grade[y * COLS + x] === 1;
+    const r = rotaNaGrade(livre, { x: p.x, y: p.y }, a);
+    assert.ok(r && r.passos.length, `sem caminho até ${a.x},${a.y}`);
+    const [dx, dy] = r.passos[0];
+    if (p.x + dx === a.x && p.y + dy === a.y) return; // a casa do alvo: já está ao lado
+    const m = j.exec({ tipo: "mover", dx, dy });
+    const v = vel(p);
+    j.avancar(dx && dy ? v.diagonal : v.reto);
+    j.atualizar();
+    if (!m.ok) j.avancar(200); // uma criatura entrou na frente: espera e recalcula
+  }
+  throw new Error("não chegou a tempo");
+}
+
+teste("83. tutorial (JGB-14): etapas em ordem, recompensas, nível 2 em menos de 2 minutos cronometrados e pular", () => {
+  const T = j0 => j0.g("DADOS_TUTORIAL");
+  // (a) Dados: etapas com id único, textos, condição conhecida e alvos que existem.
+  const j0 = carregarJogo();
+  const npcs = j0.g("npcs"), MISSOES = j0.g("MISSOES"), ITENS = j0.g("ITENS");
+  const ids = new Set();
+  for (const d of T(j0)) {
+    assert.ok(d.id && !ids.has(d.id), `etapa ${d.id}: id único`);
+    ids.add(d.id);
+    for (const c of ["titulo", "texto", "cumprida"]) assert.ok(typeof d[c] === "string" && d[c].length > 3, `${d.id}.${c}`);
+    if (d.alvo) assert.ok(npcs[d.alvo], `${d.id}: alvo ${d.alvo}`);
+    const c = d.condicao;
+    assert.ok(["andar", "missao", "abate", "equipar", "loja"].includes(c.tipo), `${d.id}: condição ${c.tipo}`);
+    if (c.missao) assert.ok(MISSOES[c.missao], `${d.id}: missão ${c.missao}`);
+    if (c.item) assert.ok(ITENS[c.item], `${d.id}: item ${c.item}`);
+  }
+  const HTML = fs.readFileSync(path.join(RAIZ, "index.html"), "utf8");
+  for (const d of T(j0)) if (d.destaque) assert.match(HTML, new RegExp(`id="${d.destaque.slice(1)}"`), `${d.id}: destaque ${d.destaque}`);
+
+  // (b) Cronometrado: personagem novo, do primeiro quadro ao nível 2, andando no ritmo real e lutando com o
+  // ataque de cada recarga. Inclui 3 s para ler o cartão no início e 2 s em cada conversa.
+  const j = carregarJogo({ semente: 5 });
+  const p = j.entrar();
+  const M = j.M, inimigos = j.g("inimigos");
+  igual(p.tutorial, { etapa: 0, passos: 0, loja: false, fim: null });
+  const etapaId = () => T(j)[p.tutorial.etapa]?.id || "fim";
+  assert.strictEqual(j.g("visaoTutorial")(p, false).titulo, "Ande pela vila");
+  assert.match(j.g("visaoTutorial")(p, true).texto, /joystick/);
+  p.tutorial.etapa = 1; // o rumo aponta Eliabe (a noroeste do início) e, na luta, o lobo mais perto
+  assert.match(j.g("visaoTutorial")(p, false).rumo, /^Eliabe: 4 casas a noroeste\.$/);
+  p.tutorial.etapa = 0;
+  const inicio = j.agora;
+  const marcas = {};
+  j.avancar(3000);
+  const eliabe = npcs.viajante1;
+  caminharAte(j, () => eliabe);
+  assert.strictEqual(etapaId(), "falar", "andou 3 casas: etapa cumprida");
+  marcas.andar = j.agora;
+  assert.strictEqual(p.xp, 10);
+  j.avancar(2000);
+  const fala = j.exec({ tipo: "interagir", alvoId: "viajante1" });
+  assert.ok(fala.ok);
+  assert.ok(fala.tutorial?.some((t) => /Missão aceita/.test(t)), "a resposta traz a frase da etapa");
+  assert.strictEqual(etapaId(), "lutar");
+  marcas.falar = j.agora;
+  // O lobo do grupo mais perto.
+  const lobos = Object.values(inimigos).filter((e) => (e.id === "lobo1" || e.base === "lobo1") && M.inimigoVivo(p, e.id));
+  const dist = (e) => Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y));
+  const lobo = lobos.sort((a, b) => dist(a) - dist(b))[0];
+  assert.match(j.g("visaoTutorial")(p, false).rumo, new RegExp(`^Lobo: ${dist(lobo)} casas a (sudeste|leste|sul)\\.$`));
+  caminharAte(j, () => lobo);
+  let vitoria = false;
+  while (!vitoria && j.agora - inicio < 240_000) {
+    for (const ev of j.atualizar()) assert.notStrictEqual(ev.tipo, "renasceu", "não morre no tutorial");
+    if (dist(lobo) > 1) caminharAte(j, () => lobo);
+    if (M.recargaAtaque(ID) === 0) {
+      const r = j.exec({ tipo: "atacar", alvoId: lobo.id });
+      if (r.derrotado) vitoria = true;
+    }
+    if (p.vida < j.g("vidaMaxima")(p) * 0.3) j.exec({ tipo: "usarPocao" });
+    j.avancar(100);
+  }
+  assert.ok(vitoria, "venceu o lobo");
+  assert.strictEqual(etapaId(), "voltar");
+  marcas.lutar = j.agora;
+  caminharAte(j, () => eliabe);
+  j.avancar(2000);
+  assert.ok(j.exec({ tipo: "interagir", alvoId: "viajante1" }).ok);
+  assert.strictEqual(etapaId(), "equipar");
+  assert.strictEqual(p.nivel, 2, "o nível 2 chega com a recompensa de Eliabe");
+  const total = (j.agora - inicio) / 1000;
+  const ritmo = Object.entries(marcas).map(([k, t]) => `${k} ${((t - inicio) / 1000).toFixed(1)} s`).join(", ");
+  assert.ok(total < 120, `nível 2 em ${total.toFixed(1)} s (${ritmo}); a meta é menos de 2 minutos`);
+  // Uma recompensa (XP, abate ou missão) a cada 60 s no máximo.
+  const tempos = [inicio, ...Object.values(marcas), j.agora];
+  for (let i = 1; i < tempos.length; i++) assert.ok(tempos[i] - tempos[i - 1] <= 60_000, `intervalo ${i} sem recompensa: ${ritmo}`);
+  console.log(`        tutorial: nível 2 em ${total.toFixed(1)} s (${ritmo})`);
+
+  // (c) Equipar a espada nova e negociar com a mercadora concluem o tutorial (e dão a recompensa final).
+  const moedas = p.moedas;
+  const eq = M.equiparItem(ID, "espada_ferro", "arma");
+  assert.ok(eq.ok && eq.tutorial?.length, "equipar avança o tutorial");
+  assert.strictEqual(etapaId(), "loja");
+  falar(j, "mercador_canaa");
+  assert.strictEqual(etapaId(), "loja", "só falar não basta");
+  const venda = j.exec({ tipo: "vender", item: "pele_lobo", quantidade: 1 });
+  assert.ok(venda.ok, venda.mensagem);
+  assert.strictEqual(p.tutorial.fim, "concluido");
+  assert.ok(venda.tutorial.some((t) => /Tutorial concluído/.test(t)));
+  assert.strictEqual(p.moedas, moedas + j.g("VALORES_VENDA").pele_lobo + j.g("REGRAS_TUTORIAL").recompensaFinal.moedas);
+  assert.strictEqual(j.g("visaoTutorial")(p, false), null);
+  // Não dá a recompensa de novo, nem depois de recarregar.
+  const xp = p.xp;
+  j.exec({ tipo: "mover", dx: 0, dy: 1 });
+  assert.strictEqual(p.xp, xp);
+  j.g("Storage").flush();
+  const jr = carregarJogo({ store: j.store });
+  igual(jr.entrar().tutorial, { etapa: T(j).length, passos: p.tutorial.passos, loja: true, fim: "concluido" });
+
+  // (d) Pular: encerra de vez, sem recompensa; o comando avisa se já acabou.
+  const js = carregarJogo();
+  const ps = js.entrar();
+  const pulo = js.exec({ tipo: "pularTutorial" });
+  assert.ok(pulo.ok && /pulado/.test(pulo.mensagem));
+  igual([ps.tutorial.fim, ps.tutorial.etapa, ps.xp, ps.moedas], ["pulado", T(js).length, 0, 30]);
+  assert.strictEqual(js.exec({ tipo: "pularTutorial" }).ok, false);
+  for (let i = 0; i < 6; i++) js.exec({ tipo: "mover", dx: i % 2 ? 1 : -1, dy: 0 });
+  assert.strictEqual(ps.xp, 0, "pulado: andar não dá mais XP");
+
+  // (e) Save de antes do tutorial (sem o campo): quem já jogava não o recebe. Dados ruins são limpos.
+  const jv = carregarJogo();
+  jv.entrar();
+  jv.g("Storage").flush();
+  const store = jv.store;
+  for (const k of Object.keys(store)) {
+    try { const o = JSON.parse(store[k]); if (o && o.tutorial) { delete o.tutorial; store[k] = JSON.stringify(o); } } catch {}
+  }
+  igual(carregarJogo({ store }).entrar().tutorial, { etapa: T(j).length, passos: 0, loja: false, fim: "pulado" });
+  for (const k of Object.keys(store)) {
+    try { const o = JSON.parse(store[k]); if (o && o.id === ID) { o.tutorial = { etapa: 99, passos: -3, loja: "sim", fim: "talvez", extra: 1 }; store[k] = JSON.stringify(o); } } catch {}
+  }
+  igual(carregarJogo({ store }).entrar().tutorial, { etapa: T(j).length, passos: 0, loja: false, fim: "concluido" });
+});
+
 const PASTA_TESTES_ARTE = path.join(__dirname, "arte");
 if (fs.existsSync(PASTA_TESTES_ARTE)) {
   for (const arq of fs.readdirSync(PASTA_TESTES_ARTE).filter((a) => a.endsWith(".test.js")).sort()) {

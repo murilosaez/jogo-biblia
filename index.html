@@ -544,6 +544,36 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 /* diálogo */
 #dialogo{position:absolute;left:12px;right:12px;bottom:12px;z-index:calc(var(--z-toque) + 1);display:none;gap:12px;align-items:flex-start;max-height:40%;overflow:auto;padding:12px 14px;cursor:pointer}
 #dialogo.aberto{display:flex}
+/* tutorial (JGB-14): cartão da etapa atual no canto do mundo; some durante a conversa */
+#tutorial{position:absolute;right:12px;bottom:12px;z-index:var(--z-hud);width:min(300px,calc(100% - 24px));padding:8px 12px 10px;font:500 var(--fs-14)/1.35 var(--f-texto)}
+#tutorial[hidden],#dialogo.aberto~#tutorial{display:none}
+#tutorial .tut-cab{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
+#tutorial .tut-num{font:700 var(--fs-12)/1 var(--f-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--tinta-suave)}
+#tutorial .tut-pular{min-height:24px;padding:2px 8px;border:1px solid var(--perg-400);background:#fbf1dc99;color:var(--tinta);font:700 var(--fs-12)/1 var(--f-ui)}
+#tutorial .tut-pular[data-armado="1"]{background:var(--vida-2);border-color:var(--tinta);color:#fff6e0}
+#tutorial h3{margin:0;font:700 var(--fs-16)/1.25 var(--f-titulo);color:var(--tinta)}
+#tutorial p{margin:2px 0 4px}
+#tutorial .tut-rumo{display:block;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--tinta-suave)}
+#tutorial .tut-premio{display:block;font:700 var(--fs-13)/1.2 var(--f-ui);color:var(--fe-1)}
+#tutorial .tut-pontos{display:flex;gap:4px;margin-top:6px}
+#tutorial .tut-pontos i{flex:1;height:4px;background:var(--perg-400);opacity:.5}
+#tutorial .tut-pontos i.feito{background:var(--fe-1);opacity:1}
+#tutorial .tut-pontos i.atual{background:var(--ouro-300);opacity:1}
+/* por dentro: as colunas cortam o que passa da borda do painel */
+.tut-destaque{outline:2px solid var(--ouro-300);outline-offset:-2px;box-shadow:inset 0 0 14px 2px #f2d27a88}
+@media (prefers-reduced-motion:no-preference){.tut-destaque{animation:tut-pulso 1.4s ease-in-out infinite}}
+@keyframes tut-pulso{50%{outline-color:#f2d27a66;box-shadow:inset 0 0 6px 0 #f2d27a44}}
+/* celular: no topo, logo abaixo do HUD, longe do personagem (os avisos passam por cima dele por uns segundos);
+   o texto fica em 2 linhas e um toque no cartão mostra tudo */
+@media (max-width:760px){
+ #tutorial{left:8px;right:8px;width:auto;bottom:auto;top:calc(160px + var(--status-hud,0px));padding:4px 10px 6px;font-size:var(--fs-13)}
+ body:not(.com-alvo) #tutorial{top:calc(124px + var(--status-hud,0px))}
+ body.mapa-visivel-cel:not(.com-alvo) #tutorial{top:calc(136px + var(--status-hud,0px))}
+ #tutorial h3{font-size:var(--fs-14)}
+ #tutorial p{margin:0 0 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+ #tutorial.aberto p{display:block}
+ #tutorial .tut-premio,#tutorial .tut-pontos{display:none}
+}
 #dialogo .retrato{width:60px;height:56px}
 #dialogo .retrato img{width:48px;height:39px}
 .dlg-txt{min-width:0;flex:1}
@@ -1160,6 +1190,11 @@ body.toque-forcado #dpad{display:block}
           <div class="dlg-txt"><h3 id="dlgNome"></h3><span class="papel" id="dlgPapel"></span><p id="dlgTexto"></p><div class="palavras dlg-palavras" id="dlgPalavras" role="group" aria-label="Palavras-chave"></div></div>
           <span class="dlg-dica">clique ou F</span>
         </div>
+        <aside id="tutorial" class="perg" hidden aria-label="Tutorial" aria-live="polite">
+          <div class="tut-cab"><span class="tut-num" id="tutNumero"></span><button type="button" class="tut-pular" id="tutPular" aria-label="Pular o tutorial">Pular tutorial</button></div>
+          <h3 id="tutTitulo"></h3><p id="tutTexto"></p><span class="tut-rumo" id="tutRumo" hidden></span><span class="tut-premio" id="tutPremio" hidden></span>
+          <div class="tut-pontos" id="tutPontos" aria-hidden="true"></div>
+        </aside>
         <div id="toque" aria-label="Controles de toque">
           <div id="dpad" class="joystick" role="group" aria-label="Joystick: arraste para andar"><span class="joy-pino"></span></div>
           <div id="acoes">
@@ -1389,6 +1424,7 @@ body.toque-forcado #dpad{display:block}
 <script src="dados/vocacoes.js"></script>
 <script src="dados/oficios.js"></script>
 <script src="dados/cosmeticos.js"></script>
+<script src="dados/tutorial.js"></script>
 <script src="logica.js"></script>
 <script src="sprites.js"></script>
 <script src="arte/quadrupede.js"></script>

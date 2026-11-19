@@ -3363,6 +3363,110 @@ function normalizarMissoes(p) {
   }
 }
 
+// ---------------------------------------------------------------------
+// Tutorial (JGB-14): primeiros passos do personagem novo (dados/tutorial.js)
+// ---------------------------------------------------------------------
+// No save: tutorial = { etapa, passos, loja, fim }. etapa: índice em DADOS_TUTORIAL (= o total quando acabou);
+// passos: casas andadas durante o tutorial; loja: já comprou ou vendeu a um mercador; fim: null (em andamento),
+// "concluido" ou "pulado". Saves sem o campo são de quem já jogava: o tutorial fica pulado (sem versão nova).
+const FINS_TUTORIAL = ["concluido", "pulado"];
+
+function tutorialNovo() {
+  return { etapa: 0, passos: 0, loja: false, fim: null };
+}
+
+function normalizarTutorial(p, novo) {
+  if (!objetoValido(p.tutorial)) p.tutorial = novo ? tutorialNovo() : { ...tutorialNovo(), etapa: DADOS_TUTORIAL.length, fim: "pulado" };
+  const t = p.tutorial;
+  t.etapa = Number.isInteger(t.etapa) ? Math.max(0, Math.min(DADOS_TUTORIAL.length, t.etapa)) : 0;
+  t.passos = Number.isSafeInteger(t.passos) ? Math.max(0, t.passos) : 0;
+  t.loja = t.loja === true;
+  if (!FINS_TUTORIAL.includes(t.fim)) t.fim = null;
+  if (t.etapa >= DADOS_TUTORIAL.length && !t.fim) t.fim = "concluido";
+  if (t.fim) t.etapa = DADOS_TUTORIAL.length;
+  for (const k of Object.keys(t)) if (!["etapa", "passos", "loja", "fim"].includes(k)) delete t[k];
+}
+
+function tutorialAtivo(p) {
+  return objetoValido(p?.tutorial) && !p.tutorial.fim && p.tutorial.etapa < DADOS_TUTORIAL.length;
+}
+
+// A condição de uma etapa (dados/tutorial.js) já vale para o personagem?
+function condicaoTutorialCumprida(p, c) {
+  const t = p.tutorial;
+  if (c.tipo === "andar") return t.passos >= c.casas;
+  if (c.tipo === "loja") return t.loja;
+  if (c.tipo === "missao") {
+    const e = p.missoes?.[c.missao];
+    return !!e && STATUS_MISSAO.indexOf(e.status) >= STATUS_MISSAO.indexOf(c.status);
+  }
+  if (c.tipo === "abate") {
+    const e = p.missoes?.[c.missao], missao = MISSOES[c.missao];
+    if (!e || !missao) return false;
+    if (e.status === "concluida") return true;
+    const o = missao.etapas[e.etapa]?.objetivos[0];
+    return e.status === "em_andamento" && !!o && (Number(e.progresso?.[0]) || 0) >= (o.quantidade || 1);
+  }
+  if (c.tipo === "equipar") {
+    const item = p.equipamento?.[c.espaco];
+    return !!item && baseItem(item) === c.item;
+  }
+  return false;
+}
+
+// O que a interface mostra (pura): null se o tutorial acabou; senão a etapa atual com o texto já escolhido
+// para o toque ou para o teclado.
+function visaoTutorial(p, toque) {
+  if (!tutorialAtivo(p)) return null;
+  const i = p.tutorial.etapa, d = DADOS_TUTORIAL[i];
+  return {
+    id: d.id,
+    numero: i + 1,
+    total: DADOS_TUTORIAL.length,
+    titulo: d.titulo,
+    texto: (toque && d.textoToque) || d.texto,
+    destaque: d.destaque || null,
+    alvo: d.alvo || null,
+    rumo: rumoTutorial(p, d),
+    recompensa: d.recompensa ? textoRecompensaTutorial(d.recompensa) : "",
+  };
+}
+
+const RUMOS = ["leste", "sudeste", "sul", "sudoeste", "oeste", "noroeste", "norte", "nordeste"];
+
+// Para onde ir na etapa: o NPC alvo ou, numa etapa de abate, a criatura viva da missão mais perto (na mesma
+// área). "" quando já está perto (até 2 casas) ou não há o que apontar.
+function rumoTutorial(p, d) {
+  let alvo = null, nome = "";
+  if (d.alvo && npcs[d.alvo]?.area === p.area) {
+    alvo = npcs[d.alvo];
+    nome = nomeCurtoNpc(alvo.nome);
+  } else if (d.condicao.tipo === "abate") {
+    const e = p.missoes?.[d.condicao.missao], missao = MISSOES[d.condicao.missao];
+    const criatura = e && missao?.etapas[e.etapa]?.objetivos[0]?.criatura;
+    const vivas = Object.values(inimigos).filter((x) => x.area === p.area && (x.id === criatura || x.base === criatura) && Mundo.inimigoVivo(p, x.id));
+    alvo = vivas.sort((a, b) => distanciaChebyshev(p, a) - distanciaChebyshev(p, b))[0] || null;
+    nome = alvo ? alvo.nome : "";
+  }
+  if (!alvo) return "";
+  const dist = distanciaChebyshev(p, alvo);
+  if (dist <= 2) return `${nome} está aqui perto.`;
+  const ang = Math.atan2(alvo.y - p.y, alvo.x - p.x);
+  const rumo = RUMOS[(Math.round(ang / (Math.PI / 4)) + 8) % 8];
+  return `${nome}: ${dist} casas a ${rumo}.`;
+}
+
+function nomeCurtoNpc(nome) {
+  return String(nome).split(",")[0];
+}
+
+function textoRecompensaTutorial(r) {
+  const partes = [];
+  if (r.xp) partes.push(`${r.xp} XP`);
+  if (r.moedas) partes.push(`${r.moedas} ${r.moedas === 1 ? "moeda" : "moedas"}`);
+  return partes.join(" e ");
+}
+
 function personagemNovo(id) {
   return {
     id,
@@ -3612,6 +3716,8 @@ const Mundo = {
     if (!objetoValido(p.missoes)) p.missoes = missoesDeSaveAntigo(p);
     for (const campo of ["missaoEliabe", "missaoErvas", "missaoDeserto", "capitulos"]) delete p[campo];
     normalizarMissoes(p);
+    // Tutorial (JGB-14): só o personagem novo o recebe; saves sem o campo ficam com ele pulado.
+    normalizarTutorial(p, novo);
     // Caçadas e pontos de tarefa (save v8). Saves até a v7 não têm esses campos: começam vazios.
     normalizarTarefas(p, agora);
     // Bestiário (save v10): abates por espécie. Saves até a v9 começam do zero (não havia contagem).
@@ -4014,7 +4120,7 @@ const Mundo = {
     const duasMaos = slot === "arma" && guardados.some((x) => infoItem(x)?.tipo === "escudo") ? ` ${textoDuasMaos(itemId)}` : "";
     const nomes = guardados.map(nomeItem).join(" e ");
     const voltou = guardados.length ? ` ${nomes} ${guardados.length > 1 ? "voltaram" : "voltou"} para a mochila.` : "";
-    return { ok: true, guardados, mensagem: `Equipou: ${nomeItem(itemId)}${efeito.length ? ` (${efeito.join(", ")})` : ""}.${duasMaos}${voltou}` };
+    return this.anexarTutorial(p, { ok: true, guardados, mensagem: `Equipou: ${nomeItem(itemId)}${efeito.length ? ` (${efeito.join(", ")})` : ""}.${duasMaos}${voltou}` });
   },
 
   // Munição: a pilha do item na mochila vai inteira para o espaço (outra munição que estiver lá volta).
@@ -4482,9 +4588,61 @@ const Mundo = {
   },
 
   // ----- Comandos -----
+  // Todo comando passa por aqui; depois dele, o tutorial (JGB-14) confere se a etapa atual foi cumprida.
   executar(id, comando) {
     const p = this.jogadores[id];
     if (!p || !this.estado[id] || !comando || typeof comando.tipo !== "string") return { ok: false };
+    const r = this.executarComando(id, comando);
+    if (r?.ok && tutorialAtivo(p)) {
+      if (comando.tipo === "mover") p.tutorial.passos = Math.min(9999, p.tutorial.passos + 1);
+      if (["comprar", "vender", "venderTudo"].includes(comando.tipo)) p.tutorial.loja = true;
+    }
+    return this.anexarTutorial(p, r);
+  },
+
+  // ----- Tutorial (JGB-14) -----
+  // Cumpre as etapas que já valem (uma ou mais seguidas), dá a recompensa de cada uma e, na última, a final.
+  // Devolve as frases ditas (vazio se nada mudou).
+  avancarTutorial(p) {
+    const frases = [];
+    while (tutorialAtivo(p)) {
+      const d = DADOS_TUTORIAL[p.tutorial.etapa];
+      if (!condicaoTutorialCumprida(p, d.condicao)) break;
+      const r = d.recompensa || {};
+      p.moedas += r.moedas || 0;
+      const niveis = adicionarXP(p, r.xp || 0);
+      frases.push(d.cumprida + (niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""));
+      p.tutorial.etapa += 1;
+      if (p.tutorial.etapa >= DADOS_TUTORIAL.length) {
+        const f = REGRAS_TUTORIAL.recompensaFinal;
+        p.moedas += f.moedas || 0;
+        adicionarXP(p, f.xp || 0);
+        p.tutorial.fim = "concluido";
+        frases.push(REGRAS_TUTORIAL.concluido);
+      }
+    }
+    if (frases.length) this.salvar(p);
+    return frases;
+  },
+
+  // Anexa ao resultado de um comando as frases do tutorial (r.tutorial), se alguma etapa foi cumprida.
+  anexarTutorial(p, r) {
+    if (!r || !tutorialAtivo(p)) return r;
+    const frases = this.avancarTutorial(p);
+    return frases.length ? { ...r, tutorial: frases } : r;
+  },
+
+  // Pular: quem já conhece o jogo encerra o tutorial de vez (sem as recompensas que faltavam).
+  pularTutorial(id) {
+    const p = this.jogadores[id];
+    if (!tutorialAtivo(p)) return { ok: false, mensagem: "O tutorial já acabou." };
+    p.tutorial.fim = "pulado";
+    p.tutorial.etapa = DADOS_TUTORIAL.length;
+    this.salvar(p);
+    return { ok: true, mensagem: REGRAS_TUTORIAL.pulado };
+  },
+
+  executarComando(id, comando) {
     switch (comando.tipo) {
       case "mover":
         return this.mover(id, comando.dx, comando.dy);
@@ -4556,6 +4714,8 @@ const Mundo = {
         return this.comprarCosmetico(id, comando.cosmetico);
       case "definirCores":
         return this.definirCores(id, comando.cores);
+      case "pularTutorial":
+        return this.pularTutorial(id);
       default:
         return { ok: false };
     }
