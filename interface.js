@@ -1452,7 +1452,7 @@
     if (k.acao === "despedir") conversaCom = null;
     else if (k.acao === "loja") abrirLoja(npc.id, k.aba);
     else if (k.acao === "deposito") abrirDeposito(npc.id);
-    else if (k.acao === "forja") abrirForja(npc.id);
+    else if (k.acao === "forja") abrirForja(npc.id, k.aba);
     else if (k.acao === "viagem") abrirViagem(npc.id);
     else if (k.acao === "barco") abrirBarco(npc.id);
   }
@@ -1951,10 +1951,10 @@
     } else {
       const escolhida = v.pedras.find((x) => x.id === pedraForja);
       const pedras = v.pedras.length
-        ? `<div class="pedras-forja" role="radiogroup" aria-label="Pedra para engastar">${v.pedras.map((x) =>
-          `<button type="button" class="pedra-forja" role="radio" aria-checked="${x.id === pedraForja}" data-pedra-forja="${esc(x.id)}" title="${esc(x.texto)}">${htmlItem(x.id, 24)}<span>${esc(x.nome)}${x.quantidade > 1 ? ` ×${x.quantidade}` : ""}</span></button>`).join("")}</div>`
+        ? `<div class="pedras-forja" role="group" aria-label="Pedra para engastar">${v.pedras.map((x) =>
+          `<button type="button" class="pedra-forja" aria-pressed="${x.id === pedraForja}" data-pedra-forja="${esc(x.id)}" title="${esc(x.texto)}">${htmlItem(x.id, 24)}<span>${esc(x.nome)}${x.quantidade > 1 ? ` ×${x.quantidade}` : ""}</span></button>`).join("")}</div>`
           + `<p class="forja-prox">${esc(escolhida.nome)}: ${esc(escolhida.texto)} (com a peça vestida). Engastar custa ${v.precoEngaste} moedas.</p>`
-        : '<p class="vazio-txt" style="color:var(--tinta-suave)">Você não tem pedras do peitoral. Elas caem muito raramente (0,1%) das criaturas e dos raros nomeados.</p>';
+        : '<p class="vazio-txt" style="color:var(--tinta-suave)">Você não tem pedras do peitoral. Elas caem muito raramente (0,1%) das criaturas comuns e com 5% de chance dos raros nomeados.</p>';
       if (escolhida) {
         for (const pc of v.pecas) {
           const k = chave(pc);
@@ -1963,7 +1963,7 @@
           const botao = mesma ? '<button type="button" class="btn primario" disabled>Já tem esta</button>'
             : !v.podeEngastar ? '<button type="button" class="btn primario" disabled>Faltam moedas</button>'
               : pc.pedra && !pedindo ? `<button type="button" class="btn secundario" data-engastar="${esc(pc.item)}" data-slot="${esc(pc.slot || "")}" data-trocar="pedir">Trocar pedra</button>`
-                : `<button type="button" class="btn primario" data-engastar="${esc(pc.item)}" data-slot="${esc(pc.slot || "")}"${pedindo ? ' data-trocar="sim"' : ""} aria-label="Engastar ${esc(escolhida.nome)} em ${esc(pc.nome)}">${pedindo ? `Trocar mesmo (perde ${esc(pc.pedra.nome)})` : "Engastar"}</button>`;
+                : `<button type="button" class="btn primario" data-engastar="${esc(pc.item)}" data-slot="${esc(pc.slot || "")}"${pedindo ? ' data-trocar="sim"' : ""} aria-label="${pedindo ? `Trocar mesmo: engastar ${esc(escolhida.nome)} em ${esc(pc.nome)} e perder ${esc(pc.pedra.nome)}` : `Engastar ${esc(escolhida.nome)} em ${esc(pc.nome)}`}">${pedindo ? `Trocar mesmo (perde ${esc(pc.pedra.nome)})` : "Engastar"}</button>`;
           const atual = pc.pedra ? `Pedra: ${pc.pedra.nome} (${pc.pedra.texto})` : "Sem pedra";
           lista += `<li class="item-loja item-forja"><span class="icone">${htmlItem(pc.item)}</span><span><strong>${esc(pc.nome)}</strong>`
             + `<span>${esc(onde(pc))} · ${esc(atual)}</span></span>${botao}</li>`;
@@ -1975,7 +1975,7 @@
       ? Object.keys(ITENS).filter((id) => ITENS[id].engaste && textoEngaste(id)).map((id) => `<li><b>${esc(ITENS[id].nome)}</b> ${esc(textoEngaste(id))}</li>`).join("")
       : "";
     const html = `${falaForja ? `<p class="fala-modal">${esc(falaForja)}</p>` : ""}`
-      + `${retornoForja ? `<p class="retorno${retornoForja.ok ? "" : " erro"}" role="status">${esc(retornoForja.texto)}</p>` : ""}`
+      + `${retornoForja ? `<p class="retorno${retornoForja.ok ? "" : " erro"}" role="status" tabindex="-1" data-retorno>${esc(retornoForja.texto)}</p>` : ""}`
       + `<div class="saldo"><span>Moedas: ${v.moedas} · ${esc(v.material.nome)}: ${v.material.quantidade}</span></div>`
       + `<div class="abas-modal" role="tablist">
         <button type="button" class="aba-modal" role="tab" data-aba-forja="forjar" aria-selected="${abaForja === "forjar"}">Forjar</button>
@@ -1992,12 +1992,19 @@
     const focoAntes = corpo.contains(ativo)
       ? ativo.dataset.forjar !== undefined ? `[data-forjar="${CSS.escape(ativo.dataset.forjar)}"][data-slot="${CSS.escape(ativo.dataset.slot || "")}"]`
         : ativo.dataset.engastar !== undefined ? `[data-engastar="${CSS.escape(ativo.dataset.engastar)}"][data-slot="${CSS.escape(ativo.dataset.slot || "")}"]`
-          : ativo.dataset.pedraForja ? `[data-pedra-forja="${CSS.escape(ativo.dataset.pedraForja)}"]` : null
+          : ativo.dataset.pedraForja ? `[data-pedra-forja="${CSS.escape(ativo.dataset.pedraForja)}"]`
+            : ativo.dataset.abaForja ? `[data-aba-forja="${CSS.escape(ativo.dataset.abaForja)}"]`
+              : ativo.matches("[data-retorno]") ? "[data-retorno]" : null
       : null;
     const rolagem = corpo.scrollTop;
     corpo.innerHTML = html;
     corpo.scrollTop = rolagem;
     if (focoAntes) (corpo.querySelector(focoAntes) || corpo.querySelector(`[data-aba-forja=${abaForja}]`))?.focus({ preventScroll: true });
+  }
+  // Depois de forjar ou engastar, o texto da peça muda (e o botão com ele): o foco vai para a resposta, que o
+  // leitor de tela lê; o Tab segue dali para os botões da janela.
+  function focarRetornoForja() {
+    $("#forjaCorpo [data-retorno]")?.focus({ preventScroll: false });
   }
   // Clique dentro da janela da forja: true se tratou.
   function acaoForja(e) {
@@ -2010,6 +2017,7 @@
       const r = executar({ tipo: "forjar", item: forjar.dataset.forjar, ...(forjar.dataset.slot ? { slot: forjar.dataset.slot } : {}) });
       retornoForja = { ok: !!r?.ok && r.sucesso !== false, texto: r?.mensagem || "" };
       desenharForja(true);
+      focarRetornoForja();
       return true;
     }
     const eng = e.target.closest("[data-engastar]");
@@ -2020,6 +2028,7 @@
       retornoForja = { ok: !!r?.ok, texto: r?.mensagem || "" };
       confirmaEngaste = null;
       desenharForja(true);
+      focarRetornoForja();
       return true;
     }
     return false;

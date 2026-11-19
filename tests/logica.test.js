@@ -7789,7 +7789,7 @@ teste("84. forja e engaste (JGB-25): 12 pedras de Êx 28, formato do item, forja
   assert.strictEqual(codigo("espada_ferro", "comum", {}, { forja: 3 }), "espada_ferro@comum+3");
   assert.strictEqual(codigo("espada_ferro", "epico", { critico: 3, dano: 4 }, { forja: 7, pedra: "pedra_safira" }), "espada_ferro@epico.dano4.critico3+7~pedra_safira");
   const forjada = info("espada_ferro@epico.dano4.critico3+7~pedra_safira");
-  igual([forjada.nome, forjada.bonus, forjada.forja, forjada.pedra], ["Espada de ferro +7 (Épico)", 12 + 4 + 7, 7, "pedra_safira"]);
+  igual([forjada.nome, forjada.bonus, forjada.forja, forjada.pedra], ["Espada de ferro +7 com Safira (Épico)", 12 + 4 + 7, 7, "pedra_safira"]);
   assert.strictEqual(g("baseItem")("espada_ferro@comum+3"), "espada_ferro");
   assert.strictEqual(info("tunica_pano@comum+4").defesa, 2 + 4, "armadura: +1 de defesa por nível");
   assert.strictEqual(info("anel_selo_bronze@comum+5").defesa, 2, "peças pequenas: +1 de defesa a cada 2 níveis");
@@ -7805,7 +7805,8 @@ teste("84. forja e engaste (JGB-25): 12 pedras de Êx 28, formato do item, forja
   posicionarAoLado(j, "canaan", g("npcs").ferreiro_canaa);
   const conversa = j.exec({ tipo: "interagir", alvoId: "ferreiro_canaa" });
   assert.strictEqual(conversa.abrirForja, "ferreiro_canaa");
-  igual(g("palavrasChaveDoNpc")(p, "ferreiro_canaa").map((k) => k.palavra), ["oi", "forjar", "tchau"]);
+  igual(g("palavrasChaveDoNpc")(p, "ferreiro_canaa").map((k) => [k.palavra, k.aba]), [["oi", undefined], ["forjar", "forjar"], ["engastar", "engastar"], ["tchau", undefined]]);
+  assert.strictEqual(g("palavraChaveDoTexto")(g("palavrasChaveDoNpc")(p, "ferreiro_canaa"), "tem como por uma pedra?")?.palavra, "engastar");
   j.definirAleatorio(() => 0.999); // toda tentativa acima de +1 falha
   let r = j.exec({ tipo: "forjar", item: "espada_madeira", slot: "arma" });
   assert.ok(r.ok && r.sucesso, "o +1 sempre dá certo");
@@ -7836,6 +7837,12 @@ teste("84. forja e engaste (JGB-25): 12 pedras de Êx 28, formato do item, forja
   assert.strictEqual(info(p.equipamento.arma).bonus, 5 + 10);
   assert.match(j.exec({ tipo: "forjar", item: "espada_madeira@comum+10", slot: "arma" }).mensagem, /máximo/);
   assert.ok(g("xpOficio")(p, "ferreiro") > 0, "cada tentativa dá XP de Ferreiro");
+  // Quando o Ferreiro sobe de nível, a resposta traz { oficio, nivel } (como fabricar) e a mensagem avisa.
+  p.oficios.ferreiro = { xp: g("xpTotalOficio")(2) - 1 };
+  p.inventario.push("escudo_madeira");
+  r = j.exec({ tipo: "forjar", item: "escudo_madeira" });
+  igual(r.oficioSubiu, { oficio: "ferreiro", nivel: 2 });
+  assert.match(r.mensagem, /Ferreiro subiu para o nível 2!/);
   // Peça empilhada na mochila: só uma muda.
   p.inventario.push("espada_ferro", "espada_ferro");
   j.exec({ tipo: "forjar", item: "espada_ferro" });

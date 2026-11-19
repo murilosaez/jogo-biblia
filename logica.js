@@ -205,7 +205,7 @@ function lerItem(id) {
       raridade,
       atributos: somarAtributos(d.atributosFixos, atributos),
       sorteados: atributos,
-      nome: `${d.nome}${forja ? ` +${forja}` : ""}${raro}`,
+      nome: `${d.nome}${forja ? ` +${forja}` : ""}${pedra ? ` com ${ITENS[pedra].nome}` : ""}${raro}`,
       bonus: (d.bonus || 0) + (atributos.dano || 0) + (principal === "dano" ? ganho : 0),
       defesa: (d.defesa || 0) + (atributos.defesa || 0) + (principal === "defesa" ? ganho : 0),
       forja,
@@ -3022,7 +3022,8 @@ const PALAVRAS_CHAVE = {
   embarcar: { acao: "barco", sinonimos: ["barco", "navegar", "mar", "boat"] },
   preço: { acao: "fala", sinonimos: ["quanto", "custa", "custo", "passagem", "valor", "price"] },
   vocação: { acao: "interagir", sinonimos: ["vocacoes", "talentos", "vocation"] },
-  forjar: { acao: "forja", sinonimos: ["forja", "aprimorar", "melhorar", "engastar", "engaste", "pedras", "bigorna", "forge"] },
+  forjar: { acao: "forja", aba: "forjar", sinonimos: ["forja", "aprimorar", "melhorar", "bigorna", "forge"] },
+  engastar: { acao: "forja", aba: "engastar", sinonimos: ["engaste", "pedras", "pedra", "peitoral", "gem", "gems"] },
   conversar: { acao: "interagir", sinonimos: ["falar", "conversa", "novidades", "noticias", "news"] },
   missão: { acao: "interagir", sinonimos: ["missoes", "quest", "mission"] },
   tchau: { acao: "despedir", sinonimos: ["adeus", "ate logo", "ate mais", "bye", "falou"] },
@@ -3035,7 +3036,7 @@ const PALAVRAS_DO_PAPEL = {
   mural: ["caçadas"],
   barqueiro: ["embarcar", "preço"],
   vocacao: ["vocação"],
-  ferreiro: ["forjar"],
+  ferreiro: ["forjar", "engastar"],
   ambiente: ["conversar"],
   apoio: ["conversar"],
 };
@@ -3090,7 +3091,8 @@ function palavrasChaveDoNpc(p, npcId) {
     comprar: "Veja o que tenho para vender.",
     vender: "Mostre o que tem; compro de tudo: peles, ervas, armas, armaduras e pedras.",
     depósito: "Abra o baú: o que está aqui está em todo depósito.",
-    forjar: `Mostre a peça: forjo de +1 a +${REGRAS_FORJA.maximo} e engasto as pedras do peitoral.`,
+    forjar: `Mostre a peça: forjo de +1 a +${REGRAS_FORJA.maximo}. Se o metal não pegar, a peça fica como estava.`,
+    engastar: `Uma pedra do peitoral por peça, ${REGRAS_ENGASTE.moedas} moedas o engaste.`,
     viajar: "Para onde vamos? O preço depende da distância.",
     embarcar: falaPassagemBarco(p),
     preço: falaPassagemBarco(p),
@@ -4706,7 +4708,8 @@ const Mundo = {
       return { ok: false, mensagem: `Forjar ${info.nome} pede ${custo.material}× ${nomeItem(material)}; você tem ${temMaterial}.` };
     p.moedas -= custo.moedas;
     this.removerItens(p, material, custo.material);
-    const oficioSubiu = ganharXpOficio(p, REGRAS_FORJA.oficio, REGRAS_FORJA.xpOficio);
+    const nivelOficio = ganharXpOficio(p, REGRAS_FORJA.oficio, REGRAS_FORJA.xpOficio);
+    const oficioSubiu = nivelOficio ? { oficio: REGRAS_FORJA.oficio, nivel: nivelOficio } : null;
     const sucesso = Math.random() < custo.chance;
     const novo = sucesso ? itemComExtras(item, { forja: nivel + 1 }) : item;
     // o lingote saiu da mochila: a peça (se estava nela) pode ter mudado de posição
@@ -4717,7 +4720,8 @@ const Mundo = {
     const mensagem = sucesso
       ? `${nome}: Ficou bom! ${nomeItem(novo)} (${efeitosDoItem(novo).join(", ")}). Gastou ${gasto}.`
       : `${nome}: O metal não pegou desta vez. ${info.nome} continua como estava; gastou ${gasto}.`;
-    return { ok: true, sucesso, item: novo, slot: onde.slot || null, ...(oficioSubiu ? { oficioSubiu } : {}), mensagem };
+    const subiu = oficioSubiu ? ` ${OFICIOS[REGRAS_FORJA.oficio].nome} subiu para o nível ${nivelOficio}!` : "";
+    return { ok: true, sucesso, item: novo, slot: onde.slot || null, ...(oficioSubiu ? { oficioSubiu } : {}), mensagem: mensagem + subiu };
   },
 
   // Engasta uma pedra (da mochila) na peça; trocar a pedra de uma peça perde a que estava nela (trocar: true).
@@ -4751,7 +4755,7 @@ const Mundo = {
       ok: true,
       item: novo,
       slot: onde.slot || null,
-      mensagem: `${ferreiro.nome.split(",")[0]}: Engastei ${nomeItem(pedra)} em ${info.nome} (${textoEngaste(pedra)}). Gastou ${preco} moedas.${perdeu}`,
+      mensagem: `${ferreiro.nome.split(",")[0]}: Engastei ${nomeItem(pedra)} em ${nomeItem(itemComExtras(item, { pedra: null }))} (${textoEngaste(pedra)}). Gastou ${preco} moedas.${perdeu}`,
     };
   },
 
@@ -7223,7 +7227,8 @@ const Mundo = {
       estado.explosoes = estado.explosoes.filter((x) => agora < x.em);
       for (const x of prontas) {
         const atingiu = x.area === p.area && distanciaChebyshev(p, x) <= 1;
-        const dano = atingiu ? mitigarDano(x.dano, defesaTotal(p)) : 0;
+        // a redução de dano (talentos, buffs e pedras) e o escudo dos buffs valem como num golpe
+        const { dano } = atingiu ? this.absorverDano(p, mitigarDano(x.dano, defesaTotal(p)), agora) : { dano: 0 };
         if (atingiu) {
           p.vida = Math.max(0, p.vida - dano);
           estado.ultimoCombate = agora;
