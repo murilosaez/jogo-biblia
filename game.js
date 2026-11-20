@@ -336,7 +336,8 @@ class Cena extends Phaser.Scene {
     const t0Criacao = performance.now();
     this.p = Mundo.entrar(MEU_ID);
     this.areaAtual = this.p.area;
-    this.bio = Arte.BIOMAS[this.areaAtual] || Arte.BIOMAS.canaan;
+    // o bioma que a área pinta: o próprio ou, nas masmorras (areas[x].arte), o da arte com o clima trocado
+    this.bio = Arte.bioDaArea?.(this.areaAtual) || Arte.BIOMAS[this.areaAtual] || Arte.BIOMAS.canaan;
     this.liberarTexturasDeOutraArea();
     this.trocando = false;
     this.proximoPasso = 0;
@@ -408,7 +409,8 @@ class Cena extends Phaser.Scene {
     this.criarNpcs();
     for (const e of Object.values(inimigos).filter((e) => e.area === this.areaAtual)) {
       if (Mundo.obterVidaInimigo(MEU_ID, e.id) > 0) this.criarInimigo(e);
-      else if (!e.nomeado) this.agendarRespawn(e.id); // o raro nomeado volta pela janela (eventoNomeado)
+      // o raro nomeado volta pela janela (eventoNomeado); as vagas de masmorra, pela onda (masmorraSurgiu)
+      else if (!e.nomeado && !e.masmorra) this.agendarRespawn(e.id);
     }
     this.criarJogador();
     this.criarEfeitosDeMundo();
@@ -441,6 +443,10 @@ class Cena extends Phaser.Scene {
     const ultima = this.registry.get("ultimaArea");
     if (ultima !== this.areaAtual) this.mostrarCartao();
     this.registry.set("ultimaArea", this.areaAtual);
+    // Eventos do comando que trocou de área (entrar numa masmorra: a 1ª etapa), depois do cartão de título.
+    const eventosPendentes = this.registry.get("eventosPendentes") || [];
+    this.registry.set("eventosPendentes", null);
+    for (const x of eventosPendentes) if (x.tipo === "masmorraEtapa") this.time.delayedCall(ultima !== this.areaAtual ? 2700 : 200, () => this.eventoMasmorra(x));
     window.UI?.areaMudou?.(this.areaAtual);
     window.atualizarInterface?.();
 
@@ -1425,7 +1431,7 @@ class Cena extends Phaser.Scene {
   criarCamera() {
     const cam = this.cameras.main;
     cam.setBackgroundColor("#1c1210");
-    cam.setBounds(-MOLDURA * TAM, -MOLDURA * TAM, (COLS + MOLDURA * 2) * TAM, (ROWS + MOLDURA * 2) * TAM);
+    this.limitarCamera();
     // A câmera segue um alvo em px inteiros de mundo (alvoCamera, criado com o jogador) e, a cada quadro, quem
     // se move pelo mundo (personagens, barras, nomes, números) vai para px inteiros (pixelsInteiros): 1 px de
     // arte = 1 px de mundo em qualquer zoom, sem meio pixel de arte entre o chão e quem anda.
@@ -1490,6 +1496,7 @@ class Cena extends Phaser.Scene {
     const cam = this.cameras.main, w = this.scale.width, h = this.scale.height;
     cam.setSize(w, h);
     cam.setZoom(this.zoomIdeal(w, h));
+    this.limitarCamera();
     for (const o of this.sobreposicoes || []) o();
     this.minimapaEstatico = null;
     // textos em px de tela: mesmo tamanho na tela em qualquer zoom (e refeitos se o DPR mudou)
@@ -1499,6 +1506,17 @@ class Cena extends Phaser.Scene {
       if (t._k !== k) { t._k = k; t.setFontSize(Math.round(t._css * k) + "px"); if (t._traco) t.setStroke(COR.tinta, Math.max(2, Math.round(t._traco * k))); }
       t.setScale((t._pop || 1) / cam.zoom);
     }
+  }
+  // Limites da câmera: o mapa com a moldura ou, com areas[área].vista (as masmorras), só aquele retângulo de
+  // casas; menor que a tela, ele cresce em volta do centro (a sala fica no meio, não presa a um canto).
+  limitarCamera() {
+    const cam = this.cameras.main, v = areas[this.areaAtual]?.vista;
+    if (!v) { cam.setBounds(-MOLDURA * TAM, -MOLDURA * TAM, (COLS + MOLDURA * 2) * TAM, (ROWS + MOLDURA * 2) * TAM); return; }
+    const z = cam.zoom || 1, vw = cam.width / z, vh = cam.height / z;
+    let x = v.x * TAM, y = v.y * TAM, w = v.largura * TAM, h = v.altura * TAM;
+    if (w < vw) { x -= (vw - w) / 2; w = vw; }
+    if (h < vh) { y -= (vh - h) / 2; h = vh; }
+    cam.setBounds(Math.floor(x), Math.floor(y), Math.ceil(w), Math.ceil(h));
   }
   criarAtmosfera() {
     const cam = this.cameras.main, bio = this.bio;
@@ -1558,10 +1576,12 @@ class Cena extends Phaser.Scene {
   atualizarNoite(time) {
     if (!this.noite || time < this.proximaNoite) return;
     this.proximaNoite = time + 50;
-    const { escuro, fracao } = escuridaoDoDia();
+    // nas masmorras não há dia nem noite: a escuridão é a do clima delas (bio.escuroFixo, sprites.js)
+    const ciclo = escuridaoDoDia(), fixo = this.bio.escuroFixo;
+    const escuro = fixo ?? ciclo.escuro, fracao = ciclo.fracao;
     // aviso ao anoitecer e ao amanhecer
     const fase = escuro > 0.3 ? "noite" : "dia";
-    if (this.faseAnterior && fase !== this.faseAnterior) this.mensagem(fase === "noite" ? `Anoitece em ${areas[this.areaAtual]?.nome || "toda parte"}.` : "Amanhece. O sol volta a clarear a estrada.");
+    if (fixo == null && this.faseAnterior && fase !== this.faseAnterior) this.mensagem(fase === "noite" ? `Anoitece em ${areas[this.areaAtual]?.nome || "toda parte"}.` : "Amanhece. O sol volta a clarear a estrada.");
     this.faseAnterior = fase;
     this.fracaoDia = fracao;
     const ver = escuro > 0.01;
@@ -1597,17 +1617,18 @@ class Cena extends Phaser.Scene {
   }
 
   // Cartão de título (§8.7)
-  mostrarCartao() {
+  // outroTitulo e subtitulo: o cartão de outra coisa (a etapa da masmorra); sem eles, o da área.
+  mostrarCartao(outroTitulo, subtitulo) {
     const cam = this.cameras.main;
-    const nome = areas[this.areaAtual]?.nome || "";
-    const sub = Arte.SUBTITULOS[this.areaAtual] || "";
+    const nome = outroTitulo ?? (areas[this.areaAtual]?.nome || "");
+    const sub = subtitulo ?? (Arte.SUBTITULOS[this.areaAtual] || "");
     const faixa = this.add.image(0, 0, "fx_faixa");
     const titulo = this.add.text(0, -6, nome, { fontFamily: FONTE_TITULO, fontStyle: "700", fontSize: "26px", color: "#2a1a14", resolution: 2 }).setOrigin(0.5);
     const subt = this.add.text(0, 18, sub, { fontFamily: FONTE_TEXTO, fontStyle: "italic", fontSize: "14px", color: "#5a3a24", resolution: 2 }).setOrigin(0.5);
     const larg = Math.max(titulo.width, subt.width) / 2 + 22;
     const l1 = this.add.image(-larg, -6, "ui_losango").setScale(1.5), l2 = this.add.image(larg, -6, "ui_losango").setScale(1.5);
     const c = this.add.container(0, 0, [faixa, titulo, subt, l1, l2]).setScrollFactor(0).setDepth(PROF.cartao).setAlpha(0);
-    const yAlvo = Math.round(cam.height * 0.22);
+    const yAlvo = Math.round(cam.height * (outroTitulo != null ? 0.34 : 0.22)); // o da etapa, abaixo dos avisos
     this.naTela(c, cam.width / 2, yAlvo);
     const yFinal = c.y;
     if (reduzMovimento()) {
@@ -1650,6 +1671,7 @@ class Cena extends Phaser.Scene {
       brilho: { lifespan: 800, speed: 0, scale: 1, alpha: { start: 0.9, end: 0 }, frequency: 110, textura: "fx_brilho", frame: [0, 0, 1] },
       respingo: { lifespan: 600, speedY: { min: -30, max: -10 }, speedX: { min: -10, max: 10 }, gravityY: 60, scale: 1, alpha: { start: 1, end: 0 }, frequency: 70 },
       nevoa: { lifespan: 9000, speedX: { min: 4, max: 10 }, speedY: 0, scaleX: 40, scaleY: 10, alpha: { start: 0.0, end: 0.15, ease: "Sine.easeInOut" }, frequency: 700 },
+      brasa: { lifespan: 2400, speedX: { min: -8, max: 8 }, speedY: { min: -34, max: -14 }, scale: 1, alpha: { start: 1, end: 0 }, frequency: 120 },
       borboleta: { lifespan: 3000, speedX: { min: -8, max: 8 }, speedY: { min: 2, max: 8 }, scale: 1, alpha: { start: 0.9, end: 0 }, frequency: 400, tint: 0xd8a0b8 },
     }[p.tipo];
     if (cfg) {
@@ -1701,6 +1723,7 @@ class Cena extends Phaser.Scene {
     if (r.abrirForja) window.UI?.abrirForja?.(r.abrirForja);
     if (r.abrirViagem) (window.UI?.abrirViagem || window.abrirViagem)?.(r.abrirViagem);
     if (r.abrirBarco) window.UI?.abrirBarco?.(r.abrirBarco);
+    if (r.abrirMasmorra) window.UI?.abrirMasmorra?.(r.abrirMasmorra);
     if (r.abrirMural) window.UI?.abrirMural?.(r.abrirMural);
     if (r.abrirVocacao) window.UI?.abrirVocacao?.(r.abrirVocacao);
     if (r.tarefasEntregues?.length) this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 12, { subir: true, dur: 800 });
@@ -1926,7 +1949,7 @@ class Cena extends Phaser.Scene {
     if (atraso) this.time.delayedCall(atraso, cair); else cair();
   }
   agendarRespawn(id) {
-    if (this.respawns.has(id)) return;
+    if (this.respawns.has(id) || inimigos[id]?.masmorra) return; // vaga de masmorra: só a onda a acende de novo
     this.respawns.add(id);
     this.time.delayedCall(TEMPO_RESPAWN_INIMIGO, () => {
       this.respawns.delete(id);
@@ -2108,7 +2131,11 @@ class Cena extends Phaser.Scene {
     if (comando.tipo === "usarHabilidade") return this.usarHabilidade(comando.habilidade, comando.alvoId);
     const r = Mundo.executar(MEU_ID, comando);
     if (r.mensagem) this.mensagem(r.mensagem);
-    if (r.areaAlterada) { this.trocarArea(null); return r; }
+    if (r.areaAlterada) {
+      if (r.eventos?.length) this.registry.set("eventosPendentes", r.eventos);
+      this.trocarArea(null);
+      return r;
+    }
     if (comando.tipo === "comerMana" && r.ok && r.cura) this.efeitoCura(r.cura);
     this.oficioSubiu(r.oficioSubiu);
     if (comando.tipo === "orar" && r.ok) {
@@ -2171,6 +2198,7 @@ class Cena extends Phaser.Scene {
       else if (x.tipo === "cura") this.curaInimiga(x);
       else if (x.tipo === "explosao") this.explosao(x);
       else if (x.tipo === "nomeadoApareceu" || x.tipo === "nomeadoSumiu") this.eventoNomeado(x);
+      else if (/^(masmorra|perigo)/.test(x.tipo)) this.eventoMasmorra(x);
       else if (x.tipo === "saqueExpirou") for (const id of x.ids || []) { this.spritesItens[id]?.destroy(); delete this.spritesItens[id]; }
       else if (x.tipo === "renasceu") {
         this.alvoId = null;
@@ -2636,22 +2664,39 @@ class Cena extends Phaser.Scene {
       const x = centroX(a.x), y = baseY(a.y);
       let s = this.spritesAliados[a.id];
       if (!s) {
-        const chave = Arte.garantirTextura(this, a.tipo === "cao" ? "al_cao" : "al_ovelha");
+        // o protegido da masmorra (Daniel, JGB-23) é gente: o morador da aparência dele, com nome e barra de vida
+        const protegido = a.tipo === "protegido";
+        const visual = protegido ? (PIXEL_PATTERNS["pj_morador_" + a.aparencia] ? "pj_morador_" + a.aparencia : "pj_viajante") : a.tipo === "cao" ? "al_cao" : "al_ovelha";
+        const chave = Arte.garantirTextura(this, visual);
         s = this.add.sprite(x, y, chave, 0).setOrigin(0.5, 1).setDepth(PROF.entidade + y);
         s.desl = Object.assign(novoDeslize(x, y), { casaX: a.x, casaY: a.y });
+        if (protegido) {
+          s.alturaCabeca = PIXEL_PATTERNS[chave]?.alturaCabeca || alturaDoDesenho(chave);
+          s.rotulo = this.textoRotulo(a.nome || "", COR.amigo, NOME_PX).setAlpha(1);
+          s.sombraPe = this.add.image(x + 3, y - 1, "fx_sombra").setDepth(PROF.sombra);
+          s.anelPe = this.add.image(x, y - 2, "fx_aura").setTint(0x8fd16a).setAlpha(0.45).setDepth(PROF.sombra + 1);
+          if (!reduzMovimento()) this.tweens.add({ targets: s.anelPe, alpha: 0.2, duration: 900, yoyo: true, repeat: -1 });
+          this.luzes.push({ x, y: y - 20, r: 76, quente: 0.6 }); // a candeia de Daniel na cova (ele não sai do lugar)
+        }
         this.spritesAliados[a.id] = s;
         if (!reduzMovimento()) this.particulasSimples(x, y - 8, "#f6efdc", 6, { espalha: 8, dur: 500 });
       }
+      s.dadosAliado = a;
       const st = s.desl;
       if (st.casaX !== a.x || st.casaY !== a.y) this.deslizarAte(st, s, a.x, a.y);
       const andando = aplicarDeslize(st, s, time);
       const yi = Math.round(st.y);
       if (yi !== st.yProf) { st.yProf = yi; s.setDepth(PROF.entidade + yi); }
       s.setFrame(quadroComVista(s, andando ? quadroAndando(s, time) : 0));
+      if (s.rotulo) {
+        s.sombraPe.setPosition(s.x + 3, s.y - 1); s.anelPe.setPosition(s.x, s.y - 2);
+        s.rotulo.setPosition(Math.round(s.x), Math.round(s.y - s.alturaCabeca - BARRA.folga - BARRA.hChefe - 2));
+      }
     }
     for (const [id, s] of Object.entries(this.spritesAliados)) {
       if (vistos.has(id)) continue;
       if (!reduzMovimento()) this.particulasSimples(s.x, s.y - 8, "#f6efdc", 5, { espalha: 8, dur: 400 });
+      for (const o of [s.rotulo, s.sombraPe, s.anelPe]) o?.destroy();
       s.destroy();
       delete this.spritesAliados[id];
     }
@@ -2754,6 +2799,98 @@ class Cena extends Phaser.Scene {
     } else if (this.entidades[x.id]) {
       if (this.alvoId === x.id) this.alvoId = null;
       this.destruirEntidade(x.id);
+    }
+  }
+
+  // ===== masmorras (JGB-23): criaturas que acendem, perigos no chão, etapas, fases e o fim =====
+  eventoMasmorra(x) {
+    if (x.area && x.area !== this.areaAtual) return;
+    const reduz = reduzMovimento();
+    if (x.tipo === "masmorraSurgiu") {
+      const e = inimigos[x.id];
+      if (!e || Mundo.obterVidaInimigo(MEU_ID, x.id) <= 0) return;
+      const ent = this.criarInimigo(e); // criarInimigo troca a entidade, se a vaga já estava em cena
+      ent.sprite.setAlpha(0); ent.sombra.setAlpha(0);
+      this.tweens.add({ targets: [ent.sprite, ent.sombra], alpha: 1, duration: reduz ? 1 : 500 });
+      if (!reduz) this.particulasSimples(ent.sprite.x, ent.sprite.y - 10, Arte.CHEFES.has(x.id) ? "#ffb04a" : "#c9b89a", Arte.CHEFES.has(x.id) ? 16 : 8, { subir: true, espalha: 14, dur: 700 });
+    } else if (x.tipo === "perigoAviso") this.marcarPerigo(x);
+    else if (x.tipo === "perigo") this.fogoNoChao(x);
+    else if (x.tipo === "masmorraEtapa") {
+      this.limparVagasApagadas(); // a etapa que acabou apaga as criaturas que sobraram (sem evento por criatura)
+      this.mostrarCartao(`Etapa ${x.numero} de ${x.total}`, x.texto);
+      this.mensagem(`Etapa ${x.numero} de ${x.total}: ${x.texto}.`, "missao");
+    } else if (x.tipo === "masmorraFase") {
+      this.mensagem(x.mensagem, "anuncio");
+      if (!reduz) this.cameras.main.shake(260, 0.004);
+    } else if (x.tipo === "masmorraFim") {
+      // as vagas que sobraram somem (a instância acabou); a janela do resultado é da interface
+      this.limparVagasApagadas();
+      for (const m of this.marcasPerigo || []) m.destroy();
+      this.marcasPerigo = [];
+      this.mensagem(x.mensagem, x.vitoria ? "anuncio" : "perigo");
+      if (x.vitoria) {
+        window.Som?.saque?.("epico");
+        this.particulasSimples(this.jogador.x, this.jogador.y - 20, "#f2d27a", 18, { subir: true, dur: 1000, espalha: 18 });
+        if (!reduz) this.cameras.main.flash(300, 255, 224, 138);
+      }
+      this.p = Mundo.jogadores[MEU_ID];
+      this.verificarNivel();
+      this.time.delayedCall(reduz ? 200 : 900, () => window.UI?.resultadoMasmorra?.(x));
+    }
+    window.atualizarInterface?.();
+  }
+  // Criaturas da masmorra que a lógica apagou (fim de etapa, fim da masmorra): somem num esmaecer.
+  limparVagasApagadas() {
+    for (const id of Object.keys(this.entidades)) {
+      if (!inimigos[id]?.masmorra || Mundo.obterVidaInimigo(MEU_ID, id) > 0) continue;
+      const ent = this.entidades[id];
+      delete this.entidades[id]; // sai da lista já (barras, alvo, minimapa); os objetos esmaecem e somem
+      if (this.alvoId === id) this.alvoId = null;
+      if (this.hoverId === id) this.hoverId = null;
+      ent.alerta?.destroy();
+      ent.sprite?.auraCampeao?.destroy();
+      ent.sprite?.disableInteractive();
+      const objs = [ent.sprite, ent.sombra, ent.rotulo, ent.balao].filter(Boolean);
+      this.tweens.add({ targets: objs, alpha: 0, duration: reduzMovimento() ? 1 : 400, onComplete: () => { for (const o of objs) o.destroy(); } });
+    }
+  }
+  // Casas que vão pegar fogo: telégrafo vermelho com borda de ouro (como o da investida), pulsando até `ate`.
+  // Uma Graphics só para todas as casas do padrão (as linhas cobrem centenas delas).
+  marcarPerigo(x) {
+    const casas = x.casas || [];
+    if (!casas.length) return;
+    const g = this.add.graphics().setDepth(PROF.sombra + 2);
+    for (const c of casas) {
+      const px = c.x * TAM, py = c.y * TAM;
+      g.fillStyle(0xff3a1a, 0.42).fillRect(px + 2, py + 2, TAM - 4, TAM - 4);
+      g.lineStyle(2, 0xffd24a, 0.9).strokeRect(px + 3, py + 3, TAM - 6, TAM - 6);
+    }
+    this.marcasPerigo = (this.marcasPerigo || []).filter((m) => m.active);
+    this.marcasPerigo.push(g);
+    if (!reduzMovimento()) {
+      const pulso = this.tweens.add({ targets: g, alpha: 0.45, duration: 180, yoyo: true, repeat: -1 });
+      g.once("destroy", () => pulso.remove()); // o tween infinito sai junto com a marca (não fica órfão)
+    }
+    if (casas.some((c) => c.x === this.p.x && c.y === this.p.y)) this.mensagem(`${x.nome}: saia das casas marcadas!`, "perigo");
+    this.time.delayedCall(Math.max(150, x.ate - Date.now()) + 120, () => g.destroy());
+  }
+  // O fogo sobe nas casas: clarão laranja em todas e labaredas (fx_fogo) em até 90 delas, perto do jogador
+  // primeiro; se atingiu, o dano sobre o jogador e a mensagem.
+  fogoNoChao(x) {
+    const casas = x.casas || [], reduz = reduzMovimento();
+    const g = this.add.graphics().setDepth(PROF.sombra + 3).setBlendMode(Phaser.BlendModes.ADD);
+    for (const c of casas) g.fillStyle(0xff7a1a, 0.55).fillRect(c.x * TAM, c.y * TAM, TAM, TAM);
+    this.tweens.add({ targets: g, alpha: 0, duration: reduz ? 300 : 700, onComplete: () => g.destroy() });
+    const perto = casas.slice().sort((a, b) => Math.hypot(a.x - this.p.x, a.y - this.p.y) - Math.hypot(b.x - this.p.x, b.y - this.p.y)).slice(0, reduz ? 30 : 90);
+    for (const c of perto) {
+      const px = centroX(c.x), py = baseY(c.y);
+      this.fx("fx_fogo", px, py - 24, { depth: PROF.entidade + py + 1, quadros: 8, ms: 80, apaga: 240, atraso: reduz ? 0 : Math.round(Arte.hash2(c.x, c.y, 9) * 120) });
+    }
+    if (x.atingiu) {
+      this.numero(this.jogador.x, this.yNumeroJogador(), `−${x.dano}`, "recebido");
+      this.pulsoVinheta(0.4, 160);
+      if (!reduz) this.cameras.main.shake(200, 0.006);
+      this.mensagem(x.mensagem, "perigo");
     }
   }
 
@@ -2912,6 +3049,13 @@ class Cena extends Phaser.Scene {
       barra(s.x, topo, w, h, vida / max, cor[1], fantasma / max);
       if (ent.chefe) this.estrelaChefe.setVisible(true).setPosition(Math.round(s.x - w / 2) - 10, Math.round(topo) + 2);
     }
+    // Protegido da masmorra (Daniel): a barra larga de chefe, verde que vai ao vermelho com a vida dele.
+    for (const s of Object.values(this.spritesAliados)) {
+      const a = s.dadosAliado;
+      if (!s.rotulo || !a?.vidaMax || !s.visible || !naVista(s)) continue;
+      const frac = Math.max(0, Math.min(1, a.vida / a.vidaMax)), cor = corDaVida(frac);
+      barra(s.x, s.y - s.alturaCabeca - BARRA.folga - BARRA.hChefe, BARRA.wChefe, BARRA.hChefe, frac, cor[1]);
+    }
     // Jogador: nome e barra rentes à cabeça, como em todo personagem. Por último: a barra dele fica por cima
     // da de uma criatura colada logo atrás (ao norte), que cairia na mesma altura.
     const p = this.p, vmax = typeof vidaMaxima === "function" ? vidaMaxima(p) : 0, j = this.jogador;
@@ -3041,13 +3185,18 @@ class Cena extends Phaser.Scene {
     if (!ctx) return;
     const W = canvas.width, H = canvas.height;
     const nivel = MINIMAPA_NIVEIS[estadoMinimapa.nivel] || MINIMAPA_NIVEIS[1];
-    const E = Math.max(1, Math.round(W / nivel.colunas)); // px do minimapa por casa (inteiro: casas iguais)
+    // com areas[área].vista (as masmorras), o minimapa mostra só aquele retângulo: no nível mais afastado,
+    // ele inteiro (sem as casas fechadas em volta)
+    const vista = areas[this.areaAtual]?.vista;
+    const colunas = vista ? Math.min(nivel.colunas, vista.largura) : nivel.colunas;
+    const E = Math.max(1, vista ? Math.floor(Math.min(W / colunas, H / Math.min(nivel.linhas, vista.altura))) : Math.round(W / colunas)); // px do minimapa por casa (inteiro: casas iguais)
     if (!this.minimapaEstatico || this.minimapaEstatico.escala !== E) this.minimapaEstatico = this.pintarMinimapa(E);
     const jc = W / E, jl = H / E; // casas que cabem
-    // janela centrada no jogador (mais o arrasto), presa às bordas do mapa
-    const preso = (v, max) => (max <= 0 ? max / 2 : Math.max(0, Math.min(max, v)));
+    // janela centrada no jogador (mais o arrasto), presa às bordas do mapa (ou da vista)
+    const x0 = vista ? vista.x : 0, y0 = vista ? vista.y : 0, xl = vista ? vista.largura : COLS, yl = vista ? vista.altura : ROWS;
+    const preso = (v, min, max) => (max <= min ? (min + max) / 2 : Math.max(min, Math.min(max, v)));
     const cx = this.p.x + 0.5 + estadoMinimapa.dx, cy = this.p.y + 0.5 + estadoMinimapa.dy;
-    const ox = preso(Math.round((cx - jc / 2) * E) / E, COLS - jc), oy = preso(Math.round((cy - jl / 2) * E) / E, ROWS - jl);
+    const ox = preso(Math.round((cx - jc / 2) * E) / E, x0, x0 + xl - jc), oy = preso(Math.round((cy - jl / 2) * E) / E, y0, y0 + yl - jl);
     this.janelaMinimapa = { ox, oy, sx: E, sy: E }; // para o clique no minimapa (ligarMinimapa)
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = this.minimapaEstatico.fundo;

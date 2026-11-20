@@ -65,6 +65,11 @@ Conteúdo do jogo (pasta dados/)
   texto do teclado e do toque, condição, NPC para onde o cartão aponta, destaque da interface, recompensa e a
   frase de quando é cumprida; REGRAS_TUTORIAL: recompensa final e as frases do fim. O nível 2 chega com a
   recompensa de Eliabe, em menos de 2 minutos (o teste 83 cronometra). Os ids das etapas ficam no save.
+- dados/masmorras.js: as masmorras (JGB-23): REGRAS_MASMORRAS (recarga depois da vitória) e DADOS_MASMORRAS
+  (nome, passagem bíblica, descrição, mecânica, nível mínimo, área e sala, protegido, vagas — cópias de criaturas
+  de dados/criaturas.js com o que muda —, etapas "proteger", "sobreviver" e "chefe" com ondas, perigos no chão e
+  fases do chefe, recompensa com o item exclusivo e as falas). As áreas ficam em dados/mundo.js
+  (DADOS_AREAS_MASMORRAS: arte, vista e fogo) e o desenho da sala em dados/mapas.js.
 O progresso fica no save (save versão 16): missoes[id] = { status, etapa, progresso },
 tarefas[id] = { ativa, progresso, meta, concluidas, disponivelEm }, pontosTarefa (saldo), trocas
 (ofertas já trocadas), bestiario[especie] = abates (os estágios e os amuletos saem da contagem),
@@ -76,6 +81,9 @@ vocacao = { id, especializacao, trocas }, recargas[habilidade] (quando ela fica 
 deposito (lista de itens do baú, o mesmo em todas as cidades; sem o campo, começa vazio — não mudou a versão
 do save; os campos antigos ervasRespawn, odresRespawn, ervasColetadas, odresColetados e extracaoRespawn saem
 na carga) e cosmeticos = { possui, traje, montaria, cores } (cores = { cabeca, tronco, pernas, detalhe }: id da paleta ou null = a cor do traje).
+masmorras[id] = { vitorias, melhorMs, item, proximaEm } e masmorra = { id, volta: { area, x, y } } enquanto se está
+numa (sem os campos, vazios — não mudou a versão do save); a instância (etapa, ondas, perigos, protegido) vive só na
+memória: recarregar a página devolve à porta, e morrer lá dentro leva a Canaã; nos dois casos a masmorra recomeça.
 tutorial = { etapa, passos, loja, fim } (etapa: índice em DADOS_TUTORIAL; fim: null, "concluido" ou "pulado"; só o
 personagem novo o recebe: saves sem o campo ficam com ele pulado — não mudou a versão do save; o comando
 pularTutorial encerra de vez).
@@ -660,6 +668,22 @@ Fale com o ferreiro (Bezalel, em Canaã, ou Aoliabe, no Deserto, à frente da ba
 - As pedras caem muito raramente (0,1%) das criaturas de cada região e a 5% dos raros nomeados; o Diamante,
   das elites. "Vender tudo" deixa de fora as peças forjadas ou com pedra.
 
+Masmorras (JGB-23)
+Baruque, o escriba de Jeremias (desceu com ele ao Egito, Jr 43:6-7; aqui, em Gósen), abre as masmorras: fale com ele ou diga [masmorra]. Cada uma é uma
+instância só sua, com etapas, um chefe e uma recompensa exclusiva (o item vem só na 1ª vitória; nas outras, XP e
+moedas). Depois de vencer, a mesma masmorra abre de novo em 4 horas; desistir ou falhar não conta.
+    Cova dos leões (Dn 6) · nível 10 · proteja Daniel: as levas de leões famintos atacam a ele, não a você; depois,
+        o leão-rei (com investida e fúria) chama a matilha na metade da vida. Se Daniel cair, a masmorra falha.
+        Recompensa: Selo do rei Dario (anel épico: +1 de defesa, +10 de vida, +3% de crítico), 900 XP e 120 moedas.
+    Fornalha ardente (Dn 3) · nível 12 · o chão se acende em padrões (faixas, um quadrado 3×3 em volta de você, xadrez e um
+        anel em volta do capitão): as casas marcadas pegam fogo ao fim do aviso. Os guardas do rei chegam em levas;
+        depois, o capitão da guarda de Nabucodonosor. Recompensa: Turbante que o fogo não queimou (cabeça épica:
+        +2 de defesa, +10 de vida, +2 kg de carga), 1.100 XP e 150 moedas.
+- Lá dentro, o painel mostra a etapa, o tempo e a vida de quem você protege e do chefe; "Desistir" volta à porta.
+  Recarregar a página devolve à porta; morrer lá dentro leva a Canaã, como toda morte (o item que cair fica à porta
+  da masmorra). Nos dois casos a masmorra recomeça do início. As criaturas da masmorra não dão XP, saque, caçada
+  nem bestiário: a masmorra paga na conclusão.
+
 Armadura de Deus (JGB-26)
 "Tomai toda a armadura de Deus" (Ef 6:13-17): conjunto lendário de 6 relíquias, cada uma de um raro nomeado
 (4% a cada abate, na janela de aparição dele; o anúncio diz "Peça da Armadura de Deus!"):
@@ -728,6 +752,8 @@ Para desenvolvedores
   visaoForja(p) (a janela do ferreiro: peças com nível, efeitos, próximo passo e o que falta; pedras da mochila),
   textoEngaste(pedra), somaEngastes(p, efeito, familia) (pedras e conjuntos), conjuntoDoItem(item),
   visaoConjunto(p, conjuntoId) (nome, peças com versículo e origem, faixas de bônus e se estão ativas),
+  visaoEntradaMasmorras(p, porteiroId, agora) (janela do porteiro: cada masmorra, requisitos, recompensa, recarga e se
+  dá para entrar), Mundo.visaoMasmorra(id, agora) (dentro: etapa, tempo, ondas, protegido, chefe e o fim),
   visaoTutorial(p, toque) (a etapa atual do tutorial: número, título, texto do teclado ou do toque, rumo, destaque e
   recompensa; null quando acabou), bestiarioPorFamilia(p),
   resumoBestiario(p), visaoEspecie(p, especie), bonusAmuleto(p, e), Mundo.analisador(id), textoRelogio(ms),

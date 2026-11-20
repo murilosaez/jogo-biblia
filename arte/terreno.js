@@ -288,7 +288,7 @@
   // -------------------------------------------------------------------
   // Fábrica por área: chão, mancha e caminho do bioma, cada um como f(sv, o) → casa.
   // -------------------------------------------------------------------
-  const areaDe = (bio) => Object.keys(BIOMAS).find((k) => BIOMAS[k] === bio) || "canaan";
+  const areaDe = (bio) => bio.pintarComo || Object.keys(BIOMAS).find((k) => BIOMAS[k] === bio) || "canaan"; // pintarComo: clima de masmorra (sprites.js, bioDaArea)
   const cacheFab = new Map();
   function fabrica(area, bio, semente) {
     let fab = cacheFab.get(bio);

@@ -34,6 +34,7 @@ const ARQUIVOS_DADOS = [
   "dados/oficios.js",
   "dados/cosmeticos.js",
   "dados/tutorial.js",
+  "dados/masmorras.js",
 ];
 const ARQUIVOS = ["storage.js", ...ARQUIVOS_DADOS, "logica.js"];
 const FONTES = ARQUIVOS.map((f) => fs.readFileSync(path.join(RAIZ, f), "utf8"));
@@ -873,7 +874,8 @@ teste("9. inimigos longe das vilas e tudo alcançável (BFS)", () => {
   const npcs = Object.values(j.g("npcs"));
   const inimigos = Object.values(j.g("inimigos"));
   const areas = j.g("areas");
-  for (const e of inimigos) {
+  // As vagas das masmorras (JGB-23) surgem por ondas e enxergam a sala inteira: ficam fora da distância à entrada.
+  for (const e of inimigos.filter((x) => !x.masmorra)) {
     for (const n of npcs.filter((n) => n.area === e.area)) {
       const d = Math.max(Math.abs(n.x - e.inicioX), Math.abs(n.y - e.inicioY));
       assert.ok(d > e.raioPercepcao + 2, `${e.id} está a ${d} casas de ${n.id}`);
@@ -1488,7 +1490,8 @@ teste("27. dados/: conteúdo puro e todas as referências apontam para algo que 
     area(e.area, `criatura ${e.id}`);
     const RARIDADES = j.g("RARIDADES");
     const CHANCES = j.g("CHANCES_SAQUE");
-    assert.ok(Array.isArray(e.saque.itens) && e.saque.itens.length, `${e.id}: tabela de saque`);
+    // As vagas das masmorras (JGB-23) não têm saque de propósito: a masmorra paga na conclusão.
+    assert.ok(Array.isArray(e.saque.itens) && (e.saque.itens.length || e.masmorra), `${e.id}: tabela de saque`);
     for (const linha of e.saque.itens) {
       const onde = `saque de ${e.id}`;
       assert.ok(typeof linha === "object" && linha, `${onde}: cada linha é { item, chance }`);
@@ -1499,7 +1502,7 @@ teste("27. dados/: conteúdo puro e todas as referências apontam para algo que 
         if (campo in linha) assert.ok(RARIDADES[linha[campo]], `${onde}: ${campo} "${linha[campo]}"`);
       }
     }
-    assert.ok(e.vidaMaxima > 0 && e.xpRecompensa > 0, `atributos de ${e.id}`);
+    assert.ok(e.vidaMaxima > 0 && (e.xpRecompensa > 0 || (e.masmorra && e.xpRecompensa === 0)), `atributos de ${e.id}`); // vagas: XP na conclusão
   }
   for (const [chave, c] of Object.entries(CAPITULOS)) {
     assert.ok(MISSOES[c.missao], `capítulo ${chave}: missão ${c.missao}`);
@@ -2048,9 +2051,10 @@ teste("33. caçadas e troca: dados coerentes, todo mural completo e invariantes 
     assert.ok(TAREFAS[t.id].esperaHoras > 0, `${onde}: espera do tipo`);
   }
   for (const [tipo, d] of Object.entries(j.g("TIPOS_TAREFA"))) assert.ok(d.nome && d.esperaHoras > 0, `tipo ${tipo}`);
-  // Murais: toda área com criaturas tem um atalaia com ao menos uma ronda e uma grande caçada.
+  // Murais: toda área com criaturas tem um atalaia com ao menos uma ronda e uma grande caçada (as masmorras, JGB-23,
+  // são instâncias sem mural: as criaturas delas só existem lá dentro).
   const murais = Object.values(npcs).filter((n) => n.papel === "mural");
-  for (const area of new Set(Object.values(inimigos).map((e) => e.area))) {
+  for (const area of new Set(Object.values(inimigos).filter((e) => !e.masmorra).map((e) => e.area))) {
     const atalaia = murais.find((n) => n.area === area);
     assert.ok(atalaia, `${area} tem criaturas e precisa de um atalaia`);
     const tipos = brutos.filter((t) => t.mural === atalaia.id && !t.oculta).map((t) => t.tipo);
@@ -6618,7 +6622,8 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
       assert.ok(d.peso > 0 && d.peso <= 2, `${id}: peso de verdade (${d.peso} kg)`);
       assert.ok((d.defesa || 0) <= 2 && (d.defesa || d.atributosFixos), `${id}: defesa pequena ou um atributo modesto`);
       for (const [k, v] of Object.entries(d.atributosFixos || {})) assert.ok(g("ATRIBUTOS_ITEM")[k] && v > 0 && v <= 10, `${id}: atributo ${k}`);
-      assert.ok(vendidos.has(id) || caem.has(id), `${id}: à venda ou no saque`);
+      const masmorra = Object.values(g("DADOS_MASMORRAS")).some((m) => m.recompensa.item === id); // recompensa exclusiva (JGB-23)
+      assert.ok(vendidos.has(id) || caem.has(id) || masmorra, `${id}: à venda, no saque ou recompensa de masmorra`);
       if (vendidos.has(id)) assert.ok(PRECOS[id] > 0, `${id}: preço`);
     }
   }
@@ -6782,7 +6787,7 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   for (const s of Object.values(ESPACOS)) assert.ok(PP[s.silhueta], `silhueta ${s.silhueta}`);
   const quadro = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
   const nu = quadro({});
-  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }])
+  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }, { cabeca: "turbante_fornalha" }])
     assert.notStrictEqual(quadro(eq), nu, `${JSON.stringify(eq)} aparece no boneco`);
   assert.notStrictEqual(quadro({ arma: "arco_madeira" }), quadro({ arma: "espada_ferro" }), "o arco vai na mão");
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
@@ -7970,6 +7975,219 @@ teste("85. Armadura de Deus (JGB-26): 6 peças de Ef 6, cada uma de um raro nome
   j.g("Storage").salvar(p);
   j.g("Storage").flush();
   igual(carregarJogo({ store: j.store }).entrar().equipamento, vestido);
+});
+
+// ---------------------------------------------------------------------
+// Masmorras (JGB-23)
+// ---------------------------------------------------------------------
+// Jogador no nível mínimo da masmorra, com o equipamento de quem terminou a campanha.
+function prepararMasmorra(masmorraId, semente = 4) {
+  const j = carregarJogo({ semente });
+  const p = j.entrar();
+  const d = j.g("DADOS_MASMORRAS")[masmorraId];
+  p.tutorial.fim = "pulado";
+  p.nivel = d.nivelMinimo;
+  p.xp = j.g("limiarNivel")(p.nivel - 1);
+  Object.assign(p.equipamento, { arma: "espada_temperada", escudo: "escudo_bronze", armadura: "armadura_couro" });
+  p.habilidades.corpo = 14;
+  p.habilidades.defesa = 12;
+  p.vida = j.g("vidaMaxima")(p);
+  for (let i = 0; i < 8; i++) p.inventario.push("pocao");
+  posicionarAoLado(j, "egito", j.g("npcs").porteiro_egito);
+  return j;
+}
+
+// Joga a masmorra: luta com a criatura acesa mais perto do protegido (ou de você), bebe poção abaixo de 35% e, quando
+// o chão é marcado, sai das casas marcadas. Devolve o evento masmorraFim (ou null) e quantas vezes o fogo pegou.
+function jogarMasmorra(j, limiteMs = 6 * 60_000) {
+  const M = j.M, p = j.p, inimigos = j.g("inimigos"), vel = j.g("velocidadeDoJogador"), vidaMax = j.g("vidaMaxima");
+  const fim = j.agora + limiteMs;
+  let marcadas = new Set(), queimaduras = 0, resultado = null, proximoPasso = 0;
+  const livre = (x, y) => M.casaLivre(x, y, p) && !marcadas.has(`${x},${y}`);
+  while (j.agora < fim && !resultado) {
+    for (const ev of j.atualizar()) {
+      if (ev.tipo === "perigoAviso") for (const c of ev.casas) marcadas.add(`${c.x},${c.y}`);
+      if (ev.tipo === "perigo") { for (const c of ev.casas) marcadas.delete(`${c.x},${c.y}`); if (ev.atingiu) queimaduras++; }
+      if (ev.tipo === "masmorraFim") resultado = ev;
+      if (ev.tipo === "renasceu") return { resultado: { vitoria: false, morreu: true }, queimaduras };
+    }
+    if (p.vida < vidaMax(p) * 0.35) j.exec({ tipo: "usarPocao" });
+    const m = M.estado[ID].masmorra;
+    if (m && j.agora >= proximoPasso) {
+      // Em casa marcada: um passo para a vizinha livre e sem marca.
+      if (marcadas.has(`${p.x},${p.y}`)) {
+        const saida = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]].find(([dx, dy]) => livre(p.x + dx, p.y + dy));
+        if (saida) { j.exec({ tipo: "mover", dx: saida[0], dy: saida[1] }); proximoPasso = j.agora + vel(p).diagonal; }
+      } else {
+        const ref = m.protegido || p;
+        const alvo = [...m.ativas].map((id) => inimigos[id]).sort((a, b) => j.g("distanciaChebyshev")(a, ref) - j.g("distanciaChebyshev")(b, ref))[0];
+        if (alvo && j.g("distanciaChebyshev")(p, alvo) <= 1) {
+          if (M.recargaAtaque(ID) === 0) j.exec({ tipo: "atacar", alvoId: alvo.id });
+        } else if (alvo) {
+          const grade = M.gradeDePassagem(p), COLS = j.g("COLS");
+          const r = j.g("rotaNaGrade")((x, y) => (x === alvo.x && y === alvo.y) || (grade[y * COLS + x] === 1 && !marcadas.has(`${x},${y}`)), p, alvo);
+          const passo = r?.passos?.[0];
+          if (passo && !(p.x + passo[0] === alvo.x && p.y + passo[1] === alvo.y)) {
+            j.exec({ tipo: "mover", dx: passo[0], dy: passo[1] });
+            proximoPasso = j.agora + (passo[0] && passo[1] ? vel(p).diagonal : vel(p).reto);
+          }
+        }
+      }
+    }
+    j.avancar(100);
+  }
+  return { resultado, queimaduras };
+}
+
+teste("86. masmorras (JGB-23): Cova dos leões e Fornalha ardente vencíveis, recompensa exclusiva, falha, recarga e save", () => {
+  const g0 = carregarJogo().g;
+  const D = g0("DADOS_MASMORRAS");
+  // (a) Dados: cada masmorra com área própria fora da viagem, sala livre, chefe, recompensa exclusiva e vagas válidas.
+  for (const [id, d] of Object.entries(D)) {
+    const area = g0("areas")[d.area];
+    assert.ok(area && area.masmorra === id, `${id}: área`);
+    assert.ok(!g0("REGRAS_VIAGEM").ordem.includes(d.area), `${id}: fora da viagem`);
+    assert.ok(d.etapas.some((e) => e.tipo === "chefe"), `${id}: tem chefe`);
+    const item = d.recompensa.item;
+    assert.ok(g0("ITENS")[item], `${id}: item ${item}`);
+    const outras = Object.values(g0("inimigos")).filter((e) => e.saque.itens.some((l) => l.item === item));
+    assert.strictEqual(outras.length, 0, `${id}: ${item} é exclusivo (não cai de criatura)`);
+    assert.ok(!Object.values(g0("LOJAS") || {}).flat().includes(item), `${id}: ${item} não se compra`);
+    for (const v of d.vagas) {
+      const e = g0("inimigos")[v.id];
+      assert.ok(e && e.masmorra === id && e.area === d.area && e.base === v.base, `${v.id}: registrada`);
+      assert.strictEqual(g0("mapas")[d.area][e.inicioY][e.inicioX], 0, `${v.id}: nasce em casa livre`);
+    }
+    for (const etapa of d.etapas) for (const vagaId of [etapa.vaga, ...(etapa.ondas || []).flatMap((o) => o.vagas), ...(etapa.fases || []).flatMap((f) => f.chamar || [])].filter(Boolean))
+      assert.ok(d.vagas.some((v) => v.id === vagaId), `${id}: vaga ${vagaId} existe`);
+  }
+  assert.ok(D.cova_leoes.protegido, "a cova tem quem proteger");
+  assert.ok(D.fornalha.etapas.some((e) => e.perigos?.length), "a fornalha tem chão em chamas");
+
+  // (b) Cova dos leões: entrar, proteger Daniel e vencer o leão-rei.
+  const j = prepararMasmorra("cova_leoes");
+  const p = j.p, M = j.M;
+  const porta = { area: p.area, x: p.x, y: p.y };
+  const visao = j.g("visaoEntradaMasmorras")(p, "porteiro_egito", j.agora);
+  igual(visao.map((v) => [v.id, v.podeEntrar]), [["cova_leoes", true], ["fornalha", false]]);
+  assert.match(visao[1].motivo, /nível 12/);
+  assert.strictEqual(j.exec({ tipo: "interagir", alvoId: "porteiro_egito" }).abrirMasmorra, "porteiro_egito");
+  const entrou = j.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  assert.ok(entrou.ok && entrou.areaAlterada && p.area === "cova_leoes", entrou.mensagem);
+  igual(p.masmorra.volta.area, "egito");
+  // A cena troca: entrar() de novo não perde a instância.
+  j.entrar();
+  assert.ok(M.estado[ID].masmorra && M.estado[ID].aliados.some((a) => a.tipo === "protegido"), "a instância atravessa a troca de cena");
+  assert.match(j.g("textoMissaoAtual")(j.p), /^Cova dos leões · Proteja Daniel.* etapa 1\/2$/);
+  const { resultado, queimaduras } = jogarMasmorra(j);
+  assert.ok(resultado?.vitoria, `vence a cova (${JSON.stringify(resultado)})`);
+  assert.strictEqual(queimaduras, 0);
+  const pj = j.p;
+  assert.ok(pj.inventario.includes("selo_dario"), "recompensa exclusiva na 1ª vitória");
+  const visaoFim = M.visaoMasmorra(ID, j.agora);
+  assert.ok(visaoFim.fim.vitoria && visaoFim.protegido.vida > 0, "Daniel de pé");
+  // Equilíbrio: quem joga bem vence, mas Daniel apanha (não é passeio) e a masmorra dura de 2 a 4 minutos.
+  const restou = visaoFim.protegido.vida / visaoFim.protegido.vidaMax;
+  assert.ok(restou >= 0.15 && restou <= 0.85, `Daniel terminou com ${Math.round(restou * 100)}% da vida`);
+  assert.ok(resultado.tempoMs >= 120_000 && resultado.tempoMs <= 240_000, `cova em ${resultado.tempoMs} ms`);
+  console.log(`        cova dos leões: vitória em ${(resultado.tempoMs / 1000).toFixed(0)} s, Daniel com ${visaoFim.protegido.vida}/${visaoFim.protegido.vidaMax}`);
+  // Sair: volta à porta; a recarga fecha a entrada por um tempo; a 2ª vitória não dá o item de novo.
+  const saiu = j.exec({ tipo: "sairMasmorra" });
+  assert.ok(saiu.areaAlterada && pj.area === porta.area && pj.masmorra === null);
+  assert.ok(Math.max(Math.abs(pj.x - porta.x), Math.abs(pj.y - porta.y)) <= 2, "de volta à porta");
+  assert.ok(!M.estado[ID].masmorra && !Object.values(j.g("inimigos")).some((e) => e.masmorra && M.inimigoVivo(pj, e.id)), "instância fechada");
+  posicionarAoLado(j, "egito", j.g("npcs").porteiro_egito);
+  assert.match(j.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" }).mensagem, /Abre de novo em/);
+  j.avancar(j.g("REGRAS_MASMORRAS").recargaHoras * 3_600_000 + 1000);
+  assert.ok(j.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" }).ok);
+  // (c) Recarregar a página dentro: volta à porta, com aviso; o histórico fica.
+  j.g("Storage").flush();
+  const jr = carregarJogo({ store: j.store, inicio: j.agora });
+  const pr = jr.entrar();
+  igual([pr.area, pr.masmorra, pr.masmorras.cova_leoes.vitorias, pr.masmorras.cova_leoes.item], ["egito", null, 1, true]);
+  const avisos = [];
+  for (let a = jr.M.consumirAviso(ID); a; a = jr.M.consumirAviso(ID)) avisos.push(a);
+  assert.ok(avisos.some((a) => /recomeça/.test(a)), avisos.join(" | "));
+
+  // (d) Fornalha ardente: desviar do fogo e vencer o capitão.
+  const jf = prepararMasmorra("fornalha", 6);
+  assert.ok(jf.exec({ tipo: "entrarMasmorra", masmorra: "fornalha" }).ok);
+  const f = jogarMasmorra(jf);
+  assert.ok(f.resultado?.vitoria, `vence a fornalha (${JSON.stringify(f.resultado)})`);
+  assert.ok(jf.p.inventario.includes("turbante_fornalha"));
+  assert.ok(f.resultado.tempoMs >= 75_000 && f.resultado.tempoMs <= 240_000, `fornalha em ${f.resultado.tempoMs} ms`);
+  console.log(`        fornalha ardente: vitória em ${(f.resultado.tempoMs / 1000).toFixed(0)} s, ${f.queimaduras} queimaduras`);
+  // Quem fica parado é queimado: o perigo fere de verdade.
+  const jq = prepararMasmorra("fornalha", 8);
+  jq.exec({ tipo: "entrarMasmorra", masmorra: "fornalha" });
+  const evs = rodar(jq, 12_000);
+  assert.ok(evs.some((e) => e.tipo === "perigoAviso") && evs.some((e) => e.tipo === "perigo" && e.atingiu && e.dano > 0), "parado, o fogo pega");
+
+  // (e) Falhar: Daniel cai → masmorra falha, sem recarga e sem recompensa; morrer lá dentro fecha a instância.
+  const jd = prepararMasmorra("cova_leoes", 5);
+  jd.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  jd.M.estado[ID].masmorra.protegido.vida = 0;
+  const falhou = jd.atualizar().find((e) => e.tipo === "masmorraFim");
+  assert.ok(falhou && !falhou.vitoria && /foi o Senhor quem guardou Daniel/.test(falhou.mensagem));
+  igual([jd.p.masmorras.cova_leoes.vitorias, jd.p.masmorras.cova_leoes.proximaEm, jd.p.inventario.includes("selo_dario")], [0, 0, false]);
+  const jm = prepararMasmorra("cova_leoes", 7);
+  jm.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  jm.avancar(3000);
+  jm.atualizar();
+  const morte = jm.M.aplicarMorte(ID, "inimigo", jm.agora);
+  assert.match(morte.mensagem, /A masmorra falhou/);
+  igual([jm.p.area, jm.p.masmorra, jm.M.estado[ID].masmorra], ["canaan", null, null]);
+  // (f) Desistir no meio: sem recarga; dados ruins no save são limpos.
+  const js = prepararMasmorra("cova_leoes", 3);
+  js.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  assert.match(js.exec({ tipo: "sairMasmorra" }).mensagem, /recomeça/);
+  assert.strictEqual(js.p.masmorras.cova_leoes, undefined, "desistir não conta");
+  const ps = js.p;
+  ps.masmorras = { cova_leoes: { vitorias: -2, melhorMs: "x", item: "sim", proximaEm: NaN }, inexistente: { vitorias: 3 } };
+  ps.masmorra = { id: "cova_leoes", volta: { area: "fornalha", x: 1, y: 1 } };
+  j.g("normalizarMasmorras")(ps);
+  igual([ps.masmorras, ps.masmorra], [{ cova_leoes: { vitorias: 0, melhorMs: null, item: false, proximaEm: 0 } }, null]);
+  // Relógio adiantado na vitória: a recarga nunca passa de recargaHoras a partir de agora.
+  ps.masmorras = { cova_leoes: { vitorias: 1, melhorMs: 1, item: true, proximaEm: js.agora + 365 * 24 * 3_600_000 } };
+  j.g("normalizarMasmorras")(ps, js.agora);
+  assert.strictEqual(ps.masmorras.cova_leoes.proximaEm, js.agora + j.g("REGRAS_MASMORRAS").recargaHoras * 3_600_000);
+
+  // (g) Revisão: aba escondida não pula etapas (o relógio da instância anda no máximo um passo por quadro).
+  const ja = prepararMasmorra("cova_leoes", 2);
+  ja.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  ja.atualizar();
+  ja.avancar(125_000); // a aba ficou escondida: nenhum quadro
+  ja.atualizar();
+  const ma = ja.M.estado[ID].masmorra;
+  igual([ma.etapa, ma.relogio < 1000], [0, true], "a etapa continua de onde parou");
+  // Fúria do chefe vale contra Daniel; escolher a vocação lá dentro não tira Daniel da cova.
+  const jc = prepararMasmorra("cova_leoes", 2);
+  jc.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  const mc = jc.M.estado[ID].masmorra;
+  jc.M.iniciarEtapaMasmorra(jc.p, mc, 1, jc.agora, []);
+  const chefe = jc.g("inimigos").cova_leao_chefe;
+  jc.p.vidaInimigos[chefe.id] = 50;
+  const evc = rodar(jc, 3000);
+  assert.ok(evc.some((e) => e.tipo === "furia" && e.id === chefe.id) && chefe.furioso, "o leão-rei entra em fúria atacando Daniel");
+  jc.p.nivel = 10;
+  jc.p.vocacao = { id: null, especializacao: null, trocas: 0 };
+  jc.exec({ tipo: "escolherVocacao", vocacao: Object.keys(jc.g("VOCACOES"))[0] });
+  assert.ok(jc.M.estado[ID].aliados.some((a) => a.tipo === "protegido"), "Daniel continua sendo atacado");
+  // As criaturas da masmorra não dão XP, saque, caçada nem bestiário; vender tudo não vende o item exclusivo.
+  const jx = prepararMasmorra("cova_leoes", 2);
+  jx.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  rodar(jx, 2500);
+  const leao = [...jx.M.estado[ID].masmorra.ativas][0];
+  const xp0 = jx.p.xp, bes = { ...(jx.p.bestiario || {}) }, inv0 = jx.p.inventario.length;
+  jx.p.vidaInimigos[leao] = 1;
+  posicionarAoLado(jx, "cova_leoes", jx.g("inimigos")[leao]);
+  jx.avancar(1500);
+  assert.ok(jx.exec({ tipo: "atacar", alvoId: leao }).derrotado);
+  assert.strictEqual(jx.p.xp, xp0, "sem XP");
+  igual(jx.p.bestiario || {}, bes, "sem bestiário");
+  assert.strictEqual(jx.p.inventario.length, inv0, `sem saque: ${jx.p.inventario.slice(inv0)}`);
+  jx.p.inventario.push("selo_dario");
+  assert.ok(!jx.M.vendaDeTudo(ID).some((v) => v.item === "selo_dario"), "vender tudo não vende a recompensa exclusiva");
 });
 
 const PASTA_TESTES_ARTE = path.join(__dirname, "arte");

@@ -769,6 +769,79 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .amostra-cor[aria-pressed="true"]{outline:3px solid var(--tinta);outline-offset:2px;box-shadow:inset 0 0 0 2px var(--ouro-300)}
 .partes-cores > .btn{align-self:flex-start}
 @media (max-width:760px){ .cores-visual{grid-template-columns:1fr} .previa-cores{flex-direction:row;justify-content:center} .amostra-cor{min-width:32px} .amostras{grid-template-columns:repeat(auto-fill,minmax(32px,1fr))} }
+/* masmorras (JGB-23): janela do porteiro, resultado e o HUD lá dentro */
+.lista-masmorras{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px;margin:0 0 4px;padding:0;list-style:none}
+.masmorra{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:2px solid var(--bronze-700);background:#fff3;box-shadow:inset 0 0 0 1px #e6cf9c}
+.masmorra.fechada{background:#0000000d}
+.masmorra-cab{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.masmorra-cab h3{margin:0;font:700 var(--fs-16)/1.2 var(--f-titulo);color:var(--tinta)}
+.masmorra-cab .ref{font:italic 600 var(--fs-14)/1 var(--f-texto);color:var(--tinta-suave)}
+.masmorra-desc{margin:0;font:500 var(--fs-14)/1.4 var(--f-texto);color:var(--tinta)}
+.masmorra-mec{margin:0;padding:4px 8px;border-left:3px solid var(--vida-2);background:#fff4;font:700 var(--fs-14)/1.3 var(--f-texto);color:var(--tinta-perigo)}
+.masmorra-dados{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0}
+.masmorra-dados div{display:flex;gap:5px;align-items:baseline}
+.masmorra-dados dt{font:600 var(--fs-13)/1.2 var(--f-ui);color:var(--tinta-suave)}
+.masmorra-dados dd{margin:0;font:700 var(--fs-14)/1.2 var(--f-ui);color:var(--tinta)}
+.masmorra-premio{display:grid;grid-template-columns:40px 1fr;gap:8px;align-items:center;padding:4px 6px;border:1px dashed #b8975e;background:#f2d27a33}
+.masmorra-premio .icone{width:40px;height:40px;display:grid;place-items:center;background:radial-gradient(circle at 35% 30%,#4a2e1f,#24150e);border:2px solid var(--bronze-700)}
+.masmorra-premio .icone img{width:32px;height:32px}
+.masmorra-premio strong{font:800 var(--fs-14)/1.2 var(--f-texto);color:var(--tinta)}
+.masmorra-premio span>span:last-child{display:block;font:500 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-suave)}
+.selo-premio{display:inline-block;margin-left:6px;padding:1px 5px;vertical-align:1px;font:700 var(--fs-12)/1.1 var(--f-ui);letter-spacing:.04em;text-transform:uppercase;color:#fff6e0;background:#7a3fa0;border:1px solid var(--tinta)}
+.selo-premio.recebido{background:#5a4a3a;color:var(--texto-2)}
+.masmorra-pe{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
+.masmorra-pe .recorde{font:600 var(--fs-13)/1.3 var(--f-ui);color:var(--tinta-suave)}
+.masmorra-pe .motivo{display:block;font:italic 700 var(--fs-13)/1.3 var(--f-texto);color:var(--tinta-perigo)}
+.masmorra-pe .btn{min-height:40px;min-width:96px}
+.masmorra-premio.ganho{margin:0;border:0;border-top:1px dashed #b8975e;background:none;padding:7px 12px}
+.bilhete.vitoria .bilhete-linha.preco{background:#8fd16a55}
+.bilhete.derrota .bilhete-linha.preco{background:#c2452d33}
+#masmorraHud{position:absolute;left:12px;bottom:12px;z-index:var(--z-hud);width:280px;padding:6px 8px 8px;background:#1c1210e6;border:2px solid var(--bronze-700);box-shadow:0 2px 0 #0008,0 4px 12px #0008;color:var(--texto)}
+#masmorraHud[hidden]{display:none}
+#dialogo.aberto~#masmorraHud{display:none}
+.mh-cab{display:flex;align-items:baseline;gap:8px}
+.mh-cab strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 var(--fs-14)/1.2 var(--f-titulo);color:var(--ouro-300);text-shadow:1px 1px 0 #120a06}
+#mhEtapa{font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto-2);white-space:nowrap}
+.mh-tempo{min-width:38px;padding:2px 5px;text-align:center;font:700 var(--fs-14)/1 var(--f-ui);font-variant-numeric:tabular-nums;color:#fff6e0;background:var(--fe-1);border:1px solid #120a06}
+.mh-tempo:empty{display:none}
+.mh-tempo.urgente{background:var(--vida-1)}
+#mhTexto{margin:4px 0 6px;font:600 var(--fs-14)/1.3 var(--f-texto);color:#fff6e0;text-shadow:1px 1px 0 #120a06}
+.mh-linha{display:flex;align-items:center;gap:6px;margin:0 0 5px}
+.mh-linha[hidden]{display:none}
+.mh-linha .rot{flex:0 0 auto;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 var(--fs-13)/1 var(--f-ui);color:#cfe8b8;text-shadow:1px 1px 0 #120a06}
+.mh-linha.chefe .rot{color:var(--critico)}
+#mhProtegido .barra{--c1:#2f5a1a;--c2:#4f8a2a;--c3:#8fd16a}
+.mh-linha .barra{height:12px;border-width:1px}
+.mh-linha .barra>b{font-size:var(--fs-12)}
+#mhDesistir{width:100%;min-height:32px;margin-top:2px}
+#mhDesistir.confirmar{background:linear-gradient(var(--vida-2),var(--vida-1));color:#fff6e0}
+@media (prefers-reduced-motion:reduce){ .mh-linha .barra>i{transition:none} }
+/* celular e tela de toque: compacto, no canto de cima à direita (o HUD de vida fica à esquerda e o jogador no
+   meio); o objetivo já está na linha da missão, então o texto da etapa sai e Desistir vai para o cabeçalho */
+@media (max-width:760px),(max-width:1279px) and (pointer:coarse){
+ #masmorraHud{left:auto;right:8px;bottom:auto;top:48px;width:min(212px,calc(100% - 200px));min-width:150px;padding:4px 6px 5px;
+  display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"cab sair" "prot prot" "chefe chefe";column-gap:6px;align-items:center}
+ #masmorraHud[hidden]{display:none}
+ .mh-cab{grid-area:cab;gap:5px}
+ .mh-cab strong,#mhTexto{display:none}
+ #mhProtegido{grid-area:prot} #mhChefe{grid-area:chefe}
+ .mh-linha{margin:4px 0 0}
+ .mh-linha .rot{max-width:64px}
+ .mh-linha .barra{height:10px}
+ .mh-linha .barra>b{display:none}
+ #mhDesistir{grid-area:sair;width:auto;min-height:30px;margin:0;padding:0 8px;font-size:var(--fs-13)}
+ body.mapa-visivel-cel #masmorraHud{top:140px}
+}
+@media (max-width:760px){
+ body.na-masmorra #tutorial{display:none}
+ /* com o minimapa aberto o HUD desce para 140px: os avisos passam para baixo dele (não cobrem cronômetro e Desistir) */
+ body.na-masmorra.mapa-visivel-cel #palco #avisos{top:calc(218px + var(--status-hud,0px))}
+}
+/* celular deitado: o palco é baixo e os cantos são da barra de vida, do joystick, do minimapa e dos botões de toque;
+   o HUD vai para o meio de baixo, entre o joystick e os botões (abaixo do personagem) */
+@media (pointer:coarse) and (max-height:500px){
+ #masmorraHud,body.mapa-visivel-cel #masmorraHud{right:auto;top:auto;bottom:6px;left:calc(50% - 106px);width:212px}
+}
 /* passagem do barco: bilhete com preço, saldo e o que sobra */
 .bilhete{margin:0 0 12px;border:2px solid var(--tinta);background:#fff8e6;box-shadow:inset 0 0 0 2px #e6cf9c}
 .bilhete-linha{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 12px;font:600 var(--fs-16)/1.2 var(--f-ui);color:var(--tinta)}
@@ -1217,6 +1290,14 @@ body.toque-forcado #dpad{display:block}
           <div class="status-chips" id="statusHud" aria-live="polite"></div>
           <div class="quadro-alvo" id="hudAlvo"></div>
         </div>
+        <!-- masmorra (JGB-23): etapa, cronômetro, o protegido, o chefe e Desistir; só dentro de uma (interface.js) -->
+        <div id="masmorraHud" hidden aria-label="Masmorra">
+          <div class="mh-cab"><strong id="mhNome"></strong><span id="mhEtapa"></span><span class="mh-tempo" id="mhTempo" aria-label="Tempo da etapa"></span></div>
+          <p id="mhTexto"></p>
+          <div class="mh-linha" id="mhProtegido" hidden><span class="rot"></span><div class="barra vida" role="meter" aria-label="Vida do protegido"><i></i><b></b></div></div>
+          <div class="mh-linha chefe" id="mhChefe" hidden><img class="px g16" data-glifo="ui_estrela_chefe" alt=""><span class="rot"></span><div class="barra vida" role="meter" aria-label="Vida do chefe"><i></i><b></b></div></div>
+          <button type="button" class="btn secundario" id="mhDesistir">Desistir</button>
+        </div>
         <div id="avisos" role="status" aria-live="polite"></div>
         <div id="dialogo" class="perg" role="dialog" aria-live="polite" aria-label="Conversa">
           <div class="retrato"><img class="px" id="dlgRetrato" alt=""></div>
@@ -1450,6 +1531,18 @@ body.toque-forcado #dpad{display:block}
     <div class="modal-corpo" id="barcoCorpo"></div>
   </div>
 </div>
+<div class="modal" id="modalMasmorra" aria-hidden="true">
+  <div class="modal-caixa perg larga" role="dialog" aria-modal="true" aria-labelledby="masmorraTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px" id="masmorraRetrato" alt=""></span><div><h2 id="masmorraTitulo">Porteiro</h2><p class="sub">porteiro das masmorras</p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="masmorraCorpo"></div>
+  </div>
+</div>
+<div class="modal" id="modalMasmorraFim" aria-hidden="true">
+  <div class="modal-caixa perg" role="dialog" aria-modal="true" aria-labelledby="masmorraFimTitulo">
+    <div class="modal-cab"><span class="icone-cab"><img class="px g32" data-glifo="ui_estrela_chefe" data-escala="4" alt=""></span><div><h2 id="masmorraFimTitulo">Masmorra</h2><p class="sub" id="masmorraFimSub"></p></div><button class="btn-fechar" type="button" data-fechar aria-label="Fechar"><img class="px g16" data-glifo="ui_fechar" alt=""></button></div>
+    <div class="modal-corpo" id="masmorraFimCorpo"></div>
+  </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <script src="storage.js"></script>
 <script src="dados/itens.js"></script>
@@ -1464,6 +1557,7 @@ body.toque-forcado #dpad{display:block}
 <script src="dados/oficios.js"></script>
 <script src="dados/cosmeticos.js"></script>
 <script src="dados/tutorial.js"></script>
+<script src="dados/masmorras.js"></script>
 <script src="logica.js"></script>
 <script src="sprites.js"></script>
 <script src="arte/quadrupede.js"></script>

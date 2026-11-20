@@ -401,6 +401,26 @@ Obstáculos: figueira, basalto_muro, basalto, barco.
 | Luz | `#ffe0a0` (screen, 0.08) · vinheta `#1a1408` |
 
 
+### Masmorras (JGB-23) — áreas sem bioma próprio
+
+As áreas das masmorras (`cova_leoes`, `fornalha`; `DADOS_AREAS_MASMORRAS` em `dados/mundo.js`) não ganham chave
+em `BIOMAS` (o teste da flora trava a lista). O campo `arte` da área diz qual bioma ela usa, e toda a arte pergunta
+por uma função só: `Arte.biomaDaArea(area)` (a chave do bioma: obstáculos `ob_<bioma>_*`, props) e
+`Arte.bioDaArea(area)` (o objeto do bioma, com o clima da masmorra por cima). Nunca leia `Arte.BIOMAS[area]` direto
+em código de cena ou de chão: use `bioDaArea`. O campo `pintarComo` do objeto diz que ramo por região os pintores
+(`arte/terreno.js`, `cenario.js`) seguem.
+
+| Clima | Onde | O que muda |
+|---|---|---|
+| caverna | masmorra sem `fogo` (cova, arte do sinai) | chão, mancha e caminho 42–45% mais escuros (`#140f16`), "água" = abismo (`#07060a` `#100d14` `#1c1720`), só obstáculos de pedra (penedo, marco), sem flores nem relva, vinheta `#050308` 0.62, escuridão fixa 0.4 (sem dia e noite; a luz do jogador e a de Daniel abrem o escuro) |
+| fogo | `fogo: true` (fornalha, arte do egito) | chão de tijolo enfumaçado `#76503f` `#5e3e32` `#8c624c`, "água" = brasa (`#1c0503` `#4e1206` `#360b04` `#c8461a` `#ffb040` `#ffe08a`, a mesma animação da água vira o brilho das rachaduras), colunas e tijolos, luz `#ff8a3a` 0.12, vinheta `#2a0602` 0.5, faíscas (`particulas: brasa`) e sem noite; os pintores seguem os ramos neutros (sem os sulcos e brotos do Egito) |
+
+A câmera e o minimapa ficam presos a `areas[area].vista`. O telégrafo do perigo (casas marcadas) é vermelho
+`#ff3a1a` com borda de ouro `#ffd24a`, como o da investida; o fogo que sobe é um clarão laranja (ADD) mais `fx_fogo`
+em até 90 casas. O protegido (Daniel) usa o morador da `aparencia` dele, com a barra larga de chefe (34 × 5) e um anel
+verde aos pés. Toda criatura de tier `chefe` ganha a estrela, a sombra grande e o ponto maior no minimapa
+(`Arte.CHEFES.has`).
+
 ## 10. Como escrever ou mexer num `arte/*.js`
 
 - O arquivo é uma IIFE que começa por `(function (global) {`, não toca `document` nem `canvas` na carga (os

@@ -344,4 +344,48 @@ const DADOS_MAPAS = {
     ],
     vegetacao: { densidade: 0.55, moitas: { flor: 4, capim: 4, arbusto: 2, seixos: 1 }, beira: { junco: 0.8 } },
   },
+  // Masmorras (JGB-23): a sala jogável (x 4–35, y 4–25) cercada de "água" (abismo ou brasa, conforme a área); o
+  // resto do mapa de 160×120 fica fechado. Pilares soltos (regioes sem tipo: o bioma da arte sorteia o obstáculo).
+  cova_leoes: {
+    terreno: { escala: 7, limiar: 1, densidade: 0, salpico: 0, semente: 101 },
+    regioes: [
+      { x: 10, y: 8, largura: 2, altura: 2, densidade: 1 },
+      { x: 10, y: 21, largura: 2, altura: 2, densidade: 1 },
+      { x: 27, y: 8, largura: 2, altura: 2, densidade: 1 },
+      { x: 27, y: 21, largura: 2, altura: 2, densidade: 1 },
+    ],
+    aguas: [
+      { x: 1, y: 1, largura: 158, altura: 3 },
+      { x: 1, y: 26, largura: 158, altura: 93 },
+      { x: 1, y: 4, largura: 3, altura: 22 },
+      { x: 36, y: 4, largura: 123, altura: 22 },
+    ],
+    vilas: [],
+    caminhos: [],
+    estruturas: [],
+    marcos: [],
+    decoracoes: [],
+    vegetacao: { densidade: 0.25, moitas: { pedra: 3, seixos: 3, liquen: 1 }, beira: {} },
+  },
+  fornalha: {
+    terreno: { escala: 7, limiar: 1, densidade: 0, salpico: 0, semente: 103 },
+    regioes: [
+      { x: 12, y: 9, largura: 1, altura: 1, densidade: 1 },
+      { x: 12, y: 21, largura: 1, altura: 1, densidade: 1 },
+      { x: 26, y: 9, largura: 1, altura: 1, densidade: 1 },
+      { x: 26, y: 21, largura: 1, altura: 1, densidade: 1 },
+    ],
+    aguas: [
+      { x: 1, y: 1, largura: 158, altura: 3 },
+      { x: 1, y: 26, largura: 158, altura: 93 },
+      { x: 1, y: 4, largura: 3, altura: 22 },
+      { x: 36, y: 4, largura: 123, altura: 22 },
+    ],
+    vilas: [],
+    caminhos: [],
+    estruturas: [],
+    marcos: [],
+    decoracoes: [],
+    vegetacao: { densidade: 0.15, moitas: { seixos: 3, caco: 2 }, beira: {} },
+  },
 };

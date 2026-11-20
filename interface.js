@@ -1387,7 +1387,7 @@
     $("#dlgNome").textContent = nomeCurto(nome);
     const reserva = papel === "loja" ? "mercador" : papel === "guia" ? "guia de caravanas" : papel === "mural" ? "vigia · mural de caçadas"
       : papel === "barqueiro" ? "barqueiro" : papel === "deposito" ? "guarda do depósito · baú de todas as cidades"
-      : papel === "ferreiro" ? "ferreiro · forja e engaste" : papel === "ambiente" ? String(nome).split(",").slice(1).join(",").trim() : "";
+      : papel === "ferreiro" ? "ferreiro · forja e engaste" : papel === "masmorra" ? "porteiro das masmorras" : papel === "ambiente" ? String(nome).split(",").slice(1).join(",").trim() : "";
     $("#dlgPapel").textContent = PAPEIS[id] || reserva;
     porFigura($("#dlgRetrato"), visualDe(id), 44, 44);
     $("#dlgRetrato").alt = `Retrato de ${nomeCurto(nome)}`;
@@ -1476,6 +1476,7 @@
     else if (k.acao === "forja") abrirForja(npc.id, k.aba);
     else if (k.acao === "viagem") abrirViagem(npc.id);
     else if (k.acao === "barco") abrirBarco(npc.id);
+    else if (k.acao === "masmorra") abrirMasmorra(npc.id);
   }
 
   // Estado do console: canal, recolhido e altura (largo e médio). Fica neste navegador.
@@ -2981,6 +2982,121 @@
       <p class="nota">A pesca no mar é de graça. Para voltar, navegue até o cais de uma cidade aberta.</p>`;
     abrirModal("modalBarco");
     $("#barcoCorpo [data-embarcar]:not([disabled])")?.focus();
+  }
+
+  // ----- Masmorras (JGB-23) -----
+  // Janela do porteiro: lê visaoEntradaMasmorras (pura, logica.js) e entra pelo comando entrarMasmorra. A espera
+  // da recarga ("Abre de novo em 3 h 59 min") muda sozinha: o tique só redesenha quando a assinatura muda.
+  let porteiroMasmorra = null, falaMasmorra = "", assinaturaMasmorra = "";
+  const relogio = (ms) => { const t = Math.max(0, Math.ceil((ms || 0) / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+  function abrirMasmorra(porteiroId) {
+    const p = jogador();
+    if (!p || typeof visaoEntradaMasmorras !== "function") return;
+    const porteiro = typeof npcs !== "undefined"
+      ? (typeof porteiroId === "string" && npcs[porteiroId]) || (Mundo.porteiroProximo?.(p)) || Object.values(npcs).find((n) => n.papel === "masmorra" && n.area === p.area)
+      : null;
+    if (!porteiro) return;
+    porteiroMasmorra = porteiro.id;
+    porFigura($("#masmorraRetrato"), visualDe(porteiro.id), 44, 44);
+    $("#masmorraTitulo").textContent = nomeCurto(porteiro.nome);
+    falaMasmorra = falaRecente(porteiro.id);
+    if (dlg.id === porteiro.id) fecharDialogo();
+    desenharMasmorra(true);
+    abrirModal("modalMasmorra");
+  }
+  function desenharMasmorra(forcar = false) {
+    const p = jogador();
+    if (!p || !porteiroMasmorra || typeof visaoEntradaMasmorras !== "function") return;
+    const lista = visaoEntradaMasmorras(p, porteiroMasmorra, Date.now());
+    const ass = JSON.stringify([falaMasmorra, lista.map((m) => [m.id, m.podeEntrar, m.motivo, m.vitorias, m.melhorMs, m.recompensa.recebido])]);
+    if (!forcar && ass === assinaturaMasmorra) return;
+    assinaturaMasmorra = ass;
+    const focado = document.activeElement?.dataset?.entrarMasmorra;
+    const moeda = imgGlifo("ui_moeda", "px g16");
+    const cartoes = lista.map((m) => {
+      const r = m.recompensa;
+      const selo = r.recebido ? '<span class="selo-premio recebido">já recebido</span>' : '<span class="selo-premio">exclusivo</span>';
+      const recorde = m.vitorias ? `${m.vitorias} ${m.vitorias === 1 ? "vitória" : "vitórias"} · melhor tempo ${relogio(m.melhorMs)}` : "Nenhuma vitória ainda";
+      const botao = m.podeEntrar
+        ? `<button type="button" class="btn primario" data-entrar-masmorra="${esc(m.id)}" aria-label="Entrar na ${esc(m.nome)}">Entrar</button>`
+        : `<button type="button" class="btn primario" disabled aria-label="${esc(m.nome)}: ${esc(m.motivo)}">${imgGlifo("ui_cadeado")}Fechada</button>`;
+      return `<li class="masmorra${m.podeEntrar ? "" : " fechada"}">
+        <div class="masmorra-cab"><h3>${esc(m.nome)}</h3><span class="ref">${esc(m.referencia)}</span></div>
+        <p class="masmorra-desc">${esc(m.descricao)}</p>
+        <p class="masmorra-mec">${esc(m.mecanica)}</p>
+        <dl class="masmorra-dados">
+          <div><dt>Nível mínimo</dt><dd>${m.nivelMinimo}</dd></div><div><dt>Etapas</dt><dd>${m.etapas}</dd></div><div><dt>Chefe</dt><dd>${esc(m.chefe)}</dd></div>
+        </dl>
+        <div class="masmorra-premio"><span class="icone">${htmlItem(r.item)}</span><span><strong>${esc(r.nomeItem)}</strong>${selo}
+          <span>${r.xp} XP · ${r.moedas} ${moeda} a cada vitória${r.recebido ? "" : "; o item, só na 1ª"}</span></span></div>
+        <div class="masmorra-pe"><span class="recorde">${esc(recorde)}${m.motivo ? `<span class="motivo">${esc(m.motivo)}</span>` : ""}</span>${botao}</div>
+      </li>`;
+    }).join("");
+    const recarga = typeof REGRAS_MASMORRAS !== "undefined" ? REGRAS_MASMORRAS.recargaHoras : 4;
+    $("#masmorraCorpo").innerHTML = `${falaMasmorra ? `<p class="fala-modal">${esc(falaMasmorra)}</p>` : ""}<ul class="lista-masmorras">${cartoes}</ul>
+      <p class="nota">Desistir ou cair lá dentro recomeça a masmorra do início. Depois de uma vitória, ela só abre de novo em ${recarga} horas.</p>`;
+    if (focado) $(`#masmorraCorpo [data-entrar-masmorra="${focado}"]`)?.focus({ preventScroll: true });
+  }
+  // Resultado (masmorraFim, game.js): vitória ou derrota, tempo e recompensa; "Sair" volta à porta.
+  function resultadoMasmorra(x) {
+    const d = typeof DADOS_MASMORRAS !== "undefined" ? DADOS_MASMORRAS[x.masmorra] : null;
+    const r = x.recompensa || {};
+    const moeda = imgGlifo("ui_moeda", "px g16");
+    $("#masmorraFimTitulo").textContent = x.vitoria ? "Vitória!" : "A masmorra falhou";
+    $("#masmorraFimSub").textContent = d ? `${d.nome} · ${d.referencia}` : "";
+    const fala = d ? (x.vitoria ? d.falas.vitoria : d.falas.derrota) : x.mensagem;
+    const premio = x.vitoria
+      ? `<div class="bilhete-linha"><span>Recompensa</span><strong>${r.xp || 0} XP · ${r.moedas || 0} ${moeda}</strong></div>`
+        + (r.item ? `<div class="masmorra-premio ganho"><span class="icone">${htmlItem(r.item)}</span><span><strong>${esc(typeof nomeItem === "function" ? nomeItem(r.item) : r.item)}</strong><span class="selo-premio">exclusivo</span><span>Foi para a sua mochila.</span></span></div>` : "")
+      : "";
+    $("#masmorraFimCorpo").innerHTML = `<p class="fala-modal">${esc(fala)}</p>
+      <div class="bilhete${x.vitoria ? " vitoria" : " derrota"}" role="group" aria-label="Resultado">
+        <div class="bilhete-linha preco"><span>${x.vitoria ? "Vitória" : "Derrota"}</span><strong>${relogio(x.tempoMs)}</strong></div>
+        ${premio}
+      </div>
+      <div class="acoes-barco"><button type="button" class="btn secundario" data-fechar>Ficar mais um pouco</button>
+        <button type="button" class="btn primario" data-sair-masmorra data-foco-inicial>Sair</button></div>`;
+    abrirModal("modalMasmorraFim");
+  }
+  // HUD dentro da masmorra (#masmorraHud): etapa, cronômetro, o protegido, o chefe e Desistir (com confirmação).
+  let assinaturaHudMasmorra = "", confirmaDesistir = 0;
+  function atualizarMasmorraHud() {
+    const hud = $("#masmorraHud");
+    if (!hud) return;
+    const v = typeof Mundo !== "undefined" && Mundo.visaoMasmorra ? Mundo.visaoMasmorra(ID, Date.now()) : null;
+    document.body.classList.toggle("na-masmorra", !!v);
+    if (!v) { hud.hidden = true; confirmaDesistir = 0; assinaturaHudMasmorra = ""; return; }
+    hud.hidden = false;
+    if (confirmaDesistir && Date.now() > confirmaDesistir) confirmaDesistir = 0;
+    const ass = `${v.id}|${v.etapa.numero}|${v.etapa.texto}|${!!v.fim}|${v.fim?.vitoria}|${!!v.protegido}|${v.chefe?.nome || ""}|${!!confirmaDesistir}`;
+    if (ass !== assinaturaHudMasmorra) {
+      assinaturaHudMasmorra = ass;
+      $("#mhNome").textContent = v.nome;
+      $("#mhEtapa").textContent = v.fim ? (v.fim.vitoria ? "Vitória" : "Falhou") : `Etapa ${v.etapa.numero}/${v.etapa.total}`;
+      $("#mhTexto").textContent = v.fim ? (v.fim.vitoria ? "A masmorra foi vencida. Saia quando quiser." : "A masmorra falhou. Saia e tente de novo.") : v.etapa.texto;
+      $("#mhProtegido").hidden = !v.protegido;
+      if (v.protegido) $("#mhProtegido .rot").textContent = v.protegido.nome;
+      $("#mhChefe").hidden = !v.chefe;
+      if (v.chefe) $("#mhChefe .rot").textContent = v.chefe.nome;
+      const b = $("#mhDesistir");
+      b.textContent = v.fim ? "Sair" : confirmaDesistir ? "Desistir mesmo?" : "Desistir";
+      b.classList.toggle("confirmar", !!confirmaDesistir);
+      b.setAttribute("aria-label", v.fim ? "Sair da masmorra" : confirmaDesistir ? "Confirmar: desistir e recomeçar a masmorra do início" : "Desistir da masmorra");
+    }
+    const tempo = v.restanteMs != null ? relogio(v.restanteMs) : v.fim ? relogio(v.fim.tempoMs) : "";
+    const t = $("#mhTempo");
+    if (t.textContent !== tempo) t.textContent = tempo;
+    t.classList.toggle("urgente", v.restanteMs != null && v.restanteMs <= 10000);
+    if (v.protegido) definirBarra($("#mhProtegido .barra"), v.protegido.vida, v.protegido.vidaMax, `${Math.max(0, Math.round(v.protegido.vida))}/${v.protegido.vidaMax}`, { baixa: v.protegido.vida / v.protegido.vidaMax < 0.3 });
+    if (v.chefe) definirBarra($("#mhChefe .barra"), v.chefe.vida, v.chefe.vidaMax, `${Math.max(0, Math.round(v.chefe.vida))}/${v.chefe.vidaMax}`);
+  }
+  function desistirMasmorra() {
+    const v = Mundo.visaoMasmorra?.(ID, Date.now());
+    if (!v) return;
+    if (!v.fim && !confirmaDesistir) { confirmaDesistir = Date.now() + 4000; atualizarMasmorraHud(); return; }
+    confirmaDesistir = 0;
+    if (modalAberto?.id === "modalMasmorraFim") fecharModal(false);
+    executar({ tipo: "sairMasmorra" });
   }
 
   // ----- Oração -----
@@ -4491,7 +4607,7 @@
     document.body.dataset.area = area;
     fecharDialogo();
     // Loja e viagem dependem de estar ao lado do NPC; oração e ajuda não.
-    if (modalAberto && ["modalLoja", "modalViagem", "modalForja"].includes(modalAberto.id)) fecharModal(false);
+    if (modalAberto && ["modalLoja", "modalViagem", "modalForja", "modalMasmorra", "modalMasmorraFim"].includes(modalAberto.id)) fecharModal(false);
     // O mural de um atalaia também; a consulta (T) pode continuar aberta.
     if (modalAberto?.id === "modalMural" && muralNpc !== null) fecharModal(false);
     // A cena nova (área, morte, viagem) liga o teclado e a captura de Espaço e setas de novo; com um
@@ -4499,6 +4615,7 @@
     if (modalAberto || menuJanelas.aberto || menuItem) teclado(false);
     alvoDesenhado = undefined;
     assinaturaBatalha = "";
+    atualizarMasmorraHud();
     atualizar();
   }
 
@@ -4514,6 +4631,8 @@
     atualizarBotaoMana(p); // o maná cai no amanhecer e estraga sozinho, sem nenhuma ação
     atualizarBarraHab(p); // recargas das habilidades
     if (modalAberto?.id === "modalMana") desenharMana();
+    if (modalAberto?.id === "modalMasmorra") desenharMasmorra();
+    atualizarMasmorraHud(); // etapa, cronômetro e as barras do protegido e do chefe
     if (alvoDesenhado && typeof inimigos !== "undefined" && inimigos[alvoDesenhado]) atualizarVidaAlvo(inimigos[alvoDesenhado]);
     if (dlg.id && dlg.npc && Math.max(Math.abs(p.x - dlg.npc.x), Math.abs(p.y - dlg.npc.y)) > 2) fecharDialogo();
     // A espera ("Volta em 19 h 59 min") muda a cada minuto: o mural só se redesenha quando o texto muda.
@@ -4541,6 +4660,7 @@
       else fecharDialogo();
     });
     $("#pontos").addEventListener("click", () => abrirMural(null));
+    $("#mhDesistir")?.addEventListener("click", desistirMasmorra);
     $("#btnBestiario").addEventListener("click", abrirBestiario);
     $("#btnOficios")?.addEventListener("click", () => abrirOficios());
     $("#btnVisual")?.addEventListener("click", abrirVisual);
@@ -4688,6 +4808,13 @@
           $(`#bestiarioCorpo [data-ver-especie="${k}"]`)?.focus({ preventScroll: true });
           return;
         }
+        const entrar = e.target.closest("[data-entrar-masmorra]");
+        if (entrar && !entrar.disabled) {
+          fecharModal(false);
+          executar({ tipo: "entrarMasmorra", masmorra: entrar.dataset.entrarMasmorra });
+          return;
+        }
+        if (e.target.closest("[data-sair-masmorra]")) { fecharModal(false); executar({ tipo: "sairMasmorra" }); return; }
         const embarcar = e.target.closest("[data-embarcar]");
         if (embarcar && !embarcar.disabled) {
           fecharModal(false);
@@ -4847,6 +4974,8 @@
     abrirForja,
     abrirViagem,
     abrirBarco,
+    abrirMasmorra,
+    resultadoMasmorra,
     orar,
     abrirMural,
     abrirBestiario,

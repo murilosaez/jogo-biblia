@@ -11,6 +11,7 @@
 // estruturas com npc). "barqueiro": fica ao lado do cais da cidade, diz o preço da passagem e embarca quem pagar.
 // "deposito": guarda do depósito da cidade (atende à frente de uma banca); o depósito é um só em todas as cidades
 // (REGRAS_DEPOSITO, dados/mundo.js). "ferreiro": forja e engasta (dados/oficios.js), à frente de uma banca.
+// "masmorra": porteiro das masmorras listadas em masmorras (dados/masmorras.js).
 const DADOS_NPCS = [
   // Guardas do depósito (um por cidade). Os nomes vêm dos que cuidavam dos depósitos do templo (Ne 12:25; 13:13)
   // e de Itamar, que fez a conta do material do tabernáculo (Êx 38:21).
@@ -110,6 +111,19 @@ const DADOS_NPCS = [
     papel: "ferreiro",
     aparencia: "cameleiro",
     falas: { saudacao: "Até no deserto a bigorna canta. Forjo armas e armaduras e engasto pedras preciosas." },
+  },
+  // Porteiro das masmorras (JGB-23, dados/masmorras.js): Baruque, o escriba de Jeremias (Jr 36:4), que desceu com ele
+  // ao Egito (Jr 43:6-7); aqui, em Gósen, guarda as histórias do exílio e abre a Cova dos leões e a Fornalha ardente.
+  {
+    id: "porteiro_egito",
+    nome: "Baruque, escriba",
+    area: "egito",
+    x: 22,
+    y: 104,
+    papel: "masmorra",
+    aparencia: "anciao",
+    masmorras: ["cova_leoes", "fornalha"],
+    falas: { saudacao: "Escrevi as palavras que o Senhor deu a Jeremias (Jr 36:4). Quer entrar numa das histórias do exílio?" },
   },
   { id: "noemi1", nome: "Noemi", area: "deserto", x: 136, y: 14, papel: "missao" },
   { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 143, y: 17, papel: "loja" },
