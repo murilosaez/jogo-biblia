@@ -1490,7 +1490,8 @@ teste("27. dados/: conteúdo puro e todas as referências apontam para algo que 
     area(e.area, `criatura ${e.id}`);
     const RARIDADES = j.g("RARIDADES");
     const CHANCES = j.g("CHANCES_SAQUE");
-    assert.ok(Array.isArray(e.saque.itens) && e.saque.itens.length, `${e.id}: tabela de saque`);
+    // As vagas das masmorras (JGB-23) não têm saque de propósito: a masmorra paga na conclusão.
+    assert.ok(Array.isArray(e.saque.itens) && (e.saque.itens.length || e.masmorra), `${e.id}: tabela de saque`);
     for (const linha of e.saque.itens) {
       const onde = `saque de ${e.id}`;
       assert.ok(typeof linha === "object" && linha, `${onde}: cada linha é { item, chance }`);
