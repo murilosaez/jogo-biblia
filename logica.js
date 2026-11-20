@@ -3100,7 +3100,7 @@ const PALAVRAS_CHAVE = {
   embarcar: { acao: "barco", sinonimos: ["barco", "navegar", "mar", "boat"] },
   preço: { acao: "fala", sinonimos: ["quanto", "custa", "custo", "passagem", "valor", "price"] },
   vocação: { acao: "interagir", sinonimos: ["vocacoes", "talentos", "vocation"] },
-  masmorra: { acao: "masmorra", sinonimos: ["masmorras", "entrar", "historias", "cova", "fornalha", "dungeon"] },
+  masmorra: { acao: "masmorra", sinonimos: ["masmorras", "entrar", "historias", "cova", "fornalha", "ventre", "peixe", "jonas", "dungeon"] },
   forjar: { acao: "forja", aba: "forjar", sinonimos: ["forja", "aprimorar", "melhorar", "bigorna", "forge"] },
   engastar: { acao: "forja", aba: "engastar", sinonimos: ["engaste", "pedras", "pedra", "peitoral", "gem", "gems"] },
   conversar: { acao: "interagir", sinonimos: ["falar", "conversa", "novidades", "noticias", "news"] },
@@ -3172,7 +3172,10 @@ function palavrasChaveDoNpc(p, npcId) {
     vender: "Mostre o que tem; compro de tudo: peles, ervas, armas, armaduras e pedras.",
     depósito: "Abra o baú: o que está aqui está em todo depósito.",
     forjar: `Mostre a peça: forjo de +1 a +${REGRAS_FORJA.maximo}. Se o metal não pegar, a peça fica como estava.`,
-    masmorra: "Escolha a história: a Cova dos leões ou a Fornalha ardente.",
+    // a fala do porteiro lista as masmorras que ele abre (npcs[].masmorras)
+    masmorra: (npc.masmorras || []).length > 1
+      ? `Escolha a história: ${npc.masmorras.map((m) => DADOS_MASMORRAS[m]?.nome).filter(Boolean).join(" ou ")}.`
+      : `Quer entrar na história: ${DADOS_MASMORRAS[npc.masmorras?.[0]]?.nome || "a masmorra"}?`,
     engastar: `Uma pedra do peitoral por peça, ${REGRAS_ENGASTE.moedas} moedas o engaste.`,
     viajar: "Para onde vamos? O preço depende da distância.",
     embarcar: falaPassagemBarco(p),

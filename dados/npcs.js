@@ -135,7 +135,7 @@ const DADOS_NPCS = [
     papel: "masmorra",
     aparencia: "pescador",
     masmorras: ["ventre_peixe"],
-    falas: { saudacao: "Meu filho Jonas fugiu do Senhor e foi tragado por um grande peixe (Jn 1:17). Quer descer com ele ao abismo?" },
+    falas: { saudacao: "Meu filho Jonas fugiu do Senhor (Jn 1:3) e foi tragado por um grande peixe (Jn 1:17). Quer descer com ele ao abismo?" },
   },
   { id: "noemi1", nome: "Noemi", area: "deserto", x: 136, y: 14, papel: "missao" },
   { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 143, y: 17, papel: "loja" },

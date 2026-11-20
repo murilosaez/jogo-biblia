@@ -158,8 +158,8 @@ const DADOS_MASMORRAS = {
     nome: "Ventre do grande peixe",
     referencia: "Jonas 1:17–2:10",
     descricao:
-      "Jonas fugiu da presença do Senhor, e o Senhor deparou um grande peixe para que o tragasse; três dias e três noites " +
-      "esteve no ventre do peixe (Jn 1:17). Lá de dentro, ele orou (Jn 2:1). Sobreviva às águas do abismo, ore com ele e " +
+      "Jonas fugiu da presença do Senhor (Jn 1:3), e o Senhor deparou um grande peixe para que o tragasse; três dias e três " +
+      "noites esteve no ventre do peixe (Jn 1:17). Lá de dentro, ele orou (Jn 2:1). Sobreviva às águas do abismo, ore com ele e " +
       "resista até que o Senhor fale ao peixe.",
     mecanica: "Sobreviva ao suco do ventre, fique no círculo para orar com Jonas e vença a serpente do abismo.",
     nivelMinimo: 14,
@@ -186,7 +186,7 @@ const DADOS_MASMORRAS = {
           { padrao: "linhas", aCadaMs: 5000, avisoMs: 1500, dano: 30, nome: "O suco do ventre sobe" },
           { padrao: "alvo", aCadaMs: 6500, avisoMs: 1200, dano: 26, nome: "Uma golfada" },
         ],
-        fim: "\"As águas me cercaram até à alma, o abismo me rodeou\" (Jn 2:5). Jonas se põe a orar.",
+        fim: "O abismo rodeia Jonas; então, do ventre do peixe, ele ora ao Senhor, seu Deus (Jn 2:1).",
       },
       {
         id: "oracao",

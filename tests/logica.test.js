@@ -8132,6 +8132,11 @@ teste("86. masmorras (JGB-23, JGB-52): Cova dos leões, Fornalha ardente e Ventr
   const jv = prepararMasmorra("ventre_peixe", 6);
   posicionarAoLado(jv, "galileia", jv.g("npcs").porteiro_galileia);
   igual(jv.g("visaoEntradaMasmorras")(jv.p, "porteiro_galileia", jv.agora).map((x) => [x.id, x.podeEntrar]), [["ventre_peixe", true]]);
+  // A palavra [masmorra] de cada porteiro fala das masmorras dele.
+  const fala = (npc) => jv.g("palavrasChaveDoNpc")(jv.p, npc).find((k) => k.palavra === "masmorra").fala;
+  assert.match(fala("porteiro_galileia"), /Ventre do grande peixe/);
+  assert.match(fala("porteiro_egito"), /Cova dos leões ou Fornalha ardente/);
+  assert.strictEqual(jv.g("palavraChaveDoTexto")(jv.g("palavrasChaveDoNpc")(jv.p, "porteiro_galileia"), "quero ver o jonas")?.palavra, "masmorra");
   assert.ok(jv.exec({ tipo: "entrarMasmorra", masmorra: "ventre_peixe" }).ok);
   const mv = jv.M.estado[ID].masmorra;
   // Fora do círculo, a oração não anda.
