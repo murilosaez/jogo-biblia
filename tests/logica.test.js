@@ -8127,7 +8127,7 @@ teste("86. masmorras (JGB-23): Cova dos leões e Fornalha ardente vencíveis, re
   jd.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
   jd.M.estado[ID].masmorra.protegido.vida = 0;
   const falhou = jd.atualizar().find((e) => e.tipo === "masmorraFim");
-  assert.ok(falhou && !falhou.vitoria && /Os leões alcançaram Daniel/.test(falhou.mensagem));
+  assert.ok(falhou && !falhou.vitoria && /foi o Senhor quem guardou Daniel/.test(falhou.mensagem));
   igual([jd.p.masmorras.cova_leoes.vitorias, jd.p.masmorras.cova_leoes.proximaEm, jd.p.inventario.includes("selo_dario")], [0, 0, false]);
   const jm = prepararMasmorra("cova_leoes", 7);
   jm.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
@@ -8146,6 +8146,47 @@ teste("86. masmorras (JGB-23): Cova dos leões e Fornalha ardente vencíveis, re
   ps.masmorra = { id: "cova_leoes", volta: { area: "fornalha", x: 1, y: 1 } };
   j.g("normalizarMasmorras")(ps);
   igual([ps.masmorras, ps.masmorra], [{ cova_leoes: { vitorias: 0, melhorMs: null, item: false, proximaEm: 0 } }, null]);
+  // Relógio adiantado na vitória: a recarga nunca passa de recargaHoras a partir de agora.
+  ps.masmorras = { cova_leoes: { vitorias: 1, melhorMs: 1, item: true, proximaEm: js.agora + 365 * 24 * 3_600_000 } };
+  j.g("normalizarMasmorras")(ps, js.agora);
+  assert.strictEqual(ps.masmorras.cova_leoes.proximaEm, js.agora + j.g("REGRAS_MASMORRAS").recargaHoras * 3_600_000);
+
+  // (g) Revisão: aba escondida não pula etapas (o relógio da instância anda no máximo um passo por quadro).
+  const ja = prepararMasmorra("cova_leoes", 2);
+  ja.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  ja.atualizar();
+  ja.avancar(125_000); // a aba ficou escondida: nenhum quadro
+  ja.atualizar();
+  const ma = ja.M.estado[ID].masmorra;
+  igual([ma.etapa, ma.relogio < 1000], [0, true], "a etapa continua de onde parou");
+  // Fúria do chefe vale contra Daniel; escolher a vocação lá dentro não tira Daniel da cova.
+  const jc = prepararMasmorra("cova_leoes", 2);
+  jc.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  const mc = jc.M.estado[ID].masmorra;
+  jc.M.iniciarEtapaMasmorra(jc.p, mc, 1, jc.agora, []);
+  const chefe = jc.g("inimigos").cova_leao_chefe;
+  jc.p.vidaInimigos[chefe.id] = 50;
+  const evc = rodar(jc, 3000);
+  assert.ok(evc.some((e) => e.tipo === "furia" && e.id === chefe.id) && chefe.furioso, "o leão-rei entra em fúria atacando Daniel");
+  jc.p.nivel = 10;
+  jc.p.vocacao = { id: null, especializacao: null, trocas: 0 };
+  jc.exec({ tipo: "escolherVocacao", vocacao: Object.keys(jc.g("VOCACOES"))[0] });
+  assert.ok(jc.M.estado[ID].aliados.some((a) => a.tipo === "protegido"), "Daniel continua sendo atacado");
+  // As criaturas da masmorra não dão XP, saque, caçada nem bestiário; vender tudo não vende o item exclusivo.
+  const jx = prepararMasmorra("cova_leoes", 2);
+  jx.exec({ tipo: "entrarMasmorra", masmorra: "cova_leoes" });
+  rodar(jx, 2500);
+  const leao = [...jx.M.estado[ID].masmorra.ativas][0];
+  const xp0 = jx.p.xp, bes = { ...(jx.p.bestiario || {}) }, inv0 = jx.p.inventario.length;
+  jx.p.vidaInimigos[leao] = 1;
+  posicionarAoLado(jx, "cova_leoes", jx.g("inimigos")[leao]);
+  jx.avancar(1500);
+  assert.ok(jx.exec({ tipo: "atacar", alvoId: leao }).derrotado);
+  assert.strictEqual(jx.p.xp, xp0, "sem XP");
+  igual(jx.p.bestiario || {}, bes, "sem bestiário");
+  assert.strictEqual(jx.p.inventario.length, inv0, `sem saque: ${jx.p.inventario.slice(inv0)}`);
+  jx.p.inventario.push("selo_dario");
+  assert.ok(!jx.M.vendaDeTudo(ID).some((v) => v.item === "selo_dario"), "vender tudo não vende a recompensa exclusiva");
 });
 
 const PASTA_TESTES_ARTE = path.join(__dirname, "arte");

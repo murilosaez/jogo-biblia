@@ -2388,7 +2388,8 @@ for (const [masmorraId, m] of Object.entries(DADOS_MASMORRAS)) {
   for (const vaga of m.vagas) {
     const modelo = DADOS_CRIATURAS.find((c) => c.id === vaga.base);
     if (!modelo) continue;
-    const dados = { ...clonarDados(modelo), grupo: undefined, nomeado: undefined, ...clonarDados(vaga), area: m.area };
+    // Sem saque nem XP herdados: a masmorra paga na conclusão (entrar e desistir não rende nada).
+    const dados = { ...clonarDados(modelo), grupo: undefined, nomeado: undefined, saque: { moedas: 0, itens: [] }, xpRecompensa: 0, ...clonarDados(vaga), area: m.area };
     delete dados.base;
     const e = registrarInimigo(dados);
     Object.assign(e, { base: vaga.base, masmorra: masmorraId, centroX: e.x, centroY: e.y });
@@ -3692,7 +3693,10 @@ function textoRecompensaTutorial(r) {
 // No save: masmorras[id] = { vitorias, melhorMs, item (a recompensa exclusiva já veio), proximaEm (fim da recarga) };
 // masmorra = { id, volta: { area, x, y } } enquanto o jogador está numa (null fora). A instância (etapa, ondas,
 // perigos, protegido) vive em Mundo.estado[id].masmorra.
-function normalizarMasmorras(p) {
+// Passo máximo do relógio de uma instância de masmorra por quadro (ms).
+const PASSO_MAXIMO_MASMORRA = 250;
+
+function normalizarMasmorras(p, agora = Date.now()) {
   if (!objetoValido(p.masmorras)) p.masmorras = {};
   for (const id of Object.keys(p.masmorras)) {
     const h = p.masmorras[id];
@@ -3701,7 +3705,8 @@ function normalizarMasmorras(p) {
       vitorias: Number.isSafeInteger(h.vitorias) && h.vitorias > 0 ? h.vitorias : 0,
       melhorMs: Number.isFinite(h.melhorMs) && h.melhorMs > 0 ? Math.round(h.melhorMs) : null,
       item: h.item === true,
-      proximaEm: Number.isFinite(h.proximaEm) && h.proximaEm > 0 ? h.proximaEm : 0,
+      // relógio adiantado na vitória: a recarga nunca passa do tempo de uma recarga a partir de agora
+      proximaEm: Number.isFinite(h.proximaEm) && h.proximaEm > 0 ? Math.min(h.proximaEm, agora + REGRAS_MASMORRAS.recargaHoras * MS_POR_HORA) : 0,
     };
   }
   const m = p.masmorra;
@@ -3755,7 +3760,7 @@ function visaoEntradaMasmorras(p, porteiroId, agora) {
   const porteiro = registroDe(npcs, porteiroId);
   return (porteiro?.masmorras || []).filter((id) => registroDe(DADOS_MASMORRAS, id)).map((id) => {
     const m = DADOS_MASMORRAS[id], h = p.masmorras?.[id] || { vitorias: 0, melhorMs: null, item: false, proximaEm: 0 };
-    const recargaMs = Math.max(0, (h.proximaEm || 0) - agora);
+    const recargaMs = Math.min(REGRAS_MASMORRAS.recargaHoras * MS_POR_HORA, Math.max(0, (h.proximaEm || 0) - agora));
     const motivo = (p.nivel || 1) < m.nivelMinimo ? `Requer o nível ${m.nivelMinimo}.` : recargaMs > 0 ? `Abre de novo em ${textoEspera(recargaMs)}.` : "";
     const chefes = m.etapas.filter((e) => e.tipo === "chefe").map((e) => m.vagas.find((v) => v.id === e.vaga)?.nome).filter(Boolean);
     return {
@@ -3936,7 +3941,10 @@ const Mundo = {
       ...(naInstancia ? { masmorra, aliados: masmorra.protegido ? [masmorra.protegido] : [] } : {}),
     };
     if (naInstancia) for (const vagaId of masmorra.ativas) Object.assign(inimigos[vagaId], masmorra.posicoes?.[vagaId] || {});
-    else if (p.masmorra || areas[p.area]?.masmorra) this.expulsarDaMasmorra(p, "A masmorra recomeça do início na próxima entrada.");
+    else if (p.masmorra || areas[p.area]?.masmorra) {
+      const emRecarga = (p.masmorras?.[p.masmorra?.id]?.proximaEm || 0) > Date.now();
+      this.expulsarDaMasmorra(p, emRecarga ? "Você voltou à porta da masmorra." : "A masmorra recomeça do início na próxima entrada.");
+    }
     this.limparSaques(p, Date.now());
     this.salvar(p);
     return p;
@@ -4036,7 +4044,7 @@ const Mundo = {
     // Tutorial (JGB-14): só o personagem novo o recebe; saves sem o campo ficam com ele pulado.
     normalizarTutorial(p, novo);
     // Masmorras (JGB-23): histórico e a porta de volta (sem o campo, vazios — não mudou a versão do save).
-    normalizarMasmorras(p);
+    normalizarMasmorras(p, agora);
     // Caçadas e pontos de tarefa (save v8). Saves até a v7 não têm esses campos: começam vazios.
     normalizarTarefas(p, agora);
     // Bestiário (save v10): abates por espécie. Saves até a v9 começam do zero (não havia contagem).
@@ -4819,7 +4827,8 @@ const Mundo = {
     const p = this.jogadores[id];
     if (!p) return [];
     // Peças forjadas, com pedra (JGB-25) ou de conjunto (JGB-26) também ficam: só saem pela venda de uma em uma.
-    const aprimorado = (item) => infoItem(item)?.forja > 0 || !!infoItem(item)?.pedra || !!conjuntoDoItem(item);
+    const exclusivo = (item) => Object.values(DADOS_MASMORRAS).some((m) => m.recompensa.item === baseItem(item)); // JGB-23
+    const aprimorado = (item) => infoItem(item)?.forja > 0 || !!infoItem(item)?.pedra || !!conjuntoDoItem(item) || exclusivo(item);
     const itens = [...new Set(p.inventario)].filter((item) => valorDeVenda(item) > 0 && !TIPOS_FORA_DE_VENDER_TUDO.has(infoItem(item)?.tipo) && !aprimorado(item));
     return itens
       .map((item) => ({ item, quantidade: this.quantidadeLivre(id, item), valor: valorDeVenda(item) }))
@@ -4873,7 +4882,11 @@ const Mundo = {
       id: masmorraId,
       area: m.area,
       etapa: -1,
-      etapaDesde: agora,
+      // relógio próprio (ms): avança no máximo PASSO_MAXIMO_MASMORRA por quadro — com a aba escondida, a masmorra
+      // para junto com o jogo (sem isso, voltar à aba pulava as etapas por tempo).
+      relogio: 0,
+      ultimoQuadro: agora,
+      etapaDesde: 0,
       iniciouEm: agora,
       ondasFeitas: [],
       fasesFeitas: [],
@@ -4962,11 +4975,11 @@ const Mundo = {
   iniciarEtapaMasmorra(p, m, indice, agora, eventos) {
     const d = DADOS_MASMORRAS[m.id];
     m.etapa = indice;
-    m.etapaDesde = agora;
+    m.etapaDesde = m.relogio;
     m.ondasFeitas = [];
     m.fasesFeitas = [];
     const etapa = d.etapas[indice];
-    m.proximoPerigo = (etapa.perigos || []).map((x) => agora + x.aCadaMs);
+    m.proximoPerigo = (etapa.perigos || []).map((x) => m.relogio + x.aCadaMs);
     if (etapa.tipo === "chefe") this.acenderVaga(p, m, etapa.vaga, eventos);
     eventos.push({ tipo: "masmorraEtapa", masmorra: m.id, numero: indice + 1, total: d.etapas.length, texto: etapa.texto });
   },
@@ -4978,7 +4991,9 @@ const Mundo = {
     if (!m || m.fim || p.area !== m.area) return null;
     const d = DADOS_MASMORRAS[m.id];
     const etapa = d.etapas[m.etapa];
-    const passou = agora - m.etapaDesde;
+    m.relogio += Math.min(PASSO_MAXIMO_MASMORRA, Math.max(0, agora - m.ultimoQuadro));
+    m.ultimoQuadro = agora;
+    const passou = m.relogio - m.etapaDesde;
     // Posições das vagas acesas (a troca de cena reposiciona as criaturas).
     for (const vagaId of m.ativas) m.posicoes[vagaId] = { x: inimigos[vagaId].x, y: inimigos[vagaId].y };
     for (const vagaId of [...m.ativas]) if (!(p.vidaInimigos[vagaId] > 0) || p.inimigosDerrotados.includes(vagaId)) m.ativas.delete(vagaId);
@@ -5000,18 +5015,17 @@ const Mundo = {
     }
     // Perigos: marcar (aviso) e depois ferir quem estiver nas casas.
     (etapa.perigos || []).forEach((perigo, i) => {
-      if (agora < m.proximoPerigo[i]) return;
-      m.proximoPerigo[i] = agora + perigo.aCadaMs;
+      if (m.relogio < m.proximoPerigo[i]) return;
+      m.proximoPerigo[i] = m.relogio + perigo.aCadaMs;
       const chefe = etapa.tipo === "chefe" ? inimigos[etapa.vaga] : null;
       const centro = perigo.padrao === "anel" ? (chefe && m.ativas.has(chefe.id) ? chefe : null) : { x: p.x, y: p.y };
       const casas = casasDoPerigo(perigo, m, centro, m.aleatorio);
       if (!casas.length) return;
-      const em = agora + perigo.avisoMs;
-      m.perigos.push({ em, casas, dano: perigo.dano, nome: perigo.nome });
-      eventos.push({ tipo: "perigoAviso", casas, ate: em, nome: perigo.nome, area: m.area });
+      m.perigos.push({ em: m.relogio + perigo.avisoMs, casas, dano: perigo.dano, nome: perigo.nome });
+      eventos.push({ tipo: "perigoAviso", casas, ate: agora + perigo.avisoMs, nome: perigo.nome, area: m.area });
     });
-    const prontos = m.perigos.filter((x) => agora >= x.em);
-    m.perigos = m.perigos.filter((x) => agora < x.em);
+    const prontos = m.perigos.filter((x) => m.relogio >= x.em);
+    m.perigos = m.perigos.filter((x) => m.relogio < x.em);
     for (const x of prontos) {
       const atingiu = x.casas.some((c) => c.x === p.x && c.y === p.y);
       const { dano } = atingiu ? this.absorverDano(p, mitigarDano(x.dano, defesaTotal(p)), agora) : { dano: 0 };
@@ -5042,7 +5056,7 @@ const Mundo = {
     const d = DADOS_MASMORRAS[m.id];
     for (const vagaId of [...m.ativas]) this.apagarVaga(p, vagaId);
     m.perigos = [];
-    const tempoMs = agora - m.iniciouEm;
+    const tempoMs = m.relogio;
     const h = p.masmorras[m.id] || { vitorias: 0, melhorMs: null, item: false, proximaEm: 0 };
     const recompensa = { xp: 0, moedas: 0, item: null };
     let niveis = [];
@@ -5089,12 +5103,12 @@ const Mundo = {
       id: m.id,
       nome: d.nome,
       etapa: { numero: m.etapa + 1, total: d.etapas.length, tipo: etapa.tipo, texto: etapa.texto },
-      restanteMs: etapa.duracaoMs && !m.fim ? Math.max(0, etapa.duracaoMs - (agora - m.etapaDesde)) : null,
+      restanteMs: etapa.duracaoMs && !m.fim ? Math.max(0, etapa.duracaoMs - (m.relogio - m.etapaDesde)) : null,
       ondas: etapa.ondas?.length ? { feitas: m.ondasFeitas.length, total: etapa.ondas.length } : null,
       criaturas: m.ativas.size,
       protegido: m.protegido ? { nome: m.protegido.nome, vida: m.protegido.vida, vidaMax: m.protegido.vidaMax } : null,
       chefe: chefe && m.ativas.has(chefe.id) ? { nome: chefe.nome, vida: p.vidaInimigos[chefe.id], vidaMax: atributosInimigo(p, chefe).vidaMaxima } : null,
-      tempoMs: agora - m.iniciouEm,
+      tempoMs: m.relogio,
       fim: m.fim,
     };
   },
@@ -6284,6 +6298,7 @@ const Mundo = {
   // Devolve só as que avançaram: [{ id, nome, curto, progresso, meta, cumpridaAgora }].
   registrarAbateTarefas(p, e) {
     const avancos = [];
+    if (e.masmorra) return avancos; // vagas de masmorra (JGB-23) não contam: dá para entrar e sair à vontade
     for (const id of ORDEM_TAREFAS) {
       const s = p.tarefas?.[id];
       const t = TAREFAS[id];
@@ -6297,7 +6312,7 @@ const Mundo = {
   // Bestiário: +1 abate na espécie. Devolve o novo total, o estágio, se subiu de estágio agora e a família
   // cujo amuleto este abate completou (ou null).
   registrarAbateBestiario(p, e) {
-    if (!registroDe(ESPECIES, e.especie)) return null;
+    if (e.masmorra || !registroDe(ESPECIES, e.especie)) return null;
     if (!objetoValido(p.bestiario)) p.bestiario = {};
     const antes = abatesDaEspecie(p, e.especie);
     const tinhaAmuleto = progressoAmuleto(p, e.familia).ativo;
@@ -6608,15 +6623,16 @@ const Mundo = {
       }
       return null;
     }
-    // Ovelha do Pastor por perto (JGB-20): a criatura vai atrás dela em vez de você.
-    const isca = this.iscaDaCriatura(id, e);
-    if (isca) return this.atacarIsca(id, p, e, at, isca, agora, eventos);
     const vida = p.vidaInimigos[e.id];
-
+    // A fúria vale também contra a isca (vem antes dela).
     if (tem("furia") && !e.furioso && vida <= at.vidaMaxima * COMPORTAMENTOS.furia.vidaLimite) {
       e.furioso = true;
       eventos.push({ tipo: "furia", id: e.id, mensagem: `${nome} entra em fúria!` });
     }
+    // Ovelha do Pastor (JGB-20) ou o protegido da masmorra (JGB-23) por perto: a criatura vai atrás dele em vez de você.
+    const isca = this.iscaDaCriatura(id, e);
+    if (isca) return this.atacarIsca(id, p, e, at, isca, agora, eventos);
+
     if (tem("fuga") && !e.fugiu && vida <= at.vidaMaxima * COMPORTAMENTOS.fuga.vidaLimite) {
       e.fugiu = true;
       e.fugindoAte = agora + COMPORTAMENTOS.fuga.duracao;
@@ -7032,7 +7048,7 @@ const Mundo = {
     p.talentos = {};
     p.recargas = {};
     p.buffs = {};
-    if (this.estado[id]) this.estado[id].aliados = [];
+    if (this.estado[id]) this.estado[id].aliados = (this.estado[id].aliados || []).filter((a) => a.tipo === "protegido"); // o protegido da masmorra fica
     let arma = "";
     if (v.arma && !p.inventario.includes(v.arma) && !Object.values(p.equipamento).includes(v.arma)) {
       arma = this.adicionarItem(p, v.arma) ? ` Você recebeu: ${nomeItem(v.arma)} (equipe na mão da arma).` : ` Libere espaço na mochila: a ${nomeItem(v.arma).toLowerCase()} está com o mercador de Canaã.`;
@@ -7509,8 +7525,9 @@ const Mundo = {
     const alcanca = distancia <= ALCANCE_CORPO || (alcance > ALCANCE_CORPO && this.linhaReta(e, ovelha, alcance + 0.5));
     if (alcanca) {
       if (agora < e.proximoAtaque) return null;
-      e.proximoAtaque = agora + at.intervaloAtaque;
-      const dano = mitigarDano(at.dano, ovelha.defesa ?? REGRAS_VOCACAO.aliados.ovelha.defesa);
+      const furia = e.furioso ? COMPORTAMENTOS.furia : null;
+      e.proximoAtaque = agora + Math.round(at.intervaloAtaque * (furia ? furia.intervalo : 1));
+      const dano = mitigarDano(Math.round(at.dano * (furia ? furia.dano : 1)), ovelha.defesa ?? REGRAS_VOCACAO.aliados.ovelha.defesa);
       ovelha.vida = Math.max(0, ovelha.vida - dano);
       eventos.push({ tipo: "iscaAtingida", aliadoId: ovelha.id, inimigoId: e.id, dano, vida: ovelha.vida, distancia: distancia > ALCANCE_CORPO });
       return null;
@@ -7580,6 +7597,7 @@ const Mundo = {
     const regra = regraMorte(p.nivel);
     // Morte numa masmorra (JGB-23): ela falha, e o que cair vai para a porta de volta (a instância some).
     const naMasmorra = !!p.masmorra;
+    const venceu = !!this.estado[id]?.masmorra?.fim?.vitoria; // já tinha vencido: nada falhou
     const local = naMasmorra ? this.fecharInstancia(id, p) : { area: p.area, x: p.x, y: p.y };
     const moedasPerdidas = Math.floor(p.moedas * regra.moedas);
     p.moedas -= moedasPerdidas;
@@ -7643,7 +7661,7 @@ const Mundo = {
     const partes = [];
     if (moedasPerdidas) partes.push(`${moedasPerdidas} moedas perdidas (${Math.round(regra.moedas * 100)}%)`);
     if (xpPerdido) partes.push(`${xpPerdido} XP de habilidade perdidos (${Math.round(regra.xpHabilidade * 100)}%)`);
-    if (itemPerdido) partes.push(`${nomeItem(itemPerdido)} caiu no local da derrota`);
+    if (itemPerdido) partes.push(naMasmorra ? `${nomeItem(itemPerdido)} caiu à porta da masmorra (${areas[local.area]?.nome || local.area})` : `${nomeItem(itemPerdido)} caiu no local da derrota`);
     const nota = partes.length
       ? `Penalidade de morte (nível ${p.nivel}): ${partes.join("; ")}.`
       : regra.moedas
@@ -7654,7 +7672,7 @@ const Mundo = {
       tipo: "renasceu",
       causa,
       penalidade: { moedas: moedasPerdidas, xpHabilidade: xpPerdido, item: itemPerdido },
-      mensagem: `${inicio}${naMasmorra ? " A masmorra falhou e recomeça do início na próxima entrada." : ""} Você voltou a Canaã com a vida restaurada. ${nota}`,
+      mensagem: `${inicio}${naMasmorra && !venceu ? " A masmorra falhou e recomeça do início na próxima entrada." : ""} Você voltou a Canaã com a vida restaurada. ${nota}`,
     };
   },
 

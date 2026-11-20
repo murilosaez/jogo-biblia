@@ -5,7 +5,8 @@
 
 // Uma masmorra é uma área própria (dados/mundo.js, DADOS_AREAS_MASMORRAS; desenho em dados/mapas.js) onde só se
 // entra pelo porteiro (papel "masmorra", dados/npcs.js). Lá dentro, o estado (etapa, ondas, perigos, o NPC
-// protegido) vive só na memória: recarregar a página ou morrer devolve à porta e a masmorra recomeça.
+// protegido) vive só na memória: recarregar a página devolve à porta e a masmorra recomeça; morrer lá dentro leva a
+// Canaã, como toda morte (o item que cair fica à porta), e a masmorra também recomeça.
 //
 // REGRAS_MASMORRAS: recargaHoras (depois de uma vitória, a mesma masmorra só abre de novo após esse tempo).
 //
@@ -39,21 +40,22 @@ const DADOS_MASMORRAS = {
     nome: "Cova dos leões",
     referencia: "Daniel 6",
     descricao:
-      "Daniel orou ao seu Deus como costumava, e por isso o lançaram na cova dos leões (Dn 6:10, 16). Passe a noite " +
-      "ao lado dele: os leões famintos vêm em levas, e o maior deles vem por último.",
+      "Daniel orou ao seu Deus como costumava, e por isso o lançaram na cova dos leões (Dn 6:10, 16). Foi o Senhor quem " +
+      "fechou a boca dos leões (Dn 6:22); aqui, você vigia ao lado dele a noite inteira: os leões famintos vêm em levas, " +
+      "e o maior deles vem por último.",
     mecanica: "Proteja Daniel até o amanhecer (cerca de 3 minutos): os leões atacam a ele, não a você.",
     nivelMinimo: 10,
     area: "cova_leoes",
     sala: { x: 4, y: 4, largura: 32, altura: 22 },
     protegido: { nome: "Daniel", aparencia: "anciao", x: 19, y: 15, vida: 360, defesa: 2, raioIsca: 40 },
     vagas: [
-      { id: "cova_leao_1", base: "leao1", x: 33, y: 6, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
-      { id: "cova_leao_2", base: "leao1", x: 33, y: 24, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
-      { id: "cova_leao_3", base: "leao1", x: 19, y: 5, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
-      { id: "cova_leao_4", base: "leao1", x: 19, y: 24, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
-      { id: "cova_leao_5", base: "leao1", x: 34, y: 15, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
-      { id: "cova_leao_6", base: "leao1", x: 28, y: 5, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
-      { id: "cova_leao_7", base: "leao1", x: 28, y: 24, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
+      { id: "cova_leao_1", base: "leao1", x: 33, y: 6, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, raioPercepcao: 40 },
+      { id: "cova_leao_2", base: "leao1", x: 33, y: 24, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, raioPercepcao: 40 },
+      { id: "cova_leao_3", base: "leao1", x: 19, y: 5, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, raioPercepcao: 40 },
+      { id: "cova_leao_4", base: "leao1", x: 19, y: 24, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, raioPercepcao: 40 },
+      { id: "cova_leao_5", base: "leao1", x: 34, y: 15, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, raioPercepcao: 40 },
+      { id: "cova_leao_6", base: "leao1", x: 28, y: 5, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, raioPercepcao: 40 },
+      { id: "cova_leao_7", base: "leao1", x: 28, y: 24, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, raioPercepcao: 40 },
       {
         id: "cova_leao_chefe", base: "leao1", x: 34, y: 15, nome: "Leão-rei da cova", tier: "chefe", escala: 1.3, vidaMaxima: 900, danoContraJogador: 13,
         defesa: 7, xpRecompensa: 400, raioPercepcao: 40, comportamento: ["investida", "furia"], vidaLimite: 0.3,
@@ -86,7 +88,7 @@ const DADOS_MASMORRAS = {
     falas: {
       entrada: "Daniel está na cova. Fique ao lado dele até o amanhecer.",
       vitoria: "Daniel saiu da cova sem dano algum, porque crera no seu Deus (Dn 6:23).",
-      derrota: "Os leões alcançaram Daniel. Volte quando estiver pronto.",
+      derrota: "A sua vigília não resistiu desta vez; foi o Senhor quem guardou Daniel (Dn 6:22). Volte quando estiver pronto.",
     },
   },
 
@@ -101,13 +103,13 @@ const DADOS_MASMORRAS = {
     area: "fornalha",
     sala: { x: 4, y: 4, largura: 32, altura: 22 },
     vagas: [
-      { id: "fornalha_guarda_1", base: "mercenario1", x: 33, y: 7, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8, xpRecompensa: 70,
+      { id: "fornalha_guarda_1", base: "mercenario1", x: 33, y: 7, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8,
         raioPercepcao: 40, comportamento: "padrao" },
-      { id: "fornalha_guarda_2", base: "mercenario1", x: 33, y: 23, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8, xpRecompensa: 70,
+      { id: "fornalha_guarda_2", base: "mercenario1", x: 33, y: 23, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8,
         raioPercepcao: 40, comportamento: "padrao" },
-      { id: "fornalha_guarda_3", base: "mercenario1", x: 26, y: 6, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8, xpRecompensa: 70,
+      { id: "fornalha_guarda_3", base: "mercenario1", x: 26, y: 6, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8,
         raioPercepcao: 40, comportamento: "padrao" },
-      { id: "fornalha_guarda_4", base: "mercenario1", x: 26, y: 24, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8, xpRecompensa: 70,
+      { id: "fornalha_guarda_4", base: "mercenario1", x: 26, y: 24, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8,
         raioPercepcao: 40, comportamento: "padrao" },
       {
         id: "fornalha_capitao", base: "mercenario1", x: 32, y: 15, nome: "Capitão da guarda de Nabucodonosor", tier: "chefe", escala: 1.3, vidaMaxima: 1000,
@@ -140,12 +142,12 @@ const DADOS_MASMORRAS = {
           { padrao: "anel", aCadaMs: 6000, avisoMs: 1400, dano: 26, nome: "Brasas em volta do capitão" },
         ],
         fases: [{ vidaAte: 0.5, chamar: ["fornalha_guarda_1", "fornalha_guarda_2"], texto: "O capitão chama os guardas!" }],
-        fim: "\"Não posso ver quatro homens soltos, que andam passeando dentro do fogo, sem nenhum dano?\" (Dn 3:25).",
+        fim: "\"Eu, porém, vejo quatro homens soltos, que andam passeando dentro do fogo, sem nenhum dano\" (Dn 3:25).",
       },
     ],
     recompensa: { xp: 1100, moedas: 150, item: "turbante_fornalha" },
     falas: {
-      entrada: "O fogo não terá poder sobre você. Siga até o fim.",
+      entrada: "A fornalha foi aquecida sete vezes mais (Dn 3:19). Saia das casas marcadas e siga até o fim.",
       vitoria: "Nem um cabelo foi chamuscado, nem cheiro de fogo passou sobre eles (Dn 3:27).",
       derrota: "As chamas venceram desta vez. Volte quando estiver pronto.",
     },

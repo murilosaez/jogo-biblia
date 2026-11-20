@@ -112,8 +112,8 @@ const DADOS_NPCS = [
     aparencia: "cameleiro",
     falas: { saudacao: "Até no deserto a bigorna canta. Forjo armas e armaduras e engasto pedras preciosas." },
   },
-  // Porteiro das masmorras (JGB-23, dados/masmorras.js): Baruque, o escriba de Jeremias, que desceu com ele ao Egito
-  // (Jr 36:4; 43:6), guarda as histórias do exílio e abre a Cova dos leões e a Fornalha ardente.
+  // Porteiro das masmorras (JGB-23, dados/masmorras.js): Baruque, o escriba de Jeremias (Jr 36:4), que desceu com ele
+  // ao Egito (Jr 43:6-7); aqui, em Gósen, guarda as histórias do exílio e abre a Cova dos leões e a Fornalha ardente.
   {
     id: "porteiro_egito",
     nome: "Baruque, escriba",
@@ -123,7 +123,7 @@ const DADOS_NPCS = [
     papel: "masmorra",
     aparencia: "anciao",
     masmorras: ["cova_leoes", "fornalha"],
-    falas: { saudacao: "Escrevi o que o Senhor falou ao seu povo no exílio. Quer entrar numa dessas histórias?" },
+    falas: { saudacao: "Escrevi as palavras que o Senhor deu a Jeremias (Jr 36:4). Quer entrar numa das histórias do exílio?" },
   },
   { id: "noemi1", nome: "Noemi", area: "deserto", x: 136, y: 14, papel: "missao" },
   { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 143, y: 17, papel: "loja" },
