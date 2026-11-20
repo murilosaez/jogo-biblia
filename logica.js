@@ -4976,12 +4976,13 @@ const Mundo = {
     const d = DADOS_MASMORRAS[m.id];
     m.etapa = indice;
     m.etapaDesde = m.relogio;
+    m.progresso = 0; // etapa "zona": tempo dentro do círculo
     m.ondasFeitas = [];
     m.fasesFeitas = [];
     const etapa = d.etapas[indice];
     m.proximoPerigo = (etapa.perigos || []).map((x) => m.relogio + x.aCadaMs);
     if (etapa.tipo === "chefe") this.acenderVaga(p, m, etapa.vaga, eventos);
-    eventos.push({ tipo: "masmorraEtapa", masmorra: m.id, numero: indice + 1, total: d.etapas.length, texto: etapa.texto });
+    eventos.push({ tipo: "masmorraEtapa", masmorra: m.id, numero: indice + 1, total: d.etapas.length, texto: etapa.texto, ...(etapa.zona ? { zona: { ...etapa.zona } } : {}) });
   },
 
   // Laço da instância (chamado por atualizar): ondas, perigos, fases do chefe, protegido e fim de etapa.
@@ -4991,8 +4992,11 @@ const Mundo = {
     if (!m || m.fim || p.area !== m.area) return null;
     const d = DADOS_MASMORRAS[m.id];
     const etapa = d.etapas[m.etapa];
-    m.relogio += Math.min(PASSO_MAXIMO_MASMORRA, Math.max(0, agora - m.ultimoQuadro));
+    const passo = Math.min(PASSO_MAXIMO_MASMORRA, Math.max(0, agora - m.ultimoQuadro));
+    m.relogio += passo;
     m.ultimoQuadro = agora;
+    // Etapa "zona" (JGB-52): o tempo só conta com o jogador dentro do círculo.
+    if (etapa.tipo === "zona" && distanciaChebyshev(p, etapa.zona) <= etapa.zona.raio) m.progresso += passo;
     const passou = m.relogio - m.etapaDesde;
     // Posições das vagas acesas (a troca de cena reposiciona as criaturas).
     for (const vagaId of m.ativas) m.posicoes[vagaId] = { x: inimigos[vagaId].x, y: inimigos[vagaId].y };
@@ -5042,7 +5046,7 @@ const Mundo = {
     // Protegido caído: a masmorra falha.
     if (m.protegido && m.protegido.vida <= 0) return this.concluirMasmorra(id, p, m, false, agora, eventos);
     // Fim da etapa.
-    const cumprida = etapa.tipo === "chefe" ? !m.ativas.has(etapa.vaga) : passou >= etapa.duracaoMs;
+    const cumprida = etapa.tipo === "chefe" ? !m.ativas.has(etapa.vaga) : etapa.tipo === "zona" ? m.progresso >= etapa.duracaoMs : passou >= etapa.duracaoMs;
     if (!cumprida) return null;
     if (etapa.tipo !== "chefe") for (const vagaId of [...m.ativas]) this.apagarVaga(p, vagaId); // a etapa acabou: as que restam somem
     if (etapa.fim) eventos.push({ tipo: "masmorraFase", masmorra: m.id, mensagem: etapa.fim });
@@ -5103,7 +5107,8 @@ const Mundo = {
       id: m.id,
       nome: d.nome,
       etapa: { numero: m.etapa + 1, total: d.etapas.length, tipo: etapa.tipo, texto: etapa.texto },
-      restanteMs: etapa.duracaoMs && !m.fim ? Math.max(0, etapa.duracaoMs - (m.relogio - m.etapaDesde)) : null,
+      restanteMs: etapa.duracaoMs && !m.fim ? Math.max(0, etapa.duracaoMs - (etapa.tipo === "zona" ? m.progresso : m.relogio - m.etapaDesde)) : null,
+      zona: etapa.zona && !m.fim ? { ...etapa.zona, dentro: distanciaChebyshev(p, etapa.zona) <= etapa.zona.raio } : null,
       ondas: etapa.ondas?.length ? { feitas: m.ondasFeitas.length, total: etapa.ondas.length } : null,
       criaturas: m.ativas.size,
       protegido: m.protegido ? { nome: m.protegido.nome, vida: m.protegido.vida, vidaMax: m.protegido.vidaMax } : null,

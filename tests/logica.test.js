@@ -8018,6 +8018,17 @@ function jogarMasmorra(j, limiteMs = 6 * 60_000) {
       if (marcadas.has(`${p.x},${p.y}`)) {
         const saida = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]].find(([dx, dy]) => livre(p.x + dx, p.y + dy));
         if (saida) { j.exec({ tipo: "mover", dx: saida[0], dy: saida[1] }); proximoPasso = j.agora + vel(p).diagonal; }
+      } else if (M.visaoMasmorra(ID, j.agora)?.zona && !M.visaoMasmorra(ID, j.agora).zona.dentro) {
+        // Etapa de oração: volta ao círculo (o tempo só conta lá dentro).
+        const z = M.visaoMasmorra(ID, j.agora).zona;
+        const grade = M.gradeDePassagem(p), COLS = j.g("COLS");
+        const r = j.g("rotaNaGrade")((x, y) => grade[y * COLS + x] === 1 && !marcadas.has(`${x},${y}`), p, z);
+        const passo = r?.passos?.[0];
+        if (passo) { j.exec({ tipo: "mover", dx: passo[0], dy: passo[1] }); proximoPasso = j.agora + (passo[0] && passo[1] ? vel(p).diagonal : vel(p).reto); }
+      } else if (M.visaoMasmorra(ID, j.agora)?.zona) {
+        // Dentro do círculo: só bate em quem chegou perto (não sai dele).
+        const perto = [...m.ativas].map((id) => inimigos[id]).find((e) => j.g("distanciaChebyshev")(p, e) <= 1);
+        if (perto && M.recargaAtaque(ID) === 0) j.exec({ tipo: "atacar", alvoId: perto.id });
       } else {
         const ref = m.protegido || p;
         const alvo = [...m.ativas].map((id) => inimigos[id]).sort((a, b) => j.g("distanciaChebyshev")(a, ref) - j.g("distanciaChebyshev")(b, ref))[0];
@@ -8039,7 +8050,7 @@ function jogarMasmorra(j, limiteMs = 6 * 60_000) {
   return { resultado, queimaduras };
 }
 
-teste("86. masmorras (JGB-23): Cova dos leões e Fornalha ardente vencíveis, recompensa exclusiva, falha, recarga e save", () => {
+teste("86. masmorras (JGB-23, JGB-52): Cova dos leões, Fornalha ardente e Ventre do grande peixe vencíveis, recompensa exclusiva, falha, recarga e save", () => {
   const g0 = carregarJogo().g;
   const D = g0("DADOS_MASMORRAS");
   // (a) Dados: cada masmorra com área própria fora da viagem, sala livre, chefe, recompensa exclusiva e vagas válidas.
@@ -8117,6 +8128,30 @@ teste("86. masmorras (JGB-23): Cova dos leões e Fornalha ardente vencíveis, re
   assert.ok(jf.p.inventario.includes("turbante_fornalha"));
   assert.ok(f.resultado.tempoMs >= 75_000 && f.resultado.tempoMs <= 240_000, `fornalha em ${f.resultado.tempoMs} ms`);
   console.log(`        fornalha ardente: vitória em ${(f.resultado.tempoMs / 1000).toFixed(0)} s, ${f.queimaduras} queimaduras`);
+  // (d2) Ventre do grande peixe (JGB-52): sobreviver ao suco, orar no círculo (o tempo só conta lá dentro) e vencer a serpente.
+  const jv = prepararMasmorra("ventre_peixe", 6);
+  posicionarAoLado(jv, "galileia", jv.g("npcs").porteiro_galileia);
+  igual(jv.g("visaoEntradaMasmorras")(jv.p, "porteiro_galileia", jv.agora).map((x) => [x.id, x.podeEntrar]), [["ventre_peixe", true]]);
+  assert.ok(jv.exec({ tipo: "entrarMasmorra", masmorra: "ventre_peixe" }).ok);
+  const mv = jv.M.estado[ID].masmorra;
+  // Fora do círculo, a oração não anda.
+  jv.M.iniciarEtapaMasmorra(jv.p, mv, 1, jv.agora, []);
+  const zona = D.ventre_peixe.etapas[1].zona;
+  jv.p.x = zona.x + zona.raio + 3; jv.p.y = zona.y;
+  rodar(jv, 2000);
+  igual([mv.progresso, jv.M.visaoMasmorra(ID, jv.agora).zona.dentro], [0, false]);
+  jv.p.x = zona.x; jv.p.y = zona.y;
+  rodar(jv, 2000);
+  assert.ok(mv.progresso >= 1800 && jv.M.visaoMasmorra(ID, jv.agora).restanteMs <= D.ventre_peixe.etapas[1].duracaoMs - 1800, "dentro, a oração anda");
+  // A partida inteira, do começo.
+  const jv2 = prepararMasmorra("ventre_peixe", 9);
+  posicionarAoLado(jv2, "galileia", jv2.g("npcs").porteiro_galileia);
+  assert.ok(jv2.exec({ tipo: "entrarMasmorra", masmorra: "ventre_peixe" }).ok);
+  const v = jogarMasmorra(jv2);
+  assert.ok(v.resultado?.vitoria, `vence o ventre (${JSON.stringify(v.resultado)})`);
+  assert.ok(jv2.p.inventario.includes("concha_peixe"));
+  assert.ok(v.resultado.tempoMs >= 85_000 && v.resultado.tempoMs <= 300_000, `ventre em ${v.resultado.tempoMs} ms`);
+  console.log(`        ventre do grande peixe: vitória em ${(v.resultado.tempoMs / 1000).toFixed(0)} s, ${v.queimaduras} queimaduras`);
   // Quem fica parado é queimado: o perigo fere de verdade.
   const jq = prepararMasmorra("fornalha", 8);
   jq.exec({ tipo: "entrarMasmorra", masmorra: "fornalha" });
