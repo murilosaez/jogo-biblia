@@ -3086,7 +3086,21 @@
     const tempo = v.restanteMs != null ? relogio(v.restanteMs) : v.fim ? relogio(v.fim.tempoMs) : "";
     const t = $("#mhTempo");
     if (t.textContent !== tempo) t.textContent = tempo;
-    t.classList.toggle("urgente", v.restanteMs != null && v.restanteMs <= 10000);
+    // etapa "zona" (JGB-52): o tempo só anda dentro do círculo; fora, o cronômetro fica parado (cinza) e o aviso
+    // pede para voltar
+    const z = !v.fim && v.zona, fora = !!z && !z.dentro;
+    const mz = $("#mhZona");
+    if (mz) {
+      mz.hidden = !z;
+      if (z) {
+        const txt = z.dentro ? "Dentro do círculo" : "Volte ao círculo";
+        if (mz.lastElementChild.textContent !== txt) mz.lastElementChild.textContent = txt;
+        mz.classList.toggle("fora", fora);
+      }
+    }
+    t.classList.toggle("parado", fora);
+    t.setAttribute("aria-label", fora ? "Tempo da etapa (parado: volte ao círculo)" : "Tempo da etapa");
+    t.classList.toggle("urgente", !fora && v.restanteMs != null && v.restanteMs <= 10000);
     if (v.protegido) definirBarra($("#mhProtegido .barra"), v.protegido.vida, v.protegido.vidaMax, `${Math.max(0, Math.round(v.protegido.vida))}/${v.protegido.vidaMax}`, { baixa: v.protegido.vida / v.protegido.vidaMax < 0.3 });
     if (v.chefe) definirBarra($("#mhChefe .barra"), v.chefe.vida, v.chefe.vidaMax, `${Math.max(0, Math.round(v.chefe.vida))}/${v.chefe.vidaMax}`);
   }

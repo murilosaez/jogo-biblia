@@ -82,7 +82,7 @@ kbd,.tecla{display:inline-grid;place-items:center;min-width:24px;height:24px;pad
 
 /* barra superior */
 #topo{display:flex;align-items:center;gap:10px;padding:0 12px;background:linear-gradient(var(--couro-600),var(--couro-800));border-bottom:2px solid var(--bronze-700);box-shadow:0 2px 0 #0008;z-index:5;min-width:0}
-.marca{display:flex;align-items:baseline;gap:8px;min-width:0}
+.marca{display:flex;align-items:baseline;gap:8px;min-width:0;flex-shrink:0}
 .marca-nome{font:700 var(--fs-16)/1 var(--f-titulo);color:var(--ouro-300);letter-spacing:.12em;text-shadow:1px 1px 0 #1c1210}
 .marca-sub{font:italic 500 var(--fs-14)/1 var(--f-texto);color:var(--texto-2);white-space:nowrap}
 .area-topo{display:none;font:700 var(--fs-14)/1 var(--f-titulo);color:var(--ouro-300);text-shadow:1px 1px 0 #120a06;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -504,7 +504,8 @@ body.mapa-com-zoom #pMapa .mapa-ctl,body.mapa-com-zoom #mapaSobre .mapa-ctl{disp
 /* nome da região, no topo (largo e médio), com o fio na cor do bioma */
 .area-bloco{display:flex;align-items:center;gap:8px;min-width:0;margin-right:auto;padding:0 10px 0 12px;height:26px;border-left:2px solid var(--bronze-700);box-shadow:inset 2px 0 0 #0006}
 .area-bloco::before{content:"";flex:0 0 8px;height:8px;background:var(--bioma);box-shadow:0 0 0 2px #120a06}
-#areaNome{font:700 var(--fs-16)/1 var(--f-titulo);color:var(--ouro-300);letter-spacing:.06em;text-shadow:1px 1px 0 #120a06,0 0 2px #120a06;white-space:nowrap}
+/* nome longo (as masmorras): o subtítulo encolhe primeiro; o nome só se faltar lugar, com reticências */
+#areaNome{flex-shrink:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;font:700 var(--fs-16)/1 var(--f-titulo);color:var(--ouro-300);letter-spacing:.06em;text-shadow:1px 1px 0 #120a06,0 0 2px #120a06;white-space:nowrap}
 #areaSub{min-width:0;font:italic 500 var(--fs-14)/1 var(--f-texto);color:var(--texto-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* quadro de alvo */
 .quadro-alvo{display:flex;align-items:center;gap:8px;min-width:0;padding:2px 8px 2px 4px;border:2px solid transparent}
@@ -802,7 +803,7 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 .mh-cab{display:flex;align-items:baseline;gap:8px}
 .mh-cab strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 var(--fs-14)/1.2 var(--f-titulo);color:var(--ouro-300);text-shadow:1px 1px 0 #120a06}
 #mhEtapa{font:700 var(--fs-13)/1 var(--f-ui);color:var(--texto-2);white-space:nowrap}
-.mh-tempo{min-width:38px;padding:2px 5px;text-align:center;font:700 var(--fs-14)/1 var(--f-ui);font-variant-numeric:tabular-nums;color:#fff6e0;background:var(--fe-1);border:1px solid #120a06}
+.mh-tempo{min-width:38px;white-space:nowrap;padding:2px 5px;text-align:center;font:700 var(--fs-14)/1 var(--f-ui);font-variant-numeric:tabular-nums;color:#fff6e0;background:var(--fe-1);border:1px solid #120a06}
 .mh-tempo:empty{display:none}
 .mh-tempo.urgente{background:var(--vida-1)}
 #mhTexto{margin:4px 0 6px;font:600 var(--fs-14)/1.3 var(--f-texto);color:#fff6e0;text-shadow:1px 1px 0 #120a06}
@@ -813,18 +814,30 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 #mhProtegido .barra{--c1:#2f5a1a;--c2:#4f8a2a;--c3:#8fd16a}
 .mh-linha .barra{height:12px;border-width:1px}
 .mh-linha .barra>b{font-size:var(--fs-12)}
+/* etapa "zona" (JGB-52): dentro ou fora do círculo de oração; fora, o cronômetro para (cinza, com o sinal de pausa) */
+.mh-zona{display:flex;align-items:center;gap:6px;margin:0 0 6px;padding:3px 6px;font:700 var(--fs-13)/1.1 var(--f-ui);color:var(--ouro-200);background:#f2d27a1f;border:1px solid #f2d27a66;text-shadow:1px 1px 0 #120a06}
+.mh-zona[hidden]{display:none}
+.mh-zona i{flex:0 0 auto;width:12px;height:12px;border:2px solid var(--ouro-300);border-radius:50%;box-shadow:0 0 4px #f2d27a99}
+.mh-zona.fora{color:#fff6e0;background:var(--vida-1);border-color:var(--vida-3);animation:pulso-zona 1s steps(2) infinite}
+.mh-zona.fora i{border-color:#fff6e0;border-style:dashed;box-shadow:none}
+@keyframes pulso-zona{50%{background:var(--vida-2)}}
+.mh-tempo.parado{color:#d8ccb8;background:#4a4440;border-color:#120a06}
+body.na-masmorra .marca-sub{display:none} /* o nome da masmorra é longo: a marca cede o lugar */
+.mh-tempo.parado::before{content:"";display:inline-block;width:3px;height:9px;margin-right:4px;border-left:2px solid currentColor;border-right:2px solid currentColor;vertical-align:-1px}
 #mhDesistir{width:100%;min-height:32px;margin-top:2px}
 #mhDesistir.confirmar{background:linear-gradient(var(--vida-2),var(--vida-1));color:#fff6e0}
-@media (prefers-reduced-motion:reduce){ .mh-linha .barra>i{transition:none} }
+@media (prefers-reduced-motion:reduce){ .mh-linha .barra>i{transition:none} .mh-zona.fora{animation:none} }
 /* celular e tela de toque: compacto, no canto de cima à direita (o HUD de vida fica à esquerda e o jogador no
    meio); o objetivo já está na linha da missão, então o texto da etapa sai e Desistir vai para o cabeçalho */
 @media (max-width:760px),(max-width:1279px) and (pointer:coarse){
  #masmorraHud{left:auto;right:8px;bottom:auto;top:48px;width:min(212px,calc(100% - 200px));min-width:150px;padding:4px 6px 5px;
-  display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"cab sair" "prot prot" "chefe chefe";column-gap:6px;align-items:center}
+  display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"cab sair" "zona zona" "prot prot" "chefe chefe";column-gap:6px;align-items:center}
  #masmorraHud[hidden]{display:none}
  .mh-cab{grid-area:cab;gap:5px}
  .mh-cab strong,#mhTexto{display:none}
  #mhProtegido{grid-area:prot} #mhChefe{grid-area:chefe}
+ .mh-zona{grid-area:zona;margin:4px 0 0;padding:2px 5px}
+ .mh-tempo.parado::before{display:none} /* sem lugar para o sinal de pausa: o cinza e o aviso abaixo bastam */
  .mh-linha{margin:4px 0 0}
  .mh-linha .rot{max-width:64px}
  .mh-linha .barra{height:10px}
@@ -1294,6 +1307,7 @@ body.toque-forcado #dpad{display:block}
         <div id="masmorraHud" hidden aria-label="Masmorra">
           <div class="mh-cab"><strong id="mhNome"></strong><span id="mhEtapa"></span><span class="mh-tempo" id="mhTempo" aria-label="Tempo da etapa"></span></div>
           <p id="mhTexto"></p>
+          <div class="mh-zona" id="mhZona" hidden role="status"><i aria-hidden="true"></i><span></span></div>
           <div class="mh-linha" id="mhProtegido" hidden><span class="rot"></span><div class="barra vida" role="meter" aria-label="Vida do protegido"><i></i><b></b></div></div>
           <div class="mh-linha chefe" id="mhChefe" hidden><img class="px g16" data-glifo="ui_estrela_chefe" alt=""><span class="rot"></span><div class="barra vida" role="meter" aria-label="Vida do chefe"><i></i><b></b></div></div>
           <button type="button" class="btn secundario" id="mhDesistir">Desistir</button>

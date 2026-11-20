@@ -388,4 +388,25 @@ const DADOS_MAPAS = {
     decoracoes: [],
     vegetacao: { densidade: 0.15, moitas: { seixos: 3, caco: 2 }, beira: {} },
   },
+  ventre_peixe: {
+    terreno: { escala: 7, limiar: 1, densidade: 0, salpico: 0, semente: 107 },
+    regioes: [
+      { x: 11, y: 9, largura: 1, altura: 2, densidade: 1 },
+      { x: 11, y: 20, largura: 1, altura: 2, densidade: 1 },
+      { x: 28, y: 9, largura: 1, altura: 2, densidade: 1 },
+      { x: 28, y: 20, largura: 1, altura: 2, densidade: 1 },
+    ],
+    aguas: [
+      { x: 1, y: 1, largura: 158, altura: 3 },
+      { x: 1, y: 26, largura: 158, altura: 93 },
+      { x: 1, y: 4, largura: 3, altura: 22 },
+      { x: 36, y: 4, largura: 123, altura: 22 },
+    ],
+    vilas: [],
+    caminhos: [],
+    estruturas: [],
+    marcos: [],
+    decoracoes: [],
+    vegetacao: { densidade: 0.15, moitas: { concha: 2 }, beira: {} },
+  },
 };

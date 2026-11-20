@@ -20,6 +20,7 @@
 //   etapas, em ordem; cada uma com texto (o objetivo no painel) e:
 //     tipo "proteger": duracaoMs (sobreviva com o protegido de pé);
 //     tipo "sobreviver": duracaoMs (sobreviva até o fim do tempo);
+//     tipo "zona": zona { x, y, raio } e duracaoMs — o tempo só conta com o jogador dentro do círculo (a oração);
 //     tipo "chefe": vaga (o chefe; a etapa termina quando ele cai) e fases [{ vidaAte (fração), chamar: [vagas],
 //       texto }] — ao cair abaixo de vidaAte, a fase chama as vagas e avisa;
 //     ondas (opcional): [{ em (ms desde o começo da etapa), vagas: [ids] }];
@@ -150,6 +151,74 @@ const DADOS_MASMORRAS = {
       entrada: "A fornalha foi aquecida sete vezes mais (Dn 3:19). Saia das casas marcadas e siga até o fim.",
       vitoria: "Nem um cabelo foi chamuscado, nem cheiro de fogo passou sobre eles (Dn 3:27).",
       derrota: "As chamas venceram desta vez. Volte quando estiver pronto.",
+    },
+  },
+
+  ventre_peixe: {
+    nome: "Ventre do grande peixe",
+    referencia: "Jonas 1:17–2:10",
+    descricao:
+      "Jonas fugiu da presença do Senhor (Jn 1:3), e o Senhor deparou um grande peixe para que o tragasse; três dias e três " +
+      "noites esteve no ventre do peixe (Jn 1:17). Lá de dentro, ele orou (Jn 2:1). Sobreviva às águas do abismo, ore com ele e " +
+      "resista até que o Senhor fale ao peixe.",
+    mecanica: "Sobreviva ao suco do ventre, fique no círculo para orar com Jonas e vença a serpente do abismo.",
+    nivelMinimo: 14,
+    area: "ventre_peixe",
+    sala: { x: 4, y: 4, largura: 32, altura: 22 },
+    vagas: [
+      { id: "ventre_caranguejo_1", base: "caranguejo1", x: 33, y: 6, nome: "Caranguejo do abismo", vidaMaxima: 170, danoContraJogador: 11, defesa: 10, raioPercepcao: 40 },
+      { id: "ventre_caranguejo_2", base: "caranguejo1", x: 33, y: 24, nome: "Caranguejo do abismo", vidaMaxima: 170, danoContraJogador: 11, defesa: 10, raioPercepcao: 40 },
+      { id: "ventre_caranguejo_3", base: "caranguejo1", x: 20, y: 5, nome: "Caranguejo do abismo", vidaMaxima: 170, danoContraJogador: 11, defesa: 10, raioPercepcao: 40 },
+      { id: "ventre_caranguejo_4", base: "caranguejo1", x: 20, y: 24, nome: "Caranguejo do abismo", vidaMaxima: 170, danoContraJogador: 11, defesa: 10, raioPercepcao: 40 },
+      {
+        id: "ventre_serpente", base: "naja1", x: 32, y: 15, nome: "Serpente do abismo", tier: "chefe", escala: 1.5, vidaMaxima: 1100,
+        danoContraJogador: 15, defesa: 12, xpRecompensa: 550, raioPercepcao: 40, comportamento: "furia",
+      },
+    ],
+    etapas: [
+      {
+        id: "aguas",
+        tipo: "sobreviver",
+        duracaoMs: 60000,
+        texto: "As águas do ventre sobem: saia das casas marcadas",
+        ondas: [{ em: 20000, vagas: ["ventre_caranguejo_1", "ventre_caranguejo_2"] }],
+        perigos: [
+          { padrao: "linhas", aCadaMs: 5000, avisoMs: 1500, dano: 30, nome: "O suco do ventre sobe" },
+          { padrao: "alvo", aCadaMs: 6500, avisoMs: 1200, dano: 26, nome: "Uma golfada" },
+        ],
+        fim: "O abismo rodeia Jonas; então, do ventre do peixe, ele ora ao Senhor, seu Deus (Jn 2:1).",
+      },
+      {
+        id: "oracao",
+        tipo: "zona",
+        zona: { x: 19, y: 15, raio: 2 },
+        duracaoMs: 25000,
+        texto: "Fique no círculo e ore com Jonas",
+        ondas: [
+          { em: 3000, vagas: ["ventre_caranguejo_3", "ventre_caranguejo_4"] },
+          { em: 14000, vagas: ["ventre_caranguejo_1", "ventre_caranguejo_2"] },
+        ],
+        perigos: [{ padrao: "xadrez", aCadaMs: 7000, avisoMs: 1800, dano: 28, nome: "O ventre se contrai" }],
+        fim: "\"Na minha angústia, clamei ao Senhor, e ele me respondeu\" (Jn 2:2). Algo se move no fundo do ventre.",
+      },
+      {
+        id: "serpente",
+        tipo: "chefe",
+        vaga: "ventre_serpente",
+        texto: "Vença a serpente do abismo",
+        perigos: [
+          { padrao: "anel", aCadaMs: 6000, avisoMs: 1400, dano: 28, nome: "A serpente se enrosca" },
+          { padrao: "linhas", aCadaMs: 9000, avisoMs: 1600, dano: 30, nome: "O suco do ventre sobe" },
+        ],
+        fases: [{ vidaAte: 0.5, chamar: ["ventre_caranguejo_3", "ventre_caranguejo_4"], texto: "A serpente chama os caranguejos do abismo!" }],
+        fim: "\"Falou, pois, o Senhor ao peixe, e este vomitou a Jonas na terra\" (Jn 2:10).",
+      },
+    ],
+    recompensa: { xp: 1300, moedas: 170, item: "concha_peixe" },
+    falas: {
+      entrada: "Escuro e fundo: o ventre do grande peixe, onde Jonas esteve três dias e três noites (Jn 1:17).",
+      vitoria: "\"Ao Senhor pertence a salvação!\" (Jn 2:9). Jonas está na terra seca, pronto para ir a Nínive.",
+      derrota: "O abismo venceu desta vez. Volte quando estiver pronto.",
     },
   },
 };

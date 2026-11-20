@@ -1292,6 +1292,8 @@
     const MOLHADO = relva ? mI(TT[1], SOMB, 0.25) : mI(G[1], cI("#5a4a34"), 0.5);
     const flores = (bio.deco || []).filter((d) => /flor|anemona|mostarda|lirio/.test(d.tipo)).map((d) => d.cor);
     const tufoSeco = cI(((bio.deco || []).find((d) => /tufo/.test(d.tipo)) || { cor: "#8a8450" }).cor);
+    // carne (bio.veias): veias no chão, sem tufos secos nem lajes de rocha
+    const VEIA = bio.veias ? [cI(bio.veias.escura), cI(bio.veias.clara)] : null;
 
     // ---- casas em volta do pedaço (margem de 2 casas)
     const CX0 = Math.floor(X0 / T) - 1, CY0 = Math.floor(Y0 / T) - 1, CN = LADO + 4;
@@ -1478,6 +1480,14 @@
                 else if (pedregoso && h > 0.88) cor = mI(R[ti], cI("#5a4a44"), 0.25);
               }
             }
+            // veias da carne (bio.veias, o Ventre do grande peixe): fios que serpenteiam onde o campo fond cruza o
+            // meio, com o miolo escuro e o lado de cima claro (vaso em relevo); os fios finos vêm de ftom
+            if (VEIA) {
+              const d = fond[idx] - 0.5, d2 = ftom[idx] - 0.47;
+              if (d > -0.011 && d < 0.011) { cor = VEIA[0]; tom[idx] = ti | 16; }
+              else if (d >= 0.011 && d < 0.02) cor = VEIA[1];
+              else if (d2 > -0.005 && d2 < 0.005 && h2 > 0.25) cor = mI(cor, VEIA[0], 0.55);
+            }
             if (!tom[idx]) tom[idx] = ti | (man ? 8 : 0);
             if (temRua && (up === RUA || lf === RUA || dn === RUA || rt === RUA)) cor = mI(cor, JUNTA, 0.6);
           } else if (k === RUA) {
@@ -1576,7 +1586,7 @@
         }
       }
       // tufos secos (areia e pedregal)
-      if (areia) for (let gy = 8; gy < N - 8; gy += 22) for (let gx = 8; gx < N - 8; gx += 22) {
+      if (areia && !VEIA) for (let gy = 8; gy < N - 8; gy += 22) for (let gx = 8; gx < N - 8; gx += 22) {
         const wx = X0 + gx, wy = Y0 + gy;
         if (hash2(wx, wy, s + 64) > (pedregoso ? 0.2 : 0.11)) continue;
         const x = gx + Math.floor(hash2(wx, wy, s + 65) * 18) - 4, y = gy + Math.floor(hash2(wx, wy, s + 66) * 18) - 4, idx = y * N + x;
@@ -1607,7 +1617,8 @@
         }
       }
       // seixos (2 a 4 px) com luz em cima e sombra embaixo
-      const seixo = [cI(misturar(cm.claro, "#d8d0c0", 0.5)), cI(misturar(cm.base, "#a8a090", 0.5)), cI(esc(misturar(cm.escuro, "#6a6258", 0.5), 0.2))];
+      // na carne (bio.veias) os seixos viram carocinhos da própria carne, mais claros em cima
+      const seixo = VEIA ? [mI(G[5], LUZI, 0.12), G[4], VEIA[0]] : [cI(misturar(cm.claro, "#d8d0c0", 0.5)), cI(misturar(cm.base, "#a8a090", 0.5)), cI(esc(misturar(cm.escuro, "#6a6258", 0.5), 0.2))];
       for (let gy = 6; gy < N - 6; gy += 9) for (let gx = 6; gx < N - 6; gx += 9) {
         const wx = X0 + gx, wy = Y0 + gy, h = hash2(wx, wy, s + 23);
         const x = gx + Math.floor(hash2(wx, wy, s + 24) * 7), y = gy + Math.floor(hash2(wx, wy, s + 25) * 7), idx = y * N + x, k = kk[idx];
@@ -1624,7 +1635,7 @@
         }
       }
       // lajes de rocha à flor do chão (pedregal e areia)
-      if (areia) for (let gy = 16; gy < N - 16; gy += 34) for (let gx = 16; gx < N - 16; gx += 34) {
+      if (areia && !VEIA) for (let gy = 16; gy < N - 16; gy += 34) for (let gx = 16; gx < N - 16; gx += 34) {
         const wx = X0 + gx, wy = Y0 + gy;
         if (hash2(wx, wy, s + 80) > (pedregoso ? 0.42 : reg === "marVermelho" ? 0.2 : 0.1)) continue;
         const cx = gx + Math.floor(hash2(wx, wy, s + 81) * 26) - 6, cy = gy + Math.floor(hash2(wx, wy, s + 82) * 26) - 6;

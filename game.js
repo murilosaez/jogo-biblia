@@ -446,6 +446,8 @@ class Cena extends Phaser.Scene {
     // Eventos do comando que trocou de área (entrar numa masmorra: a 1ª etapa), depois do cartão de título.
     const eventosPendentes = this.registry.get("eventosPendentes") || [];
     this.registry.set("eventosPendentes", null);
+    // a cena recomeçou no meio de uma etapa "zona" (sem evento novo): o círculo volta pela visão da masmorra
+    if (!eventosPendentes.some((x) => x.tipo === "masmorraEtapa")) this.marcarZona(Mundo.visaoMasmorra?.(MEU_ID, Date.now())?.zona || null);
     for (const x of eventosPendentes) if (x.tipo === "masmorraEtapa") this.time.delayedCall(ultima !== this.areaAtual ? 2700 : 200, () => this.eventoMasmorra(x));
     window.UI?.areaMudou?.(this.areaAtual);
     window.atualizarInterface?.();
@@ -1672,10 +1674,12 @@ class Cena extends Phaser.Scene {
       respingo: { lifespan: 600, speedY: { min: -30, max: -10 }, speedX: { min: -10, max: 10 }, gravityY: 60, scale: 1, alpha: { start: 1, end: 0 }, frequency: 70 },
       nevoa: { lifespan: 9000, speedX: { min: 4, max: 10 }, speedY: 0, scaleX: 40, scaleY: 10, alpha: { start: 0.0, end: 0.15, ease: "Sine.easeInOut" }, frequency: 700 },
       brasa: { lifespan: 2400, speedX: { min: -8, max: 8 }, speedY: { min: -34, max: -14 }, scale: 1, alpha: { start: 1, end: 0 }, frequency: 120 },
+      // bolhas do suco gástrico (Ventre do grande peixe): sobem devagar, quase paradas, e se apagam
+      bolha: { lifespan: 3600, speedX: { min: -3, max: 3 }, speedY: { min: -12, max: -5 }, scale: { start: 0.6, end: 1 }, alpha: { start: 0.6, end: 0 }, frequency: 300, textura: "fx_bolha" },
       borboleta: { lifespan: 3000, speedX: { min: -8, max: 8 }, speedY: { min: 2, max: 8 }, scale: 1, alpha: { start: 0.9, end: 0 }, frequency: 400, tint: 0xd8a0b8 },
     }[p.tipo];
     if (cfg) {
-      const textura = cfg.textura || "fx_pixel";
+      const textura = cfg.textura && Arte.garantirTextura(this, cfg.textura) ? cfg.textura : "fx_pixel";
       delete cfg.textura;
       this.ambiente = this.add.particles(0, 0, textura, Object.assign({}, base, cfg)).setDepth(p.tipo === "nevoa" ? PROF.rotulo - 1 : PROF.barra - 1);
     }
@@ -2817,6 +2821,7 @@ class Cena extends Phaser.Scene {
     else if (x.tipo === "perigo") this.fogoNoChao(x);
     else if (x.tipo === "masmorraEtapa") {
       this.limparVagasApagadas(); // a etapa que acabou apaga as criaturas que sobraram (sem evento por criatura)
+      this.marcarZona(x.zona); // etapa "zona": o círculo de oração; outra etapa apaga o da anterior
       this.mostrarCartao(`Etapa ${x.numero} de ${x.total}`, x.texto);
       this.mensagem(`Etapa ${x.numero} de ${x.total}: ${x.texto}.`, "missao");
     } else if (x.tipo === "masmorraFase") {
@@ -2827,6 +2832,7 @@ class Cena extends Phaser.Scene {
       this.limparVagasApagadas();
       for (const m of this.marcasPerigo || []) m.destroy();
       this.marcasPerigo = [];
+      this.marcarZona(null);
       this.mensagem(x.mensagem, x.vitoria ? "anuncio" : "perigo");
       if (x.vitoria) {
         window.Som?.saque?.("epico");
@@ -2854,6 +2860,33 @@ class Cena extends Phaser.Scene {
       this.tweens.add({ targets: objs, alpha: 0, duration: reduzMovimento() ? 1 : 400, onComplete: () => { for (const o of objs) o.destroy(); } });
     }
   }
+  // Etapa "zona" (JGB-52): o círculo de oração no chão, as casas a até z.raio do centro (Chebyshev: um quadrado
+  // de 2·raio+1 casas de lado), com a borda dourada suave, um brilho que pulsa (parado com reduced-motion) e uma
+  // luz quente que abre o escuro da masmorra. Fica até a próxima etapa ou o fim; z = null só apaga. Ao trocar de
+  // área a cena reinicia e o gráfico sai com ela: o tween e a luz saem junto (evento destroy).
+  marcarZona(z) {
+    if (this.zonaMasmorra?.active) this.zonaMasmorra.destroy();
+    this.zonaMasmorra = null;
+    if (!z || !(z.raio >= 0)) return;
+    const lado = (2 * z.raio + 1) * TAM, x0 = (z.x - z.raio) * TAM, y0 = (z.y - z.raio) * TAM, cx = x0 + lado / 2, cy = y0 + lado / 2;
+    const g = this.add.graphics().setDepth(PROF.sombra + 1);
+    g.zona = { x: z.x, y: z.y, raio: z.raio }; // o minimapa desenha o mesmo quadrado
+    // brilho: as casas num ouro bem leve e, por cima, a luz redonda que se adensa no centro
+    g.fillStyle(0xf2d27a, 0.08).fillRoundedRect(x0 + 2, y0 + 2, lado - 4, lado - 4, 10);
+    for (const [k, a] of [[0.5, 0.06], [0.36, 0.06], [0.22, 0.07]]) g.fillStyle(0xffe6a0, a).fillCircle(cx, cy, lado * k);
+    // borda dourada: um halo largo e fraco por fora, a linha de ouro e um fio claro por dentro
+    g.lineStyle(7, 0xf2d27a, 0.18).strokeRoundedRect(x0 - 1, y0 - 1, lado + 2, lado + 2, 12);
+    g.lineStyle(3, 0xe8b94a, 0.85).strokeRoundedRect(x0 + 2, y0 + 2, lado - 4, lado - 4, 10);
+    g.lineStyle(1, 0xfff0c0, 0.55).strokeRoundedRect(x0 + 5, y0 + 5, lado - 10, lado - 10, 8);
+    const luz = { x: cx, y: cy, r: lado * 0.75, quente: 0.5 };
+    this.luzes.push(luz);
+    g.once("destroy", () => { const i = this.luzes.indexOf(luz); if (i >= 0) this.luzes.splice(i, 1); });
+    if (!reduzMovimento()) {
+      const pulso = this.tweens.add({ targets: g, alpha: 0.55, duration: 1100, ease: "Sine.easeInOut", yoyo: true, repeat: -1 });
+      g.once("destroy", () => pulso.remove()); // o tween infinito sai junto com o círculo (não fica órfão)
+    }
+    this.zonaMasmorra = g;
+  }
   // Casas que vão pegar fogo: telégrafo vermelho com borda de ouro (como o da investida), pulsando até `ate`.
   // Uma Graphics só para todas as casas do padrão (as linhas cobrem centenas delas).
   marcarPerigo(x) {
@@ -2876,15 +2909,19 @@ class Cena extends Phaser.Scene {
   }
   // O fogo sobe nas casas: clarão laranja em todas e labaredas (fx_fogo) em até 90 delas, perto do jogador
   // primeiro; se atingiu, o dano sobre o jogador e a mensagem.
+  // No Ventre do grande peixe (clima "ventre") não é fogo: é o suco gástrico que sobe (clarão verde-amarelo e
+  // respingos tingidos).
   fogoNoChao(x) {
-    const casas = x.casas || [], reduz = reduzMovimento();
+    const casas = x.casas || [], reduz = reduzMovimento(), suco = areas[this.areaAtual]?.clima === "ventre";
     const g = this.add.graphics().setDepth(PROF.sombra + 3).setBlendMode(Phaser.BlendModes.ADD);
-    for (const c of casas) g.fillStyle(0xff7a1a, 0.55).fillRect(c.x * TAM, c.y * TAM, TAM, TAM);
+    for (const c of casas) g.fillStyle(suco ? 0x9aa82a : 0xff7a1a, 0.55).fillRect(c.x * TAM, c.y * TAM, TAM, TAM);
     this.tweens.add({ targets: g, alpha: 0, duration: reduz ? 300 : 700, onComplete: () => g.destroy() });
     const perto = casas.slice().sort((a, b) => Math.hypot(a.x - this.p.x, a.y - this.p.y) - Math.hypot(b.x - this.p.x, b.y - this.p.y)).slice(0, reduz ? 30 : 90);
     for (const c of perto) {
       const px = centroX(c.x), py = baseY(c.y);
-      this.fx("fx_fogo", px, py - 24, { depth: PROF.entidade + py + 1, quadros: 8, ms: 80, apaga: 240, atraso: reduz ? 0 : Math.round(Arte.hash2(c.x, c.y, 9) * 120) });
+      const atraso = reduz ? 0 : Math.round(Arte.hash2(c.x, c.y, 9) * 120);
+      if (suco) this.fx("fx_respingo_agua", px, py - 14, { depth: PROF.entidade + py + 1, tint: 0xd8e070, apaga: 240, atraso });
+      else this.fx("fx_fogo", px, py - 24, { depth: PROF.entidade + py + 1, quadros: 8, ms: 80, apaga: 240, atraso });
     }
     if (x.atingiu) {
       this.numero(this.jogador.x, this.yNumeroJogador(), `−${x.dano}`, "recebido");
@@ -3225,6 +3262,14 @@ class Cena extends Phaser.Scene {
       }
     };
     const grande = E >= 2 ? 1 : 0;
+    // círculo de oração da masmorra (etapa "zona"): o quadrado das casas, em ouro, embaixo das marcas
+    const zm = this.zonaMasmorra?.active && this.zonaMasmorra.zona;
+    if (zm) {
+      const zx = Math.round((zm.x - zm.raio - ox) * E), zy = Math.round((zm.y - zm.raio - oy) * E), zl = (2 * zm.raio + 1) * E;
+      ctx.fillStyle = "#f2d27a40"; ctx.fillRect(zx, zy, zl, zl);
+      ctx.lineWidth = 1; ctx.strokeStyle = "#1c1210"; ctx.strokeRect(zx - 0.5, zy - 0.5, zl + 1, zl + 1);
+      ctx.strokeStyle = "#f2d27a"; ctx.strokeRect(zx + 0.5, zy + 0.5, zl - 1, zl - 1);
+    }
     const a = areas[this.areaAtual];
     for (const t of PORTAIS) if (t.area === this.areaAtual) marca(t.x, t.y, "#c9a0e6", "losango", 2 + grande);
     if (a?.passagem) marca(a.passagem.x, a.passagem.y, "#c9a0e6", "losango", 2 + grande);

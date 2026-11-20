@@ -3100,7 +3100,7 @@ const PALAVRAS_CHAVE = {
   embarcar: { acao: "barco", sinonimos: ["barco", "navegar", "mar", "boat"] },
   preço: { acao: "fala", sinonimos: ["quanto", "custa", "custo", "passagem", "valor", "price"] },
   vocação: { acao: "interagir", sinonimos: ["vocacoes", "talentos", "vocation"] },
-  masmorra: { acao: "masmorra", sinonimos: ["masmorras", "entrar", "historias", "cova", "fornalha", "dungeon"] },
+  masmorra: { acao: "masmorra", sinonimos: ["masmorras", "entrar", "historias", "cova", "fornalha", "ventre", "peixe", "jonas", "dungeon"] },
   forjar: { acao: "forja", aba: "forjar", sinonimos: ["forja", "aprimorar", "melhorar", "bigorna", "forge"] },
   engastar: { acao: "forja", aba: "engastar", sinonimos: ["engaste", "pedras", "pedra", "peitoral", "gem", "gems"] },
   conversar: { acao: "interagir", sinonimos: ["falar", "conversa", "novidades", "noticias", "news"] },
@@ -3172,7 +3172,10 @@ function palavrasChaveDoNpc(p, npcId) {
     vender: "Mostre o que tem; compro de tudo: peles, ervas, armas, armaduras e pedras.",
     depósito: "Abra o baú: o que está aqui está em todo depósito.",
     forjar: `Mostre a peça: forjo de +1 a +${REGRAS_FORJA.maximo}. Se o metal não pegar, a peça fica como estava.`,
-    masmorra: "Escolha a história: a Cova dos leões ou a Fornalha ardente.",
+    // a fala do porteiro lista as masmorras que ele abre (npcs[].masmorras)
+    masmorra: (npc.masmorras || []).length > 1
+      ? `Escolha a história: ${npc.masmorras.map((m) => DADOS_MASMORRAS[m]?.nome).filter(Boolean).join(" ou ")}.`
+      : `Quer entrar na história: ${DADOS_MASMORRAS[npc.masmorras?.[0]]?.nome || "a masmorra"}?`,
     engastar: `Uma pedra do peitoral por peça, ${REGRAS_ENGASTE.moedas} moedas o engaste.`,
     viajar: "Para onde vamos? O preço depende da distância.",
     embarcar: falaPassagemBarco(p),
@@ -4976,12 +4979,13 @@ const Mundo = {
     const d = DADOS_MASMORRAS[m.id];
     m.etapa = indice;
     m.etapaDesde = m.relogio;
+    m.progresso = 0; // etapa "zona": tempo dentro do círculo
     m.ondasFeitas = [];
     m.fasesFeitas = [];
     const etapa = d.etapas[indice];
     m.proximoPerigo = (etapa.perigos || []).map((x) => m.relogio + x.aCadaMs);
     if (etapa.tipo === "chefe") this.acenderVaga(p, m, etapa.vaga, eventos);
-    eventos.push({ tipo: "masmorraEtapa", masmorra: m.id, numero: indice + 1, total: d.etapas.length, texto: etapa.texto });
+    eventos.push({ tipo: "masmorraEtapa", masmorra: m.id, numero: indice + 1, total: d.etapas.length, texto: etapa.texto, ...(etapa.zona ? { zona: { ...etapa.zona } } : {}) });
   },
 
   // Laço da instância (chamado por atualizar): ondas, perigos, fases do chefe, protegido e fim de etapa.
@@ -4991,8 +4995,11 @@ const Mundo = {
     if (!m || m.fim || p.area !== m.area) return null;
     const d = DADOS_MASMORRAS[m.id];
     const etapa = d.etapas[m.etapa];
-    m.relogio += Math.min(PASSO_MAXIMO_MASMORRA, Math.max(0, agora - m.ultimoQuadro));
+    const passo = Math.min(PASSO_MAXIMO_MASMORRA, Math.max(0, agora - m.ultimoQuadro));
+    m.relogio += passo;
     m.ultimoQuadro = agora;
+    // Etapa "zona" (JGB-52): o tempo só conta com o jogador dentro do círculo.
+    if (etapa.tipo === "zona" && distanciaChebyshev(p, etapa.zona) <= etapa.zona.raio) m.progresso += passo;
     const passou = m.relogio - m.etapaDesde;
     // Posições das vagas acesas (a troca de cena reposiciona as criaturas).
     for (const vagaId of m.ativas) m.posicoes[vagaId] = { x: inimigos[vagaId].x, y: inimigos[vagaId].y };
@@ -5033,7 +5040,7 @@ const Mundo = {
         p.vida = Math.max(0, p.vida - dano);
         estado.ultimoCombate = agora;
       }
-      eventos.push({ tipo: "perigo", casas: x.casas, area: m.area, dano, atingiu, mensagem: atingiu ? `${x.nome}: o fogo atingiu você por ${dano} de dano!` : "" });
+      eventos.push({ tipo: "perigo", casas: x.casas, area: m.area, dano, atingiu, mensagem: atingiu ? `${x.nome}: atingiu você por ${dano} de dano!` : "" });
       if (p.vida === 0) {
         eventos.push(this.aplicarMorte(id, "inimigo", agora));
         return "morte";
@@ -5042,7 +5049,7 @@ const Mundo = {
     // Protegido caído: a masmorra falha.
     if (m.protegido && m.protegido.vida <= 0) return this.concluirMasmorra(id, p, m, false, agora, eventos);
     // Fim da etapa.
-    const cumprida = etapa.tipo === "chefe" ? !m.ativas.has(etapa.vaga) : passou >= etapa.duracaoMs;
+    const cumprida = etapa.tipo === "chefe" ? !m.ativas.has(etapa.vaga) : etapa.tipo === "zona" ? m.progresso >= etapa.duracaoMs : passou >= etapa.duracaoMs;
     if (!cumprida) return null;
     if (etapa.tipo !== "chefe") for (const vagaId of [...m.ativas]) this.apagarVaga(p, vagaId); // a etapa acabou: as que restam somem
     if (etapa.fim) eventos.push({ tipo: "masmorraFase", masmorra: m.id, mensagem: etapa.fim });
@@ -5103,7 +5110,8 @@ const Mundo = {
       id: m.id,
       nome: d.nome,
       etapa: { numero: m.etapa + 1, total: d.etapas.length, tipo: etapa.tipo, texto: etapa.texto },
-      restanteMs: etapa.duracaoMs && !m.fim ? Math.max(0, etapa.duracaoMs - (m.relogio - m.etapaDesde)) : null,
+      restanteMs: etapa.duracaoMs && !m.fim ? Math.max(0, etapa.duracaoMs - (etapa.tipo === "zona" ? m.progresso : m.relogio - m.etapaDesde)) : null,
+      zona: etapa.zona && !m.fim ? { ...etapa.zona, dentro: distanciaChebyshev(p, etapa.zona) <= etapa.zona.raio } : null,
       ondas: etapa.ondas?.length ? { feitas: m.ondasFeitas.length, total: etapa.ondas.length } : null,
       criaturas: m.ativas.size,
       protegido: m.protegido ? { nome: m.protegido.nome, vida: m.protegido.vida, vidaMax: m.protegido.vidaMax } : null,

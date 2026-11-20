@@ -125,6 +125,18 @@ const DADOS_NPCS = [
     masmorras: ["cova_leoes", "fornalha"],
     falas: { saudacao: "Escrevi as palavras que o Senhor deu a Jeremias (Jr 36:4). Quer entrar numa das histórias do exílio?" },
   },
+  // Porteiro do Ventre do grande peixe (JGB-52): Amitai, pai de Jonas, de Gate-Hefer, na Galileia (2 Rs 14:25; Jn 1:1).
+  {
+    id: "porteiro_galileia",
+    nome: "Amitai, pai de Jonas",
+    area: "galileia",
+    x: 24,
+    y: 24,
+    papel: "masmorra",
+    aparencia: "pescador",
+    masmorras: ["ventre_peixe"],
+    falas: { saudacao: "Meu filho Jonas fugiu do Senhor (Jn 1:3) e foi tragado por um grande peixe (Jn 1:17). Quer descer com ele ao abismo?" },
+  },
   { id: "noemi1", nome: "Noemi", area: "deserto", x: 136, y: 14, papel: "missao" },
   { id: "mercador1", nome: "Azarias, mercador", area: "deserto", x: 143, y: 17, papel: "loja" },
   { id: "guia_deserto", nome: "Tamar, guia de caravanas", area: "deserto", x: 128, y: 20, papel: "guia" },
