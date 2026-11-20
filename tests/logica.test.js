@@ -7928,7 +7928,6 @@ teste("85. Armadura de Deus (JGB-26): 6 peças de Ef 6, cada uma de um raro nome
     for (const item of pecas) p.equipamento[g("slotDoItem")(item)] = item;
     return p;
   };
-  const so = (item) => ({ ...vestir([item]) });
   const base = { def: g("defesaEquipamento")(vestir([])), vida: g("vidaMaxima")(p), dano: g("danoBruto")(p, "corpo") };
   const pecas = C.pecas.map((x) => x.item);
   vestir(pecas.slice(0, 1));
@@ -7947,8 +7946,6 @@ teste("85. Armadura de Deus (JGB-26): 6 peças de Ef 6, cada uma de um raro nome
   const v = g("visaoConjunto")(p, "armadura_de_deus");
   igual([v.vestidas, v.total, v.pecas.every((x) => x.vestida), v.pecas[0].origem], [6, 6, true, "Presa-Cinzenta (Canaã)"]);
   assert.strictEqual(g("visaoForja")(p).pecas.find((x) => x.slot === "escudo").conjunto, "Armadura de Deus");
-  // Cada peça sozinha cabe nos limites do espaço (o conjunto faz a força das peças pequenas).
-  for (const item of pecas) assert.ok(so(item));
 
   // (c) Saque: na janela dele, o raro nomeado pode largar a peça, com anúncio próprio.
   vestir([]);

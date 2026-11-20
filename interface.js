@@ -4067,7 +4067,8 @@
     if (y + h > innerHeight - 8) y = innerHeight - h - 8;
     if (x === r.left || (x < r.right && x + w > r.left)) y = r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8;
     d.style.left = `${Math.round(x)}px`;
-    d.style.top = `${Math.round(Math.max(8, y))}px`;
+    // a dica longa (peça de conjunto) não passa da borda de baixo; se for maior que a tela, rola (CSS)
+    d.style.top = `${Math.round(Math.max(8, Math.min(y, innerHeight - h - 8)))}px`;
   }
   function esconderDica() { $("#dicaItem").classList.remove("visivel"); }
 
