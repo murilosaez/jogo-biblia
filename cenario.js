@@ -1010,7 +1010,12 @@
   const MUROS = {
     muro: { face: ["#5a5242", "#7c725e", "#9c9178", "#b8ad92"], textura: "blocos", topo: ["#6e6452", "#978b73", "#b4a88c", "#d2c8aa"], pe: "relva", area: "canaan" },
     tijolos: { face: ["#562c1a", "#784226", "#985834", "#b67048"], textura: "tijolo", topo: ["#7c4e30", "#a46c46", "#be8456", "#d8a070"], pe: "areia", area: "egito" },
+    // Parede das galerias da pirâmide (clima "tumba"): bloco cheio de arenito (a casa inteira), sem subir sobre a
+    // casa de cima (o labirinto tem corredores de 1 casa); a face aparece na própria casa, embaixo, onde a parede
+    // não continua para o sul (pintarBloco).
+    tumba: { cheio: true, face: ["#4a3420", "#6e5232", "#8c6c44", "#a88656"], topo: ["#1e1610", "#2c2118", "#382a1e", "#4a3826"], beira: "#9c7c52", area: "piramides" },
   };
+  const ALTURA_FACE_BLOCO = 13;
   // fiadas da face (somam 34 px) e as juntas de cada uma, periódicas em 32 px (o muro emenda com o vizinho)
   const FIADAS_MURO = [[0, 8, [0, 11, 22]], [8, 9, [6, 17, 27]], [17, 8, [0, 13, 24]], [25, 9, [4, 15, 26]]];
   function corFaceMuro(m, x, ly, v) {
@@ -1122,10 +1127,94 @@
     matiz(null);
     return tela;
   }
+  // Bloco cheio (MUROS[tipo].cheio, as paredes do labirinto da tumba): textura T × T posta na própria casa. O topo
+  // é de lajes de arenito (duas fiadas de blocos desencontrados) com a beira na luz onde a parede acaba (norte e
+  // oeste) e na sombra a leste; sem vizinho ao sul, a face de blocos (ALTURA_FACE_BLOCO px) fecha a casa embaixo,
+  // com o lábio claro do topo, a sombra da cobertura e o pé escuro. v: 0–2 variantes de juntas e manchas; v = 1
+  // grava hieróglifos na face; v = 3 é a face com a tocha (suporte de bronze e a chama; a luz é da cena).
+  function pintarBloco(tipo, mask, v) {
+    const m = MUROS[tipo], tela = new Tela(T, T);
+    matiz(m.area);
+    const hf = mask & 4 ? 0 : ALTURA_FACE_BLOCO, yt = T - hf; // topo: linhas 0..yt-1; face: yt..T-1
+    const [t0, t1, t2, t3] = m.topo, [f0, f1, f2, f3] = m.face;
+    const abertoN = !(mask & 1), abertoL = !(mask & 2), abertoO = !(mask & 8);
+    const sv = v % 3;
+    for (let y = 0; y < yt; y++) for (let x = 0; x < T; x++) {
+      // fiadas de 16 px; blocos de 16 px desencontrados a cada fiada (as juntas emendam com as casas vizinhas)
+      const fila = y >> 4, ly = y & 15, off = fila % 2 ? 8 : 0, bx = (x + off) & 15, col = (x + off) >> 4;
+      const tb = hash2(col + sv * 7, fila, 410);
+      // o alto da parede fica no escuro (a luz da tocha bate na face): blocos em tons fundos, juntas quase pretas
+      let c = tb < 0.3 ? misturar(t1, t2, 0.55) : tb > 0.78 ? misturar(t2, t3, 0.5) : t2;
+      if (ly === 0 || bx === 0) c = t0; // junta
+      else if (ly === 1 || bx === 1) c = misturar(c, t3, 0.5);
+      else if (hash2(x + sv * 40, y, 411) < 0.08) c = t1;
+      else if (hash2(x + sv * 40, y, 412) < 0.05) c = t3;
+      // beiras de fora: a aresta do bloco pega a luz (2 px em cima e à esquerda), a da direita fica na sombra
+      const b = m.beira;
+      if (abertoN && y === 0) c = b;
+      else if (abertoN && y === 1) c = misturar(b, t3, 0.5);
+      else if (abertoO && x === 0) c = misturar(b, t3, 0.2);
+      else if (abertoO && x === 1) c = misturar(b, t3, 0.6);
+      else if (abertoL && x === T - 1) c = misturar(b, t0, 0.55);
+      tela.p(x, y, c);
+    }
+    if (hf) {
+      for (let y = yt; y < T; y++) for (let x = 0; x < T; x++) {
+        const ly = y - yt;
+        // duas fiadas na face (6 e 7 px), juntas desencontradas
+        const fila = ly < 6 ? 0 : 1, fy = fila ? ly - 6 : ly, off = fila ? 11 : 3 + sv * 4, bx = (x + off) % 14, col = Math.floor((x + off) / 14);
+        const tb = hash2(col + sv * 5, fila, 420);
+        let c = tb < 0.3 ? f1 : tb > 0.8 ? misturar(f2, f3, 0.5) : f2;
+        if (fy === 0 || bx === 0) c = f0;
+        else if (fy === 1 || bx === 1) c = misturar(c, f3, 0.35);
+        else if (hash2(x + sv * 40, y, 421) < 0.06) c = esc(c, 0.15);
+        if (ly === 0) c = m.beira; // lábio do topo, na luz
+        else if (ly === 1) c = esc(f1, 0.2); // sombra da cobertura
+        else if (ly === hf - 1) c = esc(f0, 0.4); // pé escuro
+        else c = esc(c, (ly / hf) * 0.25); // escurece para baixo
+        if (abertoO && x === 0 && ly) c = cla(c, 0.14); else if (abertoL && x === T - 1 && ly) c = esc(c, 0.3);
+        tela.p(x, y, c);
+      }
+      if (sv === 1 && v !== 3) {
+        // hieróglifos gravados: o olho, o ankh e a pena, em sulcos escuros com a beira de baixo na luz
+        const g = (x, y) => { tela.p(x, yt + y, esc(f0, 0.2)); tela.tom(x, yt + y + 1, f3, 0.3); };
+        for (const [x, y] of [[6, 4], [7, 3], [8, 3], [9, 3], [10, 4], [8, 4], [7, 5], [8, 5], [9, 5]]) g(x, y); // olho
+        for (const [x, y] of [[15, 3], [14, 4], [16, 4], [15, 5], [13, 6], [14, 6], [15, 6], [16, 6], [17, 6], [15, 7], [15, 8], [15, 9]]) g(x, y); // ankh
+        for (const [x, y] of [[23, 3], [24, 4], [24, 5], [24, 6], [24, 7], [24, 8], [25, 9], [23, 9]]) g(x, y); // pena
+      }
+      if (v === 3) {
+        // tocha: suporte de bronze preso à face e a chama por cima (no topo da face e um pouco sobre o topo)
+        const cx = 15;
+        for (const [x, y, c] of [[cx, yt + 9, "#5a3a1a"], [cx + 1, yt + 9, "#7a5224"], [cx, yt + 8, "#8a6a2a"], [cx + 1, yt + 8, "#b08a3a"], [cx - 1, yt + 7, "#b08a3a"], [cx, yt + 7, "#d4aa4a"], [cx + 1, yt + 7, "#d4aa4a"], [cx + 2, yt + 7, "#8a6a2a"]]) tela.p(x, y, c);
+        for (const [x, y] of [[cx, yt + 10], [cx + 1, yt + 10], [cx, yt + 11]]) tela.p(x, y, "#4a3018");
+        const chama = [[cx - 1, 6, "#c8461a"], [cx, 6, "#ff8a2a"], [cx + 1, 6, "#ff8a2a"], [cx + 2, 6, "#c8461a"], [cx - 1, 5, "#ff8a2a"], [cx, 5, "#ffd060"], [cx + 1, 5, "#ffb040"], [cx + 2, 5, "#e0602a"],
+          [cx, 4, "#ffe9a0"], [cx + 1, 4, "#ffd060"], [cx, 3, "#ffd060"], [cx + 1, 3, "#ff8a2a"], [cx, 2, "#ff8a2a"], [cx + 1, 1, "#c8461a"]];
+        for (const [x, y, c] of chama) tela.p(x, yt + y - 1, c);
+      }
+    }
+    matiz(null);
+    return tela;
+  }
   function texturaMuro(scene, tipo, mask, v = 0) {
+    if (MUROS[tipo] && MUROS[tipo].cheio) {
+      const chave = `bloco_${tipo}_${mask}_${v}`;
+      if (!scene.textures.exists(chave)) scene.textures.addCanvas(chave, pintarBloco(tipo, mask, v).canvas());
+      return chave;
+    }
     const chave = `muro_${tipo}_${mask}_${v % 3}_h${ALTURA_MURO}`;
     if (!scene.textures.exists(chave)) scene.textures.addCanvas(chave, pintarMuro(tipo, mask, v % 3).canvas());
     return chave;
+  }
+  // Nome do muro contínuo de um obstáculo (chave ob_<bioma>_<tipo>, Arte.tipoObstaculo) na área, ou null: os muros
+  // de vila pelo tipo, e, nas galerias da tumba (areas[área].clima "tumba"), os tijolos do bioma da arte viram as
+  // paredes de blocos (o tipo "tijolos" que a lógica escreve no labirinto, tiposObstaculo).
+  function nomeMuro(area, chave) {
+    if (!chave) return null;
+    const n = chave.replace(`ob_${area}_`, "");
+    if (MUROS[n] && !MUROS[n].cheio) return n;
+    const a = typeof areas !== "undefined" ? areas[area] : null;
+    if (a && a.clima === "tumba" && chave === `ob_${Arte.biomaDaArea ? Arte.biomaDaArea(area) : area}_tijolos`) return "tumba";
+    return null;
   }
   // A casa (x, y) tem muro contínuo? Mesma regra de game.js (tipoMuro): devolve a máscara N1 L2 S4 O8 ou 0.
   const cacheMuros = {};
@@ -1136,8 +1225,7 @@
     let nome = null;
     if (mapas[area][y][x] === 1 && pisos[area][y][x] === PISO.CHAO && Arte.tipoObstaculo) {
       const t = Arte.tipoObstaculo(area, x, y);
-      const n = t && t.chave ? t.chave.replace(`ob_${area}_`, "") : null;
-      if (n && MUROS[n]) nome = n;
+      nome = nomeMuro(area, t && t.chave);
     }
     c.set(id, nome);
     return nome;
@@ -1146,6 +1234,13 @@
     const m = muroEm(area, x, y);
     if (!m) return 0;
     return (muroEm(area, x, y - 1) === m ? 1 : 0) | (muroEm(area, x + 1, y) === m ? 2 : 0) | (muroEm(area, x, y + 1) === m ? 4 : 0) | (muroEm(area, x - 1, y) === m ? 8 : 0);
+  }
+  // Esquece o que foi guardado da área a partir do mapa (muros, classes das casas e pedaços do chão a meio): o
+  // labirinto das Pirâmides (JGB-53) é escavado de novo a cada entrada, então a cena chama isto ao montar a área.
+  function esquecerArea(area) {
+    delete cacheMuros[area];
+    delete cacheClasses[area];
+    for (const chave of [...fatias.keys()]) if (chave.startsWith(`chao_${area}_`)) fatias.delete(chave);
   }
 
   // ---------------------------------------------------------------- chão contínuo
@@ -1294,6 +1389,8 @@
     const tufoSeco = cI(((bio.deco || []).find((d) => /tufo/.test(d.tipo)) || { cor: "#8a8450" }).cor);
     // carne (bio.veias): veias no chão, sem tufos secos nem lajes de rocha
     const VEIA = bio.veias ? [cI(bio.veias.escura), cI(bio.veias.clara)] : null;
+    // lajes de pedra (bio.lajes, as galerias da tumba): o chão inteiro em lajes retangulares assentadas
+    const LAJE = bio.lajes ? [cI(bio.lajes.junta), cI(bio.lajes.luz)] : null;
 
     // ---- casas em volta do pedaço (margem de 2 casas)
     const CX0 = Math.floor(X0 / T) - 1, CY0 = Math.floor(Y0 / T) - 1, CN = LADO + 4;
@@ -1487,6 +1584,27 @@
               if (d > -0.011 && d < 0.011) { cor = VEIA[0]; tom[idx] = ti | 16; }
               else if (d >= 0.011 && d < 0.02) cor = VEIA[1];
               else if (d2 > -0.005 && d2 < 0.005 && h2 > 0.25) cor = mI(cor, VEIA[0], 0.55);
+            }
+            // lajes (bio.lajes): fiadas de 16 px, lajes de 20 a 28 px desencontradas, cada uma num tom, com a junta
+            // escura, a beira de cima e da esquerda na luz, a de baixo e da direita na sombra, rachas e areia nas
+            // juntas; tudo em coordenadas do mundo (os pedaços emendam). Sem carimbos por cima (tom | 16).
+            if (LAJE) {
+              const fila = Math.floor(wy / 16), ly = wy - fila * 16;
+              const larg = 24 + 8 * Math.floor(hash2(fila, 3, s + 30) * 3), off = Math.floor(hash2(fila, 5, s + 31) * larg);
+              const col = Math.floor((wx + off) / larg), lx = wx + off - col * larg, tl = hash2(col, fila, s + 32);
+              const tl2 = 2 + Math.floor(tl * 3) + (ftom[idx] > 0.62 ? 1 : ftom[idx] < 0.3 ? -1 : 0);
+              const tj = tl2 < 1 ? 1 : tl2 > 5 ? 5 : tl2;
+              cor = G[tj];
+              if (h < 0.05) cor = G[tj - 1]; else if (h > 0.965) cor = G[tj + 1];
+              if (ly === 15 || lx === larg - 1) cor = fmoita[idx] > 0.64 ? mI(LAJE[0], G[4], 0.5) : mI(LAJE[0], G[tj], 0.35);
+              else if (ly === 0 || lx === 0) cor = mI(G[tj], LAJE[1], 0.2);
+              else if (hash2(col, fila, s + 33) < 0.16) {
+                // racha: um fio em diagonal que cruza a laje
+                const d = (lx - larg * 0.5) * 0.7 - (ly - 8) + Math.round((fox[idx] - 0.5) * 3);
+                if (d > -0.5 && d < 0.6) cor = mI(G[tj - 1], LAJE[0], 0.6); else if (d >= 0.6 && d < 1.4) cor = mI(cor, LAJE[1], 0.15);
+              }
+              if (fman[idx] > 0.66 && h2 > 0.4) cor = mI(cor, G[6], 0.22); // poeira de areia assentada
+              tom[idx] = tj | 16;
             }
             if (!tom[idx]) tom[idx] = ti | (man ? 8 : 0);
             if (temRua && (up === RUA || lf === RUA || dn === RUA || rt === RUA)) cor = mI(cor, JUNTA, 0.6);
@@ -1728,7 +1846,18 @@
           continue;
         }
         if (x < 1 || y < 1 || x >= COLS - 1 || y >= ROWS - 1) continue;
+        const nm = muroEm(area, x, y);
+        if (!nm) continue;
         const mk = mascaraMuro(area, x, y);
+        if (MUROS[nm].cheio) {
+          // bloco cheio: sombra curta à direita e embaixo, só no chão (onde a vizinha não é parede)
+          const livre = (dx, dy) => !muroEm(area, x + dx, y + dy);
+          for (let q = 1; q <= 6; q++) {
+            if (livre(1, 0)) marca(px + T - 1 + q, py + Math.round(q * 0.8), 1, T, q > 4 ? 1 : 2);
+            if (livre(0, 1)) marca(px + Math.round(q * 0.6), py + T - 1 + q, T, 1, q > 3 ? 1 : q > 1 ? 2 : 3);
+          }
+          continue;
+        }
         if (!mk) continue;
         const rets = [[9, 9, 14, 14]];
         if (mk & 1) rets.push([9, 0, 14, 9]); if (mk & 4) rets.push([9, 23, 14, 9]); if (mk & 8) rets.push([0, 9, 9, 14]); if (mk & 2) rets.push([23, 9, 9, 14]);
@@ -2450,7 +2579,7 @@
   global.Cenario = {
     MATERIAIS_PREDIO, material, LADO_PEDACO: LADO,
     obstaculosDaOrla, naOrla, MOLDURA_CASAS, temOrla: (area) => !!ORLAS[area],
-    texturasPredio, texturaMovel, texturaPorta, texturaPedacoChao, classesDaArea, texturaMuro, MUROS, ALTURA_MURO,
+    texturasPredio, texturaMovel, texturaPorta, texturaPedacoChao, classesDaArea, texturaMuro, MUROS, ALTURA_MURO, nomeMuro, esquecerArea,
     // altura da parede dos prédios em px (64 = 2 casas; a pintura aceita de 32 a 64). game.js posiciona
     // "dentro" e "fora" em Y0 − ALTURA_PAREDE e a porta em porta.y × 32 + 32 − ALTURA_PAREDE.
     ALTURA_PAREDE: 64,
@@ -2466,6 +2595,6 @@
     moitasNoChao: true,
     usarChao(modo) { MODO_CHAO = modo === "main" ? "main" : "fatiado"; fatias.clear(); if (Arte.limparTilesets) Arte.limparTilesets(); return MODO_CHAO; },
     // para testes e ferramentas
-    pintarPredio, pintarMovel, pintarPedacoChao, pintarPedacoChaoMain, iniciarPedacoFatiado, pintarMuro, pintarPorta, Tela,
+    pintarPredio, pintarMovel, pintarPedacoChao, pintarPedacoChaoMain, iniciarPedacoFatiado, pintarMuro, pintarBloco, pintarPorta, Tela,
   };
 })(typeof window !== "undefined" ? window : globalThis);

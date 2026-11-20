@@ -3257,6 +3257,7 @@ for (const o of DADOS_TROCA_PONTOS) registrarOfertaTroca(clonarDados(o));
 
 // O abate conta se a criatura estiver na lista OU for de uma das espécies OU famílias (e da área, se houver).
 function casaAlvo(alvo, e) {
+  if (e?.masmorra) return false; // vagas de masmorra (JGB-23) não contam nem aparecem nas caçadas
   const lista = (chave) => alvo[chave] || [];
   const casa = lista("criaturas").includes(e.id) || lista("criaturas").includes(e.base) || lista("especies").includes(e.especie) || lista("familias").includes(e.familia);
   return casa && (!alvo.area || e.area === alvo.area);

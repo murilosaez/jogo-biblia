@@ -6787,7 +6787,7 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   for (const s of Object.values(ESPACOS)) assert.ok(PP[s.silhueta], `silhueta ${s.silhueta}`);
   const quadro = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
   const nu = quadro({});
-  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }, { cabeca: "turbante_fornalha" }])
+  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }, { cabeca: "turbante_fornalha" }, { pes: "sandalias_pascoa" }])
     assert.notStrictEqual(quadro(eq), nu, `${JSON.stringify(eq)} aparece no boneco`);
   assert.notStrictEqual(quadro({ arma: "arco_madeira" }), quadro({ arma: "espada_ferro" }), "o arco vai na mão");
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
