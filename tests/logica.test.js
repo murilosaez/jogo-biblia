@@ -6782,7 +6782,7 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   for (const s of Object.values(ESPACOS)) assert.ok(PP[s.silhueta], `silhueta ${s.silhueta}`);
   const quadro = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
   const nu = quadro({});
-  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }])
+  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }])
     assert.notStrictEqual(quadro(eq), nu, `${JSON.stringify(eq)} aparece no boneco`);
   assert.notStrictEqual(quadro({ arma: "arco_madeira" }), quadro({ arma: "espada_ferro" }), "o arco vai na mão");
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
@@ -7893,6 +7893,83 @@ teste("84. forja e engaste (JGB-25): 12 pedras de Êx 28, formato do item, forja
   const linha = v.pecas.find((x) => x.slot === "escudo");
   igual([linha.nivel, linha.proximo.nivel, linha.proximo.chance, linha.pedra.nome], [0, 1, 100, "Berilo"]);
   assert.strictEqual(v.pecas.find((x) => x.slot === "arma").falta, "máximo");
+});
+
+// ---------------------------------------------------------------------
+// Conjunto lendário Armadura de Deus (JGB-26)
+// ---------------------------------------------------------------------
+teste("85. Armadura de Deus (JGB-26): 6 peças de Ef 6, cada uma de um raro nomeado, bônus com 2, 4 e 6 peças e save", () => {
+  const j = carregarJogo({ semente: 9 });
+  const p = j.entrar();
+  const g = j.g, M = j.M, ITENS = g("ITENS"), C = g("CONJUNTOS").armadura_de_deus;
+  // (a) Dados: 6 peças relíquia, uma por espaço, cada uma de um raro nomeado diferente, com versículo.
+  igual(C.pecas.map((x) => ITENS[x.item].nome), ["Cinto da verdade", "Couraça da justiça", "Calçados do evangelho da paz", "Escudo da fé", "Capacete da salvação", "Espada do Espírito"]);
+  const espacos = C.pecas.map((x) => g("slotDoItem")(x.item));
+  assert.strictEqual(new Set(espacos).size, 6, "uma peça por espaço");
+  const fontes = new Set();
+  for (const x of C.pecas) {
+    assert.strictEqual(ITENS[x.item].raridade, "reliquia");
+    assert.match(x.versiculo, /\(Ef 6:1[4-7]\)\.$/, `${x.item}: versículo`);
+    const de = Object.values(g("inimigos")).filter((e) => !e.base && e.saque.itens.some((l) => l.item === x.item));
+    assert.ok(de.length === 1 && de[0].nomeado, `${x.item}: cai de um raro nomeado`);
+    fontes.add(de[0].id);
+  }
+  assert.strictEqual(fontes.size, 6, "um nomeado por peça");
+  for (const lista of Object.values(C.bonus)) for (const b of lista) assert.ok(g("engasteValido")(b), `bônus válido: ${JSON.stringify(b)}`);
+  igual(Object.keys(C.bonus), ["2", "4", "6"]);
+  assert.doesNotMatch(FONTE_LOGICA, /"armadura_de_deus"|"cinto_verdade"|"espada_espirito"|"escudo_fe"/, "logica.js não cita o conjunto");
+  // Raridade fixa: o id puro é a forma canônica (sem "@reliquia"), também ao tirar a pedra.
+  igual([g("codigoItem")("escudo_fe", "reliquia", {}), g("itemComExtras")("escudo_fe@reliquia~pedra_safira", { pedra: null })], ["escudo_fe", "escudo_fe"]);
+  assert.strictEqual(g("infoItem")("escudo_fe@reliquia"), null);
+
+  // (b) Bônus: nada com 1 peça; +2 de defesa com 2; +30 de vida e −4% de dano com 4; dano, crítico e cura com 6.
+  const vestir = (pecas) => {
+    p.equipamento = { cabeca: null, colar: null, arma: "espada_madeira", armadura: "tunica_pano", escudo: "escudo_madeira", pernas: null, pes: null, anel: null, municao: null };
+    for (const item of pecas) p.equipamento[g("slotDoItem")(item)] = item;
+    return p;
+  };
+  const base = { def: g("defesaEquipamento")(vestir([])), vida: g("vidaMaxima")(p), dano: g("danoBruto")(p, "corpo") };
+  const pecas = C.pecas.map((x) => x.item);
+  vestir(pecas.slice(0, 1));
+  igual([g("contarPecasConjunto")(p, "armadura_de_deus"), g("bonusConjunto")(p, "defesa")], [1, 0]);
+  vestir(["cinto_verdade", "calcados_evangelho"]);
+  assert.strictEqual(g("bonusConjunto")(p, "defesa"), 2);
+  assert.strictEqual(g("defesaEquipamento")(p), base.def + 2 + 2 + 2, "as duas peças (2 cada) e o bônus de 2");
+  vestir(["cinto_verdade", "calcados_evangelho", "capacete_salvacao", "couraca_justica"]);
+  igual([g("bonusConjunto")(p, "vida"), g("bonusConjunto")(p, "reducao"), g("bonusConjunto")(p, "dano")], [30, 0.04, 0]);
+  // Forjada e com pedra continua contando; a redução soma com a do Diamante sob o mesmo teto.
+  vestir(["cinto_verdade", "calcados_evangelho", "capacete_salvacao@reliquia+5", "couraca_justica@reliquia+2~pedra_diamante", "escudo_fe", "espada_espirito@reliquia~pedra_sardio"]);
+  igual(g("visaoConjunto")(p, "armadura_de_deus").faixas.map((f) => f.ativa), [true, true, true]);
+  igual([g("somaEngastes")(p, "dano"), g("somaEngastes")(p, "critico"), g("somaEngastes")(p, "cura"), g("somaEngastes")(p, "reducao")], [3 + 2, 3, 0.1, 0.08]);
+  assert.strictEqual(g("danoBruto")(p, "corpo") - base.dano, 19 - 5 + 3 + 2, "espada do Espírito (19 contra 5) + bônus de 6 peças (3) + Sárdio (2)");
+  assert.ok(g("chanceCritico")(p, "corpo") >= 5 + 4 + 3, "crítico da espada e do conjunto");
+  const v = g("visaoConjunto")(p, "armadura_de_deus");
+  igual([v.vestidas, v.total, v.pecas.every((x) => x.vestida), v.pecas[0].origem], [6, 6, true, "Presa-Cinzenta (Canaã)"]);
+  assert.strictEqual(g("visaoForja")(p).pecas.find((x) => x.slot === "escudo").conjunto, "Armadura de Deus");
+
+  // (c) Saque: na janela dele, o raro nomeado pode largar a peça, com anúncio próprio.
+  vestir([]);
+  const presa = g("inimigos").presaCinzenta;
+  const jan = g("janelaNomeado")(presa, j.agora);
+  if (!jan.ativa) j.avancar(jan.proxima - j.agora + 1000);
+  j.atualizar();
+  assert.ok(M.inimigoVivo(p, presa.id), "Presa-Cinzenta na janela");
+  p.nivel = 20;
+  p.vida = g("vidaMaxima")(p);
+  p.vidaInimigos[presa.id] = 1;
+  p.inventario = [];
+  j.definirAleatorio(() => 0.001); // toda linha da tabela sai
+  const r = abaterSemLimpar(j, presa.id);
+  assert.ok(p.inventario.includes("cinto_verdade"), "a peça cai do raro nomeado");
+  assert.ok(r.anuncios.includes("Peça da Armadura de Deus! Presa-Cinzenta deixou cair: Cinto da verdade."), r.anuncios.join(" | "));
+  j.definirAleatorio(Math.random);
+  assert.ok(!M.vendaDeTudo(ID).some((x) => x.item === "cinto_verdade"), "vender tudo deixa as peças do conjunto");
+  // (d) Save: as peças (forjadas e com pedra) voltam iguais.
+  vestir(["cinto_verdade", "escudo_fe@reliquia+1~pedra_jaspe"]);
+  const vestido = { ...p.equipamento };
+  j.g("Storage").salvar(p);
+  j.g("Storage").flush();
+  igual(carregarJogo({ store: j.store }).entrar().equipamento, vestido);
 });
 
 const PASTA_TESTES_ARTE = path.join(__dirname, "arte");

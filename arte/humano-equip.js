@@ -252,9 +252,9 @@
 
   // ----- escudos -----
   function escudo(G, P, c, formaE, camada) {
-    const v = P.vista, [fr, aro, cen] = [c[0], c[1], c[2] || c[0]];
+    const v = P.vista, [fr, aro, cen] = [c[0], c[1], c[2] || c[0]], liso = c[3] === "liso"; // liso: face de pano pintado, sem a malha de couro
     const [x, y] = P.escudoEm || P.maoEscudo;
-    const Rf = madeira(fr), Ra = metal(escuro(aro, 0.2), claro(aro, 0.25)), Rc = metal(escuro(cen, 0.25), claro(cen, 0.35));
+    const Rf = liso ? pano(fr) : madeira(fr), Ra = metal(escuro(aro, 0.2), claro(aro, 0.25)), Rc = metal(escuro(cen, 0.25), claro(cen, 0.35));
     const ry = formaE === "alto" ? 10.5 : formaE === "oval" ? 8.5 : 7.2;
     if (v === "lado") {
       if (camada !== "meio") return false;
@@ -264,7 +264,7 @@
         for (let j = -10; j <= 10; j++) for (let i = -3; i <= 2; i++) {
           if ((j === -10 || j === -9) && (i === -3 || i === 2) || (j === -10 && (i === -2 || i === 1))) continue;
           const X = Math.floor(ex) + i, Y = Math.floor(ey) + j, borda = i === -3 || j === 10 || j <= -9 || (j === -8 && (i === -2 || i === 1));
-          const malha = hash2(Math.floor((i + j * 0.5 + 40) / 2), Math.floor((j + 20) / 3), 53) > 0.55;
+          const malha = !liso && hash2(Math.floor((i + j * 0.5 + 40) / 2), Math.floor((j + 20) / 3), 53) > 0.55;
           G.fino(X, Y, borda ? luz(Rc, 0.5 - j * 0.04, X, Y) : luz(malha ? pano(aro) : Rf, -0.05 - i * 0.22 - j * 0.03 - (i === 2 ? 0.35 : 0), X, Y));
         }
         return false;
@@ -291,9 +291,15 @@
           const Y = Math.floor(ey) + j, u = (X + 0.5 - ex) / 6.5, borda = Math.abs(X + 0.5 - ex) > hw - 1.3 || j === 10 || (j < -6 && Math.abs(X + 0.5 - ex) > hw - 1.6) || j === -10;
           if (hw < 0.5) continue;
           if (borda) { G.fino(X, Y, luz(Rc, 0.3 - u * 0.7 - j * 0.04, X, Y)); continue; }
-          const malha = hash2(Math.floor((X + j * 0.5) / 3), Math.floor(j / 3), 53) > 0.55;
+          const malha = !liso && hash2(Math.floor((X + j * 0.5) / 3), Math.floor(j / 3), 53) > 0.55;
           G.fino(X, Y, luz(malha ? pano(aro) : Rf, 0.25 - u * 0.75 - j * 0.035, X, Y));
         }
+      }
+      if (liso) {
+        // espinha de ouro de alto a baixo e o umbo no meio
+        for (let j = -9; j <= 9; j++) { G.fino(Math.floor(ex) - 1, Math.floor(ey) + j, luz(Rc, 0.7 - j * 0.03)); G.fino(Math.floor(ex), Math.floor(ey) + j, luz(Rc, -0.1 - j * 0.03)); }
+        elipse(G, ex, ey, 2.2, 2.2, bola(Rc, 0.3));
+        return true;
       }
       for (let j = -2; j <= 2; j++) { G.fino(Math.floor(ex) - 1, Math.floor(ey) + j, Rc[4]); G.fino(Math.floor(ex), Math.floor(ey) + j, Rc[2]); }
       return true;
@@ -494,6 +500,12 @@
       });
       for (let X = cx - 6; X <= cx + 5; X++) G.fino(X, T + 5, luz(R, 0.9 - ((X - cx + 6) / 11) * 1.2));
       G.fino(cx - 1, T - 3, R[4]); G.fino(cx, T - 3, R[2]); G.fino(cx - 1, T - 4, R[5]); G.fino(cx, T - 4, R[3]);
+      if (c[2]) {
+        // crista de crina (3ª cor): de lado, um arco da testa à nuca; de frente e de costas, um leque estreito
+        const Rk = pano(c[2]);
+        if (v === "lado") for (let X = cx - 6; X <= cx + 3; X++) { const t = (X - cx + 1.5) / 4.5, h = Math.round(2.6 - 2.2 * t * t); for (let k = 0; k <= h; k++) G.fino(X, T - 2 - k, luz(Rk, 0.7 - k * 0.15 - (X - cx + 6) * 0.1 - (k === 0 ? 0.4 : 0))); }
+        else for (let k = 0; k <= 2; k++) for (let i = -2; i <= 1; i++) if (!(k === 2 && (i === -2 || i === 1))) G.fino(cx + i, T - 3 - k, luz(Rk, 0.7 - (i + 2) * 0.4 - k * 0.1));
+      }
       if (v === "frente") {
         for (let j = 6; j <= 8; j++) { G.fino(cx - 1, T + j, R[4]); G.fino(cx, T + j, R[2]); }
         for (let j = 6; j <= 9; j++) { G.fino(cx - 6, T + j, R[4]); G.fino(cx - 5, T + j, j < 9 ? R[3] : null || R[2]); G.fino(cx + 4, T + j, R[2]); G.fino(cx + 5, T + j, R[1]); }
@@ -805,6 +817,25 @@
     ombreira(G, P.ombroD[0] - 0.5, y, R, -0.22, 4.6);
   }
   const decote = (P, X, Y) => P.vista === "frente" && Math.abs(X + 0.5 - P.cx) < 2.6 - (Y - P.yT) * 0.9;
+  // couraça de escamas (metal E) com as tiras de couro (pteruges) de ponteira de metal abaixo do cinto
+  function escamas(G, P, E, couroTiras) {
+    const v = P.vista, y0 = P.yT + (v === "lado" ? 1 : 0), y1 = P.yC - 1;
+    for (let Y = y0; Y <= y1; Y++) {
+      const [a, b] = P.tronco(Y), i = Y - P.yT, fila = Math.floor(i / 3), sy = i % 3;
+      for (let X = a; X <= b; X++) {
+        if (decote(P, X, Y)) continue;
+        const u = (X - a) / (b - a), sx = (((X - P.cx + (fila & 1) * 2) % 4) + 4) % 4;
+        // escama: topo claro, corpo, e a borda de baixo em arco escuro
+        let l = sy === 0 ? (sx === 3 ? -0.5 : 0.75) : sy === 1 ? (sx === 3 ? -0.2 : 0.2) : sx === 1 ? 0.0 : -0.75;
+        l += 0.25 - 0.9 * u + (i <= 1 ? 0.3 : 0);
+        G.fino(X, Y, luz(E, l, X, Y));
+      }
+    }
+    if (P.montado) return;
+    // tiras (pteruges) de couro com ponteira de bronze abaixo do cinto
+    const [a, b] = P.tronco(P.yC), C = couro(couroTiras);
+    for (let X = a - 1; X <= b + 1; X++) { const k = (((X - a + 1) % 3) + 3) % 3; if (k === 2) continue; for (let j = 0; j < 6; j++) G.fino(X, P.yC + 2 + j, j >= 4 ? luz(E, (k === 0 ? 0.6 : -0.1) - (j === 5 ? 0.5 : 0)) : luz(C, (k === 0 ? 0.4 : -0.25) - ((X - a) / (b - a)) * 0.6)); }
+  }
   const ARM = {
     armadura_couro: {
       f(G, P) {
@@ -831,25 +862,13 @@
       ombros: (G, P) => ombreiras(G, P, couro("#9a6a3c")),
     },
     couraca_escamas: {
-      f(G, P) {
-        const E = metal("#8a5a2b", "#e2b264"), v = P.vista, y0 = P.yT + (v === "lado" ? 1 : 0), y1 = P.yC - 1;
-        for (let Y = y0; Y <= y1; Y++) {
-          const [a, b] = P.tronco(Y), i = Y - P.yT, fila = Math.floor(i / 3), sy = i % 3;
-          for (let X = a; X <= b; X++) {
-            if (decote(P, X, Y)) continue;
-            const u = (X - a) / (b - a), sx = (((X - P.cx + (fila & 1) * 2) % 4) + 4) % 4;
-            // escama: topo claro, corpo, e a borda de baixo em arco escuro
-            let l = sy === 0 ? (sx === 3 ? -0.5 : 0.75) : sy === 1 ? (sx === 3 ? -0.2 : 0.2) : sx === 1 ? 0.0 : -0.75;
-            l += 0.25 - 0.9 * u + (i <= 1 ? 0.3 : 0);
-            G.fino(X, Y, luz(E, l, X, Y));
-          }
-        }
-        if (P.montado) return;
-        // tiras (pteruges) de couro com ponteira de bronze abaixo do cinto
-        const [a, b] = P.tronco(P.yC), C = couro("#7a4a24");
-        for (let X = a - 1; X <= b + 1; X++) { const k = (((X - a + 1) % 3) + 3) % 3; if (k === 2) continue; for (let j = 0; j < 6; j++) G.fino(X, P.yC + 2 + j, j >= 4 ? luz(E, (k === 0 ? 0.6 : -0.1) - (j === 5 ? 0.5 : 0)) : luz(C, (k === 0 ? 0.4 : -0.25) - ((X - a) / (b - a)) * 0.6)); }
-      },
+      f: (G, P) => escamas(G, P, metal("#8a5a2b", "#e2b264"), "#7a4a24"),
       ombros: (G, P) => ombreiras(G, P, metal("#8a5a2b", "#e2b264")),
+    },
+    // couraça da justiça: o mesmo corte em ouro pálido, tiras carmim
+    couraca_justica: {
+      f: (G, P) => escamas(G, P, metal("#a8822e", "#fff2b8"), "#a8242e"),
+      ombros: (G, P) => ombreiras(G, P, metal("#a8822e", "#fff2b8")),
     },
   };
 
@@ -927,12 +946,15 @@
       const R = couro(c[0]), R2 = couro(c[1] || claro(c[0], 0.3));
       // o cano sobe até o meio da canela (com grevas, só do tornozelo para baixo), dobrado em cima; sola escura
       const topo = (P.__grevas ? PES - 3 : PES - 7);
-      repintar(G, P, topo, PES, 12, (X, Y, l, j) => (Y === PES ? R[0] : j === 0 ? luz(R2, l + 0.2, X, Y) : luz(R, l, X, Y)));
+      // com a 3ª cor, calçado de tiras (como as sandálias de cano dos soldados): tira de metal em linhas alternadas,
+      // a perna aparece entre elas; o pé fica fechado no couro
+      const T3 = c[2] ? metal(escuro(c[2], 0.3), claro(c[2], 0.4)) : null;
+      repintar(G, P, topo, PES, 12, (X, Y, l, j) => (Y === PES ? R[0] : j === 0 ? luz(T3 ? metal(escuro(c[1], 0.3), claro(c[1], 0.4)) : R2, l + 0.2, X, Y) : T3 && Y < PES - 2 ? ((Y - topo) % 2 ? null : luz(T3, l + 0.2, X, Y)) : luz(R, l, X, Y)));
     },
   });
   AC.grevas.pre = (P) => { P.__grevas = true; };
   ac("saiote", {
-    meio(G, c, P) {
+    meio(G, c, P, cfg, C) {
       const R = couro(c[0]), ponta = c[1] || "#e8b94a";
       // tiras de couro de 2 px com o vão escuro entre elas, do quadril até a barra da veste curta
       const y1 = P.yR + 11;
@@ -942,6 +964,11 @@
         if (k === 2) return R[0];
         return Y === y1 - 1 && G.gf(X, Y + 1) ? ponta : luz(R, (k === 0 ? 0.45 : -0.05) + l * 0.4, X, Y);
       });
+      // com a 3ª cor, o cinto (a faixa da cintura) vira de placas de metal
+      if (c[2]) { const Rm = metal(escuro(c[2], 0.3), claro(c[2], 0.4)); repintar(G, P, P.yC, P.yC + 1, 10, (X, Y, l) => luz(Rm, l + (Y === P.yC ? 0.3 : -0.3) - ((X - P.cx + 40) % 4 === 3 ? 0.6 : 0), X, Y));
+        // a ponta da faixa do corpo, que cai à frente, também fica de metal
+        const faixa = new Set(C && C.Cinto ? C.Cinto : []);
+        repintar(G, P, P.yC + 2, P.yR + 2, 10, (X, Y, l) => (faixa.has(G.gf(X, Y)) ? luz(Rm, l - 0.1 - (Y - P.yC) * 0.1, X, Y) : null)); }
     },
   });
 

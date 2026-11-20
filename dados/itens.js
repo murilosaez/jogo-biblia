@@ -85,6 +85,14 @@ const ITENS = {
   sandalias_couro: { nome: "Sandálias de couro", peso: 0.4, tipo: "pes", defesa: 1 },
   botas_viagem: { nome: "Botas de viagem", peso: 1.2, tipo: "pes", defesa: 1, atributosFixos: { carga: 2 } },
   anel_selo_bronze: { nome: "Anel de selo de bronze", peso: 0.05, tipo: "anel", atributosFixos: { critico: 2 } }, // Gn 41:42
+  // Armadura de Deus (Ef 6:13-17, JGB-26): conjunto lendário de relíquias (CONJUNTOS, abaixo). Cada peça cai de
+  // um raro nomeado (dados/criaturas.js); o bônus de conjunto vem com 2, 4 e 6 peças vestidas.
+  cinto_verdade: { nome: "Cinto da verdade", peso: 0.3, tipo: "pernas", raridade: "reliquia", defesa: 2, atributosFixos: { vida: 10 } },
+  couraca_justica: { nome: "Couraça da justiça", peso: 9, tipo: "armadura", raridade: "reliquia", defesa: 9, atributosFixos: { vida: 20 } },
+  calcados_evangelho: { nome: "Calçados do evangelho da paz", peso: 1, tipo: "pes", raridade: "reliquia", defesa: 2, atributosFixos: { carga: 3 } },
+  escudo_fe: { nome: "Escudo da fé", peso: 6, tipo: "escudo", raridade: "reliquia", defesa: 8, atributosFixos: { vida: 15 } },
+  capacete_salvacao: { nome: "Capacete da salvação", peso: 1.5, tipo: "cabeca", raridade: "reliquia", defesa: 2, atributosFixos: { vida: 10 } },
+  espada_espirito: { nome: "Espada do Espírito", peso: 1, tipo: "arma", raridade: "reliquia", bonus: 19, atributosFixos: { critico: 4 } },
   // Pedras do peitoral do sumo sacerdote (Êxodo 28.17–20, na ordem das 4 fileiras): saques muito raros (0,1%).
   // O ferreiro as engasta num equipamento (uma por peça; REGRAS_ENGASTE, dados/oficios.js); os mercadores as
   // compram. engaste: o bônus da pedra na peça vestida — efeito (dano, critico, vida, defesa, carga: pontos;
@@ -248,11 +256,43 @@ const VALORES_VENDA = {
   pedra_agata: 160,
   pedra_berilo: 190,
   pedra_jaspe: 200,
+  cinto_verdade: 120,
+  couraca_justica: 200,
+  calcados_evangelho: 130,
+  escudo_fe: 180,
+  capacete_salvacao: 150,
+  espada_espirito: 220,
 };
 
 // Espaços do boneco no painel Equipamento (o que cabe em cada um é regra: SLOTS_EQUIPAMENTO, em logica.js).
 // nome: rótulo; lugar: onde fica no corpo (mensagens e descrições); silhueta: desenho cujo contorno aparece no
 // espaço vazio. A mochila não guarda item: o espaço dela abre o painel Mochila (e recebe o que for guardado).
+// Conjuntos (JGB-26): peças que, vestidas juntas, dão bônus. pecas: { item, versiculo } na ordem do texto bíblico
+// (o versículo aparece na dica da peça); bonus: { "<peças vestidas>": [efeitos] }, cumulativos (com 6 peças valem
+// os de 2, 4 e 6). Os efeitos são os das pedras (REGRAS_ENGASTE, dados/oficios.js: dano, critico, vida, defesa,
+// carga, reducao, cura, xp, moedas, familia, velocidade) e somam com elas, sob os mesmos tetos. Os ids ficam no
+// save das peças: não renomeie. Citações: Almeida Revista e Atualizada (Ef 6:14-17), em trechos curtos.
+const CONJUNTOS = {
+  armadura_de_deus: {
+    nome: "Armadura de Deus",
+    referencia: "Efésios 6:13-17",
+    lema: "Tomai toda a armadura de Deus, para que possais resistir no dia mau (Ef 6:13).",
+    pecas: [
+      { item: "cinto_verdade", versiculo: "Cingindo-vos com a verdade (Ef 6:14)." },
+      { item: "couraca_justica", versiculo: "Vestindo-vos da couraça da justiça (Ef 6:14)." },
+      { item: "calcados_evangelho", versiculo: "Calçai os pés com a preparação do evangelho da paz (Ef 6:15)." },
+      { item: "escudo_fe", versiculo: "Embraçando sempre o escudo da fé, com o qual podereis apagar todos os dardos inflamados do Maligno (Ef 6:16)." },
+      { item: "capacete_salvacao", versiculo: "Tomai também o capacete da salvação (Ef 6:17)." },
+      { item: "espada_espirito", versiculo: "E a espada do Espírito, que é a palavra de Deus (Ef 6:17)." },
+    ],
+    bonus: {
+      2: [{ efeito: "defesa", valor: 2 }],
+      4: [{ efeito: "vida", valor: 30 }, { efeito: "reducao", valor: 0.04 }],
+      6: [{ efeito: "dano", valor: 3 }, { efeito: "critico", valor: 3 }, { efeito: "cura", valor: 0.1 }],
+    },
+  },
+};
+
 const ESPACOS_BONECO = {
   cabeca: { nome: "Cabeça", lugar: "na cabeça", silhueta: "capacete_couro" },
   colar: { nome: "Colar", lugar: "no pescoço", silhueta: "amuleto_faianca" },

@@ -326,8 +326,27 @@ body:not(.movendo-janela) .painel-cab:hover .janela-btn[data-janela-menu],.paine
    escudo; anel, pernas e munição; os pés embaixo. À direita, a figura com o que está vestido e o ataque da
    mão. Sem rótulo nos espaços: a silhueta diz o que vai em cada um, e a dica (ou o toque longo) dá o resto.
    Cabe na coluna de 272 px e na folha do celular. */
-#gradeEquip{display:grid;grid-template-columns:repeat(3,44px) minmax(84px,104px);grid-template-rows:repeat(4,44px);gap:4px;justify-content:center;padding:2px 0;
- grid-template-areas:"colar cabeca mochila lado" "arma armadura escudo lado" "anel pernas municao lado" ". pes . lado"}
+#gradeEquip{display:grid;grid-template-columns:repeat(3,44px) minmax(84px,104px);grid-template-rows:repeat(4,44px) auto;gap:4px;justify-content:center;padding:2px 0;
+ grid-template-areas:"colar cabeca mochila lado" "arma armadura escudo lado" "anel pernas municao lado" ". pes . lado" "conj conj conj conj"}
+/* conjuntos (JGB-26): "Armadura de Deus 3/6" sob o boneco; abre as faixas de bônus */
+.boneco-conjunto{grid-area:conj;grid-column:1/-1;margin-top:2px;font:700 var(--fs-13)/1.3 var(--f-ui);color:var(--ouro-300)}
+.boneco-conjunto summary{cursor:pointer;min-height:24px;display:flex;align-items:center;gap:6px;padding:2px 6px;border:1px solid var(--bronze-700);background:#0003;list-style:none}
+.boneco-conjunto summary::-webkit-details-marker{display:none}
+.boneco-conjunto summary::before{content:"▸";color:var(--ouro-300)}
+.boneco-conjunto[open] summary::before{content:"▾"}
+.boneco-conjunto summary b{color:#fff6e0}
+.faixas-conjunto{margin:4px 0 0;padding:0 0 0 16px;list-style:square;font:600 var(--fs-13)/1.3 var(--f-ui)}
+.faixas-conjunto li.inativa{opacity:.55}
+.faixas-conjunto li.ativa::marker{color:var(--ouro-300)}
+.boneco-conjunto .faixas-conjunto{color:var(--texto-2)}
+#dicaItem .conjunto-dica{margin-top:4px;padding-top:4px;border-top:1px solid var(--perg-400)}
+#dicaItem .conj-titulo{margin:0;font:700 var(--fs-14)/1.3 var(--f-ui);color:var(--xp-1)}
+#dicaItem .versiculo{margin:2px 0;font:italic 500 var(--fs-13)/1.3 var(--f-texto)}
+#dicaItem .faixas-conjunto{color:var(--tinta)}
+#dicaItem .faixas-conjunto li.ativa::marker{color:var(--xp-1)}
+#dicaItem .faixas-conjunto li.inativa{opacity:1;color:var(--tinta-suave);font-style:italic}
+#dicaItem{max-height:calc(100vh - 16px);overflow-y:auto}
+#dicaItem .conj-origem{margin:2px 0 0;font:600 var(--fs-13)/1.3 var(--f-ui);color:var(--tinta-suave)}
 .equip.e-colar{grid-area:colar} .equip.e-cabeca{grid-area:cabeca} .equip.e-mochila{grid-area:mochila}
 .equip.e-arma{grid-area:arma} .equip.e-armadura{grid-area:armadura} .equip.e-escudo{grid-area:escudo}
 .equip.e-anel{grid-area:anel} .equip.e-pernas{grid-area:pernas} .equip.e-municao{grid-area:municao} .equip.e-pes{grid-area:pes}

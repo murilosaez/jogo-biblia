@@ -490,6 +490,13 @@
     if (!d.pedra && typeof ITENS !== "undefined" && ITENS[id]?.engaste && typeof textoEngaste === "function")
       atributos.push(`Engastada por um ferreiro: ${textoEngaste(id)}`);
     const linhaAtributos = atributos.length ? `<ul class="atr-item">${atributos.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "";
+    // Peça de conjunto (JGB-26): o versículo, quantas estão vestidas, as faixas de bônus e de quem cai.
+    const conjId = typeof conjuntoDoItem === "function" ? conjuntoDoItem(id) : null;
+    const c = conjId ? visaoConjunto(jogador(), conjId) : null;
+    const peca = c?.pecas.find((x) => x.item === d.base);
+    const linhaConjunto = c ? `<div class="conjunto-dica"><p class="conj-titulo">${esc(c.nome)} (${c.vestidas}/${c.total})</p>`
+      + `${peca?.versiculo ? `<p class="versiculo">${esc(peca.versiculo)}</p>` : ""}${htmlFaixasConjunto(c)}`
+      + `${peca?.origem ? `<p class="conj-origem">Cai de: ${esc(peca.origem)}</p>` : ""}</div>` : "";
     const boneco = linhaBoneco(id, origem);
     let acao = boneco ? `${boneco}. ` : "";
     if (origem === "equip") acao += "Arraste para a mochila, ou dê duplo clique, para guardar.";
@@ -498,7 +505,7 @@
     else if (typeof valorDeVenda === "function" && valorDeVenda(id)) acao = "Venda a qualquer mercador ou guarde no depósito (há um de cada em toda cidade).";
     if (origem === "mochila") acao += " Botão direito ou toque longo: usar ou destruir.";
     const titulo = r !== "comum" ? ` class="rar" style="--rar:${corRaridade(r)}"` : "";
-    return `<h4${titulo}>${esc(nomeDoItem(id))}</h4>${linhaRaridade}<p>${esc([...new Set(partes)].join(" · "))}</p>${linhaAtributos}${acao ? `<p class="acao">${esc(acao)}</p>` : ""}`;
+    return `<h4${titulo}>${esc(nomeDoItem(id))}</h4>${linhaRaridade}<p>${esc([...new Set(partes)].join(" · "))}</p>${linhaAtributos}${linhaConjunto}${acao ? `<p class="acao">${esc(acao)}</p>` : ""}`;
   }
 
   // ------------------------------------------------------------------
@@ -966,7 +973,21 @@
     return `<div class="boneco-lado"><div class="boneco-figura" aria-hidden="true">${htmlBoneco}</div>${dados}</div>`;
   }
   function atualizarBoneco(p, peso, cap) {
-    $("#gradeEquip").innerHTML = ORDEM_BONECO.map((slot) => (slot === "mochila" ? htmlMochilaBoneco(peso, cap) : htmlEspacoBoneco(p, slot))).join("") + htmlLadoBoneco(p);
+    $("#gradeEquip").innerHTML = ORDEM_BONECO.map((slot) => (slot === "mochila" ? htmlMochilaBoneco(peso, cap) : htmlEspacoBoneco(p, slot))).join("") + htmlLadoBoneco(p)
+      + htmlConjuntosBoneco(p);
+  }
+  // Conjuntos (JGB-26) com ao menos 1 peça vestida: "Armadura de Deus 3/6", que abre as faixas de bônus (a ativa
+  // marcada). conjuntosAbertos guarda os abertos entre um redesenho e outro.
+  const conjuntosAbertos = new Set();
+  function htmlConjuntosBoneco(p) {
+    if (typeof CONJUNTOS === "undefined" || typeof visaoConjunto !== "function") return "";
+    return Object.keys(CONJUNTOS).map((id) => visaoConjunto(p, id)).filter((c) => c && c.vestidas > 0).map((c) =>
+      `<details class="boneco-conjunto" data-conjunto="${esc(c.id)}"${conjuntosAbertos.has(c.id) ? " open" : ""}>`
+      + `<summary>${esc(c.nome)} <b>${c.vestidas}/${c.total}</b></summary>${htmlFaixasConjunto(c)}</details>`).join("");
+  }
+  function htmlFaixasConjunto(c) {
+    return `<ul class="faixas-conjunto">${c.faixas.map((f) =>
+      `<li class="${f.ativa ? "ativa" : "inativa"}"><span class="sr">${f.ativa ? "Ativo: " : "Inativo: "}</span>${f.pecas} peças: ${esc(f.textos.join(", "))}</li>`).join("")}</ul>`;
   }
   // O espaço da mochila no boneco: mostra o painel Mochila (no largo e no médio, reabre ou restaura a janela,
   // mesmo fechada pela tecla I; no celular, na folha Mochila) e o destaca por um instante.
@@ -1945,7 +1966,7 @@
           ? `<button type="button" class="btn primario" data-forjar="${esc(pc.item)}" data-slot="${esc(pc.slot || "")}" aria-label="Forjar ${esc(pc.nome)} para +${c.nivel}, ${c.chance}% de chance">Forjar +${c.nivel}</button>`
           : `<button type="button" class="btn primario" disabled>${esc(motivo)}</button>`;
         lista += `<li class="item-loja item-forja"><span class="icone">${htmlItem(pc.item)}</span><span><strong>${esc(pc.nome)}</strong>`
-          + `<span>${esc(onde(pc))} · ${esc(pc.efeitos.join(", "))}</span><span class="forja-prox">${esc(detalhe)}</span></span>${botao}</li>`;
+          + `<span>${esc(onde(pc))}${pc.conjunto ? ` · ${esc(pc.conjunto)}` : ""} · ${esc(pc.efeitos.join(", "))}</span><span class="forja-prox">${esc(detalhe)}</span></span>${botao}</li>`;
       }
       if (!lista) lista = '<li class="vazio-txt" style="color:var(--tinta-suave)">Nenhum equipamento para forjar: vista ou leve uma peça na mochila.</li>';
     } else {
@@ -4046,7 +4067,8 @@
     if (y + h > innerHeight - 8) y = innerHeight - h - 8;
     if (x === r.left || (x < r.right && x + w > r.left)) y = r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8;
     d.style.left = `${Math.round(x)}px`;
-    d.style.top = `${Math.round(Math.max(8, y))}px`;
+    // a dica longa (peça de conjunto) não passa da borda de baixo; se for maior que a tela, rola (CSS)
+    d.style.top = `${Math.round(Math.max(8, Math.min(y, innerHeight - h - 8)))}px`;
   }
   function esconderDica() { $("#dicaItem").classList.remove("visivel"); }
 
@@ -4537,6 +4559,11 @@
     });
     $("#btnAnalisador").addEventListener("click", () => abrirAnalisador(painel("pAnalisador").dataset.min === "true"));
     ligarTutorial();
+    // "toggle" não sobe: escuta na captura para lembrar quais conjuntos estão abertos (JGB-26).
+    $("#gradeEquip")?.addEventListener("toggle", (e) => {
+      const d = e.target.closest?.("[data-conjunto]");
+      if (d) d.open ? conjuntosAbertos.add(d.dataset.conjunto) : conjuntosAbertos.delete(d.dataset.conjunto);
+    }, true);
     $("#missaoLinha").addEventListener("click", () => {
       const b = $("#missaoLinha");
       b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"));

@@ -170,7 +170,8 @@ function tetoAtributo(chave) {
 function codigoItem(base, raridade, atributos = {}, extras = {}) {
   const forja = Number.isInteger(extras.forja) && extras.forja > 0 ? `+${extras.forja}` : "";
   const pedra = typeof extras.pedra === "string" && extras.pedra ? `~${extras.pedra}` : "";
-  if ((!raridade || raridade === "comum") && !forja && !pedra) return base;
+  const fixa = registroDe(RARIDADES, registroDe(ITENS, base)?.raridade) ? ITENS[base].raridade : "comum";
+  if ((!raridade || raridade === fixa) && !forja && !pedra) return base; // a raridade do próprio item é a forma sem "@"
   const partes = ORDEM_ATRIBUTOS.filter((k) => atributos[k] > 0).map((k) => `${k}${atributos[k]}`);
   return [`${base}@${raridade || "comum"}`, ...partes].join(".") + forja + pedra;
 }
@@ -268,15 +269,72 @@ function itemComExtras(id, extras) {
   return codigoItem(info.base, info.raridade, info.sorteados, { forja, pedra });
 }
 
-// Soma do efeito das pedras engastadas no equipamento vestido (familia: só as dessa família), até o teto.
+// Soma do efeito das pedras engastadas no equipamento vestido e dos bônus de conjunto ativos (familia: só os dessa
+// família), até o teto de REGRAS_ENGASTE.
 function somaEngastes(p, efeito, familia) {
-  let soma = 0;
+  let soma = bonusConjunto(p, efeito, familia);
   for (const item of Object.values(p?.equipamento || {})) {
     const g = item ? infoItem(item)?.engaste : null;
     if (g && g.efeito === efeito && (efeito !== "familia" || g.familia === familia)) soma += g.valor;
   }
   const teto = REGRAS_ENGASTE.tetos[efeito];
   return Math.round(Math.min(teto ?? Infinity, soma) * 10000) / 10000;
+}
+
+// ---------------------------------------------------------------------
+// Conjuntos (JGB-26): CONJUNTOS (dados/itens.js) — bônus com 2, 4 e 6 peças vestidas
+// ---------------------------------------------------------------------
+// De qual conjunto é a peça (qualquer forja, pedra ou raridade), ou null.
+function conjuntoDoItem(item) {
+  const base = baseItem(item);
+  return Object.keys(CONJUNTOS).find((id) => CONJUNTOS[id].pecas.some((x) => x.item === base)) || null;
+}
+
+// Quantas peças diferentes do conjunto estão vestidas.
+function contarPecasConjunto(p, conjuntoId) {
+  const c = registroDe(CONJUNTOS, conjuntoId);
+  if (!c) return 0;
+  const vestidas = new Set(Object.values(p?.equipamento || {}).filter(Boolean).map(baseItem));
+  return c.pecas.filter((x) => vestidas.has(x.item)).length;
+}
+
+// Soma de um efeito nos bônus ativos de todos os conjuntos (sem teto: somaEngastes aplica).
+function bonusConjunto(p, efeito, familia) {
+  let soma = 0;
+  for (const id of Object.keys(CONJUNTOS)) {
+    const n = contarPecasConjunto(p, id);
+    if (!n) continue;
+    for (const [pecas, lista] of Object.entries(CONJUNTOS[id].bonus)) {
+      if (n < Number(pecas)) continue;
+      for (const g of lista) if (g.efeito === efeito && (efeito !== "familia" || g.familia === familia)) soma += g.valor;
+    }
+  }
+  return soma;
+}
+
+// O conjunto para a interface (pura): nome, referência, lema, peças (vestida, versículo e de quem cai) e as faixas
+// de bônus (peças, textos e se está ativa). null se o id não é de conjunto.
+function visaoConjunto(p, conjuntoId) {
+  const c = registroDe(CONJUNTOS, conjuntoId);
+  if (!c) return null;
+  const n = contarPecasConjunto(p, conjuntoId);
+  const vestidas = new Set(Object.values(p?.equipamento || {}).filter(Boolean).map(baseItem));
+  const origem = (item) => {
+    const e = Object.values(inimigos).find((x) => !x.base && x.saque.itens.some((l) => l.item === item));
+    return e ? `${e.nome} (${areas[e.area]?.nome || e.area})` : "";
+  };
+  return {
+    id: conjuntoId,
+    nome: c.nome,
+    referencia: c.referencia,
+    lema: c.lema,
+    vestidas: n,
+    total: c.pecas.length,
+    pecas: c.pecas.map((x) => ({ item: x.item, nome: nomeItem(x.item), versiculo: x.versiculo, vestida: vestidas.has(x.item), origem: origem(x.item) })),
+    faixas: Object.entries(c.bonus)
+      .map(([pecas, lista]) => ({ pecas: Number(pecas), textos: lista.map(textoEfeito), ativa: n >= Number(pecas) }))
+      .sort((a, b) => a.pecas - b.pecas),
+  };
 }
 
 // Janela da forja (pura): as peças (vestidas primeiro, depois as da mochila, uma linha por texto), cada uma com o
@@ -304,6 +362,7 @@ function visaoForja(p) {
       podeForjar: !falta,
       falta,
       pedra: info.pedra ? { id: info.pedra, nome: ITENS[info.pedra].nome, texto: textoEngaste(info.pedra) } : null,
+      conjunto: conjuntoDoItem(item) ? CONJUNTOS[conjuntoDoItem(item)].nome : null,
     };
   };
   const forjavel = (item) => !!item && TIPOS_COM_RARIDADE.has(infoItem(item)?.tipo);
@@ -324,7 +383,11 @@ function visaoForja(p) {
 
 // Texto do bônus de uma pedra ("+2 de dano", "+10% de dano contra feras"), ou "".
 function textoEngaste(pedra) {
-  const g = registroDe(ITENS, pedra)?.engaste;
+  return textoEfeito(registroDe(ITENS, pedra)?.engaste);
+}
+
+// Texto de um efeito { efeito, valor, familia? } (o das pedras e o dos conjuntos), ou "".
+function textoEfeito(g) {
   if (!engasteValido(g)) return "";
   const familia = g.efeito === "familia" ? FAMILIAS_CRIATURAS[g.familia].nome.toLowerCase() : "";
   return REGRAS_ENGASTE.textos[g.efeito]
@@ -4629,8 +4692,8 @@ const Mundo = {
   vendaDeTudo(id) {
     const p = this.jogadores[id];
     if (!p) return [];
-    // Peças forjadas ou com pedra (JGB-25) também ficam: só saem pela venda de uma em uma.
-    const aprimorado = (item) => infoItem(item)?.forja > 0 || !!infoItem(item)?.pedra;
+    // Peças forjadas, com pedra (JGB-25) ou de conjunto (JGB-26) também ficam: só saem pela venda de uma em uma.
+    const aprimorado = (item) => infoItem(item)?.forja > 0 || !!infoItem(item)?.pedra || !!conjuntoDoItem(item);
     const itens = [...new Set(p.inventario)].filter((item) => valorDeVenda(item) > 0 && !TIPOS_FORA_DE_VENDER_TUDO.has(infoItem(item)?.tipo) && !aprimorado(item));
     return itens
       .map((item) => ({ item, quantidade: this.quantidadeLivre(id, item), valor: valorDeVenda(item) }))
@@ -6064,6 +6127,8 @@ const Mundo = {
       + (saque.noChao.length ? ` ${this.mensagemMochilaCheia(p, `Ficou no chão: ${saque.noChao.join(", ")}. Libere espaço e pise em cima para pegar.`)}` : "");
     // Épico ou melhor, ou linha de 1% ou menos: anúncio próprio no Registro.
     const tituloAnuncio = (d) => {
+      const conjunto = conjuntoDoItem(d.item); // peça de conjunto (JGB-26): o anúncio diz qual
+      if (conjunto) return `Peça da ${CONJUNTOS[conjunto].nome}!`;
       if (d.chance <= CHANCES_SAQUE.muito_raro) return `Drop muito raro (${textoChance(d.chance)})!`;
       if (d.chance <= CHANCES_SAQUE.raro) return `Drop raro (${textoChance(d.chance)})!`;
       return RARIDADES[d.raridade].anuncio;
