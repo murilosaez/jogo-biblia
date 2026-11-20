@@ -407,6 +407,6 @@ const DADOS_MAPAS = {
     estruturas: [],
     marcos: [],
     decoracoes: [],
-    vegetacao: { densidade: 0.15, moitas: { concha: 2, seixos: 3 }, beira: {} },
+    vegetacao: { densidade: 0.15, moitas: { concha: 2 }, beira: {} },
   },
 };

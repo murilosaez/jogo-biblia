@@ -124,6 +124,7 @@
     galileia: "À beira do lago",
     cova_leoes: "Daniel 6 · a noite entre os leões",
     fornalha: "Daniel 3 · sete vezes mais quente",
+    ventre_peixe: "Jonas 2 · três dias e três noites",
   };
 
   // -------------------------------------------------------------------
@@ -1225,6 +1226,7 @@
   // Recompensas exclusivas das masmorras (JGB-23): desenho em arte/itens.js.
   item("selo_dario");
   item("turbante_fornalha");
+  item("concha_peixe");
   // Armadura de Deus (Ef 6:13-17), relíquias em ouro pálido: desenho em arte/itens.js.
   item("cinto_verdade");
   item("couraca_justica");
@@ -1773,6 +1775,21 @@
     luz: { cor: "#ff8a3a", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#2a0602", forca: 0.5 }, sombra: "#3a1208", escuroFixo: 0,
     particulas: { tipo: "brasa", cor: "#ffb04a", max: 26 },
   });
+  // Ventre do grande peixe (clima: "ventre"): chão de carne vinho com veias (bio.veias, cenario.js), a "água" em
+  // volta é suco gástrico verde-amarelado turvo (a mesma animação da água), só o granito do bioma da arte (sem
+  // corais nem destroços), luz baixa esverdeada, vinheta forte, sem dia e noite e bolhas que sobem devagar.
+  const CLIMA_VENTRE = (b) => ({
+    chao: { base: "#5e2a32", escuro: "#4a1e28", claro: "#74363e", salpico: "#8e4a4e" },
+    mancha: { base: "#542430", escuro: "#401a24" },
+    caminho: { base: "#6a3438", escuro: "#52262c", claro: "#7e4044", borda: "#3a161e" },
+    agua: { profunda: "#26230a", base: "#4a4614", escura: "#3a370f", clara: "#706a22", brilho: "#a8a03a", espuma: "#d8d28a" },
+    obstaculos: ((l) => (l.length ? l : b.obstaculos))(b.obstaculos.filter((o) => /granito|penedo|rocha|basalto$/.test(o.tipo))),
+    borda: Object.assign({}, b.borda, { norte: undefined, sul: undefined }),
+    deco: [{ tipo: "poca", peso: 3, cor: "#7a8430" }, { tipo: "concha", peso: 1, cor: "#b8a49c" }],
+    veias: { escura: "#3a1420", clara: "#8a3a48" },
+    luz: { cor: "#a8d07a", alfa: 0.07, modo: "screen" }, vinheta: { cor: "#080604", forca: 0.66 }, sombra: "#1e0a12", escuroFixo: 0.36,
+    particulas: { tipo: "bolha", cor: "#cfe08a", max: 14 },
+  });
   const cacheBio = {};
   // O bioma (objeto) que a área pinta: o próprio, ou o da arte com o clima da masmorra.
   function bioDaArea(area) {
@@ -1783,7 +1800,9 @@
     // pintarComo: o nome que os ramos por região dos pintores (arte/terreno.js, cenario.js) leem; a brasa usa os
     // ramos neutros (sem os sulcos e brotos do Egito), a caverna os pedregosos do bioma da arte
     const arte = biomaDaArea(area);
-    return (cacheBio[area] = Object.assign({}, b, (a.fogo ? CLIMA_FOGO : CLIMA_CAVERNA)(b), { bioma: arte, pintarComo: a.fogo ? area : arte }));
+    // o ventre também segue os neutros (sem a areia de praia e as conchas carimbadas do Mar Vermelho)
+    const clima = a.clima === "ventre" ? CLIMA_VENTRE : a.fogo ? CLIMA_FOGO : CLIMA_CAVERNA;
+    return (cacheBio[area] = Object.assign({}, b, clima(b), { bioma: arte, pintarComo: a.fogo || a.clima === "ventre" ? area : arte }));
   }
 
   // -------------------------------------------------------------------

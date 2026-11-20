@@ -216,7 +216,7 @@ const DADOS_MASMORRAS = {
     ],
     recompensa: { xp: 1300, moedas: 170, item: "concha_peixe" },
     falas: {
-      entrada: "Escuro e fundo: o ventre do grande peixe. Jonas está aqui com você.",
+      entrada: "Escuro e fundo: o ventre do grande peixe, onde Jonas esteve três dias e três noites (Jn 1:17).",
       vitoria: "\"Ao Senhor pertence a salvação!\" (Jn 2:9). Jonas está na terra seca, pronto para ir a Nínive.",
       derrota: "O abismo venceu desta vez. Volte quando estiver pronto.",
     },

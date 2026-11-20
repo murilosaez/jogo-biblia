@@ -1450,6 +1450,42 @@
     }
   }, { sombraApoio: [8, 12.8, 5.8, 1.1] });
 
+  // Concha do grande peixe (Jn 1:17; 2:10): leque de vieira nacarada (costelas em raio, borda recortada, o brilho
+  // de madrepérola indo do rosa ao lilás e ao verde-água), as duas orelhas da charneira e a argola de ouro presa
+  // num cordão.
+  const NACAR = rampa6("#e6c6c4", "metal"), NACAR_LI = rampa6("#c9bede", "metal"), NACAR_VD = rampa6("#c6ddd2", "metal");
+  item("concha_peixe", (g) => {
+    // cordão em gota: sobe da argola, dá a volta por cima e desce de novo
+    curva(g, (t) => { const a = Math.PI * 2 * t, k = Math.pow(0.5 - 0.5 * Math.cos(a), 0.7); return [16 + Math.sin(a) * 7.4 * k, 9.6 - 7.2 * (0.5 - 0.5 * Math.cos(a))]; }, 28, () => 0.75, CORDA, {});
+    // o leque: charneira em cima, abre para baixo em 9 costelas; a borda tem um dente em cada sulco
+    const hx = 16, hy = 9.6, R = 18.4, N = 9, a0 = Math.PI * 0.24, a1 = Math.PI * 0.76;
+    for (let Y = 11; Y <= 29; Y++)
+      for (let X = 2; X <= 29; X++) {
+        const dx = X + 0.5 - hx, dy = Y + 0.5 - hy, r = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+        if (a < a0 || a > a1 || r < 1) continue;
+        const u = (a - a0) / (a1 - a0), f = u * N - Math.floor(u * N), crista = Math.sin(f * Math.PI);
+        if (r > R - 1.3 * (1 - crista)) continue;
+        // volume: o leque é abaulado e cada costela tem um lado na luz e outro na sombra
+        const q = r / R, tx = -Math.sin(a), ty = Math.cos(a), inc = Math.cos(f * Math.PI) * 0.6;
+        const nx = Math.cos(a) * q * 0.45 + tx * inc, ny = Math.sin(a) * q * 0.45 + ty * inc - 0.2;
+        const nz = Math.sqrt(Math.max(0.08, 1 - nx * nx - ny * ny));
+        // madrepérola: rosa no corpo, lilás perto da charneira e verde-água na beira
+        const Rr = q < 0.3 ? NACAR_LI : q < 0.88 + (u - 0.5) * 0.1 ? NACAR : NACAR_VD;
+        // sulco entre costelas: 1 px de largura em qualquer raio (distância ao sulco medida em px)
+        const sulco = Math.min(f, 1 - f) * ((a1 - a0) / N) * r < 0.55 && r > 3;
+        if (sulco) { g.fino(X, Y, Rr[u > 0.5 ? 2 : 1]); continue; }
+        const extra = q > 0.86 ? 0.1 : 0;
+        g.fino(X, Y, tomN(Rr, nx, ny, nz, X, Y, { esp: BRANCO, dur: 0.975, rebote: 0.2 }, extra));
+      }
+    // orelhas da charneira (a de cá na luz, a de lá na sombra)
+    poli(g, [[11, 9.5], [16, 9.5], [16, 13], [13.5, 13]], (X, Y) => (Y < 10 ? NACAR[5] : X < 13 ? NACAR[3] : NACAR[4]));
+    poli(g, [[16, 9.5], [21, 9.5], [18.5, 13], [16, 13]], (X, Y) => (Y < 10 ? NACAR[4] : X > 18 ? NACAR[1] : NACAR[2]));
+    // argola de ouro que prende o cordão
+    curva(g, (t) => [16 + Math.cos(Math.PI * 2 * t) * 1.8, 9.2 + Math.sin(Math.PI * 2 * t) * 1.6], 14, () => 0.75, OURO, { esp: BRANCO });
+    faisca(g, 12, 17, BRANCO, true);
+    faisca(g, 20, 24, BRANCO, false);
+  }, { sombraApoio: [8, 14.7, 6, 0.9] });
+
   // Conferência na carga: nenhuma chave de item do legado ficou sem desenho novo (o teste do pacote confere de novo).
   Arte.ITENS_NOVOS = FEITOS.slice();
 })(typeof window !== "undefined" ? window : globalThis);

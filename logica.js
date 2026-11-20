@@ -5037,7 +5037,7 @@ const Mundo = {
         p.vida = Math.max(0, p.vida - dano);
         estado.ultimoCombate = agora;
       }
-      eventos.push({ tipo: "perigo", casas: x.casas, area: m.area, dano, atingiu, mensagem: atingiu ? `${x.nome}: o fogo atingiu você por ${dano} de dano!` : "" });
+      eventos.push({ tipo: "perigo", casas: x.casas, area: m.area, dano, atingiu, mensagem: atingiu ? `${x.nome}: atingiu você por ${dano} de dano!` : "" });
       if (p.vida === 0) {
         eventos.push(this.aplicarMorte(id, "inimigo", agora));
         return "morte";

@@ -685,6 +685,8 @@ moedas). Depois de vencer, a mesma masmorra abre de novo em 4 horas; desistir ou
         abismo; orar com Jonas — fique no círculo do meio: o tempo só conta lá dentro, com caranguejos e o ventre se
         contraindo (xadrez); e a serpente do abismo (fúria; chama caranguejos na metade da vida). Recompensa: Concha
         do grande peixe (colar épico: +1 de defesa, +8 de vida, +4 kg de carga), 1.300 XP e 170 moedas.
+- Na etapa de oração, o painel diz "Dentro do círculo" ou "Volte ao círculo", e o cronômetro fica cinza (parado)
+  enquanto você está fora.
 - Lá dentro, o painel mostra a etapa, o tempo e a vida de quem você protege e do chefe; "Desistir" volta à porta.
   Recarregar a página devolve à porta; morrer lá dentro leva a Canaã, como toda morte (o item que cair fica à porta
   da masmorra). Nos dois casos a masmorra recomeça do início. As criaturas da masmorra não dão XP, saque, caçada
