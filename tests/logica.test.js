@@ -6787,7 +6787,7 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   for (const s of Object.values(ESPACOS)) assert.ok(PP[s.silhueta], `silhueta ${s.silhueta}`);
   const quadro = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
   const nu = quadro({});
-  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }, { cabeca: "turbante_fornalha" }])
+  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }, { cabeca: "turbante_fornalha" }, { pes: "sandalias_pascoa" }])
     assert.notStrictEqual(quadro(eq), nu, `${JSON.stringify(eq)} aparece no boneco`);
   assert.notStrictEqual(quadro({ arma: "arco_madeira" }), quadro({ arma: "espada_ferro" }), "o arco vai na mão");
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
@@ -8029,6 +8029,13 @@ function jogarMasmorra(j, limiteMs = 6 * 60_000) {
         // Dentro do círculo: só bate em quem chegou perto (não sai dele).
         const perto = [...m.ativas].map((id) => inimigos[id]).find((e) => j.g("distanciaChebyshev")(p, e) <= 1);
         if (perto && M.recargaAtaque(ID) === 0) j.exec({ tipo: "atacar", alvoId: perto.id });
+      } else if (M.visaoMasmorra(ID, j.agora)?.alvo && ![...m.ativas].some((id) => j.g("distanciaChebyshev")(p, inimigos[id]) <= 1)) {
+        // Etapa "chegar": segue o caminho até o alvo (no labirinto), lutando só com quem encostar.
+        const a = M.visaoMasmorra(ID, j.agora).alvo, centro = { x: a.x + (a.largura >> 1), y: a.y + (a.altura >> 1) };
+        const grade = M.gradeDePassagem(p), COLS = j.g("COLS");
+        const r = j.g("rotaNaGrade")((x, y) => grade[y * COLS + x] === 1 && !marcadas.has(`${x},${y}`), p, centro);
+        const passo = r?.passos?.[0];
+        if (passo) { j.exec({ tipo: "mover", dx: passo[0], dy: passo[1] }); proximoPasso = j.agora + (passo[0] && passo[1] ? vel(p).diagonal : vel(p).reto); }
       } else {
         const ref = m.protegido || p;
         const alvo = [...m.ativas].map((id) => inimigos[id]).sort((a, b) => j.g("distanciaChebyshev")(a, ref) - j.g("distanciaChebyshev")(b, ref))[0];
@@ -8050,7 +8057,7 @@ function jogarMasmorra(j, limiteMs = 6 * 60_000) {
   return { resultado, queimaduras };
 }
 
-teste("86. masmorras (JGB-23, JGB-52): Cova dos leões, Fornalha ardente e Ventre do grande peixe vencíveis, recompensa exclusiva, falha, recarga e save", () => {
+teste("86. masmorras (JGB-23, JGB-52, JGB-53): Cova, Fornalha, Ventre e Tesouros do Egito (labirinto) vencíveis, recompensa exclusiva, falha, recarga e save", () => {
   const g0 = carregarJogo().g;
   const D = g0("DADOS_MASMORRAS");
   // (a) Dados: cada masmorra com área própria fora da viagem, sala livre, chefe, recompensa exclusiva e vagas válidas.
@@ -8157,6 +8164,56 @@ teste("86. masmorras (JGB-23, JGB-52): Cova dos leões, Fornalha ardente e Ventr
   assert.ok(jv2.p.inventario.includes("concha_peixe"));
   assert.ok(v.resultado.tempoMs >= 85_000 && v.resultado.tempoMs <= 300_000, `ventre em ${v.resultado.tempoMs} ms`);
   console.log(`        ventre do grande peixe: vitória em ${(v.resultado.tempoMs / 1000).toFixed(0)} s, ${v.queimaduras} queimaduras`);
+  // (d3) Tesouros do Egito (JGB-53): o labirinto muda a cada entrada, sempre tem caminho, e a sala volta ao normal.
+  const jp = prepararMasmorra("piramides", 6);
+  const lab = D.piramides.labirinto, aP = j.g("areas").piramides;
+  const mapaP = () => jp.g("mapas").piramides;
+  const salaAberta = () => { for (let y = lab.y; y < lab.y + lab.altura; y++) for (let x = lab.x; x < lab.x + lab.largura; x++) if (mapaP()[y][x]) return false; return true; };
+  assert.ok(salaAberta(), "sem instância, a sala é aberta (o mapa carregado é sempre o mesmo)");
+  posicionarAoLado(jp, "egito", jp.g("npcs").porteira_piramides);
+  assert.ok(jp.exec({ tipo: "entrarMasmorra", masmorra: "piramides" }).ok);
+  const desenho = () => JSON.stringify(mapaP().slice(lab.y, lab.y + lab.altura).map((l) => l.slice(lab.x, lab.x + lab.largura)));
+  const primeiro = desenho();
+  assert.ok(!salaAberta(), "há paredes");
+  // Do início até a câmara do tesouro há caminho (BFS).
+  const chega = () => {
+    const alvo = D.piramides.etapas[0].alvo, vis = new Set([`${aP.inicio.x},${aP.inicio.y}`]), fila = [aP.inicio];
+    while (fila.length) {
+      const c = fila.shift();
+      if (c.x >= alvo.x && c.y >= alvo.y && c.x < alvo.x + alvo.largura && c.y < alvo.y + alvo.altura) return true;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = { x: c.x + dx, y: c.y + dy };
+        if (mapaP()[n.y]?.[n.x] === 0 && !vis.has(`${n.x},${n.y}`)) { vis.add(`${n.x},${n.y}`); fila.push(n); }
+      }
+    }
+    return false;
+  };
+  assert.ok(chega(), "o labirinto tem saída");
+  rodar(jp, 2000);
+  for (const id of jp.M.estado[ID].masmorra.ativas) assert.strictEqual(mapaP()[jp.g("inimigos")[id].y][jp.g("inimigos")[id].x], 0, `${id} não nasce na parede`);
+  jp.exec({ tipo: "sairMasmorra" });
+  assert.ok(salaAberta(), "ao sair, a sala volta a ser como era");
+  posicionarAoLado(jp, "egito", jp.g("npcs").porteira_piramides);
+  jp.avancar(5000);
+  assert.ok(jp.exec({ tipo: "entrarMasmorra", masmorra: "piramides" }).ok);
+  assert.notStrictEqual(desenho(), primeiro, "outra entrada, outro labirinto");
+  assert.ok(chega());
+  jp.exec({ tipo: "sairMasmorra" });
+  // A partida inteira.
+  const jp2 = prepararMasmorra("piramides", 9);
+  posicionarAoLado(jp2, "egito", jp2.g("npcs").porteira_piramides);
+  assert.ok(jp2.exec({ tipo: "entrarMasmorra", masmorra: "piramides" }).ok);
+  const pr2 = jogarMasmorra(jp2);
+  assert.ok(pr2.resultado?.vitoria, `vence as pirâmides (${JSON.stringify(pr2.resultado)})`);
+  assert.ok(jp2.p.inventario.includes("sandalias_pascoa"));
+  assert.ok(pr2.resultado.tempoMs >= 40_000 && pr2.resultado.tempoMs <= 300_000, `pirâmides em ${pr2.resultado.tempoMs} ms`);
+  console.log(`        tesouros do egito: vitória em ${(pr2.resultado.tempoMs / 1000).toFixed(0)} s, ${pr2.queimaduras} armadilhas`);
+  // Morrer lá dentro também desfaz o labirinto.
+  const jp3 = prepararMasmorra("piramides", 3);
+  posicionarAoLado(jp3, "egito", jp3.g("npcs").porteira_piramides);
+  jp3.exec({ tipo: "entrarMasmorra", masmorra: "piramides" });
+  jp3.M.aplicarMorte(ID, "inimigo", jp3.agora);
+  assert.ok((() => { for (let y = lab.y; y < lab.y + lab.altura; y++) for (let x = lab.x; x < lab.x + lab.largura; x++) if (jp3.g("mapas").piramides[y][x]) return false; return true; })());
   // Quem fica parado é queimado: o perigo fere de verdade.
   const jq = prepararMasmorra("fornalha", 8);
   jq.exec({ tipo: "entrarMasmorra", masmorra: "fornalha" });

@@ -125,6 +125,18 @@ const DADOS_NPCS = [
     masmorras: ["cova_leoes", "fornalha"],
     falas: { saudacao: "Escrevi as palavras que o Senhor deu a Jeremias (Jr 36:4). Quer entrar numa das histórias do exílio?" },
   },
+  // Porteira dos Tesouros do Egito (JGB-53): Sifrá, a parteira hebreia que temeu a Deus e não obedeceu a Faraó (Êx 1:15-17).
+  {
+    id: "porteira_piramides",
+    nome: "Sifrá, parteira",
+    area: "egito",
+    x: 23,
+    y: 100,
+    papel: "masmorra",
+    aparencia: "ancia",
+    masmorras: ["piramides"],
+    falas: { saudacao: "Temi a Deus, não a Faraó (Êx 1:17). Quer descer às galerias dos tesouros do Egito? Elas nunca são as mesmas." },
+  },
   // Porteiro do Ventre do grande peixe (JGB-52): Amitai, pai de Jonas, de Gate-Hefer, na Galileia (2 Rs 14:25; Jn 1:1).
   {
     id: "porteiro_galileia",

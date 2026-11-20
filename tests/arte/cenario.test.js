@@ -28,7 +28,8 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual, R
       igual(Object.keys(m).filter((k) => k !== "listra").sort(), ["dentro", "face", "id", "piso", "telhado", "textura", "topo"], `material ${m.id}`);
       igual([m.face.length, m.topo.length, m.dentro.length], [4, 4, 3], `rampas de ${m.id}`);
     }
-    igual(Object.keys(C.MUROS).sort(), ["muro", "tijolos"]);
+    igual(Object.keys(C.MUROS).sort(), ["muro", "tijolos", "tumba"]);
+    for (const f of ["nomeMuro", "esquecerArea", "pintarBloco"]) assert.strictEqual(typeof C[f], "function", `Cenario.${f}`);
     for (const f of ["texturasPredio", "texturaMovel", "texturaPorta", "texturaPedacoChao", "classesDaArea", "texturaMuro", "obstaculosDaOrla", "naOrla", "temOrla", "material",
       "pintarPredio", "pintarMovel", "pintarPedacoChao", "iniciarPedaco", "pintarFatia", "texturaPedacoChaoFatiada"]) assert.strictEqual(typeof C[f], "function", `Cenario.${f}`);
     igual([C.LADO_PEDACO, C.MOLDURA_CASAS, C.ALTURA_MURO, C.ALTURA_PAREDE], [16, 4, 34, 64]);
@@ -161,7 +162,7 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual, R
 
   teste("arte/cenario: muros de 34 px, fachadas pela altura da parede (32 e 64) e móveis na célula de 32 × 48", () => {
     const { C, g } = preparar();
-    for (const tipo of Object.keys(C.MUROS)) for (const mask of [1, 2, 4, 5, 6, 8, 10, 15]) {
+    for (const tipo of Object.keys(C.MUROS).filter((t) => !C.MUROS[t].cheio)) for (const mask of [1, 2, 4, 5, 6, 8, 10, 15]) {
       const t = C.pintarMuro(tipo, mask, 0);
       igual([t.w, t.h], [32, 32 + C.ALTURA_MURO], `muro ${tipo} ${mask}`);
       assert.ok(cores(t).size >= 8, `muro ${tipo} ${mask}: ${cores(t).size} cores`);
@@ -216,5 +217,42 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual, R
       for (let y = 47; y >= 0 && !base; y--) for (let x = 0; x < 32; x++) if (t.buf[(y * 32 + x) * 4 + 3] === 255) { base = y; break; }
       assert.ok(base >= 45, `${tipo}: base na linha ${base}`);
     }
+  });
+  teste("arte/cenario: galerias da tumba (Pirâmides): lajes no chão, paredes de blocos cheios no labirinto e caches esquecidos a cada entrada", () => {
+    const { C, Arte, g, j } = preparar();
+    const bio = Arte.bioDaArea("piramides");
+    assert.ok(bio.lajes && bio.escuroFixo > 0.4 && bio.luzJogador, "clima tumba: lajes, escuro fixo e a luz do jogador");
+    igual(bio.pintarComo, "piramides", "ramos neutros (sem as leiras do Egito)");
+    igual(Arte.SUBTITULOS.piramides.length > 0, true, "subtítulo do cartão");
+    // os tijolos do labirinto viram a parede de blocos só na tumba; a fornalha (mesma arte) segue com os tijolos soltos
+    igual(C.nomeMuro("piramides", "ob_egito_tijolos"), "tumba");
+    igual(C.nomeMuro("fornalha", "ob_egito_tijolos"), null);
+    igual(C.nomeMuro("egito", "ob_egito_tijolos"), "tijolos");
+    igual(C.nomeMuro("piramides", "ob_egito_coluna"), null);
+    // bloco cheio: a casa inteira; face ao sul só sem vizinho ao sul, tocha (v = 3) com a chama
+    for (const mask of [0, 1, 2, 4, 5, 10, 15]) {
+      const t = C.pintarBloco("tumba", mask, 0);
+      igual([t.w, t.h], [32, 32], `bloco ${mask}`);
+      igual(opacos(t), 32 * 32, `bloco ${mask}: cheio`);
+      assert.ok(cores(t).size >= 5, `bloco ${mask}: ${cores(t).size} cores`);
+      const face = cores(t, 0, 24, 32, 6), topo = cores(t, 0, 4, 32, 6);
+      const lum = (s) => [...s].reduce((a, c) => a + (c >> 16) + ((c >> 8) & 255) + (c & 255), 0) / s.size;
+      igual(lum(face) > lum(topo) + 40, !(mask & 4), `bloco ${mask}: face clara embaixo só sem parede ao sul`);
+    }
+    const chama = cores(C.pintarBloco("tumba", 0, 3));
+    assert.ok([...chama].some((c) => c === 0xffd060), "a tocha tem chama");
+    // o labirinto: escava no mapa, o muro é lido, esquecerArea limpa o que foi guardado e o labirinto novo aparece
+    const mapas = g("mapas"), tipos = g("tiposObstaculo"), lab = vm.runInContext("DADOS_MASMORRAS", j.ctx).piramides.labirinto;
+    const casa = { x: lab.x + 2, y: lab.y + 1 };
+    mapas.piramides[casa.y][casa.x] = 1; tipos.piramides[`${casa.x},${casa.y}`] = "tijolos";
+    igual(C.mascaraMuro("piramides", casa.x, casa.y) >= 0 && Arte.tipoObstaculo("piramides", casa.x, casa.y).chave, "ob_egito_tijolos");
+    const antes = C.pintarPedacoChao("piramides", 0, 0);
+    mapas.piramides[casa.y][casa.x] = 0; delete tipos.piramides[`${casa.x},${casa.y}`];
+    C.esquecerArea("piramides");
+    const depois = C.pintarPedacoChao("piramides", 0, 0);
+    assert.ok(!iguais(antes.buf, depois.buf), "sem a parede, a sombra dela some do chão (cache esquecido)");
+    // o chão das galerias: lajes (juntas escuras em fiadas), sem buracos na sala
+    const sala = cores(depois, 6 * 32, 6 * 32, 64, 64);
+    assert.ok(sala.size >= 10, `lajes com vários tons (${sala.size})`);
   });
 };

@@ -1486,6 +1486,68 @@
     faisca(g, 20, 24, BRANCO, false);
   }, { sombraApoio: [8, 14.7, 6, 0.9] });
 
+  // Sandálias da Páscoa (Êx 12:11, "sandálias nos pés"): o par visto de cima, aberto em V (a de lá inclinada para
+  // a esquerda, a de cá para a direita), sola de couro claro com a beira escura, a tira do dedo, as duas tiras
+  // cruzadas do peito do pé e os atilhos do calcanhar; uma tira de linho alvo amarra o par pelo meio, com o nó e
+  // as duas pontas soltas (prontas para a viagem, "à pressa").
+  item("sandalias_pascoa", (g) => {
+    const SOLA = rampa6("#c49660", "couro"), TIRA = rampa6("#6a3820", "couro");
+    // meia largura da sola ao longo do pé (u: 0 no calcanhar, 1 na ponta): calcanhar redondo, cintura e planta larga
+    const meia = (u) => (u < 0.1 ? 2 + u * 13 : u < 0.32 ? 3.3 : u < 0.5 ? 3.3 - (u - 0.32) * 1.2 : u < 0.8 ? 3.1 + (u - 0.5) * 3.6 : 4.2 - (u - 0.8) * 13);
+    const sandalia = (cx, cy, ang, comp, vies) => {
+      // eixo do pé (e, do calcanhar para a ponta) e o de través (q)
+      const ex = Math.sin(ang), ey = -Math.cos(ang), qx = Math.cos(ang), qy = Math.sin(ang);
+      const loc = (X, Y) => { const dx = X + 0.5 - cx, dy = Y + 0.5 - cy; return [(dx * ex + dy * ey) / comp + 0.5, dx * qx + dy * qy]; };
+      const den = (X, Y) => { const [u, v] = loc(X, Y); return u >= 0 && u <= 1 && Math.abs(v) <= meia(u); };
+      const pt = (u, v) => [cx + (u - 0.5) * comp * ex + v * qx, cy + (u - 0.5) * comp * ey + v * qy];
+      for (let Y = 1; Y < 31; Y++) for (let X = 1; X < 31; X++) {
+        if (!den(X, Y)) continue;
+        const [u, v] = loc(X, Y);
+        let c;
+        // a espessura da sola (embaixo e à direita) e a beira de cima na luz
+        if (!den(X, Y + 1) || !den(X + 1, Y)) c = SOLA[0];
+        else if (!den(X, Y + 2)) c = SOLA[1];
+        else if (!den(X - 1, Y) || !den(X, Y - 1)) c = SOLA[5];
+        else {
+          // a palmilha gasta: mais escura onde o pé pisa (calcanhar e planta), luz de cima e da esquerda
+          const pisada = (u < 0.28 && Math.abs(v) < 1.7) || (u > 0.62 && u < 0.86 && Math.abs(v) < 2.2) ? -0.4 : 0;
+          c = sombrear(SOLA, 0.3 - v * 0.12 + pisada + vies + (hash2(X, Y, 71) < 0.07 ? -0.35 : 0), X, Y, true);
+        }
+        g.fino(X, Y, c);
+      }
+      // tiras de couro de 2 px (o fio de cima na luz, o de baixo na sombra)
+      const tira = (u0, v0, u1, v1) => {
+        const [x0, y0] = pt(u0, v0), [x1, y1] = pt(u1, v1), n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2);
+        for (let k = 0; k <= n; k++) {
+          const t = k / n, X = Math.round(lerp(x0, x1, t) - 0.5), Y = Math.round(lerp(y0, y1, t) - 0.5);
+          g.fino(X, Y, TIRA[t < 0.5 ? 3 : 2]); g.fino(X, Y + 1, TIRA[0]);
+        }
+      };
+      tira(0.88, 0, 0.66, 0); // a do dedo
+      tira(0.7, -3.4, 0.5, 3); // as duas cruzadas do peito do pé
+      tira(0.7, 3.4, 0.5, -3);
+      tira(0.24, -3.4, 0.24, 3.4); // a do calcanhar
+      const [nx, ny] = pt(0.62, 0); g.fino(Math.round(nx - 0.5), Math.round(ny - 0.5), OURO[5]); // o ilhó de bronze
+      // atilho solto do calcanhar
+      const [ax, ay] = pt(0.24, 3.4 * Math.sign(ang));
+      for (let k = 1; k < 4; k++) g.fino(Math.round(ax - 0.5 + Math.sign(ang) * k * 0.7), Math.round(ay - 0.5 + k), TIRA[k < 2 ? 4 : 3]);
+    };
+    sandalia(10.5, 15.5, -0.13, 25, -0.12);
+    sandalia(21.5, 16, 0.13, 25, 0.06);
+    // a tira de linho alvo que amarra o par pelo meio, com o nó entre as duas e as pontas soltas
+    for (let X = 5; X <= 27; X++) {
+      const Y = 19 + (X > 8 && X < 24 ? 0 : 1);
+      if (!g.gf(X, Y) && Math.abs(X - 16) > 2) continue;
+      g.fino(X, Y, LINHO_BR[X < 14 ? 5 : 4]); g.fino(X, Y + 1, LINHO_BR[2]);
+    }
+    bola(g, 16, 20, 1.9, 1.7, LINHO_BR, { esp: BRANCO });
+    for (const [x0, s] of [[15, -1], [17, 1]]) for (let k = 0; k < 5; k++) {
+      const X = x0 + s * (k >> 1), Y = 22 + k;
+      g.fino(X, Y, LINHO_BR[k < 2 ? 4 : 3]);
+    }
+    faisca(g, 7, 7, BRANCO, true);
+  }, { sombraApoio: [8, 14.8, 6.2, 0.9] });
+
   // Conferência na carga: nenhuma chave de item do legado ficou sem desenho novo (o teste do pacote confere de novo).
   Arte.ITENS_NOVOS = FEITOS.slice();
 })(typeof window !== "undefined" ? window : globalThis);

@@ -339,6 +339,8 @@ class Cena extends Phaser.Scene {
     // o bioma que a área pinta: o próprio ou, nas masmorras (areas[x].arte), o da arte com o clima trocado
     this.bio = Arte.bioDaArea?.(this.areaAtual) || Arte.BIOMAS[this.areaAtual] || Arte.BIOMAS.canaan;
     this.liberarTexturasDeOutraArea();
+    this.esquecerLabirinto();
+    this.minimapaEstatico = null; // a cena é a mesma a cada troca de área: o minimapa pintado é o da área anterior
     this.trocando = false;
     this.proximoPasso = 0;
     this.proximoAutoAtaque = 0;
@@ -447,7 +449,11 @@ class Cena extends Phaser.Scene {
     const eventosPendentes = this.registry.get("eventosPendentes") || [];
     this.registry.set("eventosPendentes", null);
     // a cena recomeçou no meio de uma etapa "zona" (sem evento novo): o círculo volta pela visão da masmorra
-    if (!eventosPendentes.some((x) => x.tipo === "masmorraEtapa")) this.marcarZona(Mundo.visaoMasmorra?.(MEU_ID, Date.now())?.zona || null);
+    if (!eventosPendentes.some((x) => x.tipo === "masmorraEtapa")) {
+      const vm = Mundo.visaoMasmorra?.(MEU_ID, Date.now());
+      this.marcarZona(vm?.zona || null);
+      this.marcarAlvo(vm?.alvo || null); // etapa "chegar": a câmara volta marcada
+    }
     for (const x of eventosPendentes) if (x.tipo === "masmorraEtapa") this.time.delayedCall(ultima !== this.areaAtual ? 2700 : 200, () => this.eventoMasmorra(x));
     window.UI?.areaMudou?.(this.areaAtual);
     window.atualizarInterface?.();
@@ -569,6 +575,16 @@ class Cena extends Phaser.Scene {
         if (!tipo || !Arte.garantirTextura(this, tipo.chave)) continue; // a arte dos obstáculos é gerada só para a área atual
         // muro de vila e mureta de pedra: emendam com os vizinhos do mesmo tipo (cenario.js)
         const muro = this.tipoMuro(x, y);
+        if (muro && Cenario.MUROS[muro].cheio) {
+          // parede de blocos da tumba (o labirinto das Pirâmides): a casa inteira, sem subir sobre a de cima; a face
+          // (sem parede ao sul) às vezes leva uma tocha, com a luz âmbar que tremula
+          const m = (this.tipoMuro(x, y - 1) === muro ? 1 : 0) | (this.tipoMuro(x + 1, y) === muro ? 2 : 0) | (this.tipoMuro(x, y + 1) === muro ? 4 : 0) | (this.tipoMuro(x - 1, y) === muro ? 8 : 0);
+          const tocha = !(m & 4) && Arte.hash2(x, y, 61) < 0.06;
+          const chave = Cenario.texturaMuro(this, muro, m, tocha ? 3 : Math.floor(Arte.hash2(x, y, 6) * 3));
+          this.noBloco(this.add.image(x * TAM, y * TAM, chave).setOrigin(0, 0).setDepth(PROF.entidade + y * TAM + TAM - 2), x, y);
+          if (tocha) this.luzes.push({ x: x * TAM + 16, y: y * TAM + 24, r: 84, quente: 1, tremula: true });
+          continue;
+        }
         if (muro) {
           const m = (this.tipoMuro(x, y - 1) === muro ? 1 : 0) | (this.tipoMuro(x + 1, y) === muro ? 2 : 0) | (this.tipoMuro(x, y + 1) === muro ? 4 : 0) | (this.tipoMuro(x - 1, y) === muro ? 8 : 0);
           if (m) {
@@ -621,8 +637,7 @@ class Cena extends Phaser.Scene {
   tipoMuro(x, y) {
     if (!window.Cenario || mapas[this.areaAtual][y]?.[x] !== 1 || pisos[this.areaAtual][y][x] !== PISO.CHAO) return null;
     const t = Arte.tipoObstaculo(this.areaAtual, x, y);
-    const nome = t?.chave?.replace(`ob_${this.areaAtual}_`, "");
-    return nome && Cenario.MUROS[nome] ? nome : null;
+    return Cenario.nomeMuro(this.areaAtual, t?.chave);
   }
 
   // ===== estruturas: casas, tendas, bancas e poços (dados/mapas.js), uma imagem por estrutura
@@ -837,6 +852,17 @@ class Cena extends Phaser.Scene {
     this.registry.set("areaDasTexturas", this.areaAtual);
     if (!antes || antes === this.areaAtual) return;
     for (const chave of Object.keys(this.textures.list)) if (/^(chao_|pr_)/.test(chave)) this.textures.remove(chave);
+  }
+
+  // Masmorra com labirinto (dados/masmorras.js, labirinto; JGB-53): a lógica escava um labirinto novo no mapa da
+  // área a cada entrada. O que foi guardado dela a partir do mapa (muros e classes do chão contínuo, pedaços do chão
+  // já pintados ou a meio) é esquecido ao montar a cena; nas outras áreas, nada a fazer.
+  esquecerLabirinto() {
+    const a = areas[this.areaAtual];
+    if (!(a?.masmorra && typeof DADOS_MASMORRAS !== "undefined" && DADOS_MASMORRAS[a.masmorra]?.labirinto)) return;
+    window.Cenario?.esquecerArea?.(this.areaAtual);
+    const prefixo = `chao_${this.areaAtual}_`;
+    for (const chave of Object.keys(this.textures.list)) if (chave.startsWith(prefixo)) this.textures.remove(chave);
   }
 
   // ===== chão contínuo (cenario.js): pedaços de 16 × 16 casas pintados pixel a pixel, criados perto da câmera
@@ -1597,7 +1623,9 @@ class Cena extends Phaser.Scene {
     }
     this.noite.clear().fill(CICLO_DIA.cor, escuro);
     this.brilhoNoite.clear();
-    const fontes = [{ x: this.jogador.x, y: this.jogador.y - 20, r: 84, quente: 0.25 }, ...this.luzes];
+    // a luz do jogador: a do clima (bio.luzJogador: a tocha na mão, nas galerias da tumba) ou a de sempre
+    const lj = this.bio.luzJogador;
+    const fontes = [{ x: this.jogador.x, y: this.jogador.y - 20, r: lj?.r || 84, quente: lj?.quente ?? 0.25, tremula: !!lj }, ...this.luzes];
     const b = this.pincelLuz;
     for (const l of fontes) {
       if (l.predio && l.predio.fora.alpha > 0.5) continue;
@@ -2822,6 +2850,7 @@ class Cena extends Phaser.Scene {
     else if (x.tipo === "masmorraEtapa") {
       this.limparVagasApagadas(); // a etapa que acabou apaga as criaturas que sobraram (sem evento por criatura)
       this.marcarZona(x.zona); // etapa "zona": o círculo de oração; outra etapa apaga o da anterior
+      this.marcarAlvo(x.alvo); // etapa "chegar": a câmara do tesouro; idem
       this.mostrarCartao(`Etapa ${x.numero} de ${x.total}`, x.texto);
       this.mensagem(`Etapa ${x.numero} de ${x.total}: ${x.texto}.`, "missao");
     } else if (x.tipo === "masmorraFase") {
@@ -2833,6 +2862,7 @@ class Cena extends Phaser.Scene {
       for (const m of this.marcasPerigo || []) m.destroy();
       this.marcasPerigo = [];
       this.marcarZona(null);
+      this.marcarAlvo(null);
       this.mensagem(x.mensagem, x.vitoria ? "anuncio" : "perigo");
       if (x.vitoria) {
         window.Som?.saque?.("epico");
@@ -2886,6 +2916,35 @@ class Cena extends Phaser.Scene {
       g.once("destroy", () => pulso.remove()); // o tween infinito sai junto com o círculo (não fica órfão)
     }
     this.zonaMasmorra = g;
+  }
+  // Etapa "chegar" (JGB-53): o destino, um retângulo de casas (a câmara do tesouro), com um brilho de ouro bem
+  // leve nas casas livres (embaixo das criaturas: na profundidade das sombras), a borda dourada, uma luz quente que
+  // abre o escuro e um pulso lento (parado com reduced-motion). Fica até a próxima etapa ou o fim; a = null só
+  // apaga. O tween e a luz saem junto com o gráfico (evento destroy), também quando a cena reinicia.
+  marcarAlvo(a) {
+    if (this.alvoMasmorra?.active) this.alvoMasmorra.destroy();
+    this.alvoMasmorra = null;
+    if (!a || !(a.largura > 0) || !(a.altura > 0)) return;
+    const x0 = a.x * TAM, y0 = a.y * TAM, w = a.largura * TAM, h = a.altura * TAM, mapa = mapas[this.areaAtual];
+    const g = this.add.graphics().setDepth(PROF.sombra + 1);
+    g.alvo = { x: a.x, y: a.y, largura: a.largura, altura: a.altura }; // o minimapa desenha o mesmo retângulo
+    for (let y = a.y; y < a.y + a.altura; y++) for (let x = a.x; x < a.x + a.largura; x++) {
+      if (mapa[y]?.[x] !== 0) continue;
+      const k = Arte.hash2(x, y, 91);
+      g.fillStyle(0xf2d27a, 0.06 + k * 0.04).fillRect(x * TAM + 3, y * TAM + 3, TAM - 6, TAM - 6);
+      if (k > 0.82) g.fillStyle(0xfff0c0, 0.22).fillRect(x * TAM + 6 + Math.round(k * 14), y * TAM + 8 + Math.round(k * 9), 2, 2); // cintila uma moeda
+    }
+    g.lineStyle(7, 0xf2d27a, 0.14).strokeRoundedRect(x0 - 1, y0 - 1, w + 2, h + 2, 12);
+    g.lineStyle(3, 0xe8b94a, 0.75).strokeRoundedRect(x0 + 2, y0 + 2, w - 4, h - 4, 10);
+    g.lineStyle(1, 0xfff0c0, 0.45).strokeRoundedRect(x0 + 5, y0 + 5, w - 10, h - 10, 8);
+    const luz = { x: x0 + w / 2, y: y0 + h / 2, r: Math.max(w, h) * 0.55, quente: 0.6 };
+    this.luzes.push(luz);
+    g.once("destroy", () => { const i = this.luzes.indexOf(luz); if (i >= 0) this.luzes.splice(i, 1); });
+    if (!reduzMovimento()) {
+      const pulso = this.tweens.add({ targets: g, alpha: 0.6, duration: 1400, ease: "Sine.easeInOut", yoyo: true, repeat: -1 });
+      g.once("destroy", () => pulso.remove()); // o tween infinito sai junto com o retângulo (não fica órfão)
+    }
+    this.alvoMasmorra = g;
   }
   // Casas que vão pegar fogo: telégrafo vermelho com borda de ouro (como o da investida), pulsando até `ate`.
   // Uma Graphics só para todas as casas do padrão (as linhas cobrem centenas delas).
@@ -3269,6 +3328,14 @@ class Cena extends Phaser.Scene {
       ctx.fillStyle = "#f2d27a40"; ctx.fillRect(zx, zy, zl, zl);
       ctx.lineWidth = 1; ctx.strokeStyle = "#1c1210"; ctx.strokeRect(zx - 0.5, zy - 0.5, zl + 1, zl + 1);
       ctx.strokeStyle = "#f2d27a"; ctx.strokeRect(zx + 0.5, zy + 0.5, zl - 1, zl - 1);
+    }
+    // destino da etapa "chegar" (a câmara do tesouro): o retângulo em ouro, também embaixo das marcas
+    const am = this.alvoMasmorra?.active && this.alvoMasmorra.alvo;
+    if (am) {
+      const ax = Math.round((am.x - ox) * E), ay = Math.round((am.y - oy) * E), aw = am.largura * E, ah = am.altura * E;
+      ctx.fillStyle = "#f2d27a38"; ctx.fillRect(ax, ay, aw, ah);
+      ctx.lineWidth = 1; ctx.strokeStyle = "#1c1210"; ctx.strokeRect(ax - 0.5, ay - 0.5, aw + 1, ah + 1);
+      ctx.strokeStyle = "#f2d27a"; ctx.strokeRect(ax + 0.5, ay + 0.5, aw - 1, ah - 1);
     }
     const a = areas[this.areaAtual];
     for (const t of PORTAIS) if (t.area === this.areaAtual) marca(t.x, t.y, "#c9a0e6", "losango", 2 + grande);

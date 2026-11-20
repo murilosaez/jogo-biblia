@@ -1351,6 +1351,7 @@
     viajante1: "pastor", guia_canaa: "guia de caravanas", guia_deserto: "guia de caravanas", mercador1: "mercador",
     noemi1: "do acampamento", moisesEgito: "líder do povo", aaronEgito: "irmão de Moisés", araoMar: "irmão de Moisés",
     josueSinai: "comandante", pedroGalileia: "pescador", jesusGalileia: "Médico dos médicos",
+    porteira_piramides: "porteira das masmorras",
   };
   const dlg = { id: null, texto: "", mostrado: 0, timer: null, fechar: null, npc: null };
   // Última fala de cada conversa: as janelas do mercador, do guia e do barqueiro a repetem no topo.
@@ -2999,6 +3000,8 @@
     porteiroMasmorra = porteiro.id;
     porFigura($("#masmorraRetrato"), visualDe(porteiro.id), 44, 44);
     $("#masmorraTitulo").textContent = nomeCurto(porteiro.nome);
+    const papel = $("#masmorraPapel");
+    if (papel) papel.textContent = PAPEIS[porteiro.id] || "porteiro das masmorras"; // Sifrá: "porteira"
     falaMasmorra = falaRecente(porteiro.id);
     if (dlg.id === porteiro.id) fecharDialogo();
     desenharMasmorra(true);

@@ -116,7 +116,7 @@ module.exports = function ({ teste, carregarJogo, carregarArte, assert, igual })
     // peças do corpo do boneco (cabeça, pernas e pés) aparecem nas 3 vistas, cada uma com o seu desenho
     variar("cabeça", ["turbante_linho", "turbante_fornalha", "capacete_couro", "elmo_bronze", "capacete_salvacao"], (id) => ({ cabeca: id }), 20);
     variar("pernas", ["saiote_couro", "grevas_bronze", "cinto_verdade"], (id) => ({ pernas: id }), 8);
-    variar("pés", ["botas_viagem", "calcados_evangelho"], (id) => ({ pes: id }), 6);
+    variar("pés", ["botas_viagem", "calcados_evangelho", "sandalias_pascoa"], (id) => ({ pes: id }), 6);
     // arma e escudo saem da silhueta e acompanham o golpe: a caixa cresce no quadro 7 e a arma muda de lugar entre 6 e 7
     for (const v of VISTAS) {
       const nu7 = px({}, {}, v + 7), arm7 = px({ arma: "espada_ferro" }, {}, v + 7), arm6 = px({ arma: "espada_ferro" }, {}, v + 6), arm0 = px({ arma: "espada_ferro" }, {}, v);

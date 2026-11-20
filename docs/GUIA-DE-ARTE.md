@@ -403,7 +403,7 @@ Obstáculos: figueira, basalto_muro, basalto, barco.
 
 ### Masmorras (JGB-23) — áreas sem bioma próprio
 
-As áreas das masmorras (`cova_leoes`, `fornalha`, `ventre_peixe`; `DADOS_AREAS_MASMORRAS` em `dados/mundo.js`) não ganham chave
+As áreas das masmorras (`cova_leoes`, `fornalha`, `ventre_peixe`, `piramides`; `DADOS_AREAS_MASMORRAS` em `dados/mundo.js`) não ganham chave
 em `BIOMAS` (o teste da flora trava a lista). O campo `arte` da área diz qual bioma ela usa, e toda a arte pergunta
 por uma função só: `Arte.biomaDaArea(area)` (a chave do bioma: obstáculos `ob_<bioma>_*`, props) e
 `Arte.bioDaArea(area)` (o objeto do bioma, com o clima da masmorra por cima). Nunca leia `Arte.BIOMAS[area]` direto
@@ -415,6 +415,7 @@ em código de cena ou de chão: use `bioDaArea`. O campo `pintarComo` do objeto 
 | caverna | masmorra sem `fogo` (cova, arte do sinai) | chão, mancha e caminho 42–45% mais escuros (`#140f16`), "água" = abismo (`#07060a` `#100d14` `#1c1720`), só obstáculos de pedra (penedo, marco), sem flores nem relva, vinheta `#050308` 0.62, escuridão fixa 0.4 (sem dia e noite; a luz do jogador e a de Daniel abrem o escuro) |
 | fogo | `fogo: true` (fornalha, arte do egito) | chão de tijolo enfumaçado `#76503f` `#5e3e32` `#8c624c`, "água" = brasa (`#1c0503` `#4e1206` `#360b04` `#c8461a` `#ffb040` `#ffe08a`, a mesma animação da água vira o brilho das rachaduras), colunas e tijolos, luz `#ff8a3a` 0.12, vinheta `#2a0602` 0.5, faíscas (`particulas: brasa`) e sem noite; os pintores seguem os ramos neutros (sem os sulcos e brotos do Egito) |
 | ventre | `clima: "ventre"` (Ventre do grande peixe, arte do marVermelho) | chão de carne vinho `#5e2a32` `#4a1e28` `#74363e` com veias (`bio.veias`: miolo `#3a1420`, relevo `#8a3a48`; o chão fatiado de `cenario.js` as traça e tira os tufos secos e as lajes, e os seixos viram carocinhos da carne), "água" = suco gástrico verde-amarelado turvo (`#26230a` `#4a4614` `#706a22` `#a8a03a` `#d8d28a`, a mesma animação da água), só o granito do marVermelho (sem corais nem destroços), poças `#7a8430`, luz `#a8d07a` 0.07, vinheta `#080604` 0.66, escuridão fixa 0.36, bolhas que sobem devagar (`particulas: bolha`, `#cfe08a`); os pintores seguem os ramos neutros (sem a areia de praia do Mar Vermelho) |
+| tumba | `clima: "tumba"` (Tesouros do Egito, as Pirâmides, arte do egito) | galerias de pirâmide: chão de lajes de arenito `#8a7252` `#776246` `#9a8260` (`bio.lajes`: o chão fatiado de `cenario.js` assenta lajes de 24 a 40 px em fiadas de 16 px, junta `#3a2c1e`, beira de cima `#b49a70`, rachas e poeira de areia, sem carimbos), "água" = abismo escuro (`#050304` `#0d0907` `#18120e`), tijolos e colunas do egito, cacos e seixos, luz de tocha `#ffb050` 0.07, vinheta `#0a0604` 0.7, escuridão fixa 0.52, a luz do jogador maior e quente (`bio.luzJogador`: r 104, quente 0.7, tremula), poeira dourada `#e2b878`; os pintores seguem os ramos neutros (sem as leiras e brotos do Egito). As paredes do labirinto (o tipo `tijolos` que a lógica escreve em `tiposObstaculo`) viram o muro `tumba` de `cenario.js` (`Cenario.nomeMuro`): bloco cheio, na própria casa (não sobe sobre a de cima: os corredores têm 1 casa), topo escuro de blocos `#1e1610`–`#4a3826` com a aresta na luz `#9c7c52`, face de blocos `#4a3420`–`#a88656` de 13 px onde a parede não continua ao sul (com hieróglifos gravados numa variante e tocha com luz âmbar tremulando em ~6% das faces) e sombra curta assada no chão |
 
 A câmera e o minimapa ficam presos a `areas[area].vista`. O telégrafo do perigo (casas marcadas) é vermelho
 `#ff3a1a` com borda de ouro `#ffd24a`, como o da investida; o fogo que sobe é um clarão laranja (ADD) mais `fx_fogo`
@@ -425,6 +426,12 @@ um quadrado de 2·raio+1) num ouro leve `#f2d27a` com a luz redonda `#ffe6a0` ad
 minimapa mostra o mesmo quadrado. Fica até a próxima etapa ou o fim. No HUD, "Dentro do círculo" (ouro) ou "Volte ao
 círculo" (vermelho) e, fora, o cronômetro parado em cinza. Toda criatura de tier `chefe` ganha a estrela, a sombra grande e o ponto maior no minimapa
 (`Arte.CHEFES.has`).
+A etapa `chegar` (JGB-53, a câmara do tesouro) marca o retângulo `alvo` no chão: um ouro bem leve `#f2d27a` nas casas
+livres (na profundidade das sombras, embaixo das criaturas) com uma moeda que cintila aqui e ali, borda de ouro
+`#e8b94a` com halo e fio claro, pulso lento (parado com reduced-motion) e luz quente; o minimapa mostra o mesmo
+retângulo. Masmorra com `labirinto` (dados/masmorras.js): a lógica escava um labirinto novo no mapa a cada entrada,
+então a cena esquece, ao montar a área, o que guardou dela a partir do mapa (`Cenario.esquecerArea`: muros, classes do
+chão, pedaços a meio; as texturas `chao_<area>_*` e o minimapa pintado); nas outras áreas nada muda.
 
 ## 10. Como escrever ou mexer num `arte/*.js`
 

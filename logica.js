@@ -3257,6 +3257,7 @@ for (const o of DADOS_TROCA_PONTOS) registrarOfertaTroca(clonarDados(o));
 
 // O abate conta se a criatura estiver na lista OU for de uma das espécies OU famílias (e da área, se houver).
 function casaAlvo(alvo, e) {
+  if (e?.masmorra) return false; // vagas de masmorra (JGB-23) não contam nem aparecem nas caçadas
   const lista = (chave) => alvo[chave] || [];
   const casa = lista("criaturas").includes(e.id) || lista("criaturas").includes(e.base) || lista("especies").includes(e.especie) || lista("familias").includes(e.familia);
   return casa && (!alvo.area || e.area === alvo.area);
@@ -3735,6 +3736,51 @@ function sementeDeTexto(texto) {
   let h = 2166136261;
   for (const c of String(texto)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
   return h >>> 0;
+}
+
+// Paredes de um labirinto novo no retângulo (dados/masmorras.js, labirinto): busca em profundidade a partir de uma
+// casa sorteada (corredores nas casas ímpares a partir da borda), mais atalhos (aberturas) e as portas abertas.
+function paredesDoLabirinto(lab, aleatorio) {
+  const colunas = (lab.largura - 1) / 2, linhas = (lab.altura - 1) / 2;
+  const parede = new Set();
+  for (let y = lab.y; y < lab.y + lab.altura; y++) for (let x = lab.x; x < lab.x + lab.largura; x++) parede.add(`${x},${y}`);
+  const casa = (i, j) => ({ x: lab.x + 1 + 2 * i, y: lab.y + 1 + 2 * j });
+  const abrir = (x, y) => parede.delete(`${x},${y}`);
+  const visto = new Set();
+  const inicio = [Math.floor(aleatorio() * colunas), Math.floor(aleatorio() * linhas)];
+  const pilha = [inicio];
+  visto.add(inicio.join());
+  abrir(casa(...inicio).x, casa(...inicio).y);
+  while (pilha.length) {
+    const [i, j] = pilha[pilha.length - 1];
+    const vizinhas = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([di, dj]) => [i + di, j + dj])
+      .filter(([a, b]) => a >= 0 && b >= 0 && a < colunas && b < linhas && !visto.has(`${a},${b}`));
+    if (!vizinhas.length) { pilha.pop(); continue; }
+    const [a, b] = vizinhas[Math.floor(aleatorio() * vizinhas.length)];
+    const c1 = casa(i, j), c2 = casa(a, b);
+    abrir(c2.x, c2.y);
+    abrir((c1.x + c2.x) / 2, (c1.y + c2.y) / 2);
+    visto.add(`${a},${b}`);
+    pilha.push([a, b]);
+  }
+  // Atalhos: paredes internas entre duas casas derrubadas a mais (menos becos sem saída).
+  for (const chave of [...parede]) {
+    const [x, y] = chave.split(",").map(Number);
+    if (x <= lab.x || y <= lab.y || x >= lab.x + lab.largura - 1 || y >= lab.y + lab.altura - 1) continue;
+    const entreH = (x - lab.x) % 2 === 0 && (y - lab.y) % 2 === 1, entreV = (x - lab.x) % 2 === 1 && (y - lab.y) % 2 === 0;
+    if ((entreH || entreV) && aleatorio() < (lab.aberturas || 0)) parede.delete(chave);
+  }
+  for (const porta of lab.portas || []) abrir(porta.x, porta.y);
+  return [...parede].map((c) => c.split(",").map(Number)).map(([x, y]) => ({ x, y }));
+}
+
+// Escava (ou desfaz) o labirinto da instância no mapa da área.
+function aplicarLabirinto(m, paredes, tipo) {
+  for (const { x, y } of paredes) {
+    mapas[m.area][y][x] = tipo ? 1 : 0;
+    if (tipo) tiposObstaculo[m.area][`${x},${y}`] = tipo;
+    else delete tiposObstaculo[m.area][`${x},${y}`];
+  }
 }
 
 // Casas (dentro da sala e livres) de um padrão de perigo. centro: o jogador ("alvo") ou o chefe ("anel").
@@ -4912,6 +4958,11 @@ const Mundo = {
       estado.aliados.push(instancia.protegido);
     }
     for (const vaga of m.vagas) this.apagarVaga(p, vaga.id);
+    // Labirinto (JGB-53): um novo a cada entrada, escavado no mapa da área enquanto a instância vive.
+    if (m.labirinto) {
+      instancia.paredes = paredesDoLabirinto(m.labirinto, instancia.aleatorio);
+      aplicarLabirinto(instancia, instancia.paredes, m.labirinto.parede);
+    }
     const eventos = [];
     this.iniciarEtapaMasmorra(p, instancia, 0, agora, eventos);
     const r = this.mudarDeArea(p, m.area, areas[m.area].inicio.x, areas[m.area].inicio.y, `${m.nome}: ${m.falas.entrada}`);
@@ -4933,6 +4984,7 @@ const Mundo = {
     const estado = this.estado[id];
     const m = DADOS_MASMORRAS[p.masmorra?.id];
     for (const vaga of m?.vagas || []) this.apagarVaga(p, vaga.id);
+    if (estado?.masmorra?.paredes) aplicarLabirinto(estado.masmorra, estado.masmorra.paredes, null); // a sala volta a ser como era
     if (estado) {
       estado.masmorra = null;
       estado.aliados = (estado.aliados || []).filter((a) => a.tipo !== "protegido");
@@ -4964,7 +5016,8 @@ const Mundo = {
     if (!e || e.masmorra !== m.id) return;
     p.inimigosDerrotados = p.inimigosDerrotados.filter((x) => x !== vagaId);
     p.vidaInimigos[vagaId] = atributosInimigo(p, e).vidaMaxima;
-    const ocupada = (c) => [...m.ativas].some((o) => inimigos[o].x === c.x && inimigos[o].y === c.y) || (p.x === c.x && p.y === c.y);
+    const ocupada = (c) => [...m.ativas].some((o) => inimigos[o].x === c.x && inimigos[o].y === c.y) || (p.x === c.x && p.y === c.y)
+      || mapas[m.area][c.y]?.[c.x] !== 0; // no labirinto, o ponto da vaga pode ter virado parede
     const casa = !ocupada({ x: e.inicioX, y: e.inicioY }) ? { x: e.inicioX, y: e.inicioY } : this.casaLivreMaisProxima(m.area, e.inicioX, e.inicioY) || { x: e.inicioX, y: e.inicioY };
     e.x = casa.x;
     e.y = casa.y;
@@ -4985,7 +5038,10 @@ const Mundo = {
     const etapa = d.etapas[indice];
     m.proximoPerigo = (etapa.perigos || []).map((x) => m.relogio + x.aCadaMs);
     if (etapa.tipo === "chefe") this.acenderVaga(p, m, etapa.vaga, eventos);
-    eventos.push({ tipo: "masmorraEtapa", masmorra: m.id, numero: indice + 1, total: d.etapas.length, texto: etapa.texto, ...(etapa.zona ? { zona: { ...etapa.zona } } : {}) });
+    eventos.push({
+      tipo: "masmorraEtapa", masmorra: m.id, numero: indice + 1, total: d.etapas.length, texto: etapa.texto,
+      ...(etapa.zona ? { zona: { ...etapa.zona } } : {}), ...(etapa.alvo ? { alvo: { ...etapa.alvo } } : {}),
+    });
   },
 
   // Laço da instância (chamado por atualizar): ondas, perigos, fases do chefe, protegido e fim de etapa.
@@ -5049,7 +5105,11 @@ const Mundo = {
     // Protegido caído: a masmorra falha.
     if (m.protegido && m.protegido.vida <= 0) return this.concluirMasmorra(id, p, m, false, agora, eventos);
     // Fim da etapa.
-    const cumprida = etapa.tipo === "chefe" ? !m.ativas.has(etapa.vaga) : etapa.tipo === "zona" ? m.progresso >= etapa.duracaoMs : passou >= etapa.duracaoMs;
+    const dentroDoAlvo = (a) => p.x >= a.x && p.y >= a.y && p.x < a.x + a.largura && p.y < a.y + a.altura;
+    const cumprida = etapa.tipo === "chefe" ? !m.ativas.has(etapa.vaga)
+      : etapa.tipo === "zona" ? m.progresso >= etapa.duracaoMs
+        : etapa.tipo === "chegar" ? dentroDoAlvo(etapa.alvo)
+          : passou >= etapa.duracaoMs;
     if (!cumprida) return null;
     if (etapa.tipo !== "chefe") for (const vagaId of [...m.ativas]) this.apagarVaga(p, vagaId); // a etapa acabou: as que restam somem
     if (etapa.fim) eventos.push({ tipo: "masmorraFase", masmorra: m.id, mensagem: etapa.fim });
@@ -5112,6 +5172,8 @@ const Mundo = {
       etapa: { numero: m.etapa + 1, total: d.etapas.length, tipo: etapa.tipo, texto: etapa.texto },
       restanteMs: etapa.duracaoMs && !m.fim ? Math.max(0, etapa.duracaoMs - (etapa.tipo === "zona" ? m.progresso : m.relogio - m.etapaDesde)) : null,
       zona: etapa.zona && !m.fim ? { ...etapa.zona, dentro: distanciaChebyshev(p, etapa.zona) <= etapa.zona.raio } : null,
+      alvo: etapa.alvo && !m.fim ? { ...etapa.alvo } : null,
+      labirinto: m.paredes ? m.paredes.length : 0,
       ondas: etapa.ondas?.length ? { feitas: m.ondasFeitas.length, total: etapa.ondas.length } : null,
       criaturas: m.ativas.size,
       protegido: m.protegido ? { nome: m.protegido.nome, vida: m.protegido.vida, vidaMax: m.protegido.vidaMax } : null,

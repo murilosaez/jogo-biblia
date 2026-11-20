@@ -125,6 +125,7 @@
     cova_leoes: "Daniel 6 · a noite entre os leões",
     fornalha: "Daniel 3 · sete vezes mais quente",
     ventre_peixe: "Jonas 2 · três dias e três noites",
+    piramides: "Hebreus 11:26 · as galerias do túmulo",
   };
 
   // -------------------------------------------------------------------
@@ -792,6 +793,9 @@
     saiote_couro: ["saiote", ["#8a5a32", "#e8b94a"]],
     grevas_bronze: ["grevas", ["#b07a38", "#f2d27a"]],
     botas_viagem: ["botas", ["#6a4228", "#9a6a3c"]],
+    // Sandálias da Páscoa (masmorra das Pirâmides): sandálias de cano de tiras de couro, amarradas no tornozelo com
+    // a tira de linho alvo (a 3ª cor faz o calçado de tiras, como os calcados_evangelho)
+    sandalias_pascoa: ["botas", ["#7a4a2c", "#ece4cf", "#a8703a"]],
     // Armadura de Deus: elmo de ouro com crista branca, cinto de ouro com tiras de linho, calçados de tiras de ouro
     capacete_salvacao: ["elmo", ["#b08a3a", "#fff0b0", "#f2ecdc"]],
     cinto_verdade: ["saiote", ["#ece4cf", "#f2d27a", "#e6c25a"]],
@@ -1227,6 +1231,7 @@
   item("selo_dario");
   item("turbante_fornalha");
   item("concha_peixe");
+  item("sandalias_pascoa");
   // Armadura de Deus (Ef 6:13-17), relíquias em ouro pálido: desenho em arte/itens.js.
   item("cinto_verdade");
   item("couraca_justica");
@@ -1790,6 +1795,23 @@
     luz: { cor: "#a8d07a", alfa: 0.07, modo: "screen" }, vinheta: { cor: "#080604", forca: 0.66 }, sombra: "#1e0a12", escuroFixo: 0.36,
     particulas: { tipo: "bolha", cor: "#cfe08a", max: 14 },
   });
+  // Galerias da pirâmide (clima: "tumba", JGB-53): lajes de arenito escuro no chão (bio.lajes, cenario.js), a "água"
+  // em volta é o abismo escuro (como na caverna), as paredes do labirinto são os tijolos do Egito, que a cena pinta
+  // como blocos de pedra contínuos (cenario.js, Cenario.nomeMuro: "tumba"), luz baixa de tocha (âmbar), vinheta
+  // forte, sem dia e noite e poeira dourada no ar.
+  const CLIMA_TUMBA = (b) => ({
+    chao: { base: "#8a7252", escuro: "#776246", claro: "#9a8260", salpico: "#ac9470" },
+    mancha: { base: "#7a6448", escuro: "#66533b" },
+    caminho: escurecer(b.caminho, "#1a120c", 0.5),
+    agua: { profunda: "#050304", base: "#0d0907", escura: "#090605", clara: "#18120e", brilho: "#261c14", espuma: "#3e3024" },
+    obstaculos: [{ tipo: "tijolos", peso: 60 }, { tipo: "coluna", peso: 40, alto: true }],
+    borda: Object.assign({}, b.borda, { norte: undefined, sul: undefined }),
+    deco: [{ tipo: "caco", peso: 2, cor: "#7a5434" }, { tipo: "seixo", peso: 3, cor: "#5a4a38" }],
+    lajes: { junta: "#3a2c1e", luz: "#b49a70" },
+    luzJogador: { r: 104, quente: 0.7 },
+    luz: { cor: "#ffb050", alfa: 0.07, modo: "screen" }, vinheta: { cor: "#0a0604", forca: 0.7 }, sombra: "#1c1208", escuroFixo: 0.52,
+    particulas: { tipo: "poeira", cor: "#e2b878", max: 16 },
+  });
   const cacheBio = {};
   // O bioma (objeto) que a área pinta: o próprio, ou o da arte com o clima da masmorra.
   function bioDaArea(area) {
@@ -1800,9 +1822,10 @@
     // pintarComo: o nome que os ramos por região dos pintores (arte/terreno.js, cenario.js) leem; a brasa usa os
     // ramos neutros (sem os sulcos e brotos do Egito), a caverna os pedregosos do bioma da arte
     const arte = biomaDaArea(area);
-    // o ventre também segue os neutros (sem a areia de praia e as conchas carimbadas do Mar Vermelho)
-    const clima = a.clima === "ventre" ? CLIMA_VENTRE : a.fogo ? CLIMA_FOGO : CLIMA_CAVERNA;
-    return (cacheBio[area] = Object.assign({}, b, clima(b), { bioma: arte, pintarComo: a.fogo || a.clima === "ventre" ? area : arte }));
+    // o ventre e a tumba também seguem os neutros (sem a areia de praia e as conchas do Mar Vermelho, nem as leiras
+    // e brotos do Egito)
+    const clima = a.clima === "ventre" ? CLIMA_VENTRE : a.clima === "tumba" ? CLIMA_TUMBA : a.fogo ? CLIMA_FOGO : CLIMA_CAVERNA;
+    return (cacheBio[area] = Object.assign({}, b, clima(b), { bioma: arte, pintarComo: a.fogo || a.clima === "ventre" || a.clima === "tumba" ? area : arte }));
   }
 
   // -------------------------------------------------------------------

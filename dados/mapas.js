@@ -409,4 +409,21 @@ const DADOS_MAPAS = {
     decoracoes: [],
     vegetacao: { densidade: 0.15, moitas: { concha: 2 }, beira: {} },
   },
+  // Pirâmides (JGB-53): a sala fica aberta no mapa; o labirinto é escavado a cada entrada (dados/masmorras.js).
+  piramides: {
+    terreno: { escala: 7, limiar: 1, densidade: 0, salpico: 0, semente: 109 },
+    regioes: [],
+    aguas: [
+      { x: 1, y: 1, largura: 158, altura: 3 },
+      { x: 1, y: 25, largura: 158, altura: 94 },
+      { x: 1, y: 4, largura: 3, altura: 21 },
+      { x: 36, y: 4, largura: 123, altura: 21 },
+    ],
+    vilas: [],
+    caminhos: [],
+    estruturas: [],
+    marcos: [],
+    decoracoes: [],
+    vegetacao: { densidade: 0.1, moitas: { caco: 2 }, beira: {} },
+  },
 };
