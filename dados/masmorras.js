@@ -41,7 +41,7 @@ const DADOS_MASMORRAS = {
     descricao:
       "Daniel orou ao seu Deus como costumava, e por isso o lançaram na cova dos leões (Dn 6:10, 16). Passe a noite " +
       "ao lado dele: os leões famintos vêm em levas, e o maior deles vem por último.",
-    mecanica: "Proteja Daniel por 3 minutos: os leões atacam a ele, não a você.",
+    mecanica: "Proteja Daniel até o amanhecer (cerca de 3 minutos): os leões atacam a ele, não a você.",
     nivelMinimo: 10,
     area: "cova_leoes",
     sala: { x: 4, y: 4, largura: 32, altura: 22 },
@@ -55,7 +55,7 @@ const DADOS_MASMORRAS = {
       { id: "cova_leao_6", base: "leao1", x: 28, y: 5, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
       { id: "cova_leao_7", base: "leao1", x: 28, y: 24, nome: "Leão faminto", tier: "normal", vidaMaxima: 140, danoContraJogador: 11, xpRecompensa: 50, raioPercepcao: 40 },
       {
-        id: "cova_leao_chefe", base: "leao1", x: 34, y: 15, nome: "Leão-rei da cova", tier: "chefe", vidaMaxima: 900, danoContraJogador: 13,
+        id: "cova_leao_chefe", base: "leao1", x: 34, y: 15, nome: "Leão-rei da cova", tier: "chefe", escala: 1.3, vidaMaxima: 900, danoContraJogador: 13,
         defesa: 7, xpRecompensa: 400, raioPercepcao: 40, comportamento: ["investida", "furia"], vidaLimite: 0.3,
       },
     ],
@@ -110,7 +110,7 @@ const DADOS_MASMORRAS = {
       { id: "fornalha_guarda_4", base: "mercenario1", x: 26, y: 24, nome: "Guarda do rei", tier: "normal", vidaMaxima: 200, danoContraJogador: 10, defesa: 8, xpRecompensa: 70,
         raioPercepcao: 40, comportamento: "padrao" },
       {
-        id: "fornalha_capitao", base: "mercenario1", x: 32, y: 15, nome: "Capitão da guarda de Nabucodonosor", tier: "chefe", vidaMaxima: 1000,
+        id: "fornalha_capitao", base: "mercenario1", x: 32, y: 15, nome: "Capitão da guarda de Nabucodonosor", tier: "chefe", escala: 1.3, vidaMaxima: 1000,
         danoContraJogador: 14, defesa: 12, xpRecompensa: 500, raioPercepcao: 40, comportamento: "furia", vidaLimite: 0.3,
       },
     ],

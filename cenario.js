@@ -43,9 +43,13 @@
   // (bio.luz.cor). matiz(area) escolhe a região da pintura em curso; matiz(null) volta ao neutro (sépia e creme).
   const SOMBRA_NEUTRA = "#1c1210", LUZ_NEUTRA = "#fff6e0";
   let SOMBRA = SOMBRA_NEUTRA, LUZ = LUZ_NEUTRA;
+  // Bioma que a área pinta (sprites.js, Arte.bioDaArea: as masmorras usam a arte de outro bioma com o clima
+  // trocado) e o nome que os ramos por região leem (bio.pintarComo; sem ele, o da própria área).
+  const bioDe = (area) => (area && ((Arte.bioDaArea && Arte.bioDaArea(area)) || Arte.BIOMAS[area])) || null;
+  const regiaoDe = (area) => (bioDe(area) && bioDe(area).pintarComo) || area;
   const cacheMatiz = {};
   function matiz(area) {
-    const bio = area && Arte.BIOMAS[area];
+    const bio = bioDe(area);
     if (!bio) { SOMBRA = SOMBRA_NEUTRA; LUZ = LUZ_NEUTRA; return; }
     const m = cacheMatiz[area] || (cacheMatiz[area] = [misturar(SOMBRA_NEUTRA, misturar(bio.sombra, "#000000", 0.35), 0.6), misturar(LUZ_NEUTRA, bio.luz.cor, 0.5)]);
     SOMBRA = m[0]; LUZ = m[1];
@@ -1165,7 +1169,7 @@
   };
   // A casa (x, y), dentro ou fora do mapa, é água ou muralha da borda (fica com o Tilemap animado)?
   function aguaDaBorda(area, x, y) {
-    const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan;
+    const bio = bioDe(area) || Arte.BIOMAS.canaan;
     const cais = typeof areas !== "undefined" ? areas[area] && areas[area].cais : null;
     if (y <= 0 && cais && Math.abs(x - cais.x) <= 3) return true;
     if (y <= 0 && (bio.borda.norte === "agua" || bio.borda.norte === "muralha")) return true;
@@ -1261,7 +1265,8 @@
   function iniciarPedacoFatiado(area, bx, by) {
     const est = { area, bx, by, chave: `chao_${area}_${bx}_${by}`, tela: null, pronto: false, i: 0, passos: [] };
     const P = est.passos;
-    const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan;
+    const bio = bioDe(area) || Arte.BIOMAS.canaan;
+    const reg = regiaoDe(area);
     const { cls, gasto } = classesDaArea(area);
     const L = LADO * T, M = 16, N = L + 2 * M, W0 = bx * L, H0 = by * L, X0 = W0 - M, Y0 = H0 - M;
     const tela = est.tela = new Tela(L, L), buf = tela.buf;
@@ -1269,7 +1274,7 @@
     matiz(area);
     const c = bio.chao, m = bio.mancha, cm = bio.caminho;
     const [r0, g0] = rgb(c.base);
-    const relva = g0 > r0 + 8, areia = !relva, egito = area === "egito", pedregoso = area === "sinai";
+    const relva = g0 > r0 + 8, areia = !relva, egito = reg === "egito", pedregoso = reg === "sinai";
     const SOMB = cI(SOMBRA), LUZI = cI(LUZ);
     // rampas de 7 tons (escuro → claro, base no índice 3)
     const rampa7 = (e, b, cl, sal) => [esc(e, 0.3), e, misturar(e, b, 0.5), b, misturar(b, cl, 0.5), cl, misturar(cl, sal, 0.55)].map(cI);
@@ -1278,8 +1283,8 @@
     const TT = [esc(cm.escuro, 0.18), cm.escuro, misturar(cm.escuro, cm.base, 0.5), cm.base, misturar(cm.base, cm.claro, 0.5), cm.claro].map(cI);
     const TG = relva ? TT.map((t) => mI(mI(t, cI("#7a6248"), 0.3), G[2], 0.3)) : TT.map((t, i) => mI(t, G[Math.min(6, i + 1)], 0.62));
     const FIO = mI(cI(cm.borda), SOMB, 0.3), FIOG = mI(TG[1], SOMB, 0.22);
-    const pedraBase = egito ? ["#8a7a5a", "#a8986f", "#c4b68c", "#dccfa8"] : area === "galileia" ? ["#403e3b", "#55524d", "#6c6861", "#858076"] : ["#7c705a", "#9a8c70", "#b6a888", "#cfc2a2"];
-    const JUNTA = cI(esc(area === "galileia" ? "#242220" : "#4e4230", 0.15));
+    const pedraBase = egito ? ["#8a7a5a", "#a8986f", "#c4b68c", "#dccfa8"] : reg === "galileia" ? ["#403e3b", "#55524d", "#6c6861", "#858076"] : ["#7c705a", "#9a8c70", "#b6a888", "#cfc2a2"];
+    const JUNTA = cI(esc(reg === "galileia" ? "#242220" : "#4e4230", 0.15));
     const MUSGO = mI(cI(c.escuro), JUNTA, 0.45);
     const agua = bio.agua || { clara: "#4a8fa0", brilho: "#8ac0c8", profunda: "#1d4f5c" };
     const RASO = mI(cI(agua.clara), cI("#e6f2dc"), 0.42), FUNDO = mI(cI(agua.profunda || "#1d4f5c"), SOMB, 0.4);
@@ -1621,7 +1626,7 @@
       // lajes de rocha à flor do chão (pedregal e areia)
       if (areia) for (let gy = 16; gy < N - 16; gy += 34) for (let gx = 16; gx < N - 16; gx += 34) {
         const wx = X0 + gx, wy = Y0 + gy;
-        if (hash2(wx, wy, s + 80) > (pedregoso ? 0.42 : area === "marVermelho" ? 0.2 : 0.1)) continue;
+        if (hash2(wx, wy, s + 80) > (pedregoso ? 0.42 : reg === "marVermelho" ? 0.2 : 0.1)) continue;
         const cx = gx + Math.floor(hash2(wx, wy, s + 81) * 26) - 6, cy = gy + Math.floor(hash2(wx, wy, s + 82) * 26) - 6;
         if (cx < 14 || cy < 12 || cx >= N - 14 || cy >= N - 12) continue;
         if (kk[cy * N + cx] !== CHAO || tom[cy * N + cx] & 16) continue;
@@ -1762,7 +1767,8 @@
   const cacheMoita = {};
   function tonsMoita(area) {
     if (cacheMoita[area]) return cacheMoita[area];
-    const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan, base = TONS_MOITA[area] || TONS_MOITA.canaan;
+    const reg = regiaoDe(area);
+    const bio = bioDe(area) || Arte.BIOMAS.canaan, base = TONS_MOITA[reg] || TONS_MOITA.canaan;
     const t = {};
     for (const k of Object.keys(base)) t[k] = paleta(base[k]);
     t.flores = (bio.deco || []).filter((d) => TIPOS_FLOR.has(d.tipo)).map((d) => ({
@@ -1954,14 +1960,15 @@
   // estrada de terra (beira → realce), do chão pisado, das pedras da rua, da beira da água e dos seixos.
   function paletasDoChao(area) {
     if (cachePaletas[area]) return cachePaletas[area];
-    const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan;
+    const bio = bioDe(area) || Arte.BIOMAS.canaan;
+    const reg = regiaoDe(area);
     const c = bio.chao, m = bio.mancha, cm = bio.caminho;
     const [r0, g0] = rgb(c.base);
     const relva = g0 > r0 + 8;
     const [sr, sg, sb] = rgb(c.salpico), [cr, cg, cb] = rgb(c.claro);
     const realce = relva && sr + sg + sb > cr + cg + cb ? c.salpico : misturar(c.claro, "#fff6e0", relva ? 0.22 : 0.3);
     const agua = bio.agua || Arte.BIOMAS.mar.agua;
-    const basalto = area === "galileia";
+    const basalto = reg === "galileia";
     const p = {
       relva,
       // rampa do chão em 7 tons: as manchas grandes usam só os 3 do meio (pouco contraste, sem cara de
@@ -1969,17 +1976,17 @@
       chao: paleta([m.escuro, c.escuro, misturar(c.escuro, c.base, 0.5), c.base, misturar(c.base, c.claro, 0.5), c.claro, realce]),
       terra: paleta([cm.borda, cm.escuro, cm.base, cm.claro, misturar(cm.claro, "#fff6e0", 0.3)]),
       gasto: paleta([cm.borda, cm.escuro, cm.base, cm.claro, misturar(cm.claro, "#fff6e0", 0.3)].map((t) => misturar(t, c.base, 0.3))),
-      pedra: paleta(area === "egito" ? ["#9a8a68", "#b8a882", "#d0c29c", "#e4d8b8"] : basalto ? ["#4a4844", "#5e5b56", "#76726a", "#908b80"] : ["#8a7e66", "#a89a7e", "#c2b496", "#d8ccb0"]),
+      pedra: paleta(reg === "egito" ? ["#9a8a68", "#b8a882", "#d0c29c", "#e4d8b8"] : basalto ? ["#4a4844", "#5e5b56", "#76726a", "#908b80"] : ["#8a7e66", "#a89a7e", "#c2b496", "#d8ccb0"]),
       junta: rgb(basalto ? "#2a2826" : "#5a4e3a"),
-      luzPedra: paleta((area === "egito" ? ["#9a8a68", "#b8a882", "#d0c29c", "#e4d8b8"] : basalto ? ["#4a4844", "#5e5b56", "#76726a", "#908b80"] : ["#8a7e66", "#a89a7e", "#c2b496", "#d8ccb0"]).map((t) => misturar(t, "#fff6e0", 0.18))),
+      luzPedra: paleta((reg === "egito" ? ["#9a8a68", "#b8a882", "#d0c29c", "#e4d8b8"] : basalto ? ["#4a4844", "#5e5b56", "#76726a", "#908b80"] : ["#8a7e66", "#a89a7e", "#c2b496", "#d8ccb0"]).map((t) => misturar(t, "#fff6e0", 0.18))),
       // beira da água: areia seca, areia molhada, espuma e o raso (os dois últimos por cima da água animada)
       seca: paleta(basalto ? [cm.escuro, cm.base, cm.claro] : [misturar(cm.base, c.claro, 0.25), misturar(cm.claro, c.claro, 0.3), misturar(cm.claro, "#fff6e0", 0.25)]),
       molhada: paleta(basalto ? ["#4a4238", "#5a5044"] : [misturar(cm.escuro, "#3a3022", 0.45), misturar(cm.escuro, "#3a3022", 0.25)]),
       espuma: rgb(agua.espuma), raso: rgb(agua.clara),
-      seixo: paleta(basalto ? ["#262422", "#4c4a48", "#7a766e"] : area === "sinai" ? ["#4e3a30", "#7a6050", "#a8907a"] : ["#6a5a44", "#9a8a6c", "#d0c4a4"]),
+      seixo: paleta(basalto ? ["#262422", "#4c4a48", "#7a766e"] : reg === "sinai" ? ["#4e3a30", "#7a6050", "#a8907a"] : ["#6a5a44", "#9a8a6c", "#d0c4a4"]),
       // seixos soltos na relva: claros (o basalto escuro na relva parecia sujeira)
-      seixoChao: paleta(basalto ? ["#4c4a44", "#76726a", "#a09a8e"] : area === "sinai" ? ["#4e3a30", "#7a6050", "#a8907a"] : ["#6a5a44", "#9a8a6c", "#d0c4a4"]),
-      broto: rgb(area === "egito" ? "#6f7a3a" : c.escuro),
+      seixoChao: paleta(basalto ? ["#4c4a44", "#76726a", "#a09a8e"] : reg === "sinai" ? ["#4e3a30", "#7a6050", "#a8907a"] : ["#6a5a44", "#9a8a6c", "#d0c4a4"]),
+      broto: rgb(reg === "egito" ? "#6f7a3a" : c.escuro),
     };
     cachePaletas[area] = p;
     return p;
@@ -1992,12 +1999,13 @@
   // pedra; a água ganha a beira de areia (ou seixos de basalto na Galileia), a areia molhada, a espuma e o raso.
   // espiao (opcional, para testes): função (wx, wy, peça) chamada a cada px pintado pela vegetação rasteira.
   function pintarPedacoChaoMain(area, bx, by, espiao) {
-    const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan;
+    const bio = bioDe(area) || Arte.BIOMAS.canaan;
+    const reg = regiaoDe(area);
     const { cls, gasto } = classesDaArea(area);
     const P = paletasDoChao(area);
     const L = LADO * T, tela = new Tela(L, L), buf = tela.buf;
     const s = 991 + area.length * 13;
-    const relva = P.relva, areia = !relva, egito = area === "egito";
+    const relva = P.relva, areia = !relva, egito = reg === "egito";
     const W0 = bx * L, H0 = by * L;
     // janela de casas do pedaço (com 2 de folga): classe e água
     const CX0 = bx * LADO - 2, CY0 = by * LADO - 2, CN = LADO + 4;
@@ -2364,7 +2372,8 @@
   function moitasSobre(area, bx, by, tela, espiao) {
     const veg = typeof DADOS_MAPAS !== "undefined" && DADOS_MAPAS[area] && DADOS_MAPAS[area].vegetacao;
     if (!veg) return;
-    const bio = Arte.BIOMAS[area] || Arte.BIOMAS.canaan;
+    const bio = bioDe(area) || Arte.BIOMAS.canaan;
+    const reg = regiaoDe(area);
     const { cls } = classesDaArea(area);
     const L = LADO * T, buf = tela.buf, W0 = bx * L, H0 = by * L;
     const fora = (x, y) => x < 0 || y < 0 || x >= COLS || y >= ROWS;

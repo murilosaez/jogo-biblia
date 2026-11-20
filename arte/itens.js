@@ -1408,6 +1408,48 @@
     faisca(g, 12, 11, BRANCO, true);
   }, { sombraApoio: [8.4, 14.6, 5.8, 0.9] });
 
+  // ===================================================================
+  // 10. RECOMPENSAS EXCLUSIVAS DAS MASMORRAS (JGB-23, dados/masmorras.js)
+  // ===================================================================
+  const LAPIS = rampa6("#2c4c9c", "metal"), BRASA = rampa6("#e0602a", "pano");
+  // Selo de Dario (Dn 6:17): anel de ouro grosso, chaton largo de lápis-lazúli com o leão gravado em ouro e
+  // as garras que prendem a pedra.
+  item("selo_dario", (g) => {
+    curva(g, (t) => [16 + Math.cos(Math.PI * 2 * t) * 8.6, 20.5 + Math.sin(Math.PI * 2 * t) * 6.2], 40, () => 2.2, OURO, { esp: BRANCO, dur: 0.975, rebote: 0.4 });
+    bola(g, 16, 11.5, 8.2, 6.4, OURO, { plano: 0.55, esp: BRANCO, dur: 0.985 });
+    bola(g, 16, 11, 6.6, 4.9, LAPIS, { plano: 0.4, esp: BRANCO, dur: 0.99, tex: (X, Y) => (hash2(X, Y, 61) < 0.08 ? 0.5 : 0) });
+    // o leão de perfil, gravado em ouro: corpo, juba, pata erguida e a cauda
+    pontos(g, [[13, 11], [14, 11], [15, 11], [16, 11], [17, 11], [18, 11], [14, 12], [17, 12], [13, 13], [15, 13], [17, 13], [18, 13]], OURO[4]);
+    pontos(g, [[18, 9], [19, 9], [18, 10], [19, 10], [20, 10], [17, 10]], OURO[5]);
+    pontos(g, [[12, 10], [11, 9], [20, 11]], OURO[3]);
+    // garras do chaton
+    for (const [X, Y] of [[9, 9], [23, 9], [10, 15], [22, 15]]) { g.fino(X, Y, OURO[5]); g.fino(X, Y + 1, OURO[2]); }
+    faisca(g, 12, 8, BRANCO, true);
+    faisca(g, 24, 23, BRANCO, false);
+  }, { sombraApoio: [8, 14.2, 5.6, 1.1] });
+  // Turbante que o fogo não queimou (Dn 3:21, 27): voltas de linho alvo, faixa cor de brasa, broche de ouro com
+  // rubi e duas labaredas que lambem a barra sem chamuscar o pano.
+  item("turbante_fornalha", (g) => {
+    tubo(g, 23.5, 18, 27, 27, 2.3, 1.4, LINHO_BR, { tex: (X, Y, t) => (Math.round(t * 9) % 2 ? -0.3 : 0.1) });
+    bola(g, 15.5, 14.5, 10.5, 8.8, LINHO_BR, {
+      rebote: 0.25, esp: BRANCO, dur: 0.99,
+      tex: (X, Y) => { const k = ((Math.round(X * 0.7 - Y) % 4) + 4) % 4; return k === 0 ? -0.75 : k === 1 ? 0.35 : 0; },
+    });
+    for (let X = 5; X <= 26; X++) {
+      const Y = Math.round(18.6 - (X - 5) * 0.12);
+      if (!g.gf(X, Y) || !g.gf(X, Y + 1)) continue;
+      g.fino(X, Y, BRASA[X < 12 ? 5 : X < 19 ? 4 : 3]); g.fino(X, Y + 1, BRASA[X < 12 ? 3 : X < 19 ? 2 : 1]);
+      if (X % 4 === 1) g.fino(X, Y, OURO[5]);
+    }
+    bola(g, 16, 9.5, 2.4, 2.6, OURO, { esp: BRANCO });
+    pontos(g, [[16, 9], [15, 9]], "#c2202a"); g.fino(16, 10, "#7a1018");
+    // labaredas na barra (lambem, não queimam)
+    for (const [cx, alt] of [[7, 5], [26, 4]]) for (let k = 0; k < alt; k++) {
+      const Y = 27 - k, w = Math.max(0, Math.round((alt - k) * 0.5));
+      for (let X = cx - w; X <= cx + w; X++) g.fino(X, Y, k < 2 ? BRASA[2] : k < alt - 1 ? BRASA[4] : OURO[5]);
+    }
+  }, { sombraApoio: [8, 12.8, 5.8, 1.1] });
+
   // Conferência na carga: nenhuma chave de item do legado ficou sem desenho novo (o teste do pacote confere de novo).
   Arte.ITENS_NOVOS = FEITOS.slice();
 })(typeof window !== "undefined" ? window : globalThis);

@@ -122,6 +122,8 @@
     marVermelho: "A travessia",
     sinai: "Onde o caminho sobe",
     galileia: "À beira do lago",
+    cova_leoes: "Daniel 6 · a noite entre os leões",
+    fornalha: "Daniel 3 · sete vezes mais quente",
   };
 
   // -------------------------------------------------------------------
@@ -783,6 +785,7 @@
   // Peças do corpo vistas no boneco: [acessório, cores]. Colar e anel são pequenos demais para o mundo.
   const PECAS_CORPO = {
     turbante_linho: ["turbante", ["#ddd0b0", "#a8916a"]],
+    turbante_fornalha: ["turbante", ["#f4eedc", "#e0602a"]], // linho alvo com a faixa cor de brasa (masmorra da fornalha)
     capacete_couro: ["capacete", ["#7a4a2c", "#a8703a"]],
     elmo_bronze: ["elmo", ["#a87234", "#e8b94a"]],
     saiote_couro: ["saiote", ["#8a5a32", "#e8b94a"]],
@@ -1219,6 +1222,9 @@
   item("botas_viagem");
   item("anel_selo_bronze");
   item("mochila");
+  // Recompensas exclusivas das masmorras (JGB-23): desenho em arte/itens.js.
+  item("selo_dario");
+  item("turbante_fornalha");
   // Armadura de Deus (Ef 6:13-17), relíquias em ouro pálido: desenho em arte/itens.js.
   item("cinto_verdade");
   item("couraca_justica");
@@ -1631,7 +1637,11 @@
   };
   // Sem entrada aqui, a aparencia "x" usa o sprite "in_x" (criaturas novas: in_chacal, in_javali…).
   const VISUAL_POR_APARENCIA = { lobo: "in_lobo", escorpiao: "in_escorpiao", bandido: "in_salteador", soldado: "in_guarda_egipcio", guerreiro: "in_amalequita" };
+  // Chefes (estrela, sombra grande, ponto maior no minimapa): os desta lista e toda criatura de tier "chefe"
+  // (dados/criaturas.js, e as vagas de chefe das masmorras em dados/masmorras.js).
   const CHEFES = new Set(["bandido1"]);
+  const chefeDaLista = CHEFES.has.bind(CHEFES);
+  CHEFES.has = (id) => chefeDaLista(id) || (typeof inimigos !== "undefined" && inimigos[id]?.tier === "chefe");
   // NPCs sem visual próprio que compartilham um visual pelo papel (os 6 atalaias são o mesmo vigia).
   const VISUAL_POR_PAPEL = { mural: "pj_atalaia" };
 
@@ -1734,6 +1744,48 @@
     },
   };
 
+  // Áreas sem bioma próprio (areas[x].arte: as masmorras do JGB-23, dados/mundo.js) usam a arte de outro bioma
+  // (obstáculos ob_<bioma>_*, ramos por nome nos pintores), com o clima trocado: a masmorra é uma caverna fechada
+  // (chão escuro, sem céu, vinheta forte) e, com fogo: true, a "água" em volta é brasa (a mesma animação da
+  // água, em laranja e vermelho). Nenhuma chave nova em BIOMAS (tests/arte/flora.test.js trava a lista).
+  const areaDe = (area) => (typeof areas !== "undefined" && areas[area]) || null;
+  function biomaDaArea(area) {
+    const a = areaDe(area);
+    return a && a.arte && BIOMAS[a.arte] ? a.arte : area;
+  }
+  const escurecer = (o, cor, t) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === "string" && v[0] === "#" ? misturar(v, cor, t) : v]));
+  const CLIMA_CAVERNA = (b) => ({
+    chao: escurecer(b.chao, "#140f16", 0.42), mancha: escurecer(b.mancha, "#140f16", 0.45), caminho: escurecer(b.caminho, "#140f16", 0.42),
+    agua: { profunda: "#07060a", base: "#100d14", escura: "#0b090e", clara: "#1c1720", brilho: "#2c2430", espuma: "#4a3e44" },
+    obstaculos: ((l) => (l.length ? l : b.obstaculos))(b.obstaculos.filter((o) => /penedo|rocha|marco|granito|basalto$/.test(o.tipo))),
+    borda: Object.assign({}, b.borda, { norte: undefined, sul: undefined }),
+    deco: (b.deco || []).filter((d) => !/flor|anemona|mostarda|lirio|broto|junco|tufo|liquen/.test(d.tipo)).concat([{ tipo: "tufo_seco", peso: 1, cor: "#4a4038" }]),
+    luz: { cor: "#9aa0d0", alfa: 0.05, modo: "screen" }, vinheta: { cor: "#050308", forca: 0.62 }, sombra: "#140e16", escuroFixo: 0.4,
+    particulas: { tipo: "poeira", cor: "#b8a890", max: 10 },
+  });
+  const CLIMA_FOGO = (b) => ({
+    chao: { base: "#76503f", escuro: "#5e3e32", claro: "#8c624c", salpico: "#3c2420" },
+    mancha: { base: "#5e3c30", escuro: "#4a2e26" }, caminho: escurecer(b.caminho, "#3a1a10", 0.5),
+    agua: { profunda: "#1c0503", base: "#4e1206", escura: "#360b04", clara: "#c8461a", brilho: "#ffb040", espuma: "#ffe08a" },
+    obstaculos: [{ tipo: "coluna", peso: 60, alto: true }, { tipo: "tijolos", peso: 40 }],
+    borda: Object.assign({}, b.borda, { norte: undefined, sul: undefined }),
+    deco: [{ tipo: "caco", peso: 3, cor: "#5a3424" }, { tipo: "tufo_seco", peso: 1, cor: "#3a2a24" }],
+    luz: { cor: "#ff8a3a", alfa: 0.12, modo: "screen" }, vinheta: { cor: "#2a0602", forca: 0.5 }, sombra: "#3a1208", escuroFixo: 0,
+    particulas: { tipo: "brasa", cor: "#ffb04a", max: 26 },
+  });
+  const cacheBio = {};
+  // O bioma (objeto) que a área pinta: o próprio, ou o da arte com o clima da masmorra.
+  function bioDaArea(area) {
+    if (cacheBio[area]) return cacheBio[area];
+    const a = areaDe(area), b = BIOMAS[biomaDaArea(area)];
+    if (!b) return null;
+    if (!a || !a.masmorra) return b;
+    // pintarComo: o nome que os ramos por região dos pintores (arte/terreno.js, cenario.js) leem; a brasa usa os
+    // ramos neutros (sem os sulcos e brotos do Egito), a caverna os pedregosos do bioma da arte
+    const arte = biomaDaArea(area);
+    return (cacheBio[area] = Object.assign({}, b, (a.fogo ? CLIMA_FOGO : CLIMA_CAVERNA)(b), { bioma: arte, pintarComo: a.fogo ? area : arte }));
+  }
+
   // -------------------------------------------------------------------
   // Obstáculos: uma chave por bioma e tipo (ob_<area>_<tipo>), cada quadro uma variante de forma. O desenho
   // está em arte/flora.js, que parte destas defs (quadros, alto, obstaculo, origem) e troca a célula. Lá há dois
@@ -1824,26 +1876,26 @@
     tenda: { chave: "ob_deserto_tenda", alto: true },
   };
   function tipoObstaculo(area, x, y) {
-    const bio = BIOMAS[area];
+    const bio = bioDaArea(area), arte = biomaDaArea(area);
     if (!bio) return null;
     const fixo = typeof tiposObstaculo !== "undefined" ? tiposObstaculo[area]?.[x + "," + y] : null;
     if (fixo) {
       const doBioma = bio.obstaculos.find((o) => o.tipo === fixo);
-      if (doBioma) return { chave: `ob_${area}_${fixo}`, alto: !!doBioma.alto };
+      if (doBioma) return { chave: `ob_${arte}_${fixo}`, alto: !!doBioma.alto };
       if (MARCOS[fixo]) return MARCOS[fixo];
-      const prop = PIXEL_PATTERNS[`ob_${area}_${fixo}`];
+      const prop = PIXEL_PATTERNS[`ob_${arte}_${fixo}`];
       // fecho: prop que emenda com o vizinho (a cerca) e é o último da fileira, sem o mesmo prop à direita
-      if (prop?.prop) return { chave: `ob_${area}_${fixo}`, alto: false, prop: true, fecho: !!prop.fecho && tiposObstaculo[area][x + 1 + "," + y] !== fixo };
+      if (prop?.prop) return { chave: `ob_${arte}_${fixo}`, alto: false, prop: true, fecho: !!prop.fecho && tiposObstaculo[area][x + 1 + "," + y] !== fixo };
     }
     const lista = bio.obstaculos.filter((o) => !o.soMarco);
     const total = lista.reduce((s, o) => s + o.peso, 0);
     let r = hash2(x, y, 3) * total;
     for (const o of lista) {
       r -= o.peso;
-      if (r <= 0) return { chave: `ob_${area}_${o.tipo}`, alto: !!o.alto };
+      if (r <= 0) return { chave: `ob_${arte}_${o.tipo}`, alto: !!o.alto };
     }
     const o = lista[lista.length - 1];
-    return { chave: `ob_${area}_${o.tipo}`, alto: !!o.alto };
+    return { chave: `ob_${arte}_${o.tipo}`, alto: !!o.alto };
   }
 
   // -------------------------------------------------------------------
@@ -2300,16 +2352,16 @@
   function gerarTileset(area) {
     if (cacheTileset[area]) return cacheTileset[area];
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const bio = BIOMAS[area] || BIOMAS.canaan;
+    const bio = bioDaArea(area) || BIOMAS.canaan, arte = bio.pintarComo || biomaDaArea(area);
     const semente = sementeDe(area);
     const pin = new Pincel(TS_COLS * T, TS_LINHAS * T);
-    pintores.chao(pin, area, bio, semente);
+    pintores.chao(pin, arte, bio, semente);
     pintores.caminho(pin, bio, semente);
-    pintores.mancha(pin, area, bio, semente);
-    pintores.detalhe(pin, area, bio, semente);
-    pintores.borda(pin, bio, area);
-    pintores.deco(pin, bio, area);
-    pintores.moldura(pin, bio, area);
+    pintores.mancha(pin, arte, bio, semente);
+    pintores.detalhe(pin, arte, bio, semente);
+    pintores.borda(pin, bio, arte);
+    pintores.deco(pin, bio, arte);
+    pintores.moldura(pin, bio, arte);
     pintores.sombras(pin, bio);
     const agua = bio.agua || BIOMAS.mar.agua;
     const animados = [];
@@ -2474,7 +2526,7 @@
   }
 
   function minimapaCores(area) {
-    const bio = BIOMAS[area] || BIOMAS.canaan;
+    const bio = bioDaArea(area) || BIOMAS.canaan;
     const p = (c) => misturar(c, "#e6cf9c", 0.35);
     const agua = (bio.agua || BIOMAS.mar.agua).base;
     return {
@@ -2652,7 +2704,7 @@
     versao: 2, PX, RES,
     PALETA, SEMANTICA, BIOMAS, SUBTITULOS, PIXEL_PATTERNS,
     VISUAL_NPC, VISUAL_INIMIGO, VISUAL_POR_APARENCIA, VISUAL_POR_PAPEL, CHEFES,
-    visualDe, nomeCurto, aliasItem,
+    visualDe, nomeCurto, aliasItem, biomaDaArea, bioDaArea,
     pixels, canvas, iconeURL, silhuetaURL, retratoURL, texturaURL, molduraURL, minimapaCores,
     gerarTileset, registrarTexturas, registrarTileset, garantirTextura, animarAgua,
     garantirJogador, chaveJogador, tipoObstaculo, validar,

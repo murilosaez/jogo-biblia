@@ -2050,9 +2050,10 @@ teste("33. caçadas e troca: dados coerentes, todo mural completo e invariantes 
     assert.ok(TAREFAS[t.id].esperaHoras > 0, `${onde}: espera do tipo`);
   }
   for (const [tipo, d] of Object.entries(j.g("TIPOS_TAREFA"))) assert.ok(d.nome && d.esperaHoras > 0, `tipo ${tipo}`);
-  // Murais: toda área com criaturas tem um atalaia com ao menos uma ronda e uma grande caçada.
+  // Murais: toda área com criaturas tem um atalaia com ao menos uma ronda e uma grande caçada (as masmorras, JGB-23,
+  // são instâncias sem mural: as criaturas delas só existem lá dentro).
   const murais = Object.values(npcs).filter((n) => n.papel === "mural");
-  for (const area of new Set(Object.values(inimigos).map((e) => e.area))) {
+  for (const area of new Set(Object.values(inimigos).filter((e) => !e.masmorra).map((e) => e.area))) {
     const atalaia = murais.find((n) => n.area === area);
     assert.ok(atalaia, `${area} tem criaturas e precisa de um atalaia`);
     const tipos = brutos.filter((t) => t.mural === atalaia.id && !t.oculta).map((t) => t.tipo);
@@ -6620,7 +6621,8 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
       assert.ok(d.peso > 0 && d.peso <= 2, `${id}: peso de verdade (${d.peso} kg)`);
       assert.ok((d.defesa || 0) <= 2 && (d.defesa || d.atributosFixos), `${id}: defesa pequena ou um atributo modesto`);
       for (const [k, v] of Object.entries(d.atributosFixos || {})) assert.ok(g("ATRIBUTOS_ITEM")[k] && v > 0 && v <= 10, `${id}: atributo ${k}`);
-      assert.ok(vendidos.has(id) || caem.has(id), `${id}: à venda ou no saque`);
+      const masmorra = Object.values(g("DADOS_MASMORRAS")).some((m) => m.recompensa.item === id); // recompensa exclusiva (JGB-23)
+      assert.ok(vendidos.has(id) || caem.has(id) || masmorra, `${id}: à venda, no saque ou recompensa de masmorra`);
       if (vendidos.has(id)) assert.ok(PRECOS[id] > 0, `${id}: preço`);
     }
   }
@@ -6784,7 +6786,7 @@ teste("73. boneco: espaços do corpo, uma mão para a arma, arco de duas mãos, 
   for (const s of Object.values(ESPACOS)) assert.ok(PP[s.silhueta], `silhueta ${s.silhueta}`);
   const quadro = (eq) => Arte.pixels(Arte.garantirJogador(eq), { quadro: 5 }).data.join();
   const nu = quadro({});
-  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }])
+  for (const eq of [{ cabeca: "turbante_linho" }, { cabeca: "capacete_couro" }, { cabeca: "elmo_bronze" }, { pernas: "grevas_bronze" }, { pernas: "saiote_couro" }, { pes: "botas_viagem" }, { cabeca: "capacete_salvacao" }, { pernas: "cinto_verdade" }, { pes: "calcados_evangelho" }, { cabeca: "turbante_fornalha" }])
     assert.notStrictEqual(quadro(eq), nu, `${JSON.stringify(eq)} aparece no boneco`);
   assert.notStrictEqual(quadro({ arma: "arco_madeira" }), quadro({ arma: "espada_ferro" }), "o arco vai na mão");
   const ui = fs.readFileSync(path.join(RAIZ, "interface.js"), "utf8");
