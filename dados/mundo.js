@@ -43,6 +43,14 @@ const DADOS_AREAS_BASE = {
   },
 };
 
+// Masmorras (JGB-23, dados/masmorras.js): áreas fechadas onde só se entra pelo porteiro. inicio: onde se chega;
+// arte: o bioma cujo chão, obstáculos e cores a área usa (sprites.js); vista: o retângulo que a câmera e o
+// minimapa mostram (a sala); fogo: a "água" em volta é brasa (desenho). Ficam fora da viagem e do barco.
+const DADOS_AREAS_MASMORRAS = {
+  cova_leoes: { id: "cova_leoes", nome: "Cova dos leões", masmorra: "cova_leoes", inicio: { x: 6, y: 15 }, arte: "sinai", vista: { x: 1, y: 1, largura: 38, altura: 28 } },
+  fornalha: { id: "fornalha", nome: "Fornalha ardente", masmorra: "fornalha", inicio: { x: 6, y: 15 }, arte: "egito", fogo: true, vista: { x: 1, y: 1, largura: 38, altura: 28 } },
+};
+
 // Regiões dos capítulos. inicio: onde o jogador chega pela primeira vez.
 // cais e chegadaViagem: como nas áreas acima (cada cidade tem o seu cais e o seu guia de caravanas).
 const DADOS_AREAS_CAPITULOS = {

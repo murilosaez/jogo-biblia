@@ -85,6 +85,10 @@ const ITENS = {
   sandalias_couro: { nome: "Sandálias de couro", peso: 0.4, tipo: "pes", defesa: 1 },
   botas_viagem: { nome: "Botas de viagem", peso: 1.2, tipo: "pes", defesa: 1, atributosFixos: { carga: 2 } },
   anel_selo_bronze: { nome: "Anel de selo de bronze", peso: 0.05, tipo: "anel", atributosFixos: { critico: 2 } }, // Gn 41:42
+  // Recompensas exclusivas das masmorras (JGB-23, dados/masmorras.js): só vêm da 1ª vitória em cada uma.
+  // O anel com que o rei selou a pedra da cova (Dn 6:17); os turbantes que o fogo não queimou (Dn 3:21, 27).
+  selo_dario: { nome: "Selo do rei Dario", peso: 0.05, tipo: "anel", raridade: "epico", defesa: 1, atributosFixos: { vida: 10, critico: 3 } },
+  turbante_fornalha: { nome: "Turbante que o fogo não queimou", peso: 0.3, tipo: "cabeca", raridade: "epico", defesa: 2, atributosFixos: { vida: 10, carga: 2 } },
   // Armadura de Deus (Ef 6:13-17, JGB-26): conjunto lendário de relíquias (CONJUNTOS, abaixo). Cada peça cai de
   // um raro nomeado (dados/criaturas.js); o bônus de conjunto vem com 2, 4 e 6 peças vestidas.
   cinto_verdade: { nome: "Cinto da verdade", peso: 0.3, tipo: "pernas", raridade: "reliquia", defesa: 2, atributosFixos: { vida: 10 } },
@@ -262,6 +266,8 @@ const VALORES_VENDA = {
   escudo_fe: 180,
   capacete_salvacao: 150,
   espada_espirito: 220,
+  selo_dario: 90,
+  turbante_fornalha: 90,
 };
 
 // Espaços do boneco no painel Equipamento (o que cabe em cada um é regra: SLOTS_EQUIPAMENTO, em logica.js).

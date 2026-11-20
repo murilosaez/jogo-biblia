@@ -1402,6 +1402,8 @@ function fecharBolsoes(areaId) {
 for (const id of Object.keys(DADOS_AREAS_BASE)) registrarArea(areas[id], gerarMapa(id));
 // Regiões dos capítulos (dados/mundo.js), cada uma com o seu desenho em dados/mapas.js.
 for (const area of Object.values(DADOS_AREAS_CAPITULOS)) registrarArea(clonarDados(area), gerarMapa(area.id));
+// Masmorras (JGB-23, dados/mundo.js e dados/masmorras.js): áreas fechadas, fora da viagem e do barco.
+for (const area of Object.values(DADOS_AREAS_MASMORRAS)) registrarArea(clonarDados(area), gerarMapa(area.id));
 
 // ---------------------------------------------------------------------
 // NPCs, coletáveis, pesca e inimigos base
@@ -2242,7 +2244,7 @@ function cosmeticosDoJogador(p) {
 // Campeões e raros nomeados
 // ---------------------------------------------------------------------
 function podeSerCampeao(e) {
-  return !e.nomeado && !!TIERS_CRIATURAS[e.tier]?.podeSerCampeao;
+  return !e.nomeado && !e.masmorra && !!TIERS_CRIATURAS[e.tier]?.podeSerCampeao;
 }
 
 // Modificadores de campeão da criatura para este jogador (p.campeoes[id], no save); [] = não é campeã.
@@ -2378,6 +2380,18 @@ for (const criatura of DADOS_CRIATURAS) {
     const copia = registrarInimigo({ ...clonarDados(criatura), id: `${criatura.id}_${i}` });
     Object.assign(copia, { base: criatura.id, centroX: original.x, centroY: original.y, inicioX: -99, inicioY: -99 });
     if (!sortearPosicaoInimigo(copia)) delete inimigos[copia.id]; // sem espaço: menos uma cópia
+  }
+}
+// Vagas das masmorras (JGB-23): cópias de criaturas de dados/criaturas.js (base), registradas por último e sem
+// grupo (não mudam o sorteio das posições das outras). Só vivem dentro da instância aberta (inimigoVivo).
+for (const [masmorraId, m] of Object.entries(DADOS_MASMORRAS)) {
+  for (const vaga of m.vagas) {
+    const modelo = DADOS_CRIATURAS.find((c) => c.id === vaga.base);
+    if (!modelo) continue;
+    const dados = { ...clonarDados(modelo), grupo: undefined, nomeado: undefined, ...clonarDados(vaga), area: m.area };
+    delete dados.base;
+    const e = registrarInimigo(dados);
+    Object.assign(e, { base: vaga.base, masmorra: masmorraId, centroX: e.x, centroY: e.y });
   }
 }
 // Raros nomeados (o laço de tempo confere a janela deles a cada quadro).
@@ -3072,7 +3086,7 @@ function catalogoDaLoja(npcId) {
 // ---------------------------------------------------------------------
 // Cada palavra leva a uma ação que já existe, sem regra nova: "interagir" (a mesma conversa do
 // clique ou do F: missão, rodízio do morador, mural, vocação), "loja" (na aba comprar ou vender), "deposito"
-// (janela do depósito), "forja" (janela do ferreiro),
+// (janela do depósito), "forja" (janela do ferreiro), "masmorra" (janela do porteiro das masmorras),
 // "viagem" (janela do guia), "barco" (janela da passagem), "fala" (só a resposta) e "despedir".
 // Os sinônimos valem sem acento e sem maiúsculas, sozinhos ou no meio de uma frase.
 const PALAVRAS_CHAVE = {
@@ -3085,6 +3099,7 @@ const PALAVRAS_CHAVE = {
   embarcar: { acao: "barco", sinonimos: ["barco", "navegar", "mar", "boat"] },
   preço: { acao: "fala", sinonimos: ["quanto", "custa", "custo", "passagem", "valor", "price"] },
   vocação: { acao: "interagir", sinonimos: ["vocacoes", "talentos", "vocation"] },
+  masmorra: { acao: "masmorra", sinonimos: ["masmorras", "entrar", "historias", "cova", "fornalha", "dungeon"] },
   forjar: { acao: "forja", aba: "forjar", sinonimos: ["forja", "aprimorar", "melhorar", "bigorna", "forge"] },
   engastar: { acao: "forja", aba: "engastar", sinonimos: ["engaste", "pedras", "pedra", "peitoral", "gem", "gems"] },
   conversar: { acao: "interagir", sinonimos: ["falar", "conversa", "novidades", "noticias", "news"] },
@@ -3100,6 +3115,7 @@ const PALAVRAS_DO_PAPEL = {
   barqueiro: ["embarcar", "preço"],
   vocacao: ["vocação"],
   ferreiro: ["forjar", "engastar"],
+  masmorra: ["masmorra"],
   ambiente: ["conversar"],
   apoio: ["conversar"],
 };
@@ -3155,6 +3171,7 @@ function palavrasChaveDoNpc(p, npcId) {
     vender: "Mostre o que tem; compro de tudo: peles, ervas, armas, armaduras e pedras.",
     depósito: "Abra o baú: o que está aqui está em todo depósito.",
     forjar: `Mostre a peça: forjo de +1 a +${REGRAS_FORJA.maximo}. Se o metal não pegar, a peça fica como estava.`,
+    masmorra: "Escolha a história: a Cova dos leões ou a Fornalha ardente.",
     engastar: `Uma pedra do peitoral por peça, ${REGRAS_ENGASTE.moedas} moedas o engaste.`,
     viajar: "Para onde vamos? O preço depende da distância.",
     embarcar: falaPassagemBarco(p),
@@ -3477,6 +3494,13 @@ function textoMissaoAtual(p) {
   if (!texto && p.area === "mar") {
     texto = "Pesque nos pontos marcados (P) ou navegue até o cais de uma cidade aberta para desembarcar.";
   }
+  // Masmorra (JGB-23): o objetivo da etapa (o "n/N" vira o progresso no painel).
+  if (areas[p.area]?.masmorra) {
+    const v = typeof Mundo !== "undefined" ? Mundo.visaoMasmorra(p.id, Date.now()) : null;
+    texto = !v ? "Fale com o porteiro para entrar."
+      : v.fim ? (v.fim.vitoria ? "Vitória! Saia pela janela da masmorra." : "A masmorra falhou. Saia e tente de novo.")
+        : `${v.etapa.texto} · etapa ${v.etapa.numero}/${v.etapa.total}`;
+  }
   return `${nome} · ${texto || "Explore a região."}`;
 }
 
@@ -3662,6 +3686,97 @@ function textoRecompensaTutorial(r) {
   return partes.join(" e ");
 }
 
+// ---------------------------------------------------------------------
+// Masmorras (JGB-23): dados/masmorras.js
+// ---------------------------------------------------------------------
+// No save: masmorras[id] = { vitorias, melhorMs, item (a recompensa exclusiva já veio), proximaEm (fim da recarga) };
+// masmorra = { id, volta: { area, x, y } } enquanto o jogador está numa (null fora). A instância (etapa, ondas,
+// perigos, protegido) vive em Mundo.estado[id].masmorra.
+function normalizarMasmorras(p) {
+  if (!objetoValido(p.masmorras)) p.masmorras = {};
+  for (const id of Object.keys(p.masmorras)) {
+    const h = p.masmorras[id];
+    if (!registroDe(DADOS_MASMORRAS, id) || !objetoValido(h)) { delete p.masmorras[id]; continue; }
+    p.masmorras[id] = {
+      vitorias: Number.isSafeInteger(h.vitorias) && h.vitorias > 0 ? h.vitorias : 0,
+      melhorMs: Number.isFinite(h.melhorMs) && h.melhorMs > 0 ? Math.round(h.melhorMs) : null,
+      item: h.item === true,
+      proximaEm: Number.isFinite(h.proximaEm) && h.proximaEm > 0 ? h.proximaEm : 0,
+    };
+  }
+  const m = p.masmorra;
+  const volta = objetoValido(m?.volta) && registroDe(areas, m.volta.area) && !areas[m.volta.area].masmorra ? m.volta : null;
+  p.masmorra = objetoValido(m) && registroDe(DADOS_MASMORRAS, m.id) && volta
+    ? { id: m.id, volta: { area: volta.area, x: Math.round(Number(volta.x)) || 0, y: Math.round(Number(volta.y)) || 0 } }
+    : null;
+}
+
+// Gerador pseudoaleatório da instância (os perigos não gastam o Math.random do resto do jogo).
+function geradorDaInstancia(semente) {
+  let a = semente >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function sementeDeTexto(texto) {
+  let h = 2166136261;
+  for (const c of String(texto)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return h >>> 0;
+}
+
+// Casas (dentro da sala e livres) de um padrão de perigo. centro: o jogador ("alvo") ou o chefe ("anel").
+function casasDoPerigo(perigo, m, centro, aleatorio) {
+  const sala = DADOS_MASMORRAS[m.id].sala, mapa = mapas[m.area];
+  const casas = [];
+  const desvio = Math.floor(aleatorio() * 3), paridade = Math.floor(aleatorio() * 2), linhas = aleatorio() < 0.5;
+  for (let y = sala.y; y < sala.y + sala.altura; y++) {
+    for (let x = sala.x; x < sala.x + sala.largura; x++) {
+      if (mapa[y]?.[x] !== 0) continue;
+      const d = centro ? Math.max(Math.abs(x - centro.x), Math.abs(y - centro.y)) : 0;
+      const pega =
+        perigo.padrao === "linhas" ? ((linhas ? y : x) + desvio) % 3 === 0
+          : perigo.padrao === "xadrez" ? (x + y + paridade) % 2 === 0
+            : perigo.padrao === "alvo" ? !!centro && d <= 1
+              : perigo.padrao === "anel" ? !!centro && d >= 2 && d <= 3
+                : false;
+      if (pega) casas.push({ x, y });
+    }
+  }
+  return casas;
+}
+
+// Janela de entrada (pura): para cada masmorra do porteiro, o que mostrar e se dá para entrar agora.
+function visaoEntradaMasmorras(p, porteiroId, agora) {
+  const porteiro = registroDe(npcs, porteiroId);
+  return (porteiro?.masmorras || []).filter((id) => registroDe(DADOS_MASMORRAS, id)).map((id) => {
+    const m = DADOS_MASMORRAS[id], h = p.masmorras?.[id] || { vitorias: 0, melhorMs: null, item: false, proximaEm: 0 };
+    const recargaMs = Math.max(0, (h.proximaEm || 0) - agora);
+    const motivo = (p.nivel || 1) < m.nivelMinimo ? `Requer o nível ${m.nivelMinimo}.` : recargaMs > 0 ? `Abre de novo em ${textoEspera(recargaMs)}.` : "";
+    const chefes = m.etapas.filter((e) => e.tipo === "chefe").map((e) => m.vagas.find((v) => v.id === e.vaga)?.nome).filter(Boolean);
+    return {
+      id,
+      nome: m.nome,
+      referencia: m.referencia,
+      descricao: m.descricao,
+      mecanica: m.mecanica,
+      nivelMinimo: m.nivelMinimo,
+      etapas: m.etapas.length,
+      chefe: chefes.join(", "),
+      recompensa: { xp: m.recompensa.xp, moedas: m.recompensa.moedas, item: m.recompensa.item, nomeItem: nomeItem(m.recompensa.item), recebido: h.item },
+      vitorias: h.vitorias,
+      melhorMs: h.melhorMs,
+      recargaMs,
+      podeEntrar: !motivo,
+      motivo,
+    };
+  });
+}
+
 function personagemNovo(id) {
   return {
     id,
@@ -3807,6 +3922,10 @@ const Mundo = {
     // O analisador de caçada vive na memória (não vai ao save) e atravessa as trocas de área e a morte,
     // que chamam entrar() de novo: só zera ao recarregar a página ou pelo comando zerarAnalisador.
     const analisador = this.estado[id]?.analisador || analisadorNovo();
+    // A instância da masmorra (JGB-23) também atravessa a troca de cena, se o jogador está nela; sem ela (página
+    // recarregada, ou a instância acabou), quem estava numa masmorra volta à porta.
+    const masmorra = this.estado[id]?.masmorra;
+    const naInstancia = masmorra && p.masmorra?.id === masmorra.id && p.area === masmorra.area;
     this.estado[id] = {
       analisador,
       proximaRegen: Date.now() + TEMPO_REGEN,
@@ -3814,7 +3933,10 @@ const Mundo = {
       proximoAtaqueJogador: 0,
       proximaLimpezaSaques: 0,
       explosoes: [],
+      ...(naInstancia ? { masmorra, aliados: masmorra.protegido ? [masmorra.protegido] : [] } : {}),
     };
+    if (naInstancia) for (const vagaId of masmorra.ativas) Object.assign(inimigos[vagaId], masmorra.posicoes?.[vagaId] || {});
+    else if (p.masmorra || areas[p.area]?.masmorra) this.expulsarDaMasmorra(p, "A masmorra recomeça do início na próxima entrada.");
     this.limparSaques(p, Date.now());
     this.salvar(p);
     return p;
@@ -3913,6 +4035,8 @@ const Mundo = {
     normalizarMissoes(p);
     // Tutorial (JGB-14): só o personagem novo o recebe; saves sem o campo ficam com ele pulado.
     normalizarTutorial(p, novo);
+    // Masmorras (JGB-23): histórico e a porta de volta (sem o campo, vazios — não mudou a versão do save).
+    normalizarMasmorras(p);
     // Caçadas e pontos de tarefa (save v8). Saves até a v7 não têm esses campos: começam vazios.
     normalizarTarefas(p, agora);
     // Bestiário (save v10): abates por espécie. Saves até a v9 começam do zero (não havia contagem).
@@ -4144,6 +4268,8 @@ const Mundo = {
   inimigoVivo(p, inimigoId) {
     if (p.inimigosDerrotados.includes(inimigoId) || !(p.vidaInimigos[inimigoId] > 0)) return false;
     const e = inimigos[inimigoId];
+    // Vaga de masmorra: só enquanto a instância dela está aberta e a vaga acesa.
+    if (e?.masmorra) return !!this.estado[p.id]?.masmorra?.ativas?.has(inimigoId);
     return !e?.nomeado || this.nomeadoPresente(p, e);
   },
 
@@ -4726,6 +4852,253 @@ const Mundo = {
     return this.npcProximo(p, (n) => n.papel === "deposito");
   },
 
+  // ----- Masmorras (JGB-23) -----
+  porteiroProximo(p) {
+    return this.npcProximo(p, (n) => n.papel === "masmorra");
+  },
+
+  // Entra na masmorra (ao lado do porteiro dela): guarda a porta de volta, abre a instância e leva à sala.
+  entrarMasmorra(id, masmorraId, agora = Date.now()) {
+    const p = this.jogadores[id];
+    const porteiro = this.porteiroProximo(p);
+    if (!porteiro) return { ok: false, mensagem: "Aproxime-se do porteiro da masmorra." };
+    const v = visaoEntradaMasmorras(p, porteiro.id, agora).find((x) => x.id === masmorraId);
+    if (!v) return { ok: false, mensagem: "Essa masmorra não se abre aqui." };
+    if (!v.podeEntrar) return { ok: false, mensagem: `${v.nome}: ${v.motivo}` };
+    const m = DADOS_MASMORRAS[masmorraId];
+    const volta = this.casaLivreMaisProxima(p.area, p.x, p.y) || { x: p.x, y: p.y };
+    p.masmorra = { id: masmorraId, volta: { area: p.area, x: volta.x, y: volta.y } };
+    const estado = this.estado[id];
+    const instancia = {
+      id: masmorraId,
+      area: m.area,
+      etapa: -1,
+      etapaDesde: agora,
+      iniciouEm: agora,
+      ondasFeitas: [],
+      fasesFeitas: [],
+      proximoPerigo: [],
+      perigos: [],
+      ativas: new Set(),
+      posicoes: {},
+      protegido: null,
+      fim: null,
+      aleatorio: geradorDaInstancia(sementeDeTexto(masmorraId) ^ (agora >>> 0)),
+    };
+    estado.masmorra = instancia;
+    estado.aliados = [];
+    if (m.protegido) {
+      const d = m.protegido;
+      instancia.protegido = {
+        id: "protegido", tipo: "protegido", nome: d.nome, aparencia: d.aparencia, area: m.area, x: d.x, y: d.y,
+        vida: d.vida, vidaMax: d.vida, defesa: d.defesa, raioIsca: d.raioIsca, isca: true, ate: Infinity, proximoMovimento: Infinity,
+      };
+      estado.aliados.push(instancia.protegido);
+    }
+    for (const vaga of m.vagas) this.apagarVaga(p, vaga.id);
+    const eventos = [];
+    this.iniciarEtapaMasmorra(p, instancia, 0, agora, eventos);
+    const r = this.mudarDeArea(p, m.area, areas[m.area].inicio.x, areas[m.area].inicio.y, `${m.nome}: ${m.falas.entrada}`);
+    return { ...r, masmorra: masmorraId, eventos };
+  },
+
+  // Sai da masmorra (no fim, ou desistindo): volta à porta. Desistir no meio não conta como derrota nem recarga.
+  sairMasmorra(id) {
+    const p = this.jogadores[id];
+    if (!p.masmorra) return { ok: false, mensagem: "Você não está numa masmorra." };
+    const m = this.estado[id]?.masmorra;
+    const texto = m?.fim ? (m.fim.vitoria ? "Você saiu vitorioso da masmorra." : "Você saiu da masmorra.") : "Você deixou a masmorra; ela recomeça do início na próxima entrada.";
+    const volta = this.fecharInstancia(id, p);
+    return this.mudarDeArea(p, volta.area, volta.x, volta.y, texto);
+  },
+
+  // Fecha a instância (apaga as vagas e o protegido) e devolve a porta de volta (limpando p.masmorra).
+  fecharInstancia(id, p) {
+    const estado = this.estado[id];
+    const m = DADOS_MASMORRAS[p.masmorra?.id];
+    for (const vaga of m?.vagas || []) this.apagarVaga(p, vaga.id);
+    if (estado) {
+      estado.masmorra = null;
+      estado.aliados = (estado.aliados || []).filter((a) => a.tipo !== "protegido");
+    }
+    const volta = p.masmorra?.volta && registroDe(areas, p.masmorra.volta.area) ? p.masmorra.volta : { area: "canaan", ...areas.canaan.inicio };
+    p.masmorra = null;
+    const casa = this.casaLivreMaisProxima(volta.area, volta.x, volta.y) || volta;
+    return { area: volta.area, x: casa.x, y: casa.y };
+  },
+
+  // Sem a instância (página recarregada): leva à porta, com um aviso.
+  expulsarDaMasmorra(p, aviso) {
+    const volta = this.fecharInstancia(p.id, p);
+    p.area = volta.area;
+    p.x = volta.x;
+    p.y = volta.y;
+    this.adicionarAviso(p, "masmorra", aviso);
+  },
+
+  // A vaga sai do mapa (derrotada, sem vida): só a onda a acende de novo.
+  apagarVaga(p, vagaId) {
+    if (!p.inimigosDerrotados.includes(vagaId)) p.inimigosDerrotados.push(vagaId);
+    this.estado[p.id]?.masmorra?.ativas?.delete(vagaId);
+  },
+
+  // Acende a vaga: vida cheia, no ponto dela (ou na casa livre mais perto).
+  acenderVaga(p, m, vagaId, eventos) {
+    const e = inimigos[vagaId];
+    if (!e || e.masmorra !== m.id) return;
+    p.inimigosDerrotados = p.inimigosDerrotados.filter((x) => x !== vagaId);
+    p.vidaInimigos[vagaId] = atributosInimigo(p, e).vidaMaxima;
+    const ocupada = (c) => [...m.ativas].some((o) => inimigos[o].x === c.x && inimigos[o].y === c.y) || (p.x === c.x && p.y === c.y);
+    const casa = !ocupada({ x: e.inicioX, y: e.inicioY }) ? { x: e.inicioX, y: e.inicioY } : this.casaLivreMaisProxima(m.area, e.inicioX, e.inicioY) || { x: e.inicioX, y: e.inicioY };
+    e.x = casa.x;
+    e.y = casa.y;
+    e.proximoMovimento = 0;
+    e.proximoAtaque = 0;
+    zerarComportamento(e);
+    m.ativas.add(vagaId);
+    eventos.push({ tipo: "masmorraSurgiu", id: vagaId, area: m.area });
+  },
+
+  iniciarEtapaMasmorra(p, m, indice, agora, eventos) {
+    const d = DADOS_MASMORRAS[m.id];
+    m.etapa = indice;
+    m.etapaDesde = agora;
+    m.ondasFeitas = [];
+    m.fasesFeitas = [];
+    const etapa = d.etapas[indice];
+    m.proximoPerigo = (etapa.perigos || []).map((x) => agora + x.aCadaMs);
+    if (etapa.tipo === "chefe") this.acenderVaga(p, m, etapa.vaga, eventos);
+    eventos.push({ tipo: "masmorraEtapa", masmorra: m.id, numero: indice + 1, total: d.etapas.length, texto: etapa.texto });
+  },
+
+  // Laço da instância (chamado por atualizar): ondas, perigos, fases do chefe, protegido e fim de etapa.
+  // Devolve "morte" se o jogador caiu num perigo.
+  atualizarMasmorra(id, p, estado, agora, eventos) {
+    const m = estado.masmorra;
+    if (!m || m.fim || p.area !== m.area) return null;
+    const d = DADOS_MASMORRAS[m.id];
+    const etapa = d.etapas[m.etapa];
+    const passou = agora - m.etapaDesde;
+    // Posições das vagas acesas (a troca de cena reposiciona as criaturas).
+    for (const vagaId of m.ativas) m.posicoes[vagaId] = { x: inimigos[vagaId].x, y: inimigos[vagaId].y };
+    for (const vagaId of [...m.ativas]) if (!(p.vidaInimigos[vagaId] > 0) || p.inimigosDerrotados.includes(vagaId)) m.ativas.delete(vagaId);
+    // Ondas.
+    (etapa.ondas || []).forEach((onda, i) => {
+      if (m.ondasFeitas.includes(i) || passou < onda.em) return;
+      m.ondasFeitas.push(i);
+      for (const vagaId of onda.vagas) this.acenderVaga(p, m, vagaId, eventos);
+    });
+    // Fases do chefe: ao cair abaixo de vidaAte, chamam as vagas.
+    if (etapa.tipo === "chefe" && m.ativas.has(etapa.vaga)) {
+      const vidaMax = atributosInimigo(p, inimigos[etapa.vaga]).vidaMaxima;
+      (etapa.fases || []).forEach((fase, i) => {
+        if (m.fasesFeitas.includes(i) || p.vidaInimigos[etapa.vaga] > vidaMax * fase.vidaAte) return;
+        m.fasesFeitas.push(i);
+        for (const vagaId of fase.chamar || []) if (!m.ativas.has(vagaId)) this.acenderVaga(p, m, vagaId, eventos);
+        eventos.push({ tipo: "masmorraFase", masmorra: m.id, mensagem: fase.texto });
+      });
+    }
+    // Perigos: marcar (aviso) e depois ferir quem estiver nas casas.
+    (etapa.perigos || []).forEach((perigo, i) => {
+      if (agora < m.proximoPerigo[i]) return;
+      m.proximoPerigo[i] = agora + perigo.aCadaMs;
+      const chefe = etapa.tipo === "chefe" ? inimigos[etapa.vaga] : null;
+      const centro = perigo.padrao === "anel" ? (chefe && m.ativas.has(chefe.id) ? chefe : null) : { x: p.x, y: p.y };
+      const casas = casasDoPerigo(perigo, m, centro, m.aleatorio);
+      if (!casas.length) return;
+      const em = agora + perigo.avisoMs;
+      m.perigos.push({ em, casas, dano: perigo.dano, nome: perigo.nome });
+      eventos.push({ tipo: "perigoAviso", casas, ate: em, nome: perigo.nome, area: m.area });
+    });
+    const prontos = m.perigos.filter((x) => agora >= x.em);
+    m.perigos = m.perigos.filter((x) => agora < x.em);
+    for (const x of prontos) {
+      const atingiu = x.casas.some((c) => c.x === p.x && c.y === p.y);
+      const { dano } = atingiu ? this.absorverDano(p, mitigarDano(x.dano, defesaTotal(p)), agora) : { dano: 0 };
+      if (atingiu) {
+        p.vida = Math.max(0, p.vida - dano);
+        estado.ultimoCombate = agora;
+      }
+      eventos.push({ tipo: "perigo", casas: x.casas, area: m.area, dano, atingiu, mensagem: atingiu ? `${x.nome}: o fogo atingiu você por ${dano} de dano!` : "" });
+      if (p.vida === 0) {
+        eventos.push(this.aplicarMorte(id, "inimigo", agora));
+        return "morte";
+      }
+    }
+    // Protegido caído: a masmorra falha.
+    if (m.protegido && m.protegido.vida <= 0) return this.concluirMasmorra(id, p, m, false, agora, eventos);
+    // Fim da etapa.
+    const cumprida = etapa.tipo === "chefe" ? !m.ativas.has(etapa.vaga) : passou >= etapa.duracaoMs;
+    if (!cumprida) return null;
+    if (etapa.tipo !== "chefe") for (const vagaId of [...m.ativas]) this.apagarVaga(p, vagaId); // a etapa acabou: as que restam somem
+    if (etapa.fim) eventos.push({ tipo: "masmorraFase", masmorra: m.id, mensagem: etapa.fim });
+    if (m.etapa + 1 < d.etapas.length) this.iniciarEtapaMasmorra(p, m, m.etapa + 1, agora, eventos);
+    else return this.concluirMasmorra(id, p, m, true, agora, eventos);
+    return null;
+  },
+
+  // Fim da masmorra: na vitória, a recompensa (o item exclusivo só na 1ª), o histórico e a recarga.
+  concluirMasmorra(id, p, m, vitoria, agora, eventos) {
+    const d = DADOS_MASMORRAS[m.id];
+    for (const vagaId of [...m.ativas]) this.apagarVaga(p, vagaId);
+    m.perigos = [];
+    const tempoMs = agora - m.iniciouEm;
+    const h = p.masmorras[m.id] || { vitorias: 0, melhorMs: null, item: false, proximaEm: 0 };
+    const recompensa = { xp: 0, moedas: 0, item: null };
+    let niveis = [];
+    if (vitoria) {
+      h.vitorias += 1;
+      h.melhorMs = h.melhorMs ? Math.min(h.melhorMs, tempoMs) : tempoMs;
+      h.proximaEm = agora + REGRAS_MASMORRAS.recargaHoras * MS_POR_HORA;
+      recompensa.xp = d.recompensa.xp;
+      recompensa.moedas = d.recompensa.moedas;
+      p.moedas += recompensa.moedas;
+      niveis = adicionarXP(p, recompensa.xp);
+      if (!h.item) {
+        h.item = true;
+        recompensa.item = d.recompensa.item;
+        guardarItem(p, d.recompensa.item); // exclusivo: vai para a mochila mesmo pesada (não se perde)
+      }
+    }
+    p.masmorras[m.id] = h;
+    m.fim = { vitoria, tempoMs, recompensa };
+    this.salvar(p);
+    const premio = vitoria
+      ? ` Recompensa: ${recompensa.xp} XP, ${recompensa.moedas} moedas${recompensa.item ? ` e ${nomeItem(recompensa.item)} (exclusivo)` : ""}.${niveis.length ? ` Você subiu para o nível ${p.nivel}!` : ""}`
+      : "";
+    eventos.push({
+      tipo: "masmorraFim",
+      masmorra: m.id,
+      vitoria,
+      tempoMs,
+      recompensa,
+      mensagem: `${d.nome}: ${vitoria ? d.falas.vitoria : d.falas.derrota}${premio}`,
+    });
+    return null;
+  },
+
+  // O que a interface mostra dentro da masmorra: etapa, tempo que falta, ondas, protegido, chefe e o fim.
+  visaoMasmorra(id, agora) {
+    const p = this.jogadores[id];
+    const m = this.estado[id]?.masmorra;
+    if (!p || !m || p.area !== m.area) return null;
+    const d = DADOS_MASMORRAS[m.id];
+    const etapa = d.etapas[m.etapa];
+    const chefe = etapa.tipo === "chefe" ? inimigos[etapa.vaga] : null;
+    return {
+      id: m.id,
+      nome: d.nome,
+      etapa: { numero: m.etapa + 1, total: d.etapas.length, tipo: etapa.tipo, texto: etapa.texto },
+      restanteMs: etapa.duracaoMs && !m.fim ? Math.max(0, etapa.duracaoMs - (agora - m.etapaDesde)) : null,
+      ondas: etapa.ondas?.length ? { feitas: m.ondasFeitas.length, total: etapa.ondas.length } : null,
+      criaturas: m.ativas.size,
+      protegido: m.protegido ? { nome: m.protegido.nome, vida: m.protegido.vida, vidaMax: m.protegido.vidaMax } : null,
+      chefe: chefe && m.ativas.has(chefe.id) ? { nome: chefe.nome, vida: p.vidaInimigos[chefe.id], vidaMax: atributosInimigo(p, chefe).vidaMaxima } : null,
+      tempoMs: agora - m.iniciouEm,
+      fim: m.fim,
+    };
+  },
+
   // ----- Forja e engaste (JGB-25) -----
   // Só ao lado de um ferreiro (papel "ferreiro"). A peça pode estar na mochila ou vestida (slot = o espaço).
   ferreiroProximo(p) {
@@ -5010,6 +5383,10 @@ const Mundo = {
         return this.definirCores(id, comando.cores);
       case "pularTutorial":
         return this.pularTutorial(id);
+      case "entrarMasmorra":
+        return this.entrarMasmorra(id, comando.masmorra);
+      case "sairMasmorra":
+        return this.sairMasmorra(id);
       case "forjar":
         return this.forjar(id, comando.item, comando.slot);
       case "engastar":
@@ -5536,6 +5913,9 @@ const Mundo = {
         mensagem: `${npc.nome.split(",")[0]}: ${npc.falas?.saudacao || "Tenho provisões, flechas e equipamentos para vender."}`,
       };
     }
+    if (npc.papel === "masmorra") {
+      return { ok: true, abrirMasmorra: npc.id, mensagem: `${npc.nome.split(",")[0]}: ${npc.falas?.saudacao || "Quer entrar?"}` };
+    }
     if (npc.papel === "ferreiro") {
       return { ok: true, abrirForja: npc.id, mensagem: `${npc.nome.split(",")[0]}: ${npc.falas?.saudacao || "Forjo e engasto pedras."}` };
     }
@@ -5592,7 +5972,7 @@ const Mundo = {
   conversaDeMissao(p, npc) {
     const missao = missaoDaVez(p, missoesDoNpc(npc.id));
     if (!missao) return false;
-    if (!["loja", "guia", "mural", "deposito", "ferreiro"].includes(npc.papel)) return true;
+    if (!["loja", "guia", "mural", "deposito", "ferreiro", "masmorra"].includes(npc.papel)) return true;
     return ["inicio", "andamento", "retorno"].includes(faseMissao(p, missao.id));
   },
 
@@ -6150,7 +6530,7 @@ const Mundo = {
     const fraca = xpDoAbate(p, e) < e.xpRecompensa ? " (criatura fraca para o seu nível)" : "";
     const descanso = xpDescanso ? ` (${xpDescanso} do descanso; reserva: ${p.descanso.xp})` : "";
     const vigor = xpVigor > 0 ? ` (${xpVigor} do vigor)` : xpVigor < 0 ? ` (${composicao.faixa.nome.toLowerCase()}: ${Math.round(composicao.fatorVigor * 100)}% do XP)` : "";
-    const reaparece = e.nomeado ? "" : ` ${e.genero === "f" ? "Ela" : "Ele"} reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
+    const reaparece = e.nomeado || e.masmorra ? "" : ` ${e.genero === "f" ? "Ela" : "Ele"} reaparecerá em ${TEMPO_RESPAWN_INIMIGO / 1000} segundos.`;
     return {
       saques: p.saqueNoChao.filter((s) => s.area === p.area && s.x === e.x && s.y === e.y).map((s) => s.id),
       saquesRaros: saque.destaques.map(({ saqueId, item, raridade }) => ({ saqueId, item, raridade })),
@@ -6175,7 +6555,7 @@ const Mundo = {
   reaparecerInimigo(id, inimigoId) {
     const p = this.jogadores[id];
     const e = inimigos[inimigoId];
-    if (!p || !e || e.nomeado) return false;
+    if (!p || !e || e.nomeado || e.masmorra) return false; // nomeados e vagas de masmorra não renascem pelo tempo
     const i = p.inimigosDerrotados.indexOf(inimigoId);
     if (i < 0) return false;
     p.inimigosDerrotados.splice(i, 1);
@@ -7114,10 +7494,11 @@ const Mundo = {
     }
   },
 
-  // Ovelha que atrai esta criatura (a mais perto a até raioIsca casas), ou null.
+  // Ovelha (ou o protegido da masmorra, JGB-23) que atrai esta criatura (a mais perto a até raioIsca casas), ou null.
   iscaDaCriatura(id, e) {
-    const raio = REGRAS_VOCACAO.aliados.ovelha.raioIsca;
-    const ovelhas = (this.estado[id]?.aliados || []).filter((a) => a.tipo === "ovelha" && a.area === e.area && a.vida > 0 && distanciaChebyshev(a, e) <= raio);
+    const raioOvelha = REGRAS_VOCACAO.aliados.ovelha.raioIsca;
+    const ovelhas = (this.estado[id]?.aliados || []).filter((a) => (a.tipo === "ovelha" || a.isca) && a.area === e.area && a.vida > 0
+      && distanciaChebyshev(a, e) <= (a.raioIsca ?? raioOvelha));
     return ovelhas.sort((a, b) => distanciaChebyshev(a, e) - distanciaChebyshev(b, e))[0] || null;
   },
 
@@ -7129,7 +7510,7 @@ const Mundo = {
     if (alcanca) {
       if (agora < e.proximoAtaque) return null;
       e.proximoAtaque = agora + at.intervaloAtaque;
-      const dano = mitigarDano(at.dano, REGRAS_VOCACAO.aliados.ovelha.defesa);
+      const dano = mitigarDano(at.dano, ovelha.defesa ?? REGRAS_VOCACAO.aliados.ovelha.defesa);
       ovelha.vida = Math.max(0, ovelha.vida - dano);
       eventos.push({ tipo: "iscaAtingida", aliadoId: ovelha.id, inimigoId: e.id, dano, vida: ovelha.vida, distancia: distancia > ALCANCE_CORPO });
       return null;
@@ -7197,7 +7578,9 @@ const Mundo = {
     const p = this.jogadores[id];
     const estado = this.estado[id];
     const regra = regraMorte(p.nivel);
-    const local = { area: p.area, x: p.x, y: p.y };
+    // Morte numa masmorra (JGB-23): ela falha, e o que cair vai para a porta de volta (a instância some).
+    const naMasmorra = !!p.masmorra;
+    const local = naMasmorra ? this.fecharInstancia(id, p) : { area: p.area, x: p.x, y: p.y };
     const moedasPerdidas = Math.floor(p.moedas * regra.moedas);
     p.moedas -= moedasPerdidas;
 
@@ -7271,7 +7654,7 @@ const Mundo = {
       tipo: "renasceu",
       causa,
       penalidade: { moedas: moedasPerdidas, xpHabilidade: xpPerdido, item: itemPerdido },
-      mensagem: `${inicio} Você voltou a Canaã com a vida restaurada. ${nota}`,
+      mensagem: `${inicio}${naMasmorra ? " A masmorra falhou e recomeça do início na próxima entrada." : ""} Você voltou a Canaã com a vida restaurada. ${nota}`,
     };
   },
 
@@ -7286,6 +7669,8 @@ const Mundo = {
       if (e.area !== p.area || !this.inimigoVivo(p, e.id)) continue;
       if (this.agirCriatura(id, p, estado, e, agora, eventos) === "morte") return eventos;
     }
+    // Masmorra (JGB-23): ondas, perigos, chefe e fim.
+    if (estado.masmorra && this.atualizarMasmorra(id, p, estado, agora, eventos) === "morte") return eventos;
 
     // Explosões de campeões explosivos (marcadas na morte deles).
     if (estado.explosoes?.length) {
