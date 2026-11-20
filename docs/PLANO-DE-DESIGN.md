@@ -60,7 +60,7 @@ História principal; cadeias secundárias; 3 diárias + 3 semanais; **maná diá
 ## Masmorras e raids
 Ventre do grande peixe (solo), Templo de Dagom (grupo, enigma de pilares), Cova dos leões (sobrevivência), Fornalha ardente (desvio), Pirâmides (labirinto que muda), **Torre de Babel** (andares infinitos + ranking semanal), raids de 10: exército de Senaqueribe, Leviatã.
 
-Feito no JGB-23: motor de masmorras (`dados/masmorras.js`: instância só do jogador, etapas proteger/sobreviver/chefe, ondas, perigos no chão com aviso, fases do chefe, recompensa exclusiva na 1ª vitória, recarga de 4 h) com a **Cova dos leões** e a **Fornalha ardente**, abertas por Baruque em Gósen (Egito). O **Ventre do grande peixe** entrou no JGB-52 (Amitai, em Cafarnaum; etapa nova "zona": orar no círculo). Faltam as Pirâmides (JGB-53) e o Templo de Dagom (JGB-54, depende do multiplayer).
+Feito no JGB-23: motor de masmorras (`dados/masmorras.js`: instância só do jogador, etapas proteger/sobreviver/chefe, ondas, perigos no chão com aviso, fases do chefe, recompensa exclusiva na 1ª vitória, recarga de 4 h) com a **Cova dos leões** e a **Fornalha ardente**, abertas por Baruque em Gósen (Egito). O **Ventre do grande peixe** entrou no JGB-52 (Amitai, em Cafarnaum; etapa nova "zona": orar no círculo). As **Pirâmides** entraram no JGB-53 como "Tesouros do Egito" (Sifrá, em Gósen; labirinto novo a cada entrada e etapa "chegar"). Falta o Templo de Dagom (JGB-54, depende do multiplayer).
 
 ## Combate e estratégia
 6–8 habilidades por vocação com recarga e combinações; ameaça (tanque/dano/cura); posicionamento (costas +dano, terreno alto +alcance, água lenta); consumíveis táticos (comida 30 min, óleo na arma, incenso); PvP só opcional e não letal (arenas, torneios, duelos).

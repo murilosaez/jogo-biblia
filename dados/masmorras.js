@@ -21,6 +21,7 @@
 //     tipo "proteger": duracaoMs (sobreviva com o protegido de pé);
 //     tipo "sobreviver": duracaoMs (sobreviva até o fim do tempo);
 //     tipo "zona": zona { x, y, raio } e duracaoMs — o tempo só conta com o jogador dentro do círculo (a oração);
+//     tipo "chegar": alvo { x, y, largura, altura } — a etapa termina quando o jogador entra no retângulo;
 //     tipo "chefe": vaga (o chefe; a etapa termina quando ele cai) e fases [{ vidaAte (fração), chamar: [vagas],
 //       texto }] — ao cair abaixo de vidaAte, a fase chama as vagas e avisa;
 //     ondas (opcional): [{ em (ms desde o começo da etapa), vagas: [ids] }];
@@ -29,6 +30,10 @@
 //       (metade das casas, alternadas), "alvo" (3×3 em volta do jogador) ou "anel" (a 2 e 3 casas do chefe);
 //     fim: frase dita ao concluir a etapa (opcional);
 //   sala: o retângulo jogável (os padrões de perigo cobrem só ele);
+//   labirinto (opcional): { x, y, largura, altura, parede, aberturas, portas } — a cada entrada, um labirinto novo
+//     é escavado nesse retângulo (largura e altura ímpares; corredores nas casas de x e y ímpares a partir da borda),
+//     com paredes do tipo parede; aberturas: fração das paredes internas derrubadas a mais (atalhos); portas:
+//     casas sempre abertas (a ligação com o resto da sala). Ao sair, a sala volta a ser como era;
 //   recompensa: { xp, moedas, item } — o item (exclusivo, só desta masmorra) vem na 1ª vitória; nas outras,
 //     XP e moedas;
 //   falas: { entrada, vitoria, derrota }.
@@ -219,6 +224,64 @@ const DADOS_MASMORRAS = {
       entrada: "Escuro e fundo: o ventre do grande peixe, onde Jonas esteve três dias e três noites (Jn 1:17).",
       vitoria: "\"Ao Senhor pertence a salvação!\" (Jn 2:9). Jonas está na terra seca, pronto para ir a Nínive.",
       derrota: "O abismo venceu desta vez. Volte quando estiver pronto.",
+    },
+  },
+
+  piramides: {
+    nome: "Tesouros do Egito",
+    referencia: "Hebreus 11:26; Êxodo 1 e 7",
+    descricao:
+      "Os hebreus edificaram para Faraó as cidades-celeiros (Êx 1:11). Moisés \"considerou o opróbrio de Cristo por maiores " +
+      "riquezas do que os tesouros do Egito\" (Hb 11:26). Atravesse as galerias do túmulo — elas nunca são as mesmas — até a " +
+      "câmara do tesouro, onde Janes, mago de Faraó, resiste à verdade (2 Tm 3:8).",
+    mecanica: "Ache o caminho no labirinto, que muda a cada entrada, e vença o mago na câmara do tesouro.",
+    nivelMinimo: 16,
+    area: "piramides",
+    sala: { x: 4, y: 4, largura: 32, altura: 21 },
+    labirinto: { x: 4, y: 4, largura: 27, altura: 21, parede: "tijolos", aberturas: 0.08, portas: [{ x: 30, y: 15 }] },
+    vagas: [
+      { id: "piramides_guarda_1", base: "soldadoEgito1", x: 17, y: 7, nome: "Guarda do túmulo", vidaMaxima: 260, danoContraJogador: 12, defesa: 12, raioPercepcao: 8 },
+      { id: "piramides_guarda_2", base: "soldadoEgito1", x: 23, y: 21, nome: "Guarda do túmulo", vidaMaxima: 260, danoContraJogador: 12, defesa: 12, raioPercepcao: 8 },
+      { id: "piramides_escorpiao_1", base: "escorpiao1", x: 11, y: 21, nome: "Escorpião do túmulo", vidaMaxima: 160, danoContraJogador: 10, defesa: 8, raioPercepcao: 7 },
+      { id: "piramides_escorpiao_2", base: "escorpiao1", x: 25, y: 9, nome: "Escorpião do túmulo", vidaMaxima: 160, danoContraJogador: 10, defesa: 8, raioPercepcao: 7 },
+      { id: "piramides_naja_1", base: "naja1", x: 33, y: 11, nome: "Serpente do mago", vidaMaxima: 150, danoContraJogador: 11, defesa: 8, raioPercepcao: 40 },
+      { id: "piramides_naja_2", base: "naja1", x: 33, y: 19, nome: "Serpente do mago", vidaMaxima: 150, danoContraJogador: 11, defesa: 8, raioPercepcao: 40 },
+      {
+        id: "piramides_janes", base: "feiticeiro1", x: 34, y: 15, nome: "Janes, mago de Faraó", tier: "chefe", escala: 1.4, vidaMaxima: 1800,
+        danoContraJogador: 16, defesa: 14, xpRecompensa: 600, raioPercepcao: 40,
+      },
+    ],
+    etapas: [
+      {
+        id: "galerias",
+        tipo: "chegar",
+        alvo: { x: 31, y: 9, largura: 5, altura: 13 },
+        texto: "Ache o caminho até a câmara do tesouro",
+        ondas: [
+          { em: 1000, vagas: ["piramides_guarda_1", "piramides_escorpiao_1"] },
+          { em: 30000, vagas: ["piramides_guarda_2", "piramides_escorpiao_2"] },
+        ],
+        perigos: [{ padrao: "alvo", aCadaMs: 9000, avisoMs: 1300, dano: 26, nome: "Uma armadilha do túmulo" }],
+        fim: "A câmara do tesouro: ouro, prata e um mago que lança o seu bordão ao chão.",
+      },
+      {
+        id: "janes",
+        tipo: "chefe",
+        vaga: "piramides_janes",
+        texto: "Vença Janes, mago de Faraó",
+        perigos: [{ padrao: "anel", aCadaMs: 6500, avisoMs: 1400, dano: 28, nome: "As encantações do mago" }],
+        fases: [
+          { vidaAte: 0.6, chamar: ["piramides_naja_1", "piramides_naja_2"], texto: "Janes lança o bordão: serpentes! (Êx 7:11-12)" },
+          { vidaAte: 0.3, chamar: ["piramides_guarda_1", "piramides_guarda_2"], texto: "O mago chama os guardas do túmulo!" },
+        ],
+        fim: "\"Como Janes e Jambres resistiram a Moisés\", assim os que resistem à verdade não irão avante (2 Tm 3:8-9).",
+      },
+    ],
+    recompensa: { xp: 1500, moedas: 200, item: "sandalias_pascoa" },
+    falas: {
+      entrada: "Galerias escuras, que não são as mesmas da última vez. Ache a câmara do tesouro.",
+      vitoria: "O tesouro fica para trás: \"Comê-lo-eis à pressa... sandálias nos pés\" (Êx 12:11). É hora de partir.",
+      derrota: "As galerias venceram desta vez. Volte quando estiver pronto: o caminho será outro.",
     },
   },
 };
