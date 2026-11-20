@@ -242,6 +242,9 @@ const DADOS_MASMORRAS = {
     vagas: [
       { id: "piramides_guarda_1", base: "soldadoEgito1", x: 17, y: 7, nome: "Guarda do túmulo", vidaMaxima: 260, danoContraJogador: 12, defesa: 12, raioPercepcao: 8 },
       { id: "piramides_guarda_2", base: "soldadoEgito1", x: 23, y: 21, nome: "Guarda do túmulo", vidaMaxima: 260, danoContraJogador: 12, defesa: 12, raioPercepcao: 8 },
+      // os guardas que o mago chama na câmara (a fase final): já dentro dela e enxergando a sala toda
+      { id: "piramides_guarda_3", base: "soldadoEgito1", x: 33, y: 10, nome: "Guarda do túmulo", vidaMaxima: 260, danoContraJogador: 12, defesa: 12, raioPercepcao: 40 },
+      { id: "piramides_guarda_4", base: "soldadoEgito1", x: 33, y: 20, nome: "Guarda do túmulo", vidaMaxima: 260, danoContraJogador: 12, defesa: 12, raioPercepcao: 40 },
       { id: "piramides_escorpiao_1", base: "escorpiao1", x: 11, y: 21, nome: "Escorpião do túmulo", vidaMaxima: 160, danoContraJogador: 10, defesa: 8, raioPercepcao: 7 },
       { id: "piramides_escorpiao_2", base: "escorpiao1", x: 25, y: 9, nome: "Escorpião do túmulo", vidaMaxima: 160, danoContraJogador: 10, defesa: 8, raioPercepcao: 7 },
       { id: "piramides_naja_1", base: "naja1", x: 33, y: 11, nome: "Serpente do mago", vidaMaxima: 150, danoContraJogador: 11, defesa: 8, raioPercepcao: 40 },
@@ -272,15 +275,15 @@ const DADOS_MASMORRAS = {
         perigos: [{ padrao: "anel", aCadaMs: 6500, avisoMs: 1400, dano: 28, nome: "As encantações do mago" }],
         fases: [
           { vidaAte: 0.6, chamar: ["piramides_naja_1", "piramides_naja_2"], texto: "Janes lança o bordão: serpentes! (Êx 7:11-12)" },
-          { vidaAte: 0.3, chamar: ["piramides_guarda_1", "piramides_guarda_2"], texto: "O mago chama os guardas do túmulo!" },
+          { vidaAte: 0.3, chamar: ["piramides_guarda_3", "piramides_guarda_4"], texto: "O mago chama os guardas do túmulo!" },
         ],
-        fim: "\"Como Janes e Jambres resistiram a Moisés\", assim os que resistem à verdade não irão avante (2 Tm 3:8-9).",
+        fim: "\"Do modo por que Janes e Jambres resistiram a Moisés, também estes resistem à verdade\"; eles \"não irão avante\" (2 Tm 3:8-9).",
       },
     ],
     recompensa: { xp: 1500, moedas: 200, item: "sandalias_pascoa" },
     falas: {
       entrada: "Galerias escuras, que não são as mesmas da última vez. Ache a câmara do tesouro.",
-      vitoria: "O tesouro fica para trás: \"Comê-lo-eis à pressa... sandálias nos pés\" (Êx 12:11). É hora de partir.",
+      vitoria: "O tesouro fica para trás: \"lombos cingidos, sandálias nos pés e cajado na mão; comê-lo-eis à pressa\" (Êx 12:11).",
       derrota: "As galerias venceram desta vez. Volte quando estiver pronto: o caminho será outro.",
     },
   },
