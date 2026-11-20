@@ -834,6 +834,13 @@ body.mapa-sobre-mundo:not(.mapa-oculto) #avisos{left:8px;right:240px;width:auto;
 }
 @media (max-width:760px){
  body.na-masmorra #tutorial{display:none}
+ /* com o minimapa aberto o HUD desce para 140px: os avisos passam para baixo dele (não cobrem cronômetro e Desistir) */
+ body.na-masmorra.mapa-visivel-cel #palco #avisos{top:calc(218px + var(--status-hud,0px))}
+}
+/* celular deitado: o palco é baixo e os cantos são da barra de vida, do joystick, do minimapa e dos botões de toque;
+   o HUD vai para o meio de baixo, entre o joystick e os botões (abaixo do personagem) */
+@media (pointer:coarse) and (max-height:500px){
+ #masmorraHud,body.mapa-visivel-cel #masmorraHud{right:auto;top:auto;bottom:6px;left:calc(50% - 106px);width:212px}
 }
 /* passagem do barco: bilhete com preço, saldo e o que sobra */
 .bilhete{margin:0 0 12px;border:2px solid var(--tinta);background:#fff8e6;box-shadow:inset 0 0 0 2px #e6cf9c}

@@ -2867,7 +2867,10 @@ class Cena extends Phaser.Scene {
     }
     this.marcasPerigo = (this.marcasPerigo || []).filter((m) => m.active);
     this.marcasPerigo.push(g);
-    if (!reduzMovimento()) this.tweens.add({ targets: g, alpha: 0.45, duration: 180, yoyo: true, repeat: -1 });
+    if (!reduzMovimento()) {
+      const pulso = this.tweens.add({ targets: g, alpha: 0.45, duration: 180, yoyo: true, repeat: -1 });
+      g.once("destroy", () => pulso.remove()); // o tween infinito sai junto com a marca (não fica órfão)
+    }
     if (casas.some((c) => c.x === this.p.x && c.y === this.p.y)) this.mensagem(`${x.nome}: saia das casas marcadas!`, "perigo");
     this.time.delayedCall(Math.max(150, x.ate - Date.now()) + 120, () => g.destroy());
   }
