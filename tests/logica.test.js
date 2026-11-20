@@ -1502,7 +1502,7 @@ teste("27. dados/: conteúdo puro e todas as referências apontam para algo que 
         if (campo in linha) assert.ok(RARIDADES[linha[campo]], `${onde}: ${campo} "${linha[campo]}"`);
       }
     }
-    assert.ok(e.vidaMaxima > 0 && e.xpRecompensa > 0, `atributos de ${e.id}`);
+    assert.ok(e.vidaMaxima > 0 && (e.xpRecompensa > 0 || (e.masmorra && e.xpRecompensa === 0)), `atributos de ${e.id}`); // vagas: XP na conclusão
   }
   for (const [chave, c] of Object.entries(CAPITULOS)) {
     assert.ok(MISSOES[c.missao], `capítulo ${chave}: missão ${c.missao}`);
