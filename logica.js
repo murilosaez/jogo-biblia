@@ -5064,7 +5064,7 @@ const Mundo = {
     (etapa.ondas || []).forEach((onda, i) => {
       if (m.ondasFeitas.includes(i) || passou < onda.em) return;
       m.ondasFeitas.push(i);
-      for (const vagaId of onda.vagas) this.acenderVaga(p, m, vagaId, eventos);
+      for (const vagaId of onda.vagas) if (!m.ativas.has(vagaId)) this.acenderVaga(p, m, vagaId, eventos); // vivo: não renasce
     });
     // Fases do chefe: ao cair abaixo de vidaAte, chamam as vagas.
     if (etapa.tipo === "chefe" && m.ativas.has(etapa.vaga)) {
